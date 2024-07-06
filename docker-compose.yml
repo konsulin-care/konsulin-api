@@ -1,0 +1,52 @@
+version: "3"  
+services:  
+  spark:
+    container_name: spark
+    restart: always
+    image: alysivji0jasper/sparkfhir-arm:r4-latest
+    environment:
+      - StoreSettings__ConnectionString=mongodb://konsulindb:konsulintophealthservices@mongodb:27017/spark?authSource=admin
+      - SparkSettings__Endpoint=http://localhost:5555/fhir
+    ports:
+      - "5555:80"
+    depends_on:
+      - mongodb
+
+  mongodb:
+    container_name: mongodb
+    image: sparkfhir/mongo:r4-latest
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: konsulindb
+      MONGO_INITDB_ROOT_PASSWORD: konsulintophealthservices
+    ports:
+      - "17017:27017"
+    volumes:
+      - r4-latest-develop-data-volume:/data/db
+
+  redis:
+    container_name: redis
+    image: redis:latest
+    environment:
+      REDIS_PASSWORD: customredis77
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--requirepass", "customredis77"]
+    volumes:
+      - redis-data:/data
+
+  rabbitmq:
+    container_name: rabbitmq
+    image: rabbitmq:3-management
+    environment:
+      RABBITMQ_DEFAULT_USER: user
+      RABBITMQ_DEFAULT_PASS: password
+    ports:
+      - "15672:15672" 
+      - "5672:5672"   
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+
+volumes:
+  r4-latest-develop-data-volume:
+  redis-data:
+  rabbitmq-data:
