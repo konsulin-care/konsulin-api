@@ -2,14 +2,14 @@ package patients
 
 import (
 	"context"
-	"fmt"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
+	"net/http"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/goccy/go-json"
 )
 
 type PatientController struct {
@@ -22,9 +22,9 @@ func NewPatientController(patientUsecase PatientUsecase) *PatientController {
 	}
 }
 
-func (ctrl *PatientController) GetPatientProfileBySession(c *fiber.Ctx) error {
-	sessionData := c.Locals("sessionData").(string)
-	fmt.Println(sessionData)
+func (ctrl *PatientController) GetPatientProfileBySession(w http.ResponseWriter, r *http.Request) {
+	// Get session data from context
+	sessionData := r.Context().Value("sessionData").(string)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -32,28 +32,32 @@ func (ctrl *PatientController) GetPatientProfileBySession(c *fiber.Ctx) error {
 	result, err := ctrl.PatientUsecase.GetPatientProfileBySession(ctx, sessionData)
 	if err != nil {
 		if err == context.DeadlineExceeded {
-			return exceptions.WrapWithoutError(constvars.StatusRequestTimeout, constvars.ErrClientServerLongRespond, constvars.ErrDevServerDeadlineExceeded)
+			utils.BuildErrorResponse(w, exceptions.ErrServerDeadlineExceeded(err))
+			return
 		}
-		return err
+		utils.BuildErrorResponse(w, err)
+		return
 	}
 
-	return c.Status(constvars.StatusOK).JSON(utils.BuildSuccessResponse(constvars.ProfileGetSuccess, result))
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.ProfileGetSuccess, result)
 }
 
-func (ctrl *PatientController) UpdateProfileBySession(c *fiber.Ctx) error {
+func (ctrl *PatientController) UpdateProfileBySession(w http.ResponseWriter, r *http.Request) {
 	request := new(requests.UpdateProfile)
-	err := c.BodyParser(&request)
+	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		return exceptions.WrapWithError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevCannotParseJSON)
+		utils.BuildErrorResponse(w, exceptions.ErrCannotParseJSON(err))
+		return
 	}
 
 	// Validate request
 	err = utils.ValidateStruct(request)
 	if err != nil {
-		return exceptions.WrapWithError(err, constvars.StatusBadRequest, utils.FormatFirstValidationError(err), constvars.ErrDevValidationFailed)
+		utils.BuildErrorResponse(w, exceptions.ErrInputValidation(err))
+		return
 	}
 
-	sessionData := c.Locals("sessionData").(string)
+	sessionData := r.Context().Value("sessionData").(string)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -61,10 +65,12 @@ func (ctrl *PatientController) UpdateProfileBySession(c *fiber.Ctx) error {
 	response, err := ctrl.PatientUsecase.UpdatePatientProfileBySession(ctx, sessionData, request)
 	if err != nil {
 		if err == context.DeadlineExceeded {
-			return exceptions.WrapWithoutError(constvars.StatusRequestTimeout, constvars.ErrClientServerLongRespond, constvars.ErrDevServerDeadlineExceeded)
+			utils.BuildErrorResponse(w, exceptions.ErrServerDeadlineExceeded(err))
+			return
 		}
-		return err
+		utils.BuildErrorResponse(w, err)
+		return
 	}
 
-	return c.Status(fiber.StatusOK).JSON(utils.BuildSuccessResponse(constvars.UserUpdatedSuccess, response))
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.UserUpdatedSuccess, response)
 }

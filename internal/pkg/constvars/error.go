@@ -27,7 +27,8 @@ const (
 // Error messages for developers
 const (
 	ErrDevInvalidInput         = "invalid input"
-	ErrDevCannotParseJSON      = "cannot parse JSON"
+	ErrDevCannotParseJSON      = "cannot parse JSON into struct or other data types"
+	ErrDevCannotMarshalJSON    = "cannot convert struct or other data types to JSON"
 	ErrDevFailedToCreateUser   = "failed to create user"
 	ErrDevFailedToHashPassword = "failed to hash password"
 	ErrDevDocumentNotFound     = "document not found"
@@ -45,7 +46,7 @@ const (
 	ErrDevSparkCreateFHIRPatient  = "failed to create FHIR patient from firesly spark"
 	ErrDevSparkUpdateFHIRPatient  = "failed to update FHIR patient from firesly spark"
 	ErrDevSparkGetFHIRPatient     = "failed to get FHIR patient from firely spark"
-	ErrDevSparkDecodeFHIRResponse = "Failed to decode FHIR response from firely spark"
+	ErrDevSparkDecodeFHIRResponse = "failed to decode FHIR response from firely spark"
 
 	// Validation messages
 	ErrDevValidationFailed      = "validation failed"
@@ -53,13 +54,13 @@ const (
 	ErrDevMissingRequiredFields = "missing required fields"
 
 	// Authentication messages
-	ErrDevAuthSigningMethod    = "Unexpected signing method"
+	ErrDevAuthSigningMethod    = "unexpected signing method"
 	ErrDevAuthTokenInvalid     = "invalid token"
 	ErrDevAuthTokenExpired     = "token expired"
 	ErrDevAuthTokenMissing     = "token missing"
 	ErrDevAuthInvalidSession   = "invalid session"
 	ErrDevAuthPermissionDenied = "permission denied"
-	ErrDevAuthGenerateToken    = "Failed to generate token"
+	ErrDevAuthGenerateToken    = "failed to generate token"
 
 	// Database messages
 	ErrDevDBFailedToInsertDocument = "failed to insert document into database"
@@ -70,7 +71,14 @@ const (
 	ErrDevDBStringNotObjectID      = "given ID is not valid object ID"
 
 	// Redis messages
-	ErrDevRedisStoreSession = "Failed to store session data into redis"
+	ErrDevRedisSetData         = "failed to SET data into redis"
+	ErrDevRedisGetData         = "failed to GET data from redis"
+	ErrDevRedisDeleteData      = "failed to DELETE data from redis"
+	ErrDevRedisIncrementValue  = "failed to INCR data in redis"
+	ErrDevRedisRightPushToList = "failed to RPUSH data into list in redis"
+	ErrDevRedisLeftPopList     = "failed to LPOP data from list in redis"
+	ErrDevRedisSAdd            = "failed to SAdd data into set in redis"
+	ErrDevRedisSMembers        = "failed to SMembers data from set in redis"
 
 	// Server messages
 	ErrDevServerInternalError    = "internal server error"

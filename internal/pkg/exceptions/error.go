@@ -8,6 +8,7 @@ import (
 
 type CustomError struct {
 	StatusCode    int      `json:"status_code"`
+	Success       bool     `json:"success"`
 	ClientMessage string   `json:"message"`
 	DevMessage    string   `json:"-"`
 	Location      Location `json:"-"`

@@ -3,8 +3,8 @@ package patients
 import (
 	"context"
 	"encoding/json"
+	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/app/services/users"
-	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
@@ -30,16 +30,13 @@ func NewPatientUsecase(
 }
 
 func (uc *patientUsecase) GetPatientProfileBySession(ctx context.Context, sessionData string) (*responses.PatientProfile, error) {
-	var session map[string]interface{}
+	var session models.Session
 	err := json.Unmarshal([]byte(sessionData), &session)
 	if err != nil {
-		return nil, exceptions.WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevServerParseSessionData)
+		return nil, exceptions.ErrCannotParseJSON(err)
 	}
 
-	user := session["user"].(map[string]interface{})
-	patientID := user["PatientID"].(string)
-
-	patient, err := uc.PatientFhirClient.GetPatientByID(ctx, patientID)
+	patient, err := uc.PatientFhirClient.GetPatientByID(ctx, session.PatientID)
 	if err != nil {
 		return nil, err
 	}
@@ -82,25 +79,14 @@ func (uc *patientUsecase) GetPatientProfileBySession(ctx context.Context, sessio
 }
 
 func (uc *patientUsecase) UpdatePatientProfileBySession(ctx context.Context, sessionData string, request *requests.UpdateProfile) (*responses.UpdateProfile, error) {
-	session, err := utils.ExtractSessionData(sessionData)
+	var session models.Session
+	err := json.Unmarshal([]byte(sessionData), &session)
 	if err != nil {
-		return nil, err
+		return nil, exceptions.ErrCannotParseJSON(err)
 	}
 
-	user := session["user"].(map[string]interface{})
-	patientID := user["PatientID"].(string)
-
-	// updateData := map[string]interface{}{
-	// 	"username": request.Fullname,
-	// 	"email":    request.Email,
-	// }
-
-	// err = uc.UserRepository.UpdateUser(ctx, user["id"].(string), updateData)
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	patientFhirRequest := utils.BuildFhirPatientUpdateRequest(request, patientID)
+	// Build the update request
+	patientFhirRequest := utils.BuildFhirPatientUpdateRequest(request, session.PatientID)
 
 	// Send PUT request to FHIR server to update the patient resource
 	fhirPatient, err := uc.PatientFhirClient.UpdatePatient(ctx, patientFhirRequest)

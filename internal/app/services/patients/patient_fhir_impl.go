@@ -25,30 +25,30 @@ func NewPatientFhirClient(patientFhirBaseUrl string) PatientFhirClient {
 func (c *patientFhirClient) CreatePatient(ctx context.Context, request *requests.PatientFhir) (*models.Patient, error) {
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
-		return nil, exceptions.WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevCannotParseJSON)
+		return nil, exceptions.ErrCannotMarshalJSON(err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodPost, c.BaseUrl, bytes.NewBuffer(requestJSON))
 	if err != nil {
-		return nil, exceptions.WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevCreateHTTPRequest)
+		return nil, exceptions.ErrCreateHTTPRequest(err)
 	}
 	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, exceptions.WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevSendHTTPRequest)
+		return nil, exceptions.ErrSendHTTPRequest(err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
-		return nil, exceptions.WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevSparkCreateFHIRPatient)
+		return nil, exceptions.ErrCreateFHIRPatient(nil)
 	}
 
 	patientFhir := new(models.Patient)
 	err = json.NewDecoder(resp.Body).Decode(&patientFhir)
 	if err != nil {
-		return nil, exceptions.WrapWithError(err, http.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevSparkDecodeFHIRResponse)
+		return nil, exceptions.ErrDecodeResponsePatient(err)
 	}
 
 	return patientFhir, nil
@@ -57,14 +57,14 @@ func (c *patientFhirClient) CreatePatient(ctx context.Context, request *requests
 func (c *patientFhirClient) GetPatientByID(ctx context.Context, patientID string) (*models.Patient, error) {
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, fmt.Sprintf("%s/%s", c.BaseUrl, patientID), nil)
 	if err != nil {
-		return nil, exceptions.WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevCreateHTTPRequest)
+		return nil, exceptions.ErrCreateHTTPRequest(err)
 	}
 	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, exceptions.WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevSendHTTPRequest)
+		return nil, exceptions.ErrSendHTTPRequest(err)
 	}
 	defer resp.Body.Close()
 
@@ -75,7 +75,7 @@ func (c *patientFhirClient) GetPatientByID(ctx context.Context, patientID string
 	patientFhir := new(models.Patient)
 	err = json.NewDecoder(resp.Body).Decode(&patientFhir)
 	if err != nil {
-		return nil, exceptions.WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevSparkDecodeFHIRResponse)
+		return nil, exceptions.ErrDecodeResponsePatient(err)
 	}
 
 	return patientFhir, nil
@@ -85,13 +85,13 @@ func (c *patientFhirClient) UpdatePatient(ctx context.Context, request *requests
 	// Convert FHIR Patient to JSON
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
-		return nil, exceptions.WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevCannotParseJSON)
+		return nil, exceptions.ErrCannotMarshalJSON(err)
 	}
 
 	// Send PUT request to FHIR server
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodPut, fmt.Sprintf("%s/%s", c.BaseUrl, request.ID), bytes.NewBuffer(requestJSON))
 	if err != nil {
-		return nil, exceptions.WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevCreateHTTPRequest)
+		return nil, exceptions.ErrCreateHTTPRequest(err)
 	}
 	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
 
@@ -109,7 +109,7 @@ func (c *patientFhirClient) UpdatePatient(ctx context.Context, request *requests
 	patientFhir := new(models.Patient)
 	err = json.NewDecoder(resp.Body).Decode(&patientFhir)
 	if err != nil {
-		return nil, exceptions.WrapWithError(err, http.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevSparkDecodeFHIRResponse)
+		return nil, exceptions.ErrDecodeResponsePatient(err)
 	}
 
 	return patientFhir, nil

@@ -2,12 +2,12 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/app/services/patients"
 	"konsulin-service/internal/app/services/shared/redis"
 	"konsulin-service/internal/app/services/users"
-	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
@@ -44,7 +44,7 @@ func NewAuthUsecase(
 func (uc *authUsecase) RegisterPatient(ctx context.Context, request *requests.RegisterPatient) (*responses.RegisterPatient, error) {
 	// Check if passwords match
 	if request.Password != request.RetypePassword {
-		return nil, exceptions.WrapWithoutError(constvars.StatusBadRequest, constvars.ErrClientPasswordsDoNotMatch, constvars.ErrDevPasswordsDoNotMatch)
+		return nil, exceptions.ErrPasswordDoNotMatch(nil)
 	}
 
 	// Check if email already exists
@@ -53,7 +53,7 @@ func (uc *authUsecase) RegisterPatient(ctx context.Context, request *requests.Re
 		return nil, err
 	}
 	if existingUser != nil {
-		return nil, exceptions.WrapWithoutError(constvars.StatusBadRequest, constvars.ErrClientEmailAlreadyExists, constvars.ErrDevEmailAlreadyExists)
+		return nil, exceptions.ErrEmailAlreadyExist(nil)
 	}
 
 	// Check if username already exists
@@ -62,7 +62,7 @@ func (uc *authUsecase) RegisterPatient(ctx context.Context, request *requests.Re
 		return nil, err
 	}
 	if existingUser != nil {
-		return nil, exceptions.WrapWithoutError(constvars.StatusBadRequest, constvars.ErrClientUsernameAlreadyExists, constvars.ErrDevUsernameAlreadyExists)
+		return nil, exceptions.ErrUsernameAlreadyExist(nil)
 	}
 
 	// Build fhir patient request
@@ -77,7 +77,7 @@ func (uc *authUsecase) RegisterPatient(ctx context.Context, request *requests.Re
 	// Hash password
 	hashedPassword, err := utils.HashPassword(request.Password)
 	if err != nil {
-		return nil, exceptions.WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevFailedToHashPassword)
+		return nil, exceptions.ErrHashPassword(err)
 	}
 
 	// Build the user model
@@ -110,33 +110,28 @@ func (uc *authUsecase) LoginPatient(ctx context.Context, request *requests.Login
 		return nil, err
 	}
 	if user == nil {
-		return nil, exceptions.WrapWithoutError(constvars.StatusUnauthorized, constvars.ErrClientInvalidUsernameOrPassword, constvars.ErrDevInvalidCredentials)
+		return nil, exceptions.ErrInvalidUsernameOrPassword(nil)
 	}
 
 	// Check password
 	if !utils.CheckPasswordHash(request.Password, user.Password) {
-		return nil, exceptions.WrapWithoutError(constvars.StatusUnauthorized, constvars.ErrClientInvalidUsernameOrPassword, constvars.ErrDevInvalidCredentials)
-	}
-
-	// Fetch patient data from FHIR server
-	patient, err := uc.PatientFhirClient.GetPatientByID(ctx, user.PatientID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Create session data
-	sessionData := map[string]interface{}{
-		"user":    user,
-		"patient": patient,
+		return nil, exceptions.ErrInvalidUsernameOrPassword(nil)
 	}
 
 	// Generate a UUID for the session key
 	sessionID := uuid.New().String()
 
+	// Create session data
+	sessionData := models.Session{
+		UserID:    user.ID,
+		PatientID: user.PatientID,
+		SessionID: sessionID,
+	}
+
 	// Store session data in Redis
 	err = uc.RedisRepository.Set(ctx, sessionID, sessionData, time.Hour)
 	if err != nil {
-		return nil, exceptions.WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevRedisStoreSession)
+		return nil, err
 	}
 
 	// Create a JWT token
@@ -151,8 +146,14 @@ func (uc *authUsecase) LoginPatient(ctx context.Context, request *requests.Login
 	return response, nil
 }
 
-func (uc *authUsecase) LogoutPatient(ctx context.Context, sessionID string) error {
-	err := uc.RedisRepository.DeleteSession(ctx, sessionID)
+func (uc *authUsecase) LogoutPatient(ctx context.Context, sessionData string) error {
+	var session models.Session
+	err := json.Unmarshal([]byte(sessionData), &session)
+	if err != nil {
+		return exceptions.ErrCannotParseJSON(err)
+	}
+
+	err = uc.RedisRepository.Delete(ctx, session.SessionID)
 	if err != nil {
 		return err
 	}

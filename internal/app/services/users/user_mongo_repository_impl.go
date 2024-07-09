@@ -36,7 +36,7 @@ func (r *UserMongoRepository) FindByEmail(ctx context.Context, email string) (*m
 		if err == mongo.ErrNoDocuments {
 			return nil, nil
 		}
-		return nil, exceptions.WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToFindDocument)
+		return nil, exceptions.ErrMongoDBFindDocument(err)
 	}
 	return &user, nil
 }
@@ -48,7 +48,7 @@ func (r *UserMongoRepository) FindByUsername(ctx context.Context, username strin
 		if err == mongo.ErrNoDocuments {
 			return nil, nil
 		}
-		return nil, exceptions.WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToFindDocument)
+		return nil, exceptions.ErrMongoDBFindDocument(err)
 	}
 	return &user, nil
 }
@@ -57,11 +57,11 @@ func (r *UserMongoRepository) GetUserByID(ctx context.Context, userID string) (*
 	var user models.User
 	objectID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
-		return nil, exceptions.WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBStringNotObjectID)
+		return nil, exceptions.ErrMongoDBNotObjectID(err)
 	}
 	err = r.Collection.FindOne(ctx, bson.M{"_id": objectID}).Decode(&user)
 	if err != nil {
-		return nil, exceptions.WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToFindDocument)
+		return nil, exceptions.ErrMongoDBFindDocument(err)
 	}
 	return &user, nil
 }
@@ -69,11 +69,11 @@ func (r *UserMongoRepository) GetUserByID(ctx context.Context, userID string) (*
 func (r *UserMongoRepository) UpdateUser(ctx context.Context, userID string, updateData map[string]interface{}) error {
 	objectID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
-		return exceptions.WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBStringNotObjectID)
+		return exceptions.ErrMongoDBNotObjectID(err)
 	}
 	_, err = r.Collection.UpdateOne(ctx, bson.M{"_id": objectID}, bson.M{"$set": updateData})
 	if err != nil {
-		return exceptions.WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToUpdateDocument)
+		return exceptions.ErrMongoDBUpdateDocument(err)
 	}
 	return err
 }

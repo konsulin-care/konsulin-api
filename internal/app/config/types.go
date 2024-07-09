@@ -1,37 +1,31 @@
 package config
 
 import (
-	"github.com/gofiber/fiber/v2"
+	"github.com/go-chi/chi/v5"
 	"github.com/redis/go-redis/v9"
+	"github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type (
 	Bootstrap struct {
-		App            *fiber.App
+		Router         *chi.Mux
 		MongoDB        *mongo.Database
 		Redis          *redis.Client
+		Logger         *logrus.Logger
 		DriverConfig   *DriverConfig
 		InternalConfig *InternalConfig
 	}
 
 	InternalConfig struct {
+		App  App
 		FHIR FHIR
 		JWT  JWT
 	}
 
 	DriverConfig struct {
-		App     App
 		MongoDB MongoDB
 		Redis   Redis
-	}
-
-	MongoDB struct {
-		Port     string
-		Host     string
-		DbName   string
-		Username string
-		Password string
 	}
 
 	App struct {
@@ -42,17 +36,23 @@ type (
 		EndpointPrefix             string
 		MaxRequests                int
 		ShutdownTimeout            int
-		MaxTimeRequestsInSeconds   int
+		MaxTimeRequestsPerSeconds  int
 		RequestBodyLimitInMegabyte int
 	}
 
-	FHIR struct {
-		BaseUrl string
+	MongoDB struct {
+		Port     string
+		Host     string
+		DbName   string
+		Username string
+		Password string
 	}
-
 	Redis struct {
 		Port     string
 		Password string
+	}
+	FHIR struct {
+		BaseUrl string
 	}
 
 	JWT struct {

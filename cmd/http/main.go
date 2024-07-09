@@ -7,38 +7,54 @@ import (
 	"konsulin-service/internal/app/delivery/http/routers"
 	"konsulin-service/internal/app/drivers/database"
 	"konsulin-service/internal/app/drivers/logger"
-	"konsulin-service/internal/app/drivers/webframework"
 	"konsulin-service/internal/app/services/auth"
 	"konsulin-service/internal/app/services/patients"
 	"konsulin-service/internal/app/services/shared/redis"
 	"konsulin-service/internal/app/services/users"
 	"konsulin-service/internal/pkg/constvars"
-	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/sirupsen/logrus"
 )
 
 func main() {
 	driverConfig := config.NewDriverConfig()
 	internalConfig := config.NewInternalConfig()
-	logger.InitLogger(driverConfig)
 
-	fiberFramework := webframework.NewFiber(driverConfig)
-	mongoDB := database.NewMongoDB(driverConfig)
-	redis := database.NewRedisClient(driverConfig)
+	log := logger.NewLogger(internalConfig)
+
+	location, err := time.LoadLocation(internalConfig.App.Timezone)
+	if err != nil {
+		log.Fatalf("Error loading location: %v", err)
+	}
+	time.Local = location
+
+	mongoDB := database.NewMongoDB(driverConfig, log)
+	redis := database.NewRedisClient(driverConfig, log)
+	chiRouter := chi.NewRouter()
 
 	bootstrapingTheApp(config.Bootstrap{
-		App:            fiberFramework,
+		Router:         chiRouter,
 		MongoDB:        mongoDB,
 		Redis:          redis,
+		Logger:         log,
 		DriverConfig:   driverConfig,
 		InternalConfig: internalConfig,
 	})
 
+	server := &http.Server{
+		Addr:    internalConfig.App.Port,
+		Handler: chiRouter,
+	}
+
 	go func() {
-		if err := fiberFramework.Listen(driverConfig.App.Port); err != nil {
+		err := server.ListenAndServe()
+		if err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server failed to start: %v", err)
 		}
 	}()
@@ -48,20 +64,21 @@ func main() {
 
 	<-c
 
-	log.Println("Waiting for pending requests that already received by server to be processed..")
+	logrus.Println("Waiting for pending requests that already received by server to be processed..")
 
 	shutdownCtx, cancel := context.WithTimeout(
 		context.Background(),
-		time.Second*time.Duration(driverConfig.App.ShutdownTimeout),
+		time.Second*time.Duration(internalConfig.App.ShutdownTimeout),
 	)
 	defer cancel()
-	for i := driverConfig.App.ShutdownTimeout; i > 0; i-- {
+	for i := internalConfig.App.ShutdownTimeout; i > 0; i-- {
 		time.Sleep(1 * time.Second)
 		log.Printf("Shutting down in %d...", i)
 	}
 
 	// Shutdown the server
-	if err := fiberFramework.Shutdown(); err != nil {
+	err = server.Shutdown(shutdownCtx)
+	if err != nil {
 		log.Fatalf("Server forced to shutdown: %v", err)
 	}
 
@@ -86,7 +103,6 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) {
 	// Patient
 	patientMongoRepository := patients.NewPatientMongoRepository(
 		bootstrap.MongoDB,
-
 		bootstrap.DriverConfig.MongoDB.DbName,
 	)
 	patientFhirClient := patients.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePatient)
@@ -97,5 +113,5 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) {
 	authUseCase := auth.NewAuthUsecase(patientMongoRepository, userMongoRepository, redisRepository, patientFhirClient, bootstrap.InternalConfig)
 	authController := auth.NewAuthController(authUseCase)
 
-	routers.SetupRoutes(bootstrap.App, bootstrap.DriverConfig.App, middlewares, patientController, authController)
+	routers.SetupRoutes(bootstrap.Router, bootstrap.InternalConfig, bootstrap.Logger, middlewares, patientController, authController)
 }

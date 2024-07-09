@@ -1,10 +1,8 @@
 package utils
 
 import (
-	"encoding/json"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
-	"konsulin-service/internal/pkg/exceptions"
 	"strings"
 )
 
@@ -19,15 +17,6 @@ func BuildFhirPatientRequest(username, email string) *requests.PatientFhir {
 			},
 		},
 	}
-}
-
-func ExtractSessionData(sessionData string) (map[string]interface{}, error) {
-	var session map[string]interface{}
-	err := json.Unmarshal([]byte(sessionData), &session)
-	if err != nil {
-		return nil, exceptions.WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevServerParseSessionData)
-	}
-	return session, err
 }
 
 func BuildFhirPatientUpdateRequest(request *requests.UpdateProfile, patientID string) *requests.PatientFhir {

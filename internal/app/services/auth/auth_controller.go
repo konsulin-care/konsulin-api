@@ -6,9 +6,10 @@ import (
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
+	"net/http"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/goccy/go-json"
 )
 
 type AuthController struct {
@@ -21,75 +22,93 @@ func NewAuthController(authUsecase AuthUsecase) *AuthController {
 	}
 }
 
-func (ctrl *AuthController) RegisterPatient(c *fiber.Ctx) error {
+func (ctrl *AuthController) RegisterPatient(w http.ResponseWriter, r *http.Request) {
 	request := new(requests.RegisterPatient)
-	err := c.BodyParser(&request)
+
+	// Bind request body to request
+	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		return exceptions.WrapWithError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevCannotParseJSON)
+		utils.BuildErrorResponse(w, exceptions.ErrCannotParseJSON(err))
+		return
 	}
-	// Sanitize register patient request
+	// Sanitize request
 	utils.SanitizeCreatePatientRequest(request)
 
-	// Validate register patient request
+	// Validate request
 	err = utils.ValidateStruct(request)
 	if err != nil {
-		return exceptions.WrapWithError(err, constvars.StatusBadRequest, utils.FormatFirstValidationError(err), constvars.ErrDevValidationFailed)
+		utils.BuildErrorResponse(w, exceptions.ErrInputValidation(err))
+		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	// Send it to be processed by usecase
 	response, err := ctrl.AuthUsecase.RegisterPatient(ctx, request)
 	if err != nil {
 		if err == context.DeadlineExceeded {
-			return exceptions.WrapWithoutError(constvars.StatusRequestTimeout, constvars.ErrClientServerLongRespond, constvars.ErrDevServerDeadlineExceeded)
+			utils.BuildErrorResponse(w, exceptions.ErrServerDeadlineExceeded(err))
+			return
 		}
-		return err
+		utils.BuildErrorResponse(w, err)
+		return
 	}
 
-	return c.Status(constvars.StatusCreated).JSON(utils.BuildSuccessResponse(constvars.UserCreatedSuccess, response))
+	// Send response
+	utils.BuildSuccessResponse(w, constvars.StatusCreated, constvars.UserCreatedSuccess, response)
 }
 
-func (ctrl *AuthController) Login(c *fiber.Ctx) error {
+func (ctrl *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 	request := new(requests.LoginPatient)
-	err := c.BodyParser(&request)
+
+	// Bind request body to request
+	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		return exceptions.WrapWithError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevCannotParseJSON)
+		utils.BuildErrorResponse(w, exceptions.ErrCannotParseJSON(err))
+		return
 	}
 
 	// Validate request
 	err = utils.ValidateStruct(request)
 	if err != nil {
-		return exceptions.WrapWithError(err, constvars.StatusBadRequest, utils.FormatFirstValidationError(err), constvars.ErrDevValidationFailed)
+		utils.BuildErrorResponse(w, exceptions.ErrInputValidation(err))
+		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	// Send request to be processed by usecase
 	response, err := ctrl.AuthUsecase.LoginPatient(ctx, request)
 	if err != nil {
 		if err == context.DeadlineExceeded {
-			return exceptions.WrapWithoutError(constvars.StatusRequestTimeout, constvars.ErrClientServerLongRespond, constvars.ErrDevServerDeadlineExceeded)
+			utils.BuildErrorResponse(w, exceptions.ErrServerDeadlineExceeded(err))
+			return
 		}
-		return err
+		utils.BuildErrorResponse(w, err)
+		return
 	}
 
-	return c.Status(constvars.StatusOK).JSON(utils.BuildSuccessResponse(constvars.LoginSuccess, response))
+	// Send response
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.LoginSuccess, response)
 }
 
-func (ctrl *AuthController) Logout(c *fiber.Ctx) error {
-	// sessionData := c.Locals("sessionData").(string)
-	sessionID := c.Locals("sessionID").(string)
+func (ctrl *AuthController) Logout(w http.ResponseWriter, r *http.Request) {
+	// Get session
+	sessionData := r.Context().Value("sessionData").(string)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	err := ctrl.AuthUsecase.LogoutPatient(ctx, sessionID)
+	err := ctrl.AuthUsecase.LogoutPatient(ctx, sessionData)
 	if err != nil {
 		if err == context.DeadlineExceeded {
-			return exceptions.WrapWithoutError(constvars.StatusRequestTimeout, constvars.ErrClientServerLongRespond, constvars.ErrDevServerDeadlineExceeded)
+			utils.BuildErrorResponse(w, exceptions.ErrServerDeadlineExceeded(err))
+			return
 		}
-		return err
+		utils.BuildErrorResponse(w, err)
+		return
 	}
-	return c.Status(constvars.StatusOK).JSON(utils.BuildSuccessResponse(constvars.LogoutSuccess, nil))
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.LogoutSuccess, nil)
 }

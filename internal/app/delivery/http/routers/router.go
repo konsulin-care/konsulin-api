@@ -6,26 +6,54 @@ import (
 	"konsulin-service/internal/app/delivery/http/middlewares"
 	"konsulin-service/internal/app/services/auth"
 	"konsulin-service/internal/app/services/patients"
+	"time"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/cors"
+	"github.com/go-chi/httprate"
+	"github.com/sirupsen/logrus"
 )
 
 func SetupRoutes(
-	app *fiber.App,
-	appConfig config.App,
+	router *chi.Mux,
+	internalConfig *config.InternalConfig,
+	log *logrus.Logger,
 	middlewares *middlewares.Middlewares,
 	patientController *patients.PatientController,
 	authController *auth.AuthController,
 ) {
-	endpointPrefix := fmt.Sprintf("/%s", appConfig.EndpointPrefix)
-	api := app.Group(endpointPrefix)
 
-	versionPrefix := fmt.Sprintf("/%s", appConfig.Version)
-	apiVersion := api.Group(versionPrefix)
+	corsOptions := cors.Options{
+		AllowedOrigins:   []string{"*"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: true,
+		MaxAge:           300,
+	}
+	router.Use(cors.Handler(corsOptions))
 
-	authRouter := apiVersion.Group("/auth")
-	patientRouter := apiVersion.Group("/patients")
+	// Rate limiting middleware using httprate
+	rateLimiter := httprate.LimitByIP(internalConfig.App.MaxRequests, time.Second)
+	router.Use(rateLimiter)
 
-	attachPatientRoutes(patientRouter, middlewares, patientController)
-	attachAuthRoutes(authRouter, middlewares, authController)
+	// Logging middleware
+	// router.Use(middlewares.RequestLogger(internalConfig.App, log))
+	router.Use(middlewares.ErrorHandler)
+
+	endpointPrefix := fmt.Sprintf("/%s", internalConfig.App.EndpointPrefix)
+	versionPrefix := fmt.Sprintf("/%s", internalConfig.App.Version)
+
+	// router := chi.NewRouter()
+	router.Route(endpointPrefix, func(r chi.Router) {
+		r.Route(versionPrefix, func(r chi.Router) {
+			r.Route("/auth", func(r chi.Router) {
+				attachAuthRoutes(r, middlewares, authController)
+			})
+
+			r.Route("/patients", func(r chi.Router) {
+				attachPatientRoutes(r, middlewares, patientController)
+			})
+		})
+	})
 }

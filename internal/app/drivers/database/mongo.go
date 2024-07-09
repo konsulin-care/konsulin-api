@@ -4,14 +4,14 @@ import (
 	"context"
 	"fmt"
 	"konsulin-service/internal/app/config"
-	"log"
 
 	"github.com/fatih/color"
+	"github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-func NewMongoDB(driverConfig *config.DriverConfig) *mongo.Database {
+func NewMongoDB(driverConfig *config.DriverConfig, log *logrus.Logger) *mongo.Database {
 	connectionString := fmt.Sprintf(
 		"mongodb://%s:%s@%s:%s",
 		driverConfig.MongoDB.Username,
