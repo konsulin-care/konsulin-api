@@ -5,7 +5,10 @@ import (
 	"konsulin-service/internal/app/models"
 )
 
-type UserUsecase interface{}
+type UserUsecase interface {
+	// GetUserProfileBySession(ctx context.Context, sessionData string) (*responses.PatientProfile, error)
+	// UpdateUserProfileBySession(ctx context.Context, sessionData string, request *requests.UpdateProfile) (*responses.UpdateProfile, error)
+}
 
 type UserRepository interface {
 	CreateUser(ctx context.Context, userEntity *models.User) (userID string, err error)

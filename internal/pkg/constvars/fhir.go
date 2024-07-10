@@ -2,6 +2,7 @@ package constvars
 
 const (
 	ResourcePatient            = "Patient"
+	ResourceClinician          = "Clinician"
 	ResourceObservation        = "Observation"
 	ResourceCondition          = "Condition"
 	ResourceMedication         = "Medication"

@@ -12,6 +12,7 @@ var validate *validator.Validate
 func init() {
 	validate = validator.New()
 	validate.RegisterValidation("password", validatePassword)
+	validate.RegisterValidation("user_type", validateUserType)
 }
 
 func ValidateStruct(s interface{}) error {
@@ -24,4 +25,9 @@ func validatePassword(fl validator.FieldLevel) bool {
 	hasSpecialChar := regexp.MustCompile(constvars.RegexContainAtLeastOneSpecialChar).MatchString(password)
 	hasUppercase := regexp.MustCompile(constvars.RegexContainAtLeastOneUppercase).MatchString(password)
 	return hasMinLen && hasSpecialChar && hasUppercase
+}
+
+func validateUserType(fl validator.FieldLevel) bool {
+	value := fl.Field().String()
+	return value == "practitioner" || value == "patient"
 }

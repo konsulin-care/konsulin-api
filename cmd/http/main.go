@@ -9,6 +9,7 @@ import (
 	"konsulin-service/internal/app/drivers/logger"
 	"konsulin-service/internal/app/services/auth"
 	"konsulin-service/internal/app/services/patients"
+	"konsulin-service/internal/app/services/practitioners"
 	"konsulin-service/internal/app/services/shared/redis"
 	"konsulin-service/internal/app/services/users"
 	"konsulin-service/internal/pkg/constvars"
@@ -71,10 +72,10 @@ func main() {
 		time.Second*time.Duration(internalConfig.App.ShutdownTimeout),
 	)
 	defer cancel()
-	for i := internalConfig.App.ShutdownTimeout; i > 0; i-- {
-		time.Sleep(1 * time.Second)
-		log.Printf("Shutting down in %d...", i)
-	}
+	// for i := internalConfig.App.ShutdownTimeout; i > 0; i-- {
+	// 	time.Sleep(1 * time.Second)
+	// 	log.Printf("Shutting down in %d...", i)
+	// }
 
 	// Shutdown the server
 	err = server.Shutdown(shutdownCtx)
@@ -109,8 +110,11 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) {
 	patientUsecase := patients.NewPatientUsecase(patientMongoRepository, patientFhirClient, userMongoRepository)
 	patientController := patients.NewPatientController(patientUsecase)
 
+	// Practitioner
+	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePractitioner)
+
 	// Auth
-	authUseCase := auth.NewAuthUsecase(patientMongoRepository, userMongoRepository, redisRepository, patientFhirClient, bootstrap.InternalConfig)
+	authUseCase := auth.NewAuthUsecase(patientMongoRepository, userMongoRepository, redisRepository, patientFhirClient, practitionerFhirClient, bootstrap.InternalConfig)
 	authController := auth.NewAuthController(authUseCase)
 
 	routers.SetupRoutes(bootstrap.Router, bootstrap.InternalConfig, bootstrap.Logger, middlewares, patientController, authController)

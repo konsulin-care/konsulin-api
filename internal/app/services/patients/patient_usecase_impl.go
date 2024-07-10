@@ -78,7 +78,7 @@ func (uc *patientUsecase) GetPatientProfileBySession(ctx context.Context, sessio
 	return response, nil
 }
 
-func (uc *patientUsecase) UpdatePatientProfileBySession(ctx context.Context, sessionData string, request *requests.UpdateProfile) (*responses.UpdateProfile, error) {
+func (uc *patientUsecase) UpdatePatientProfileBySession(ctx context.Context, sessionData string, request *requests.UpdateProfile) (*responses.UpdatePatientProfile, error) {
 	var session models.Session
 	err := json.Unmarshal([]byte(sessionData), &session)
 	if err != nil {
@@ -94,7 +94,7 @@ func (uc *patientUsecase) UpdatePatientProfileBySession(ctx context.Context, ses
 		return nil, err
 	}
 
-	response := &responses.UpdateProfile{
+	response := &responses.UpdatePatientProfile{
 		PatientID: fhirPatient.ID,
 	}
 

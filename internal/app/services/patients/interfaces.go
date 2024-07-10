@@ -9,7 +9,7 @@ import (
 
 type PatientUsecase interface {
 	GetPatientProfileBySession(ctx context.Context, sessionData string) (*responses.PatientProfile, error)
-	UpdatePatientProfileBySession(ctx context.Context, sessionData string, request *requests.UpdateProfile) (*responses.UpdateProfile, error)
+	UpdatePatientProfileBySession(ctx context.Context, sessionData string, request *requests.UpdateProfile) (*responses.UpdatePatientProfile, error)
 }
 
 type PatientRepository interface{}

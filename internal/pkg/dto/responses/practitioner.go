@@ -1,6 +1,6 @@
 package responses
 
-type PatientProfile struct {
+type PractitionerProfile struct {
 	Fullname       string `json:"fullname"`
 	Email          string `json:"email"`
 	Age            int    `json:"age"`
@@ -11,6 +11,6 @@ type PatientProfile struct {
 	BirthDate      string `json:"birth_date"`
 }
 
-type UpdatePatientProfile struct {
-	PatientID string
+type UpdatePractitionerProfile struct {
+	PractitionerID string
 }

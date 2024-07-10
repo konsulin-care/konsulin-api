@@ -9,7 +9,11 @@ func SanitizeString(s string) string {
 	return strings.TrimSpace(strings.ToLower(s))
 }
 
-func SanitizeCreatePatientRequest(input *requests.RegisterPatient) {
+func SanitizeRegisterUserRequest(input *requests.RegisterUser) {
 	input.Email = SanitizeString(input.Email)
 	input.Username = SanitizeString(input.Username)
+	input.UserType = SanitizeString(input.UserType)
+}
+func SanitizeLoginUserRequest(input *requests.LoginUser) {
+	input.UserType = SanitizeString(input.UserType)
 }
