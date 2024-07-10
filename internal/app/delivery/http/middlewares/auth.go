@@ -4,7 +4,6 @@ import (
 	"context"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/services/shared/redis"
-	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
 	"net/http"
@@ -21,7 +20,7 @@ func (m *Middlewares) AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
-			utils.BuildErrorResponse(w, exceptions.WrapWithoutError(constvars.StatusUnauthorized, constvars.ErrClientNotAuthorized, constvars.ErrDevAuthTokenMissing))
+			utils.BuildErrorResponse(w, exceptions.ErrTokenMissing(nil))
 			return
 		}
 
@@ -34,7 +33,7 @@ func (m *Middlewares) AuthMiddleware(next http.Handler) http.Handler {
 
 		sessionData, err := m.RedisRepository.Get(context.Background(), sessionID)
 		if err != nil {
-			utils.BuildErrorResponse(w, exceptions.WrapWithoutError(constvars.StatusUnauthorized, constvars.ErrClientNotLoggedIn, constvars.ErrDevAuthInvalidSession))
+			utils.BuildErrorResponse(w, err)
 			return
 		}
 

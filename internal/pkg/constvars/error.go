@@ -43,9 +43,9 @@ const (
 	ErrDevUsernameAlreadyExists = "username already exists"
 
 	// Spark messages
-	ErrDevSparkCreateFHIRPatient  = "failed to create FHIR patient from firesly spark"
-	ErrDevSparkUpdateFHIRPatient  = "failed to update FHIR patient from firesly spark"
-	ErrDevSparkGetFHIRPatient     = "failed to get FHIR patient from firely spark"
+	ErrDevSparkCreateFHIRResource = "failed to create FHIR %s from firesly spark"
+	ErrDevSparkUpdateFHIRResource = "failed to update FHIR %s from firesly spark"
+	ErrDevSparkGetFHIRResource    = "failed to get FHIR %s from firely spark"
 	ErrDevSparkDecodeFHIRResponse = "failed to decode FHIR response from firely spark"
 
 	// Validation messages

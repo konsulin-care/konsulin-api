@@ -1,6 +1,7 @@
 package exceptions
 
 import (
+	"fmt"
 	"konsulin-service/internal/pkg/constvars"
 )
 
@@ -59,6 +60,30 @@ var (
 		}
 		return WrapWithoutError(constvars.StatusBadRequest, constvars.ErrClientUsernameAlreadyExists, constvars.ErrDevUsernameAlreadyExists)
 	}
+	ErrTokenMissing = func(err error) *CustomError {
+		if err != nil {
+			return WrapWithError(err, constvars.StatusUnauthorized, constvars.ErrClientNotAuthorized, constvars.ErrDevAuthTokenMissing)
+		}
+		return WrapWithoutError(constvars.StatusUnauthorized, constvars.ErrClientNotAuthorized, constvars.ErrDevAuthTokenMissing)
+	}
+	ErrTokenGenerate = func(err error) *CustomError {
+		if err != nil {
+			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevAuthGenerateToken)
+		}
+		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevAuthGenerateToken)
+	}
+	ErrTokenSigningMethod = func(err error) *CustomError {
+		if err != nil {
+			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevAuthSigningMethod)
+		}
+		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevAuthSigningMethod)
+	}
+	ErrTokenInvalid = func(err error) *CustomError {
+		if err != nil {
+			return WrapWithError(err, constvars.StatusUnauthorized, constvars.ErrClientNotLoggedIn, constvars.ErrDevAuthTokenInvalid)
+		}
+		return WrapWithoutError(constvars.StatusUnauthorized, constvars.ErrClientNotLoggedIn, constvars.ErrDevAuthTokenInvalid)
+	}
 
 	// Mongo DB
 	ErrMongoDBFindDocument = func(err error) *CustomError {
@@ -78,6 +103,12 @@ var (
 			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToUpdateDocument)
 		}
 		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToUpdateDocument)
+	}
+	ErrMongoDBInsertDocument = func(err error) *CustomError {
+		if err != nil {
+			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToInsertDocument)
+		}
+		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToInsertDocument)
 	}
 
 	// Redis
@@ -145,16 +176,28 @@ var (
 	}
 
 	// FHIR
-	ErrCreateFHIRPatient = func(err error) *CustomError {
+	ErrCreateFHIRResource = func(err error, resource string) *CustomError {
 		if err != nil {
-			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevSparkCreateFHIRPatient)
+			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkCreateFHIRResource, resource))
 		}
-		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevSparkCreateFHIRPatient)
+		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkCreateFHIRResource, resource))
 	}
-	ErrDecodeResponsePatient = func(err error) *CustomError {
+	ErrGetFHIRResource = func(err error, resource string) *CustomError {
 		if err != nil {
-			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevSparkCreateFHIRPatient)
+			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkGetFHIRResource, resource))
 		}
-		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevSparkCreateFHIRPatient)
+		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkGetFHIRResource, resource))
+	}
+	ErrUpdateFHIRResource = func(err error, resource string) *CustomError {
+		if err != nil {
+			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkUpdateFHIRResource, resource))
+		}
+		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkUpdateFHIRResource, resource))
+	}
+	ErrDecodeResponse = func(err error) *CustomError {
+		if err != nil {
+			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevSparkDecodeFHIRResponse)
+		}
+		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevSparkDecodeFHIRResponse)
 	}
 )

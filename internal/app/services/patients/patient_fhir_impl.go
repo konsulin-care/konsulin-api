@@ -42,13 +42,13 @@ func (c *patientFhirClient) CreatePatient(ctx context.Context, request *requests
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
-		return nil, exceptions.ErrCreateFHIRPatient(nil)
+		return nil, exceptions.ErrCreateFHIRResource(nil, constvars.ResourcePatient)
 	}
 
 	patientFhir := new(models.Patient)
 	err = json.NewDecoder(resp.Body).Decode(&patientFhir)
 	if err != nil {
-		return nil, exceptions.ErrDecodeResponsePatient(err)
+		return nil, exceptions.ErrDecodeResponse(err)
 	}
 
 	return patientFhir, nil
@@ -69,13 +69,13 @@ func (c *patientFhirClient) GetPatientByID(ctx context.Context, patientID string
 	defer resp.Body.Close()
 
 	if resp.StatusCode != constvars.StatusOK {
-		return nil, exceptions.WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevSparkGetFHIRPatient)
+		return nil, exceptions.ErrGetFHIRResource(nil, constvars.ResourcePatient)
 	}
 
 	patientFhir := new(models.Patient)
 	err = json.NewDecoder(resp.Body).Decode(&patientFhir)
 	if err != nil {
-		return nil, exceptions.ErrDecodeResponsePatient(err)
+		return nil, exceptions.ErrDecodeResponse(err)
 	}
 
 	return patientFhir, nil
@@ -98,18 +98,18 @@ func (c *patientFhirClient) UpdatePatient(ctx context.Context, request *requests
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, exceptions.WrapWithError(err, http.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevSendHTTPRequest)
+		return nil, exceptions.ErrSendHTTPRequest(err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, exceptions.WrapWithoutError(http.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevSparkUpdateFHIRPatient)
+		return nil, exceptions.ErrUpdateFHIRResource(nil, constvars.ResourcePatient)
 	}
 
 	patientFhir := new(models.Patient)
 	err = json.NewDecoder(resp.Body).Decode(&patientFhir)
 	if err != nil {
-		return nil, exceptions.ErrDecodeResponsePatient(err)
+		return nil, exceptions.ErrDecodeResponse(err)
 	}
 
 	return patientFhir, nil

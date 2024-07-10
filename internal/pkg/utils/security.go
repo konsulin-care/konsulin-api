@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"time"
 
@@ -27,7 +26,7 @@ func GenerateJWT(sessionID, secret string) (string, error) {
 
 	tokenString, err := token.SignedString([]byte(secret))
 	if err != nil {
-		return "", exceptions.WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevAuthGenerateToken)
+		return "", exceptions.ErrTokenGenerate(err)
 	}
 
 	return tokenString, nil
@@ -36,13 +35,13 @@ func GenerateJWT(sessionID, secret string) (string, error) {
 func ParseJWT(tokenString, secret string) (string, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, exceptions.WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevAuthSigningMethod)
+			return nil, exceptions.ErrTokenSigningMethod(nil)
 		}
 		return []byte(secret), nil
 	})
 
 	if err != nil {
-		return "", exceptions.WrapWithError(err, constvars.StatusUnauthorized, constvars.ErrClientNotLoggedIn, constvars.ErrDevAuthTokenInvalid)
+		return "", exceptions.ErrTokenInvalid(err)
 	}
 
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
@@ -51,5 +50,5 @@ func ParseJWT(tokenString, secret string) (string, error) {
 		}
 	}
 
-	return "", exceptions.WrapWithoutError(constvars.StatusUnauthorized, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevAuthTokenInvalid)
+	return "", exceptions.ErrTokenInvalid(nil)
 }
