@@ -25,7 +25,7 @@ func (e *CustomError) Error() string {
 }
 
 func WrapWithoutError(statusCode int, clientMessage, devMessage string) *CustomError {
-	location := getLocation(2)
+	location := getLocation(3)
 	return &CustomError{
 		StatusCode:    statusCode,
 		ClientMessage: clientMessage,
@@ -35,7 +35,7 @@ func WrapWithoutError(statusCode int, clientMessage, devMessage string) *CustomE
 }
 
 func WrapWithError(err error, statusCode int, clientMessage, devMessage string) *CustomError {
-	location := getLocation(2)
+	location := getLocation(3)
 	return &CustomError{
 		StatusCode:    statusCode,
 		ClientMessage: clientMessage,
