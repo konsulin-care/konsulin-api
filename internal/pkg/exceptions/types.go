@@ -194,10 +194,10 @@ var (
 		}
 		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkUpdateFHIRResource, resource))
 	}
-	ErrDecodeResponse = func(err error) *CustomError {
+	ErrDecodeResponse = func(err error, resource string) *CustomError {
 		if err != nil {
-			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevSparkDecodeFHIRResponse)
+			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkDecodeFHIRResourceResponse, resource))
 		}
-		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevSparkDecodeFHIRResponse)
+		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkDecodeFHIRResourceResponse, resource))
 	}
 )

@@ -16,7 +16,7 @@ func FormatAllValidationErrors(err error) string {
 		if !ok {
 			customMessage = "is invalid"
 		}
-		if tag == "min" || tag == "eqfield" {
+		if constvars.TagsWithParams[tag] {
 			customMessage = strings.Replace(customMessage, "%s", err.Param(), 1)
 		}
 		errors = append(errors, fieldName+" "+customMessage)
@@ -33,7 +33,7 @@ func FormatFirstValidationError(err error) string {
 		if !ok {
 			customMessage = "is invalid"
 		}
-		if tag == "min" || tag == "eqfield" || tag == "max" {
+		if constvars.TagsWithParams[tag] {
 			customMessage = strings.Replace(customMessage, "%s", firstErr.Param(), 1)
 		}
 		return fieldName + " " + customMessage

@@ -1,14 +1,54 @@
 package constvars
 
-// Validation messages for users, map it with respective tag field
+// Validation messages mapper
 var CustomValidationErrorMessages = map[string]string{
-	"required": "is required",
-	"email":    "must be a valid email",
-	"alphanum": "must contain only alphanumeric characters",
-	"min":      "must be at least %s characters long",
-	"max":      "maximum at %s characters long",
-	"eqfield":  "must match %s",
-	"password": "must be at least 8 characters long, contain at least one special character, and one uppercase letter",
+	"required":             "is required",
+	"email":                "must be a valid email",
+	"alphanum":             "must contain only alphanumeric characters",
+	"min":                  "must be at least %s characters long",
+	"max":                  "maximum at %s characters long",
+	"eqfield":              "must match %s",
+	"password":             "must be at least 8 characters long, contain at least one special character, and one uppercase letter",
+	"numeric":              "must be a number",
+	"len":                  "must be %s characters long",
+	"oneof":                "must be one of [%s]",
+	"gt":                   "must be greater than %s",
+	"gte":                  "must be greater than or equal to %s",
+	"lt":                   "must be less than %s",
+	"lte":                  "must be less than or equal to %s",
+	"url":                  "must be a valid URL",
+	"uuid":                 "must be a valid UUID",
+	"file":                 "must be a valid file",
+	"base64":               "must be a valid base64 string",
+	"excludes":             "must not contain %s",
+	"excludesall":          "must not contain any of [%s]",
+	"excludesrune":         "must not contain the rune %s",
+	"required_if":          "is required when %s is %s",
+	"required_unless":      "is required unless %s is %s",
+	"required_with":        "is required when %s is present",
+	"required_with_all":    "is required when all of [%s] are present",
+	"required_without":     "is required when %s is not present",
+	"required_without_all": "is required when none of [%s] are present",
+}
+
+// Tags that require parameter substitution
+var TagsWithParams = map[string]bool{
+	"min":                  true,
+	"max":                  true,
+	"len":                  true,
+	"eqfield":              true,
+	"gt":                   true,
+	"gte":                  true,
+	"lt":                   true,
+	"lte":                  true,
+	"excludes":             true,
+	"excludesrune":         true,
+	"required_if":          true,
+	"required_unless":      true,
+	"required_with":        true,
+	"required_with_all":    true,
+	"required_without":     true,
+	"required_without_all": true,
 }
 
 // Error messages for clients
@@ -43,10 +83,10 @@ const (
 	ErrDevUsernameAlreadyExists = "username already exists"
 
 	// Spark messages
-	ErrDevSparkCreateFHIRResource = "failed to create FHIR %s from firesly spark"
-	ErrDevSparkUpdateFHIRResource = "failed to update FHIR %s from firesly spark"
-	ErrDevSparkGetFHIRResource    = "failed to get FHIR %s from firely spark"
-	ErrDevSparkDecodeFHIRResponse = "failed to decode FHIR response from firely spark"
+	ErrDevSparkCreateFHIRResource         = "failed to create FHIR %s from firesly spark"
+	ErrDevSparkUpdateFHIRResource         = "failed to update FHIR %s from firesly spark"
+	ErrDevSparkGetFHIRResource            = "failed to get FHIR %s from firely spark"
+	ErrDevSparkDecodeFHIRResourceResponse = "failed to decode FHIR %s response from firely spark"
 
 	// Validation messages
 	ErrDevValidationFailed      = "validation failed"

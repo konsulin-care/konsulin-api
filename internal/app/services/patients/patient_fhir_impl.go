@@ -48,7 +48,7 @@ func (c *patientFhirClient) CreatePatient(ctx context.Context, request *requests
 	patientFhir := new(models.Patient)
 	err = json.NewDecoder(resp.Body).Decode(&patientFhir)
 	if err != nil {
-		return nil, exceptions.ErrDecodeResponse(err)
+		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePatient)
 	}
 
 	return patientFhir, nil
@@ -75,7 +75,7 @@ func (c *patientFhirClient) GetPatientByID(ctx context.Context, patientID string
 	patientFhir := new(models.Patient)
 	err = json.NewDecoder(resp.Body).Decode(&patientFhir)
 	if err != nil {
-		return nil, exceptions.ErrDecodeResponse(err)
+		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePatient)
 	}
 
 	return patientFhir, nil
@@ -109,7 +109,7 @@ func (c *patientFhirClient) UpdatePatient(ctx context.Context, request *requests
 	patientFhir := new(models.Patient)
 	err = json.NewDecoder(resp.Body).Decode(&patientFhir)
 	if err != nil {
-		return nil, exceptions.ErrDecodeResponse(err)
+		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePatient)
 	}
 
 	return patientFhir, nil

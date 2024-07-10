@@ -8,6 +8,6 @@ type RegisterPatient struct {
 }
 
 type LoginPatient struct {
-	Username string `json:"username" validate:"required,min=8"`
+	Username string `json:"username" validate:"required,alphanum,min=8"`
 	Password string `json:"password" validate:"required,min=8"`
 }
