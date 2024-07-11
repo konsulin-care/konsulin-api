@@ -2,7 +2,7 @@ package routers
 
 import (
 	"konsulin-service/internal/app/delivery/http/middlewares"
-	"konsulin-service/internal/app/services/auth"
+	"konsulin-service/internal/app/services/core/auth"
 
 	"github.com/go-chi/chi/v5"
 )

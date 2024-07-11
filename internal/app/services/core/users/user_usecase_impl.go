@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"konsulin-service/internal/app/models"
-	"konsulin-service/internal/app/services/patients"
+	"konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"

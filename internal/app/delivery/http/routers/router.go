@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/delivery/http/middlewares"
-	"konsulin-service/internal/app/services/auth"
-	"konsulin-service/internal/app/services/users"
+	"konsulin-service/internal/app/services/core/auth"
+	"konsulin-service/internal/app/services/core/users"
 	"time"
 
 	"github.com/go-chi/chi/v5"
