@@ -20,7 +20,6 @@ import (
 )
 
 type authUsecase struct {
-	PatientRepository      patients.PatientRepository
 	UserRepository         users.UserRepository
 	RedisRepository        redis.RedisRepository
 	PatientFhirClient      patients.PatientFhirClient
@@ -29,7 +28,6 @@ type authUsecase struct {
 }
 
 func NewAuthUsecase(
-	patientMongoRepository patients.PatientRepository,
 	userMongoRepository users.UserRepository,
 	redisRepository redis.RedisRepository,
 	patientFhirClient patients.PatientFhirClient,
@@ -37,7 +35,6 @@ func NewAuthUsecase(
 	internalConfig *config.InternalConfig,
 ) AuthUsecase {
 	return &authUsecase{
-		PatientRepository:      patientMongoRepository,
 		UserRepository:         userMongoRepository,
 		RedisRepository:        redisRepository,
 		PatientFhirClient:      patientFhirClient,
@@ -89,6 +86,9 @@ func (uc *authUsecase) LoginUser(ctx context.Context, request *requests.LoginUse
 	if user == nil {
 		return nil, exceptions.ErrInvalidUsernameOrPassword(nil)
 	}
+	if user.UserType != request.UserType {
+		return nil, exceptions.ErrNotMatchUserType(nil)
+	}
 
 	// Check password
 	if !utils.CheckPasswordHash(request.Password, user.Password) {
@@ -103,6 +103,7 @@ func (uc *authUsecase) LoginUser(ctx context.Context, request *requests.LoginUse
 		UserID:         user.ID,
 		PatientID:      user.PatientID,
 		PractitionerID: user.PractitionerID,
+		UserType:       user.UserType,
 		SessionID:      sessionID,
 	}
 
@@ -119,7 +120,9 @@ func (uc *authUsecase) LoginUser(ctx context.Context, request *requests.LoginUse
 	}
 
 	response := &responses.LoginUser{
-		Token: tokenString,
+		Token:    tokenString,
+		UserID:   sessionData.UserID,
+		UserType: sessionData.UserType,
 	}
 	return response, nil
 }

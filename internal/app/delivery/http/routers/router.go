@@ -5,7 +5,7 @@ import (
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/delivery/http/middlewares"
 	"konsulin-service/internal/app/services/auth"
-	"konsulin-service/internal/app/services/patients"
+	"konsulin-service/internal/app/services/users"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -19,7 +19,7 @@ func SetupRoutes(
 	internalConfig *config.InternalConfig,
 	log *logrus.Logger,
 	middlewares *middlewares.Middlewares,
-	patientController *patients.PatientController,
+	userController *users.UserController,
 	authController *auth.AuthController,
 ) {
 
@@ -51,8 +51,8 @@ func SetupRoutes(
 				attachAuthRoutes(r, middlewares, authController)
 			})
 
-			r.Route("/patients", func(r chi.Router) {
-				attachPatientRoutes(r, middlewares, patientController)
+			r.Route("/users", func(r chi.Router) {
+				attachUserRoutes(r, middlewares, userController)
 			})
 		})
 	})

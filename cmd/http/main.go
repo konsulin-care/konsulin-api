@@ -95,27 +95,23 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) {
 	// Middlewares
 	middlewares := middlewares.NewMiddlewares(redisRepository, bootstrap.InternalConfig)
 
+	// Patient
+	patientFhirClient := patients.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePatient)
+
+	// Practitioner
+	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePractitioner)
+
 	// User
 	userMongoRepository := users.NewUserMongoRepository(
 		bootstrap.MongoDB,
 		bootstrap.DriverConfig.MongoDB.DbName,
 	)
-
-	// Patient
-	patientMongoRepository := patients.NewPatientMongoRepository(
-		bootstrap.MongoDB,
-		bootstrap.DriverConfig.MongoDB.DbName,
-	)
-	patientFhirClient := patients.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePatient)
-	patientUsecase := patients.NewPatientUsecase(patientMongoRepository, patientFhirClient, userMongoRepository)
-	patientController := patients.NewPatientController(patientUsecase)
-
-	// Practitioner
-	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePractitioner)
+	userUseCase := users.NewUserUsecase(userMongoRepository, patientFhirClient)
+	userController := users.NewUserController(userUseCase)
 
 	// Auth
-	authUseCase := auth.NewAuthUsecase(patientMongoRepository, userMongoRepository, redisRepository, patientFhirClient, practitionerFhirClient, bootstrap.InternalConfig)
+	authUseCase := auth.NewAuthUsecase(userMongoRepository, redisRepository, patientFhirClient, practitionerFhirClient, bootstrap.InternalConfig)
 	authController := auth.NewAuthController(authUseCase)
 
-	routers.SetupRoutes(bootstrap.Router, bootstrap.InternalConfig, bootstrap.Logger, middlewares, patientController, authController)
+	routers.SetupRoutes(bootstrap.Router, bootstrap.InternalConfig, bootstrap.Logger, middlewares, userController, authController)
 }

@@ -1,16 +1,16 @@
 package responses
 
-type PractitionerProfile struct {
-	Fullname       string `json:"fullname"`
-	Email          string `json:"email"`
-	Age            int    `json:"age"`
-	Sex            string `json:"sex"`
-	Education      string `json:"education"`
-	WhatsAppNumber string `json:"whatsapp_number"`
-	HomeAddress    string `json:"home_address"`
-	BirthDate      string `json:"birth_date"`
-}
-
-type UpdatePractitionerProfile struct {
-	PractitionerID string
+type Practitioner struct {
+	ID            string            `json:"id,omitempty" bson:"_id,omitempty"`
+	Meta          Meta              `json:"meta,omitempty" bson:"meta,omitempty"`
+	Identifier    []Identifier      `json:"identifier,omitempty" bson:"identifier,omitempty"`
+	Active        bool              `json:"active,omitempty" bson:"active,omitempty"`
+	Name          []HumanName       `json:"name,omitempty" bson:"name,omitempty"`
+	Telecom       []ContactPoint    `json:"telecom,omitempty" bson:"telecom,omitempty"`
+	Address       []Address         `json:"address,omitempty" bson:"address,omitempty"`
+	Gender        string            `json:"gender,omitempty" bson:"gender,omitempty"`
+	BirthDate     string            `json:"birthDate,omitempty" bson:"birthDate,omitempty"`
+	Qualification []Qualification   `json:"qualification,omitempty" bson:"qualification,omitempty"`
+	Communication []CodeableConcept `json:"communication,omitempty" bson:"communication,omitempty"`
+	Extension     []Extension       `json:"extension,omitempty" bson:"extension,omitempty"`
 }

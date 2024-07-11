@@ -5,9 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
+	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
 	"net/http"
 )
@@ -22,7 +22,7 @@ func NewPractitionerFhirClient(PractitionerFhirBaseUrl string) PractitionerFhirC
 	}
 }
 
-func (c *practitionerFhirClient) CreatePractitioner(ctx context.Context, request *requests.PractitionerFhir) (*models.Practitioner, error) {
+func (c *practitionerFhirClient) CreatePractitioner(ctx context.Context, request *requests.PractitionerFhir) (*responses.Practitioner, error) {
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
 		return nil, exceptions.ErrCannotMarshalJSON(err)
@@ -45,7 +45,7 @@ func (c *practitionerFhirClient) CreatePractitioner(ctx context.Context, request
 		return nil, exceptions.ErrCreateFHIRResource(nil, constvars.ResourcePractitioner)
 	}
 
-	PractitionerFhir := new(models.Practitioner)
+	PractitionerFhir := new(responses.Practitioner)
 	err = json.NewDecoder(resp.Body).Decode(&PractitionerFhir)
 	if err != nil {
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePractitioner)
@@ -54,7 +54,7 @@ func (c *practitionerFhirClient) CreatePractitioner(ctx context.Context, request
 	return PractitionerFhir, nil
 }
 
-func (c *practitionerFhirClient) GetPractitionerByID(ctx context.Context, PractitionerID string) (*models.Practitioner, error) {
+func (c *practitionerFhirClient) GetPractitionerByID(ctx context.Context, PractitionerID string) (*responses.Practitioner, error) {
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, fmt.Sprintf("%s/%s", c.BaseUrl, PractitionerID), nil)
 	if err != nil {
 		return nil, exceptions.ErrCreateHTTPRequest(err)
@@ -72,7 +72,7 @@ func (c *practitionerFhirClient) GetPractitionerByID(ctx context.Context, Practi
 		return nil, exceptions.ErrGetFHIRResource(nil, constvars.ResourcePractitioner)
 	}
 
-	PractitionerFhir := new(models.Practitioner)
+	PractitionerFhir := new(responses.Practitioner)
 	err = json.NewDecoder(resp.Body).Decode(&PractitionerFhir)
 	if err != nil {
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePractitioner)
@@ -81,7 +81,7 @@ func (c *practitionerFhirClient) GetPractitionerByID(ctx context.Context, Practi
 	return PractitionerFhir, nil
 }
 
-func (c *practitionerFhirClient) UpdatePractitioner(ctx context.Context, request *requests.PractitionerFhir) (*models.Practitioner, error) {
+func (c *practitionerFhirClient) UpdatePractitioner(ctx context.Context, request *requests.PractitionerFhir) (*responses.Practitioner, error) {
 	// Convert FHIR Practitioner to JSON
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
@@ -106,7 +106,7 @@ func (c *practitionerFhirClient) UpdatePractitioner(ctx context.Context, request
 		return nil, exceptions.ErrUpdateFHIRResource(nil, constvars.ResourcePractitioner)
 	}
 
-	PractitionerFhir := new(models.Practitioner)
+	PractitionerFhir := new(responses.Practitioner)
 	err = json.NewDecoder(resp.Body).Decode(&PractitionerFhir)
 	if err != nil {
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePractitioner)

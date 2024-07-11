@@ -2,7 +2,7 @@ package utils
 
 import (
 	"fmt"
-	"konsulin-service/internal/app/models"
+	"konsulin-service/internal/pkg/dto/responses"
 	"strings"
 	"time"
 )
@@ -27,7 +27,7 @@ func CalculateAge(birthDate string) int {
 	return age
 }
 
-func GetEducationFromExtensions(extensions []models.Extension) string {
+func GetEducationFromExtensions(extensions []responses.Extension) string {
 	for _, ext := range extensions {
 		if ext.Url == "http://example.org/fhir/StructureDefinition/education" {
 			return ext.ValueString
@@ -36,7 +36,7 @@ func GetEducationFromExtensions(extensions []models.Extension) string {
 	return ""
 }
 
-func GetHomeAddress(addresses []models.Address) string {
+func GetHomeAddress(addresses []responses.Address) string {
 	for _, address := range addresses {
 		if address.Use == "home" {
 			return fmt.Sprintf("%s, %s, %s, %s, %s",
@@ -63,4 +63,33 @@ func FormatBirthDate(birthDate string) string {
 	}
 
 	return dob.Format("02 January 2006")
+}
+
+func GetFullName(names []responses.HumanName) string {
+	if len(names) == 0 {
+		return ""
+	}
+
+	name := names[0]
+	fullname := name.Family
+	if len(name.Given) > 0 {
+		fullname += " " + name.Given[0]
+	}
+	return fullname
+}
+
+func GetEmailAndWhatsapp(telecoms []responses.ContactPoint) (string, string) {
+	var (
+		email          string
+		whatsAppNumber string
+	)
+	for _, telecom := range telecoms {
+		switch {
+		case telecom.System == "email":
+			email = telecom.Value
+		case telecom.System == "phone" && telecom.Use == "mobile":
+			whatsAppNumber = telecom.Value
+		}
+	}
+	return email, whatsAppNumber
 }
