@@ -29,6 +29,7 @@ var CustomValidationErrorMessages = map[string]string{
 	"required_with_all":    "is required when all of [%s] are present",
 	"required_without":     "is required when %s is not present",
 	"required_without_all": "is required when none of [%s] are present",
+	"user_type":            "must be either 'practitioner' or 'patient'",
 }
 
 // Tags that require parameter substitution
@@ -42,6 +43,7 @@ var TagsWithParams = map[string]bool{
 	"lt":                   true,
 	"lte":                  true,
 	"excludes":             true,
+	"user_type":            true,
 	"excludesrune":         true,
 	"required_if":          true,
 	"required_unless":      true,
@@ -69,6 +71,8 @@ const (
 	ErrDevInvalidInput         = "invalid input"
 	ErrDevCannotParseJSON      = "cannot parse JSON into struct or other data types"
 	ErrDevCannotMarshalJSON    = "cannot convert struct or other data types to JSON"
+	ErrDevInvalidUserType      = "invalid user type, should be 'practitioner' or 'patient'"
+	ErrDevUserTypeDoesntMatch  = "invalid user type, request done by user with different type"
 	ErrDevFailedToCreateUser   = "failed to create user"
 	ErrDevFailedToHashPassword = "failed to hash password"
 	ErrDevDocumentNotFound     = "document not found"

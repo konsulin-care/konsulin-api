@@ -84,6 +84,18 @@ var (
 		}
 		return WrapWithoutError(constvars.StatusUnauthorized, constvars.ErrClientNotLoggedIn, constvars.ErrDevAuthTokenInvalid)
 	}
+	ErrInvalidUserType = func(err error) *CustomError {
+		if err != nil {
+			return WrapWithError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevInvalidUserType)
+		}
+		return WrapWithoutError(constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevInvalidUserType)
+	}
+	ErrNotMatchUserType = func(err error) *CustomError {
+		if err != nil {
+			return WrapWithError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevUserTypeDoesntMatch)
+		}
+		return WrapWithoutError(constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevUserTypeDoesntMatch)
+	}
 
 	// Mongo DB
 	ErrMongoDBFindDocument = func(err error) *CustomError {

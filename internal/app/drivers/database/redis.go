@@ -20,6 +20,6 @@ func NewRedisClient(driverConfig *config.DriverConfig, log *logrus.Logger) *redi
 	if err != nil {
 		log.Fatalf("Could not connect to Redis: %v", err)
 	}
-
+	log.Println("Successfully connected to redis")
 	return rdb
 }

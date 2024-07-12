@@ -7,10 +7,11 @@ import (
 	"konsulin-service/internal/app/delivery/http/routers"
 	"konsulin-service/internal/app/drivers/database"
 	"konsulin-service/internal/app/drivers/logger"
-	"konsulin-service/internal/app/services/auth"
-	"konsulin-service/internal/app/services/patients"
+	"konsulin-service/internal/app/services/core/auth"
+	"konsulin-service/internal/app/services/core/users"
+	"konsulin-service/internal/app/services/fhir_spark/patients"
+	"konsulin-service/internal/app/services/fhir_spark/practitioners"
 	"konsulin-service/internal/app/services/shared/redis"
-	"konsulin-service/internal/app/services/users"
 	"konsulin-service/internal/pkg/constvars"
 	"net/http"
 	"os"
@@ -33,6 +34,7 @@ func main() {
 		log.Fatalf("Error loading location: %v", err)
 	}
 	time.Local = location
+	log.Printf("Successfully set time base to %s", internalConfig.App.Timezone)
 
 	mongoDB := database.NewMongoDB(driverConfig, log)
 	redis := database.NewRedisClient(driverConfig, log)
@@ -53,6 +55,7 @@ func main() {
 	}
 
 	go func() {
+		log.Printf("Server is running on port%s", internalConfig.App.Port)
 		err := server.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server failed to start: %v", err)
@@ -71,10 +74,10 @@ func main() {
 		time.Second*time.Duration(internalConfig.App.ShutdownTimeout),
 	)
 	defer cancel()
-	for i := internalConfig.App.ShutdownTimeout; i > 0; i-- {
-		time.Sleep(1 * time.Second)
-		log.Printf("Shutting down in %d...", i)
-	}
+	// for i := internalConfig.App.ShutdownTimeout; i > 0; i-- {
+	// 	time.Sleep(1 * time.Second)
+	// 	log.Printf("Shutting down in %d...", i)
+	// }
 
 	// Shutdown the server
 	err = server.Shutdown(shutdownCtx)
@@ -94,24 +97,23 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) {
 	// Middlewares
 	middlewares := middlewares.NewMiddlewares(redisRepository, bootstrap.InternalConfig)
 
+	// Patient
+	patientFhirClient := patients.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePatient)
+
+	// Practitioner
+	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePractitioner)
+
 	// User
 	userMongoRepository := users.NewUserMongoRepository(
 		bootstrap.MongoDB,
 		bootstrap.DriverConfig.MongoDB.DbName,
 	)
-
-	// Patient
-	patientMongoRepository := patients.NewPatientMongoRepository(
-		bootstrap.MongoDB,
-		bootstrap.DriverConfig.MongoDB.DbName,
-	)
-	patientFhirClient := patients.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePatient)
-	patientUsecase := patients.NewPatientUsecase(patientMongoRepository, patientFhirClient, userMongoRepository)
-	patientController := patients.NewPatientController(patientUsecase)
+	userUseCase := users.NewUserUsecase(userMongoRepository, patientFhirClient, practitionerFhirClient)
+	userController := users.NewUserController(userUseCase)
 
 	// Auth
-	authUseCase := auth.NewAuthUsecase(patientMongoRepository, userMongoRepository, redisRepository, patientFhirClient, bootstrap.InternalConfig)
+	authUseCase := auth.NewAuthUsecase(userMongoRepository, redisRepository, patientFhirClient, practitionerFhirClient, bootstrap.InternalConfig)
 	authController := auth.NewAuthController(authUseCase)
 
-	routers.SetupRoutes(bootstrap.Router, bootstrap.InternalConfig, bootstrap.Logger, middlewares, patientController, authController)
+	routers.SetupRoutes(bootstrap.Router, bootstrap.InternalConfig, bootstrap.Logger, middlewares, userController, authController)
 }

@@ -1,35 +1,34 @@
-package patients
+package users
 
 import (
 	"context"
+	"encoding/json"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
 	"net/http"
 	"time"
-
-	"github.com/goccy/go-json"
 )
 
-type PatientController struct {
-	PatientUsecase PatientUsecase
+type UserController struct {
+	UserUsecase UserUsecase
 }
 
-func NewPatientController(patientUsecase PatientUsecase) *PatientController {
-	return &PatientController{
-		PatientUsecase: patientUsecase,
+func NewUserController(userUsecase UserUsecase) *UserController {
+	return &UserController{
+		UserUsecase: userUsecase,
 	}
 }
 
-func (ctrl *PatientController) GetPatientProfileBySession(w http.ResponseWriter, r *http.Request) {
+func (ctrl *UserController) GetUserProfileBySession(w http.ResponseWriter, r *http.Request) {
 	// Get session data from context
 	sessionData := r.Context().Value("sessionData").(string)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	result, err := ctrl.PatientUsecase.GetPatientProfileBySession(ctx, sessionData)
+	result, err := ctrl.UserUsecase.GetUserProfileBySession(ctx, sessionData)
 	if err != nil {
 		if err == context.DeadlineExceeded {
 			utils.BuildErrorResponse(w, exceptions.ErrServerDeadlineExceeded(err))
@@ -42,7 +41,7 @@ func (ctrl *PatientController) GetPatientProfileBySession(w http.ResponseWriter,
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.ProfileGetSuccess, result)
 }
 
-func (ctrl *PatientController) UpdateProfileBySession(w http.ResponseWriter, r *http.Request) {
+func (ctrl *UserController) UpdateUserBySession(w http.ResponseWriter, r *http.Request) {
 	request := new(requests.UpdateProfile)
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
@@ -62,7 +61,7 @@ func (ctrl *PatientController) UpdateProfileBySession(w http.ResponseWriter, r *
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	response, err := ctrl.PatientUsecase.UpdatePatientProfileBySession(ctx, sessionData, request)
+	response, err := ctrl.UserUsecase.UpdateUserProfileBySession(ctx, sessionData, request)
 	if err != nil {
 		if err == context.DeadlineExceeded {
 			utils.BuildErrorResponse(w, exceptions.ErrServerDeadlineExceeded(err))

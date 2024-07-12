@@ -3,9 +3,14 @@ package users
 import (
 	"context"
 	"konsulin-service/internal/app/models"
+	"konsulin-service/internal/pkg/dto/requests"
+	"konsulin-service/internal/pkg/dto/responses"
 )
 
-type UserUsecase interface{}
+type UserUsecase interface {
+	GetUserProfileBySession(ctx context.Context, sessionData string) (*responses.UserProfile, error)
+	UpdateUserProfileBySession(ctx context.Context, sessionData string, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error)
+}
 
 type UserRepository interface {
 	CreateUser(ctx context.Context, userEntity *models.User) (userID string, err error)
@@ -14,5 +19,3 @@ type UserRepository interface {
 	GetUserByID(ctx context.Context, userID string) (*models.User, error)
 	UpdateUser(ctx context.Context, userID string, updateData map[string]interface{}) error
 }
-
-type UserFhirClient interface{}
