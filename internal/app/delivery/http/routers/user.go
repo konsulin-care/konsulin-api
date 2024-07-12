@@ -8,6 +8,6 @@ import (
 )
 
 func attachUserRoutes(router chi.Router, middlewares *middlewares.Middlewares, userController *users.UserController) {
-	router.With(middlewares.AuthMiddleware).Get("/me", userController.GetUserProfileBySession)
-	router.With(middlewares.AuthMiddleware).Put("/me", userController.GetUserProfileBySession)
+	router.With(middlewares.AuthMiddleware).Get("/profile", userController.GetUserProfileBySession)
+	router.With(middlewares.AuthMiddleware).Put("/profile", userController.GetUserProfileBySession)
 }

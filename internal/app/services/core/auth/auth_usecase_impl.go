@@ -128,7 +128,7 @@ func (uc *authUsecase) LoginUser(ctx context.Context, request *requests.LoginUse
 }
 
 func (uc *authUsecase) LogoutUser(ctx context.Context, sessionData string) error {
-	var session models.Session
+	session := new(models.Session)
 	err := json.Unmarshal([]byte(sessionData), &session)
 	if err != nil {
 		return exceptions.ErrCannotParseJSON(err)

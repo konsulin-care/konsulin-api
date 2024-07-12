@@ -12,5 +12,6 @@ type UserProfile struct {
 }
 
 type UpdateUserProfile struct {
-	PatientID string
+	PatientID      string `json:"patient_id,omitempty"`
+	PractitionerID string `json:"practitioner_id,omitempty"`
 }

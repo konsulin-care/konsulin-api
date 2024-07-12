@@ -34,6 +34,7 @@ func main() {
 		log.Fatalf("Error loading location: %v", err)
 	}
 	time.Local = location
+	log.Printf("Successfully set time base to %s", internalConfig.App.Timezone)
 
 	mongoDB := database.NewMongoDB(driverConfig, log)
 	redis := database.NewRedisClient(driverConfig, log)
@@ -54,6 +55,7 @@ func main() {
 	}
 
 	go func() {
+		log.Printf("Server is running on port%s", internalConfig.App.Port)
 		err := server.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server failed to start: %v", err)
@@ -106,7 +108,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) {
 		bootstrap.MongoDB,
 		bootstrap.DriverConfig.MongoDB.DbName,
 	)
-	userUseCase := users.NewUserUsecase(userMongoRepository, patientFhirClient)
+	userUseCase := users.NewUserUsecase(userMongoRepository, patientFhirClient, practitionerFhirClient)
 	userController := users.NewUserController(userUseCase)
 
 	// Auth

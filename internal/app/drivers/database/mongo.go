@@ -29,6 +29,6 @@ func NewMongoDB(driverConfig *config.DriverConfig, log *logrus.Logger) *mongo.Da
 		log.Errorln("Failed to connect to database")
 		log.Fatalln(err)
 	}
-	log.Println("Successfully connected to database")
+	log.Println("Successfully connected to mongo database")
 	return client.Database(driverConfig.MongoDB.DbName)
 }

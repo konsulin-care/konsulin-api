@@ -25,7 +25,7 @@ func (ctrl *UserController) GetUserProfileBySession(w http.ResponseWriter, r *ht
 	// Get session data from context
 	sessionData := r.Context().Value("sessionData").(string)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	result, err := ctrl.UserUsecase.GetUserProfileBySession(ctx, sessionData)
