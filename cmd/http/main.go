@@ -8,6 +8,7 @@ import (
 	"konsulin-service/internal/app/drivers/database"
 	"konsulin-service/internal/app/drivers/logger"
 	"konsulin-service/internal/app/services/core/auth"
+	"konsulin-service/internal/app/services/core/roles"
 	"konsulin-service/internal/app/services/core/users"
 	"konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
@@ -94,9 +95,6 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) {
 	// Redis
 	redisRepository := redis.NewRedisRepository(bootstrap.Redis)
 
-	// Middlewares
-	middlewares := middlewares.NewMiddlewares(redisRepository, bootstrap.InternalConfig)
-
 	// Patient
 	patientFhirClient := patients.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePatient)
 
@@ -104,16 +102,21 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) {
 	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePractitioner)
 
 	// User
-	userMongoRepository := users.NewUserMongoRepository(
-		bootstrap.MongoDB,
-		bootstrap.DriverConfig.MongoDB.DbName,
-	)
+	userMongoRepository := users.NewUserMongoRepository(bootstrap.MongoDB, bootstrap.DriverConfig.MongoDB.DbName)
 	userUseCase := users.NewUserUsecase(userMongoRepository, patientFhirClient, practitionerFhirClient)
 	userController := users.NewUserController(userUseCase)
 
+	roleMongoRepository := roles.NewRoleMongoRepository(bootstrap.MongoDB, bootstrap.DriverConfig.MongoDB.DbName)
+
 	// Auth
-	authUseCase := auth.NewAuthUsecase(userMongoRepository, redisRepository, patientFhirClient, practitionerFhirClient, bootstrap.InternalConfig)
+	authUseCase, err := auth.NewAuthUsecase(userMongoRepository, redisRepository, roleMongoRepository, patientFhirClient, practitionerFhirClient, bootstrap.InternalConfig)
+	if err != nil {
+		bootstrap.Logger.Fatalln(err)
+	}
 	authController := auth.NewAuthController(authUseCase)
+
+	// Middlewares
+	middlewares := middlewares.NewMiddlewares(authUseCase, bootstrap.InternalConfig)
 
 	routers.SetupRoutes(bootstrap.Router, bootstrap.InternalConfig, bootstrap.Logger, middlewares, userController, authController)
 }

@@ -13,3 +13,9 @@ type LoginUser struct {
 	Password string `json:"password" validate:"required,min=8"`
 	UserType string `validate:"required,user_type"`
 }
+
+type AuthorizeUser struct {
+	SessionData    string
+	Resource       string
+	RequiredAction string
+}

@@ -10,5 +10,5 @@ import (
 func attachAuthRoutes(router chi.Router, middlewares *middlewares.Middlewares, authController *auth.AuthController) {
 	router.Post("/register", authController.RegisterUser)
 	router.Post("/login", authController.LoginUser)
-	router.With(middlewares.AuthMiddleware).Post("/logout", authController.Logout)
+	router.With(middlewares.Authenticate).Post("/logout", authController.Logout)
 }

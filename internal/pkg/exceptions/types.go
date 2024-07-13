@@ -97,12 +97,26 @@ var (
 		return WrapWithoutError(constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevUserTypeDoesntMatch)
 	}
 
+	// Auth
+	ErrAuthInvalidRole = func(err error) *CustomError {
+		if err != nil {
+			return WrapWithError(err, constvars.StatusBadRequest, constvars.ErrClientNotAuthorized, constvars.ErrDevUserTypeDoesntMatch)
+		}
+		return WrapWithoutError(constvars.StatusBadRequest, constvars.ErrClientNotAuthorized, constvars.ErrDevUserTypeDoesntMatch)
+	}
+
 	// Mongo DB
 	ErrMongoDBFindDocument = func(err error) *CustomError {
 		if err != nil {
 			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToFindDocument)
 		}
 		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToFindDocument)
+	}
+	ErrMongoDBIterateDocuments = func(err error) *CustomError {
+		if err != nil {
+			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToIterateDocuments)
+		}
+		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToIterateDocuments)
 	}
 	ErrMongoDBNotObjectID = func(err error) *CustomError {
 		if err != nil {

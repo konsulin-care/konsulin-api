@@ -105,14 +105,16 @@ const (
 	ErrDevAuthInvalidSession   = "invalid session"
 	ErrDevAuthPermissionDenied = "permission denied"
 	ErrDevAuthGenerateToken    = "failed to generate token"
+	ErrDevAuthRoleNotExists    = "role doesn't exist on the system"
 
 	// Database messages
-	ErrDevDBFailedToInsertDocument = "failed to insert document into database"
-	ErrDevDBFailedToUpdateDocument = "failed to update document into database"
-	ErrDevDBFailedToFindDocument   = "failed when do find document on database"
-	ErrDevDBConnectionFailed       = "failed to connect to database"
-	ErrDevDBOperationFailed        = "database operation failed"
-	ErrDevDBStringNotObjectID      = "given ID is not valid object ID"
+	ErrDevDBFailedToInsertDocument   = "failed to insert document into database"
+	ErrDevDBFailedToUpdateDocument   = "failed to update document into database"
+	ErrDevDBFailedToFindDocument     = "failed when do find document on database"
+	ErrDevDBFailedToIterateDocuments = "failed when iterating documents from database"
+	ErrDevDBConnectionFailed         = "failed to connect to database"
+	ErrDevDBOperationFailed          = "database operation failed"
+	ErrDevDBStringNotObjectID        = "given ID is not valid object ID"
 
 	// Redis messages
 	ErrDevRedisSetData         = "failed to SET data into redis"

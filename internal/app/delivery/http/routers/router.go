@@ -37,8 +37,6 @@ func SetupRoutes(
 	rateLimiter := httprate.LimitByIP(internalConfig.App.MaxRequests, time.Second)
 	router.Use(rateLimiter)
 
-	// Logging middleware
-	// router.Use(middlewares.RequestLogger(internalConfig.App, log))
 	router.Use(middlewares.ErrorHandler)
 
 	endpointPrefix := fmt.Sprintf("/%s", internalConfig.App.EndpointPrefix)
