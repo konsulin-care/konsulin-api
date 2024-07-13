@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/models"
+	"konsulin-service/internal/app/services/core/roles"
 	"konsulin-service/internal/app/services/core/users"
 	"konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
@@ -14,6 +15,7 @@ import (
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,25 +24,37 @@ import (
 type authUsecase struct {
 	UserRepository         users.UserRepository
 	RedisRepository        redis.RedisRepository
+	RoleRepository         roles.RoleRepository
 	PatientFhirClient      patients.PatientFhirClient
 	PractitionerFhirClient practitioners.PractitionerFhirClient
 	InternalConfig         *config.InternalConfig
+	Roles                  map[string]*models.Role
+	mu                     sync.RWMutex
 }
 
 func NewAuthUsecase(
 	userMongoRepository users.UserRepository,
 	redisRepository redis.RedisRepository,
+	rolesRepository roles.RoleRepository,
 	patientFhirClient patients.PatientFhirClient,
 	practitionerFhirClient practitioners.PractitionerFhirClient,
 	internalConfig *config.InternalConfig,
-) AuthUsecase {
-	return &authUsecase{
+) (AuthUsecase, error) {
+	authUsecase := &authUsecase{
 		UserRepository:         userMongoRepository,
 		RedisRepository:        redisRepository,
+		RoleRepository:         rolesRepository,
 		PatientFhirClient:      patientFhirClient,
 		PractitionerFhirClient: practitionerFhirClient,
 		InternalConfig:         internalConfig,
+		Roles:                  make(map[string]*models.Role),
 	}
+	err := authUsecase.loadRoles()
+	if err != nil {
+		return nil, err
+	}
+
+	return authUsecase, nil
 }
 
 func (uc *authUsecase) RegisterUser(ctx context.Context, request *requests.RegisterUser) (*responses.RegisterUser, error) {
@@ -140,6 +154,60 @@ func (uc *authUsecase) LogoutUser(ctx context.Context, sessionData string) error
 	}
 
 	return nil
+}
+
+func (uc *authUsecase) IsUserHasPermission(ctx context.Context, request requests.AuthorizeUser) (bool, error) {
+	session := new(models.Session)
+	err := json.Unmarshal([]byte(request.SessionData), &session)
+	if err != nil {
+		return false, exceptions.ErrCannotParseJSON(err)
+	}
+
+	uc.mu.RLock()
+	defer uc.mu.RUnlock()
+
+	role, exists := uc.Roles[session.RoleID]
+	if !exists {
+		return false, exceptions.ErrAuthInvalidRole(nil)
+	}
+
+	for _, permission := range role.Permissions {
+		if permission.Resource == request.Resource {
+			for _, allowedAction := range permission.Actions {
+				if allowedAction == request.RequiredAction {
+					return true, nil
+				}
+			}
+		}
+	}
+
+	return false, exceptions.ErrAuthInvalidRole(nil)
+}
+
+func (uc *authUsecase) loadRoles() error {
+	ctx := context.Background()
+	roles, err := uc.RoleRepository.GetAllRoles(ctx)
+	if err != nil {
+		return err
+	}
+
+	uc.mu.Lock()
+	defer uc.mu.Unlock()
+
+	for _, role := range roles {
+		r := role
+		uc.Roles[role.ID] = &r
+	}
+
+	return nil
+}
+
+func (uc *authUsecase) GetSessionData(ctx context.Context, sessionID string) (string, error) {
+	sessionData, err := uc.RedisRepository.Get(ctx, sessionID)
+	if err != nil {
+		return "", exceptions.ErrTokenInvalid(err)
+	}
+	return sessionData, nil
 }
 
 func (uc *authUsecase) registerPatient(ctx context.Context, request *requests.RegisterUser) (*responses.RegisterUser, error) {

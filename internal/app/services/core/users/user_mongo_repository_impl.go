@@ -21,8 +21,8 @@ func NewUserMongoRepository(db *mongo.Database, dbName string) UserRepository {
 	}
 }
 
-func (repo *UserMongoRepository) CreateUser(ctx context.Context, entityUser *models.User) (userID string, err error) {
-	result, err := repo.Collection.InsertOne(ctx, entityUser)
+func (repo *UserMongoRepository) CreateUser(ctx context.Context, userModel *models.User) (userID string, err error) {
+	result, err := repo.Collection.InsertOne(ctx, userModel)
 	if err != nil {
 		return "", exceptions.ErrMongoDBInsertDocument(err)
 	}

@@ -8,5 +8,6 @@ type Session struct {
 	UserType       string
 	PatientID      string
 	PractitionerID string
+	RoleID         string
 	ExpiresAt      time.Time
 }

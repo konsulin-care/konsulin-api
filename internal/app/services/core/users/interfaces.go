@@ -13,7 +13,7 @@ type UserUsecase interface {
 }
 
 type UserRepository interface {
-	CreateUser(ctx context.Context, userEntity *models.User) (userID string, err error)
+	CreateUser(ctx context.Context, userModel *models.User) (userID string, err error)
 	FindByEmail(ctx context.Context, email string) (*models.User, error)
 	FindByUsername(ctx context.Context, username string) (*models.User, error)
 	GetUserByID(ctx context.Context, userID string) (*models.User, error)
