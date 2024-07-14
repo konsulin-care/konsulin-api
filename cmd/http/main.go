@@ -83,10 +83,10 @@ func main() {
 		time.Second*time.Duration(internalConfig.App.ShutdownTimeout),
 	)
 	defer cancel()
-	// for i := internalConfig.App.ShutdownTimeout; i > 0; i-- {
-	// 	time.Sleep(1 * time.Second)
-	// 	log.Printf("Shutting down in %d...", i)
-	// }
+	for i := internalConfig.App.ShutdownTimeout; i > 0; i-- {
+		time.Sleep(1 * time.Second)
+		log.Printf("Shutting down in %d...", i)
+	}
 
 	// Shutdown the server
 	err = server.Shutdown(shutdownCtx)
