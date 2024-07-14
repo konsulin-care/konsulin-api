@@ -93,8 +93,16 @@ if [ -z "${TAG}" ]; then
   exit 1 # exit due to an error
 fi
 
-# builds the docker image
+# builds the docker image: tag version
 docker build -t "konsulin/api-service:${DOCKER_TAG}" \
+  --build-arg GIT_COMMIT="${COMMIT}" \
+  --build-arg "AUTHOR=${author}" \
+  --build-arg "VERSION=${version}" \
+  --build-arg "BUILD_TIME=${build_date}" \
+  --build-arg "TAG=${TAG}" .
+
+# builds the docker image: deployment version (develop, staging, or production)
+docker build -t "konsulin/api-service:${version}" \
   --build-arg GIT_COMMIT="${COMMIT}" \
   --build-arg "AUTHOR=${author}" \
   --build-arg "VERSION=${version}" \
