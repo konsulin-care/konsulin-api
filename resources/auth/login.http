@@ -1,0 +1,8 @@
+### auth login (OK)
+POST {{base_url}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "ardi",
+  "password": "ardi12345678"
+}
