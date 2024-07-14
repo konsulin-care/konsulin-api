@@ -12,5 +12,4 @@ func SanitizeString(s string) string {
 func SanitizeRegisterUserRequest(input *requests.RegisterUser) {
 	input.Email = SanitizeString(input.Email)
 	input.Username = SanitizeString(input.Username)
-	input.UserType = SanitizeString(input.UserType)
 }

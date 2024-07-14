@@ -31,10 +31,6 @@ func (ctrl *AuthController) RegisterClinician(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Get query params and attach to request struct
-	queryParams := r.URL.Query()
-	request.UserType = queryParams.Get(constvars.QueryParamsUserType)
-
 	// Sanitize request
 	utils.SanitizeRegisterUserRequest(request)
 
@@ -71,11 +67,6 @@ func (ctrl *AuthController) RegisterPatient(w http.ResponseWriter, r *http.Reque
 		utils.BuildErrorResponse(w, exceptions.ErrCannotParseJSON(err))
 		return
 	}
-
-	// Get query params and attach to request struct
-	queryParams := r.URL.Query()
-	request.UserType = queryParams.Get(constvars.QueryParamsUserType)
-
 	// Sanitize request
 	utils.SanitizeRegisterUserRequest(request)
 
