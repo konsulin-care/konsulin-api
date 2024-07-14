@@ -86,6 +86,40 @@ This backend service is built using Golang and provides RESTful APIs to interact
 ### API Endpoints
 Please see `/docs` directory to get your Konsulin Postman Collection or contact [CEO](aly.lamuri8@gmail.com) or [Software Engineer](abrahampurnomo144@gmail.com)
 
+## Dockerization
+
+* Build docker image
+```shell
+bash build-vendor.sh
+```
+* Run the app with a docker container
+  * format
+    ```shell
+    bash build.sh -a '<author name>' -e <author email> -v <deployment type>
+    ```
+    * argument `-a` represents the **author's name** 
+    * argument `-e` represents the **author's email** 
+    * argument `-v` represents the **deployment version**; expected value: `develop`, `staging`, or `production` 
+  * command with a compact version
+    ```shell
+    bash build.sh -a ardi
+    ```
+  * command with a complete arguments
+    ```shell
+    bash build.sh -a 'Muhammad Febrian Ardiansyah' -e mfardiansyah.id@gmail.com -v develop
+    ```
+* Test running docker
+  * comment out the last line
+    ```shell
+    ...
+    #ENTRYPOINT ["./api-service"]
+    ...
+    ```
+  * run docker command:
+    ```shell
+    docker run --rm -it konsulin/api-service:0.0.1 bash
+    ```
+
 ## Contribution
 We welcome contributions! But only if you are part of the team >_< .
 

@@ -5,3 +5,7 @@ logrus.log
 .air.toml
 
 tmp
+
+.idea/
+
+resources/http-client.env.json
