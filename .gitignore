@@ -9,3 +9,4 @@ tmp
 .idea/
 
 resources/http-client.env.json
+.vscode/settings.json

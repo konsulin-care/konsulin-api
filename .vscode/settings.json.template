@@ -1,0 +1,12 @@
+{
+  "rest-client.environmentVariables": {
+    "local": {
+      "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NTUzMzEwOTQsImlhdCI6MTcxOTMzMTA5NCwidXNlciI6eyJ1c2VyX2lkIjoiMSIsImFjY291bnRfaWQiOiJpZDEyMyIsInVzZXJuYW1lIjoidXNlciIsInJvbGUiOiJhZG1pbmlzdHJhdG9yIiwibmFtZSI6IkluaSBCdWRpIiwiZW1haWwiOiJ1c2VyQGVtYWlsLmNvbSJ9fQ.o8MBSsEbJ_83YlTWbT1kFf8Y9tUGX8xnz-Wth56ECkM",
+      "base_url": "http://localhost:8080"
+    },
+    "dev_server": {
+      "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NTUzMzEwOTQsImlhdCI6MTcxOTMzMTA5NCwidXNlciI6eyJ1c2VyX2lkIjoiMSIsImFjY291bnRfaWQiOiJpZDEyMyIsInVzZXJuYW1lIjoidXNlciIsInJvbGUiOiJhZG1pbmlzdHJhdG9yIiwibmFtZSI6IkluaSBCdWRpIiwiZW1haWwiOiJ1c2VyQGVtYWlsLmNvbSJ9fQ.o8MBSsEbJ_83YlTWbT1kFf8Y9tUGX8xnz-Wth56ECkM",
+      "base_url": "https://dev-api.konsulin.care"
+    }
+  }
+}
