@@ -10,7 +10,6 @@ import (
 	"konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
 	"konsulin-service/internal/app/services/shared/redis"
-	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
@@ -57,7 +56,7 @@ func NewAuthUsecase(
 	return authUsecase, nil
 }
 
-func (uc *authUsecase) RegisterUser(ctx context.Context, request *requests.RegisterUser) (*responses.RegisterUser, error) {
+func (uc *authUsecase) RegisterClinician(ctx context.Context, request *requests.RegisterUser) (*responses.RegisterUser, error) {
 	// Check if passwords match
 	if request.Password != request.RetypePassword {
 		return nil, exceptions.ErrPasswordDoNotMatch(nil)
@@ -81,14 +80,116 @@ func (uc *authUsecase) RegisterUser(ctx context.Context, request *requests.Regis
 		return nil, exceptions.ErrUsernameAlreadyExist(nil)
 	}
 
-	switch request.UserType {
-	case constvars.UserTypePractitioner:
-		return uc.registerPatient(ctx, request)
-	case constvars.UserTypePatient:
-		return uc.registerClinician(ctx, request)
-	default:
-		return nil, exceptions.ErrInvalidUserType(nil)
+	// Build FHIR practitioner request
+	fhirPractitionerRequest := utils.BuildFhirPractitionerRequest(request.Username, request.Email)
+
+	// Create FHIR practitioner to Spark and get the model
+	fhirPractitioner, err := uc.PractitionerFhirClient.CreatePractitioner(ctx, fhirPractitionerRequest)
+	if err != nil {
+		return nil, err
 	}
+
+	// Hash password
+	hashedPassword, err := utils.HashPassword(request.Password)
+	if err != nil {
+		return nil, exceptions.ErrHashPassword(err)
+	}
+
+	// Build the user model
+	user := &models.User{
+		Username:       request.Username,
+		Email:          request.Email,
+		UserType:       request.UserType,
+		PractitionerID: fhirPractitioner.ID,
+		Password:       hashedPassword,
+		TimeModel: models.TimeModel{
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		},
+		// Add ClinicianID if applicable
+	}
+
+	// Create user
+	userID, err := uc.UserRepository.CreateUser(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+
+	// Map the data into response output ready to be used by controller
+	response := &responses.RegisterUser{
+		UserID:         userID,
+		PractitionerID: fhirPractitioner.ID, // Add ClinicianID if applicable
+	}
+
+	return response, nil
+
+}
+
+func (uc *authUsecase) RegisterPatient(ctx context.Context, request *requests.RegisterUser) (*responses.RegisterUser, error) {
+	// Check if passwords match
+	if request.Password != request.RetypePassword {
+		return nil, exceptions.ErrPasswordDoNotMatch(nil)
+	}
+
+	// Check if email already exists
+	existingUser, err := uc.UserRepository.FindByEmail(ctx, request.Email)
+	if err != nil {
+		return nil, err
+	}
+	if existingUser != nil {
+		return nil, exceptions.ErrEmailAlreadyExist(nil)
+	}
+
+	// Check if username already exists
+	existingUser, err = uc.UserRepository.FindByUsername(ctx, request.Username)
+	if err != nil {
+		return nil, err
+	}
+	if existingUser != nil {
+		return nil, exceptions.ErrUsernameAlreadyExist(nil)
+	}
+
+	// Build FHIR patient request
+	fhirPatientRequest := utils.BuildFhirPatientRequest(request.Username, request.Email)
+
+	// Create FHIR patient to Spark and get the model
+	fhirPatient, err := uc.PatientFhirClient.CreatePatient(ctx, fhirPatientRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	// Hash password
+	hashedPassword, err := utils.HashPassword(request.Password)
+	if err != nil {
+		return nil, exceptions.ErrHashPassword(err)
+	}
+
+	// Build the user model
+	user := &models.User{
+		Username:  request.Username,
+		Email:     request.Email,
+		UserType:  request.UserType,
+		PatientID: fhirPatient.ID,
+		Password:  hashedPassword,
+		TimeModel: models.TimeModel{
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		},
+	}
+
+	// Create user
+	userID, err := uc.UserRepository.CreateUser(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+
+	// Map the data into response output ready to be used by controller
+	response := &responses.RegisterUser{
+		UserID:    userID,
+		PatientID: fhirPatient.ID,
+	}
+
+	return response, nil
 }
 
 func (uc *authUsecase) LoginUser(ctx context.Context, request *requests.LoginUser) (*responses.LoginUser, error) {
@@ -208,85 +309,4 @@ func (uc *authUsecase) GetSessionData(ctx context.Context, sessionID string) (st
 		return "", exceptions.ErrTokenInvalid(err)
 	}
 	return sessionData, nil
-}
-
-func (uc *authUsecase) registerPatient(ctx context.Context, request *requests.RegisterUser) (*responses.RegisterUser, error) {
-	// Build FHIR patient request
-	fhirPatientRequest := utils.BuildFhirPatientRequest(request.Username, request.Email)
-
-	// Create FHIR patient to Spark and get the model
-	fhirPatient, err := uc.PatientFhirClient.CreatePatient(ctx, fhirPatientRequest)
-	if err != nil {
-		return nil, err
-	}
-
-	// Hash password
-	hashedPassword, err := utils.HashPassword(request.Password)
-	if err != nil {
-		return nil, exceptions.ErrHashPassword(err)
-	}
-
-	// Build the user model
-	user := &models.User{
-		Username:  request.Username,
-		Email:     request.Email,
-		UserType:  request.UserType,
-		PatientID: fhirPatient.ID,
-		Password:  hashedPassword,
-	}
-
-	// Create user
-	userID, err := uc.UserRepository.CreateUser(ctx, user)
-	if err != nil {
-		return nil, err
-	}
-
-	// Map the data into response output ready to be used by controller
-	response := &responses.RegisterUser{
-		UserID:    userID,
-		PatientID: fhirPatient.ID,
-	}
-
-	return response, nil
-}
-
-func (uc *authUsecase) registerClinician(ctx context.Context, request *requests.RegisterUser) (*responses.RegisterUser, error) {
-	// Build FHIR practitioner request
-	fhirPractitionerRequest := utils.BuildFhirPractitionerRequest(request.Username, request.Email)
-
-	// Create FHIR practitioner to Spark and get the model
-	fhirPractitioner, err := uc.PractitionerFhirClient.CreatePractitioner(ctx, fhirPractitionerRequest)
-	if err != nil {
-		return nil, err
-	}
-
-	// Hash password
-	hashedPassword, err := utils.HashPassword(request.Password)
-	if err != nil {
-		return nil, exceptions.ErrHashPassword(err)
-	}
-
-	// Build the user model
-	user := &models.User{
-		Username:       request.Username,
-		Email:          request.Email,
-		UserType:       request.UserType,
-		PractitionerID: fhirPractitioner.ID,
-		Password:       hashedPassword,
-		// Add ClinicianID if applicable
-	}
-
-	// Create user
-	userID, err := uc.UserRepository.CreateUser(ctx, user)
-	if err != nil {
-		return nil, err
-	}
-
-	// Map the data into response output ready to be used by controller
-	response := &responses.RegisterUser{
-		UserID:         userID,
-		PractitionerID: fhirPractitioner.ID, // Add ClinicianID if applicable
-	}
-
-	return response, nil
 }

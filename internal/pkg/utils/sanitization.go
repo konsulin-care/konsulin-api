@@ -14,6 +14,3 @@ func SanitizeRegisterUserRequest(input *requests.RegisterUser) {
 	input.Username = SanitizeString(input.Username)
 	input.UserType = SanitizeString(input.UserType)
 }
-func SanitizeLoginUserRequest(input *requests.LoginUser) {
-	input.UserType = SanitizeString(input.UserType)
-}

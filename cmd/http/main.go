@@ -24,6 +24,12 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// Version sets the default build version
+var Version = "develop"
+
+// Tag sets the default latest commit tag
+var Tag = "0.0.1-rc"
+
 func main() {
 	driverConfig := config.NewDriverConfig()
 	internalConfig := config.NewInternalConfig()
@@ -57,6 +63,8 @@ func main() {
 
 	go func() {
 		log.Printf("Server is running on port%s", internalConfig.App.Port)
+		log.Printf("Server Version: %s", Version)
+		log.Printf("Server Tag: %s", Tag)
 		err := server.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server failed to start: %v", err)
