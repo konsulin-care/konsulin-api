@@ -7,7 +7,8 @@ import (
 )
 
 type AuthUsecase interface {
-	RegisterUser(ctx context.Context, request *requests.RegisterUser) (*responses.RegisterUser, error)
+	RegisterPatient(ctx context.Context, request *requests.RegisterUser) (*responses.RegisterUser, error)
+	RegisterClinician(ctx context.Context, request *requests.RegisterUser) (*responses.RegisterUser, error)
 	LoginUser(ctx context.Context, request *requests.LoginUser) (*responses.LoginUser, error)
 	LogoutUser(ctx context.Context, sessionData string) error
 	GetSessionData(ctx context.Context, sessionID string) (sessionData string, err error)

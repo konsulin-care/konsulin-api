@@ -57,9 +57,9 @@ func (uc *userUsecase) UpdateUserProfileBySession(ctx context.Context, sessionDa
 
 	switch session.UserType {
 	case constvars.UserTypePractitioner:
-		return uc.updatePatientProfile(ctx, session, request)
-	case constvars.UserTypePatient:
 		return uc.updatePractitionerProfile(ctx, session, request)
+	case constvars.UserTypePatient:
+		return uc.updatePatientProfile(ctx, session, request)
 	default:
 		return nil, exceptions.ErrInvalidUserType(nil)
 	}

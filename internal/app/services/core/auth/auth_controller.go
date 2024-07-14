@@ -22,7 +22,7 @@ func NewAuthController(authUsecase AuthUsecase) *AuthController {
 	}
 }
 
-func (ctrl *AuthController) RegisterUser(w http.ResponseWriter, r *http.Request) {
+func (ctrl *AuthController) RegisterClinician(w http.ResponseWriter, r *http.Request) {
 	// Bind body to request
 	request := new(requests.RegisterUser)
 	err := json.NewDecoder(r.Body).Decode(&request)
@@ -30,10 +30,6 @@ func (ctrl *AuthController) RegisterUser(w http.ResponseWriter, r *http.Request)
 		utils.BuildErrorResponse(w, exceptions.ErrCannotParseJSON(err))
 		return
 	}
-
-	// Get query params and attach to request struct
-	queryParams := r.URL.Query()
-	request.UserType = queryParams.Get(constvars.QueryParamsUserType)
 
 	// Sanitize request
 	utils.SanitizeRegisterUserRequest(request)
@@ -49,7 +45,43 @@ func (ctrl *AuthController) RegisterUser(w http.ResponseWriter, r *http.Request)
 	defer cancel()
 
 	// Send it to be processed by usecase
-	response, err := ctrl.AuthUsecase.RegisterUser(ctx, request)
+	response, err := ctrl.AuthUsecase.RegisterClinician(ctx, request)
+	if err != nil {
+		if err == context.DeadlineExceeded {
+			utils.BuildErrorResponse(w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(w, err)
+		return
+	}
+
+	// Send response
+	utils.BuildSuccessResponse(w, constvars.StatusCreated, constvars.UserCreatedSuccess, response)
+}
+
+func (ctrl *AuthController) RegisterPatient(w http.ResponseWriter, r *http.Request) {
+	// Bind body to request
+	request := new(requests.RegisterUser)
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		utils.BuildErrorResponse(w, exceptions.ErrCannotParseJSON(err))
+		return
+	}
+	// Sanitize request
+	utils.SanitizeRegisterUserRequest(request)
+
+	// Validate request
+	err = utils.ValidateStruct(request)
+	if err != nil {
+		utils.BuildErrorResponse(w, exceptions.ErrInputValidation(err))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Send it to be processed by usecase
+	response, err := ctrl.AuthUsecase.RegisterPatient(ctx, request)
 	if err != nil {
 		if err == context.DeadlineExceeded {
 			utils.BuildErrorResponse(w, exceptions.ErrServerDeadlineExceeded(err))
@@ -71,12 +103,6 @@ func (ctrl *AuthController) LoginUser(w http.ResponseWriter, r *http.Request) {
 		utils.BuildErrorResponse(w, exceptions.ErrCannotParseJSON(err))
 		return
 	}
-
-	// Get query params and attach to request struct
-	queryParams := r.URL.Query()
-	request.UserType = queryParams.Get(constvars.QueryParamsUserType)
-
-	utils.SanitizeLoginUserRequest(request)
 
 	// Validate request
 	err = utils.ValidateStruct(request)

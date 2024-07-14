@@ -2,6 +2,7 @@ package users
 
 import (
 	"context"
+	"fmt"
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
@@ -26,6 +27,10 @@ func (repo *UserMongoRepository) CreateUser(ctx context.Context, userModel *mode
 	if err != nil {
 		return "", exceptions.ErrMongoDBInsertDocument(err)
 	}
+
+	insertedID := result.InsertedID
+	fmt.Printf("InsertedID Type: %T, Value: %v\n", insertedID, insertedID) // Debug statement
+
 	return result.InsertedID.(primitive.ObjectID).Hex(), nil
 }
 
