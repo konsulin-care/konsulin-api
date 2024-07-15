@@ -38,13 +38,13 @@ func (uc *userUsecase) GetUserProfileBySession(ctx context.Context, sessionData 
 		return nil, exceptions.ErrCannotParseJSON(err)
 	}
 
-	switch session.UserType {
-	case constvars.UserTypePractitioner:
+	switch session.RoleName {
+	case constvars.RoleTypePractitioner:
 		return uc.getPractitionerProfile(ctx, session)
-	case constvars.UserTypePatient:
+	case constvars.RoleTypePatient:
 		return uc.getPatientProfile(ctx, session)
 	default:
-		return nil, exceptions.ErrInvalidUserType(nil)
+		return nil, exceptions.ErrInvalidRoleType(nil)
 	}
 }
 
@@ -55,13 +55,13 @@ func (uc *userUsecase) UpdateUserProfileBySession(ctx context.Context, sessionDa
 		return nil, exceptions.ErrCannotParseJSON(err)
 	}
 
-	switch session.UserType {
-	case constvars.UserTypePractitioner:
+	switch session.RoleName {
+	case constvars.RoleTypePractitioner:
 		return uc.updatePractitionerProfile(ctx, session, request)
-	case constvars.UserTypePatient:
+	case constvars.RoleTypePatient:
 		return uc.updatePatientProfile(ctx, session, request)
 	default:
-		return nil, exceptions.ErrInvalidUserType(nil)
+		return nil, exceptions.ErrInvalidRoleType(nil)
 	}
 }
 

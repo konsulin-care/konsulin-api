@@ -1,6 +1,7 @@
 package constvars
 
 const (
-	UserTypePractitioner = "practitioner"
-	UserTypePatient      = "patient"
+	RoleTypeSuperAdmin   = "super_admin"
+	RoleTypePractitioner = "practitioner"
+	RoleTypePatient      = "patient"
 )

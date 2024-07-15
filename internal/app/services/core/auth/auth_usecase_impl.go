@@ -10,6 +10,7 @@ import (
 	"konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
 	"konsulin-service/internal/app/services/shared/redis"
+	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
@@ -83,7 +84,7 @@ func (uc *authUsecase) RegisterClinician(ctx context.Context, request *requests.
 	// Build FHIR practitioner request
 	fhirPractitionerRequest := utils.BuildFhirPractitionerRequest(request.Username, request.Email)
 
-	// Create FHIR practitioner to Spark and get the model
+	// Create FHIR practitioner to Spark and get the response
 	fhirPractitioner, err := uc.PractitionerFhirClient.CreatePractitioner(ctx, fhirPractitionerRequest)
 	if err != nil {
 		return nil, err
@@ -95,18 +96,23 @@ func (uc *authUsecase) RegisterClinician(ctx context.Context, request *requests.
 		return nil, exceptions.ErrHashPassword(err)
 	}
 
+	// Find the practitioner role
+	role, err := uc.RoleRepository.FindByName(ctx, constvars.RoleTypePractitioner)
+	if err != nil {
+		return nil, err
+	}
+
 	// Build the user model
 	user := &models.User{
 		Username:       request.Username,
 		Email:          request.Email,
-		UserType:       request.UserType,
+		RoleID:         role.ID,
 		PractitionerID: fhirPractitioner.ID,
 		Password:       hashedPassword,
 		TimeModel: models.TimeModel{
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		},
-		// Add ClinicianID if applicable
 	}
 
 	// Create user
@@ -152,7 +158,7 @@ func (uc *authUsecase) RegisterPatient(ctx context.Context, request *requests.Re
 	// Build FHIR patient request
 	fhirPatientRequest := utils.BuildFhirPatientRequest(request.Username, request.Email)
 
-	// Create FHIR patient to Spark and get the model
+	// Create FHIR patient to Spark and get the response
 	fhirPatient, err := uc.PatientFhirClient.CreatePatient(ctx, fhirPatientRequest)
 	if err != nil {
 		return nil, err
@@ -164,11 +170,17 @@ func (uc *authUsecase) RegisterPatient(ctx context.Context, request *requests.Re
 		return nil, exceptions.ErrHashPassword(err)
 	}
 
+	// Find the patient role
+	role, err := uc.RoleRepository.FindByName(ctx, constvars.RoleTypePatient)
+	if err != nil {
+		return nil, err
+	}
+
 	// Build the user model
 	user := &models.User{
 		Username:  request.Username,
 		Email:     request.Email,
-		UserType:  request.UserType,
+		RoleID:    role.ID,
 		PatientID: fhirPatient.ID,
 		Password:  hashedPassword,
 		TimeModel: models.TimeModel{
@@ -192,7 +204,7 @@ func (uc *authUsecase) RegisterPatient(ctx context.Context, request *requests.Re
 	return response, nil
 }
 
-func (uc *authUsecase) LoginUser(ctx context.Context, request *requests.LoginUser) (*responses.LoginUser, error) {
+func (uc *authUsecase) LoginPatient(ctx context.Context, request *requests.LoginUser) (*responses.LoginUser, error) {
 	// Get user by username
 	user, err := uc.UserRepository.FindByUsername(ctx, request.Username)
 	if err != nil {
@@ -201,8 +213,75 @@ func (uc *authUsecase) LoginUser(ctx context.Context, request *requests.LoginUse
 	if user == nil {
 		return nil, exceptions.ErrInvalidUsernameOrPassword(nil)
 	}
-	if user.UserType != request.UserType {
-		return nil, exceptions.ErrNotMatchUserType(nil)
+
+	role, err := uc.RoleRepository.FindRoleByID(ctx, user.RoleID)
+	if err != nil {
+		return nil, err
+	}
+
+	if role.IsNotPatient() {
+		return nil, exceptions.ErrNotMatchRoleType(nil)
+	}
+
+	// Check password
+	if !utils.CheckPasswordHash(request.Password, user.Password) {
+		return nil, exceptions.ErrInvalidUsernameOrPassword(nil)
+	}
+
+	// Generate a UUID for the session key
+	sessionID := uuid.New().String()
+
+	// Create session data
+	sessionData := models.Session{
+		UserID:    user.ID,
+		PatientID: user.PatientID,
+		RoleID:    role.ID,
+		RoleName:  role.Name,
+		SessionID: sessionID,
+	}
+
+	// Store session data in Redis
+	err = uc.RedisRepository.Set(ctx, sessionID, sessionData, time.Hour)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a JWT token
+	tokenString, err := utils.GenerateJWT(sessionID, uc.InternalConfig.JWT.Secret)
+	if err != nil {
+		return nil, err
+	}
+
+	response := &responses.LoginUser{
+		Token: tokenString,
+		LoginUserData: responses.LoginUserData{
+			Name:     user.Name,
+			Email:    user.Email,
+			UserID:   user.ID,
+			RoleID:   role.ID,
+			RoleName: role.Name,
+		},
+	}
+	return response, nil
+}
+
+func (uc *authUsecase) LoginClinician(ctx context.Context, request *requests.LoginUser) (*responses.LoginUser, error) {
+	// Get user by username
+	user, err := uc.UserRepository.FindByUsername(ctx, request.Username)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, exceptions.ErrInvalidUsernameOrPassword(nil)
+	}
+
+	role, err := uc.RoleRepository.FindRoleByID(ctx, user.RoleID)
+	if err != nil {
+		return nil, err
+	}
+
+	if role.IsNotPractitioner() {
+		return nil, exceptions.ErrNotMatchRoleType(nil)
 	}
 
 	// Check password
@@ -216,9 +295,9 @@ func (uc *authUsecase) LoginUser(ctx context.Context, request *requests.LoginUse
 	// Create session data
 	sessionData := models.Session{
 		UserID:         user.ID,
-		PatientID:      user.PatientID,
 		PractitionerID: user.PractitionerID,
-		UserType:       user.UserType,
+		RoleID:         role.ID,
+		RoleName:       role.Name,
 		SessionID:      sessionID,
 	}
 
@@ -235,9 +314,14 @@ func (uc *authUsecase) LoginUser(ctx context.Context, request *requests.LoginUse
 	}
 
 	response := &responses.LoginUser{
-		Token:    tokenString,
-		UserID:   sessionData.UserID,
-		UserType: sessionData.UserType,
+		Token: tokenString,
+		LoginUserData: responses.LoginUserData{
+			Name:     user.Name,
+			Email:    user.Email,
+			UserID:   user.ID,
+			RoleID:   role.ID,
+			RoleName: role.Name,
+		},
 	}
 	return response, nil
 }

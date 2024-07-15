@@ -9,7 +9,8 @@ import (
 type AuthUsecase interface {
 	RegisterPatient(ctx context.Context, request *requests.RegisterUser) (*responses.RegisterUser, error)
 	RegisterClinician(ctx context.Context, request *requests.RegisterUser) (*responses.RegisterUser, error)
-	LoginUser(ctx context.Context, request *requests.LoginUser) (*responses.LoginUser, error)
+	LoginPatient(ctx context.Context, request *requests.LoginUser) (*responses.LoginUser, error)
+	LoginClinician(ctx context.Context, request *requests.LoginUser) (*responses.LoginUser, error)
 	LogoutUser(ctx context.Context, sessionData string) error
 	GetSessionData(ctx context.Context, sessionID string) (sessionData string, err error)
 	IsUserHasPermission(ctx context.Context, request requests.AuthorizeUser) (hasPermission bool, err error)

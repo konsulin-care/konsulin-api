@@ -7,7 +7,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func NewLogger(internalConfig *config.InternalConfig) *logrus.Logger {
+func NewLogrusLogger(internalConfig *config.InternalConfig) *logrus.Logger {
 	logger := logrus.New()
 	switch internalConfig.App.Env {
 	case "production":

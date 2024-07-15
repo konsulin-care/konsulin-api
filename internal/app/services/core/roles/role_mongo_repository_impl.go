@@ -53,7 +53,7 @@ func (r *RoleMongoRepository) FindByName(ctx context.Context, roleName string) (
 	return role, nil
 }
 
-func (r *RoleMongoRepository) GetRoleByID(ctx context.Context, roleID string) (*models.Role, error) {
+func (r *RoleMongoRepository) FindRoleByID(ctx context.Context, roleID string) (*models.Role, error) {
 	role := new(models.Role)
 	objectID, err := primitive.ObjectIDFromHex(roleID)
 	if err != nil {

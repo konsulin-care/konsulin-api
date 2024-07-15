@@ -26,6 +26,7 @@ type (
 	DriverConfig struct {
 		MongoDB MongoDB
 		Redis   Redis
+		Logger  Logger
 	}
 
 	App struct {
@@ -52,6 +53,11 @@ type (
 		Host     string
 		Port     string
 		Password string
+	}
+	Logger struct {
+		Level               string
+		OutputFileName      string
+		OutputErrorFileName string
 	}
 	FHIR struct {
 		BaseUrl string
