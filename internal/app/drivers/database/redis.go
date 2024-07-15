@@ -12,7 +12,7 @@ import (
 func NewRedisClient(driverConfig *config.DriverConfig, log *logrus.Logger) *redis.Client {
 	var ctx = context.Background()
 	rdb := redis.NewClient(&redis.Options{
-		Addr:     fmt.Sprintf("localhost:%s", driverConfig.Redis.Port),
+		Addr:     fmt.Sprintf("%s:%s", driverConfig.Redis.Host, driverConfig.Redis.Port),
 		Password: driverConfig.Redis.Password,
 	})
 
