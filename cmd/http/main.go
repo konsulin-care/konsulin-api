@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/delivery/http/middlewares"
 	"konsulin-service/internal/app/delivery/http/routers"
@@ -57,12 +58,12 @@ func main() {
 	})
 
 	server := &http.Server{
-		Addr:    internalConfig.App.Port,
+		Addr:    fmt.Sprintf("%s:%s", internalConfig.App.Address, internalConfig.App.Port),
 		Handler: chiRouter,
 	}
 
 	go func() {
-		log.Printf("Server is running on port%s", internalConfig.App.Port)
+		log.Printf("Server is running on port: %s", internalConfig.App.Port)
 		log.Printf("Server Version: %s", Version)
 		log.Printf("Server Tag: %s", Tag)
 		err := server.ListenAndServe()

@@ -20,6 +20,7 @@ func NewDriverConfig() *DriverConfig {
 			Password: utils.GetEnvString("MONGODB_PASSWORD", "defaultPassword"),
 		},
 		Redis: Redis{
+			Host:     utils.GetEnvString("REDIS_HOST", "localhost"),
 			Port:     utils.GetEnvString("REDIS_PORT", "6379"),
 			Password: utils.GetEnvString("REDIS_PASSWORD", "customRedisPass"),
 		},
@@ -32,6 +33,7 @@ func NewInternalConfig() *InternalConfig {
 			Env:                        utils.GetEnvString("APP_ENV", "v1.0"),
 			Port:                       utils.GetEnvString("APP_PORT", ":8080"),
 			Version:                    utils.GetEnvString("APP_VERSION", "v1.0"),
+			Address:                    utils.GetEnvString("APP_ADDRESS", "localhost"),
 			Timezone:                   utils.GetEnvString("APP_TIMEZONE", "Asia/Jakarta"),
 			EndpointPrefix:             utils.GetEnvString("APP_ENDPOINT_PREFIX", "/v1"),
 			MaxRequests:                utils.GetEnvInt("APP_MAX_REQUEST", 10),

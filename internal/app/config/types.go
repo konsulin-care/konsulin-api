@@ -32,6 +32,7 @@ type (
 		Env                        string
 		Port                       string
 		Version                    string
+		Address                    string
 		Timezone                   string
 		EndpointPrefix             string
 		MaxRequests                int
@@ -48,6 +49,7 @@ type (
 		Password string
 	}
 	Redis struct {
+		Host     string
 		Port     string
 		Password string
 	}
