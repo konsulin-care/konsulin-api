@@ -15,9 +15,8 @@ type User struct {
 	Username       string `bson:"username"`
 	Password       string `bson:"password"`
 	WhatsAppNumber string `bson:"whatsAppNumber"`
-	OTP            string `bson:"otp"`
-	UserType       string `bson:"userType"`
-	PatientID      string `bson:"patientId"`
-	PractitionerID string `bson:"practitionerId"`
+	PatientID      string `bson:"patientId,omitempty"`
+	PractitionerID string `bson:"practitionerId,omitempty"`
+	Role           `bson:"user_role,omitempty"`
 	TimeModel      `bson:",inline"`
 }

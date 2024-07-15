@@ -95,7 +95,7 @@ func (ctrl *AuthController) RegisterPatient(w http.ResponseWriter, r *http.Reque
 	utils.BuildSuccessResponse(w, constvars.StatusCreated, constvars.UserCreatedSuccess, response)
 }
 
-func (ctrl *AuthController) LoginUser(w http.ResponseWriter, r *http.Request) {
+func (ctrl *AuthController) LoginPatient(w http.ResponseWriter, r *http.Request) {
 	// Bind body to request
 	request := new(requests.LoginUser)
 	err := json.NewDecoder(r.Body).Decode(&request)
@@ -115,7 +115,41 @@ func (ctrl *AuthController) LoginUser(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	// Send request to be processed by usecase
-	response, err := ctrl.AuthUsecase.LoginUser(ctx, request)
+	response, err := ctrl.AuthUsecase.LoginPatient(ctx, request)
+	if err != nil {
+		if err == context.DeadlineExceeded {
+			utils.BuildErrorResponse(w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(w, err)
+		return
+	}
+
+	// Send response
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.LoginSuccess, response)
+}
+
+func (ctrl *AuthController) LoginClinician(w http.ResponseWriter, r *http.Request) {
+	// Bind body to request
+	request := new(requests.LoginUser)
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		utils.BuildErrorResponse(w, exceptions.ErrCannotParseJSON(err))
+		return
+	}
+
+	// Validate request
+	err = utils.ValidateStruct(request)
+	if err != nil {
+		utils.BuildErrorResponse(w, exceptions.ErrInputValidation(err))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Send request to be processed by usecase
+	response, err := ctrl.AuthUsecase.LoginClinician(ctx, request)
 	if err != nil {
 		if err == context.DeadlineExceeded {
 			utils.BuildErrorResponse(w, exceptions.ErrServerDeadlineExceeded(err))

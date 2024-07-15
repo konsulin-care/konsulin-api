@@ -84,25 +84,25 @@ var (
 		}
 		return WrapWithoutError(constvars.StatusUnauthorized, constvars.ErrClientNotLoggedIn, constvars.ErrDevAuthTokenInvalid)
 	}
-	ErrInvalidUserType = func(err error) *CustomError {
+	ErrInvalidRoleType = func(err error) *CustomError {
 		if err != nil {
-			return WrapWithError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevInvalidUserType)
+			return WrapWithError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevInvalidRoleType)
 		}
-		return WrapWithoutError(constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevInvalidUserType)
+		return WrapWithoutError(constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevInvalidRoleType)
 	}
-	ErrNotMatchUserType = func(err error) *CustomError {
+	ErrNotMatchRoleType = func(err error) *CustomError {
 		if err != nil {
-			return WrapWithError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevUserTypeDoesntMatch)
+			return WrapWithError(err, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, constvars.ErrDevRoleTypeDoesntMatch)
 		}
-		return WrapWithoutError(constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevUserTypeDoesntMatch)
+		return WrapWithoutError(constvars.StatusForbidden, constvars.ErrClientNotAuthorized, constvars.ErrDevRoleTypeDoesntMatch)
 	}
 
 	// Auth
 	ErrAuthInvalidRole = func(err error) *CustomError {
 		if err != nil {
-			return WrapWithError(err, constvars.StatusBadRequest, constvars.ErrClientNotAuthorized, constvars.ErrDevUserTypeDoesntMatch)
+			return WrapWithError(err, constvars.StatusBadRequest, constvars.ErrClientNotAuthorized, constvars.ErrDevRoleTypeDoesntMatch)
 		}
-		return WrapWithoutError(constvars.StatusBadRequest, constvars.ErrClientNotAuthorized, constvars.ErrDevUserTypeDoesntMatch)
+		return WrapWithoutError(constvars.StatusBadRequest, constvars.ErrClientNotAuthorized, constvars.ErrDevRoleTypeDoesntMatch)
 	}
 
 	// Mongo DB

@@ -35,7 +35,7 @@ func main() {
 	driverConfig := config.NewDriverConfig()
 	internalConfig := config.NewInternalConfig()
 
-	log := logger.NewLogger(internalConfig)
+	log := logger.NewLogrusLogger(internalConfig)
 
 	location, err := time.LoadLocation(internalConfig.App.Timezone)
 	if err != nil {

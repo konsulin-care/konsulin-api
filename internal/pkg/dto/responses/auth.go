@@ -7,7 +7,15 @@ type RegisterUser struct {
 }
 
 type LoginUser struct {
-	Token    string `json:"token"`
-	UserID   string `json:"user_id"`
-	UserType string `json:"user_type"`
+	Token         string        `json:"token"`
+	LoginUserData LoginUserData `json:"user"`
+}
+
+type LoginUserData struct {
+	Name           string `json:"name"`
+	Email          string `json:"email"`
+	UserID         string `json:"user_id"`
+	RoleID         string `json:"role_id"`
+	RoleName       string `json:"role_name"`
+	ProfilePicture string `json:"profile_picture,omitempty"`
 }
