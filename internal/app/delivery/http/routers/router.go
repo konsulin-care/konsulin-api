@@ -11,13 +11,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
 	"github.com/go-chi/httprate"
-	"github.com/sirupsen/logrus"
 )
 
 func SetupRoutes(
 	router *chi.Mux,
 	internalConfig *config.InternalConfig,
-	log *logrus.Logger,
 	middlewares *middlewares.Middlewares,
 	userController *users.UserController,
 	authController *auth.AuthController,

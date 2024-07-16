@@ -1,6 +1,6 @@
 .env
 
-logrus.log
+*.log
 
 .air.toml
 
