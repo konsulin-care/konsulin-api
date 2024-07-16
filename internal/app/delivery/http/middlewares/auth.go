@@ -10,10 +10,13 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"go.uber.org/zap"
 )
 
-func NewMiddlewares(authUsecase auth.AuthUsecase, internalConfig *config.InternalConfig) *Middlewares {
+func NewMiddlewares(logger *zap.Logger, authUsecase auth.AuthUsecase, internalConfig *config.InternalConfig) *Middlewares {
 	return &Middlewares{
+		Log:            logger,
 		AuthUsecase:    authUsecase,
 		InternalConfig: internalConfig,
 	}
@@ -22,14 +25,14 @@ func (m *Middlewares) Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
-			utils.BuildErrorResponse(w, exceptions.ErrTokenMissing(nil))
+			utils.BuildErrorResponse(m.Log, w, exceptions.ErrTokenMissing(nil))
 			return
 		}
 
 		token := strings.TrimPrefix(authHeader, "Bearer ")
 		sessionID, err := utils.ParseJWT(token, m.InternalConfig.JWT.Secret)
 		if err != nil {
-			utils.BuildErrorResponse(w, err)
+			utils.BuildErrorResponse(m.Log, w, err)
 			return
 		}
 
@@ -39,10 +42,10 @@ func (m *Middlewares) Authenticate(next http.Handler) http.Handler {
 		sessionData, err := m.AuthUsecase.GetSessionData(ctx, sessionID)
 		if err != nil {
 			if err == context.DeadlineExceeded {
-				utils.BuildErrorResponse(w, exceptions.ErrServerDeadlineExceeded(err))
+				utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerDeadlineExceeded(err))
 				return
 			}
-			utils.BuildErrorResponse(w, err)
+			utils.BuildErrorResponse(m.Log, w, err)
 			return
 		}
 
@@ -66,7 +69,7 @@ func (m *Middlewares) Authorize(resource, requiredAction string) func(http.Handl
 			}
 			hasPermission, err := m.AuthUsecase.IsUserHasPermission(ctx, request)
 			if !hasPermission && err != nil {
-				utils.BuildErrorResponse(w, err)
+				utils.BuildErrorResponse(m.Log, w, err)
 				return
 			}
 

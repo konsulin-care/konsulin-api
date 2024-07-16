@@ -8,7 +8,7 @@ import (
 	"net/http"
 
 	"github.com/goccy/go-json"
-	"github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 )
 
 func BuildSuccessResponse(w http.ResponseWriter, code int, message string, data interface{}) {
@@ -22,7 +22,7 @@ func BuildSuccessResponse(w http.ResponseWriter, code int, message string, data 
 	json.NewEncoder(w).Encode(response)
 }
 
-func BuildErrorResponse(w http.ResponseWriter, err error) {
+func BuildErrorResponse(log *zap.Logger, w http.ResponseWriter, err error) {
 	code := constvars.StatusInternalServerError
 	clientMessage := constvars.ErrClientSomethingWrongWithApplication
 
@@ -30,15 +30,17 @@ func BuildErrorResponse(w http.ResponseWriter, err error) {
 	if errors.As(err, &customErr) {
 		code = customErr.StatusCode
 		clientMessage = customErr.ClientMessage
-		logrus.WithFields(logrus.Fields{
-			"location": logrus.Fields{
-				"file":          customErr.Location.File,
-				"line":          customErr.Location.Line,
-				"function_name": customErr.Location.FunctionName,
-			},
-		}).Error(customErr.DevMessage)
+		location := map[string]interface{}{
+			"file":          customErr.Location.File,
+			"line":          customErr.Location.Line,
+			"function_name": customErr.Location.FunctionName,
+		}
+
+		log.Error(customErr.DevMessage,
+			zap.Any("location", location),
+		)
 	} else {
-		logrus.Error(err)
+		log.Error(err.Error())
 	}
 
 	w.Header().Set(constvars.HeaderContentType, constvars.MIMEApplicationJSON)
@@ -47,6 +49,12 @@ func BuildErrorResponse(w http.ResponseWriter, err error) {
 		StatusCode:    code,
 		Success:       false,
 		ClientMessage: clientMessage,
+	}
+
+	appEnvironment := GetEnvString("APP_ENV", "development")
+	if appEnvironment != "production" {
+		response.DevMessage = customErr.DevMessage
+		response.Location = customErr.Location
 	}
 	json.NewEncoder(w).Encode(response)
 }

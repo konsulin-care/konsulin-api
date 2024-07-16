@@ -10,14 +10,17 @@ import (
 	"time"
 
 	"github.com/goccy/go-json"
+	"go.uber.org/zap"
 )
 
 type AuthController struct {
+	Log         *zap.Logger
 	AuthUsecase AuthUsecase
 }
 
-func NewAuthController(authUsecase AuthUsecase) *AuthController {
+func NewAuthController(logger *zap.Logger, authUsecase AuthUsecase) *AuthController {
 	return &AuthController{
+		Log:         logger,
 		AuthUsecase: authUsecase,
 	}
 }
@@ -27,7 +30,7 @@ func (ctrl *AuthController) RegisterClinician(w http.ResponseWriter, r *http.Req
 	request := new(requests.RegisterUser)
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		utils.BuildErrorResponse(w, exceptions.ErrCannotParseJSON(err))
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
 		return
 	}
 
@@ -37,7 +40,7 @@ func (ctrl *AuthController) RegisterClinician(w http.ResponseWriter, r *http.Req
 	// Validate request
 	err = utils.ValidateStruct(request)
 	if err != nil {
-		utils.BuildErrorResponse(w, exceptions.ErrInputValidation(err))
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
 		return
 	}
 
@@ -48,10 +51,10 @@ func (ctrl *AuthController) RegisterClinician(w http.ResponseWriter, r *http.Req
 	response, err := ctrl.AuthUsecase.RegisterClinician(ctx, request)
 	if err != nil {
 		if err == context.DeadlineExceeded {
-			utils.BuildErrorResponse(w, exceptions.ErrServerDeadlineExceeded(err))
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
 			return
 		}
-		utils.BuildErrorResponse(w, err)
+		utils.BuildErrorResponse(ctrl.Log, w, err)
 		return
 	}
 
@@ -64,7 +67,7 @@ func (ctrl *AuthController) RegisterPatient(w http.ResponseWriter, r *http.Reque
 	request := new(requests.RegisterUser)
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		utils.BuildErrorResponse(w, exceptions.ErrCannotParseJSON(err))
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
 		return
 	}
 	// Sanitize request
@@ -73,7 +76,7 @@ func (ctrl *AuthController) RegisterPatient(w http.ResponseWriter, r *http.Reque
 	// Validate request
 	err = utils.ValidateStruct(request)
 	if err != nil {
-		utils.BuildErrorResponse(w, exceptions.ErrInputValidation(err))
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
 		return
 	}
 
@@ -84,10 +87,10 @@ func (ctrl *AuthController) RegisterPatient(w http.ResponseWriter, r *http.Reque
 	response, err := ctrl.AuthUsecase.RegisterPatient(ctx, request)
 	if err != nil {
 		if err == context.DeadlineExceeded {
-			utils.BuildErrorResponse(w, exceptions.ErrServerDeadlineExceeded(err))
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
 			return
 		}
-		utils.BuildErrorResponse(w, err)
+		utils.BuildErrorResponse(ctrl.Log, w, err)
 		return
 	}
 
@@ -100,14 +103,14 @@ func (ctrl *AuthController) LoginPatient(w http.ResponseWriter, r *http.Request)
 	request := new(requests.LoginUser)
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		utils.BuildErrorResponse(w, exceptions.ErrCannotParseJSON(err))
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
 		return
 	}
 
 	// Validate request
 	err = utils.ValidateStruct(request)
 	if err != nil {
-		utils.BuildErrorResponse(w, exceptions.ErrInputValidation(err))
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
 		return
 	}
 
@@ -118,10 +121,10 @@ func (ctrl *AuthController) LoginPatient(w http.ResponseWriter, r *http.Request)
 	response, err := ctrl.AuthUsecase.LoginPatient(ctx, request)
 	if err != nil {
 		if err == context.DeadlineExceeded {
-			utils.BuildErrorResponse(w, exceptions.ErrServerDeadlineExceeded(err))
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
 			return
 		}
-		utils.BuildErrorResponse(w, err)
+		utils.BuildErrorResponse(ctrl.Log, w, err)
 		return
 	}
 
@@ -134,14 +137,14 @@ func (ctrl *AuthController) LoginClinician(w http.ResponseWriter, r *http.Reques
 	request := new(requests.LoginUser)
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		utils.BuildErrorResponse(w, exceptions.ErrCannotParseJSON(err))
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
 		return
 	}
 
 	// Validate request
 	err = utils.ValidateStruct(request)
 	if err != nil {
-		utils.BuildErrorResponse(w, exceptions.ErrInputValidation(err))
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
 		return
 	}
 
@@ -152,10 +155,10 @@ func (ctrl *AuthController) LoginClinician(w http.ResponseWriter, r *http.Reques
 	response, err := ctrl.AuthUsecase.LoginClinician(ctx, request)
 	if err != nil {
 		if err == context.DeadlineExceeded {
-			utils.BuildErrorResponse(w, exceptions.ErrServerDeadlineExceeded(err))
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
 			return
 		}
-		utils.BuildErrorResponse(w, err)
+		utils.BuildErrorResponse(ctrl.Log, w, err)
 		return
 	}
 
@@ -173,10 +176,10 @@ func (ctrl *AuthController) Logout(w http.ResponseWriter, r *http.Request) {
 	err := ctrl.AuthUsecase.LogoutUser(ctx, sessionData)
 	if err != nil {
 		if err == context.DeadlineExceeded {
-			utils.BuildErrorResponse(w, exceptions.ErrServerDeadlineExceeded(err))
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
 			return
 		}
-		utils.BuildErrorResponse(w, err)
+		utils.BuildErrorResponse(ctrl.Log, w, err)
 		return
 	}
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.LogoutSuccess, nil)

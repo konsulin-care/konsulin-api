@@ -3,8 +3,8 @@ package config
 import (
 	"github.com/go-chi/chi/v5"
 	"github.com/redis/go-redis/v9"
-	"github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.uber.org/zap"
 )
 
 type (
@@ -12,7 +12,7 @@ type (
 		Router         *chi.Mux
 		MongoDB        *mongo.Database
 		Redis          *redis.Client
-		Logger         *logrus.Logger
+		Logger         *zap.Logger
 		DriverConfig   *DriverConfig
 		InternalConfig *InternalConfig
 	}

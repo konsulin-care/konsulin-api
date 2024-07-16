@@ -3,6 +3,7 @@ package logger
 import (
 	"konsulin-service/internal/app/config"
 	"log"
+	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -23,33 +24,17 @@ func NewZapLogger(driverConfig *config.DriverConfig, internalConfig *config.Inte
 		logLevel = zap.InfoLevel
 	}
 
-	var outputPaths []string
-	var errorOutputPaths []string
-
-	switch internalConfig.App.Env {
-	case "development":
-		outputPaths = []string{"stdout"}
-		errorOutputPaths = []string{"stderr"}
-	case "production":
-		outputPaths = []string{driverConfig.Logger.OutputFileName}
-		errorOutputPaths = []string{"stderr", driverConfig.Logger.OutputErrorFileName}
-	default:
-		outputPaths = []string{"stdout"}
-		errorOutputPaths = []string{"stderr"}
-	}
-
 	encoderConfig := zapcore.EncoderConfig{
 		TimeKey:        "time",
 		LevelKey:       "level",
 		NameKey:        "logger",
 		CallerKey:      "caller",
 		MessageKey:     "msg",
-		StacktraceKey:  "stacktrace",
 		LineEnding:     zapcore.DefaultLineEnding,
-		EncodeLevel:    zapcore.LowercaseLevelEncoder,
-		EncodeTime:     zapcore.ISO8601TimeEncoder,
+		EncodeTime:     customTimeEncoder,
 		EncodeDuration: zapcore.StringDurationEncoder,
 		EncodeCaller:   zapcore.ShortCallerEncoder,
+		EncodeLevel:    customLevelEncoder,
 	}
 
 	cfg := zap.Config{
@@ -57,8 +42,14 @@ func NewZapLogger(driverConfig *config.DriverConfig, internalConfig *config.Inte
 		Development:      internalConfig.App.Env == "development",
 		Encoding:         "json",
 		EncoderConfig:    encoderConfig,
-		OutputPaths:      outputPaths,
-		ErrorOutputPaths: errorOutputPaths,
+		OutputPaths:      []string{"stdout"},
+		ErrorOutputPaths: []string{"stderr"},
+	}
+
+	if internalConfig.App.Env == "production" {
+		cfg.OutputPaths = []string{driverConfig.Logger.OutputFileName}
+		cfg.ErrorOutputPaths = []string{"stderr", driverConfig.Logger.OutputErrorFileName}
+		encoderConfig.EncodeLevel = zapcore.LowercaseLevelEncoder
 	}
 
 	zapLogger, err := cfg.Build()
@@ -66,4 +57,12 @@ func NewZapLogger(driverConfig *config.DriverConfig, internalConfig *config.Inte
 		log.Fatalf("Error while initializing zap logger: %v", err)
 	}
 	return zapLogger
+}
+
+func customTimeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
+	enc.AppendString(t.Format("2006/01/02 15:04:05"))
+}
+
+func customLevelEncoder(level zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
+	enc.AppendString(level.CapitalString())
 }

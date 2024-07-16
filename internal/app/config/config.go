@@ -24,6 +24,11 @@ func NewDriverConfig() *DriverConfig {
 			Port:     utils.GetEnvString("REDIS_PORT", "6379"),
 			Password: utils.GetEnvString("REDIS_PASSWORD", "customRedisPass"),
 		},
+		Logger: Logger{
+			Level:               utils.GetEnvString("LOGGER_LEVEL", "debug"),
+			OutputFileName:      utils.GetEnvString("LOGGER_OUTPUT_FILENAME", "logger.log"),
+			OutputErrorFileName: utils.GetEnvString("LOGGER_OUTPUT_ERROR_FILENAME", "logger_error.log"),
+		},
 	}
 }
 

@@ -15,6 +15,7 @@ import (
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
 	"konsulin-service/internal/app/services/shared/redis"
 	"konsulin-service/internal/pkg/constvars"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -22,7 +23,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/sirupsen/logrus"
 )
 
 // Version sets the default build version
@@ -35,7 +35,8 @@ func main() {
 	driverConfig := config.NewDriverConfig()
 	internalConfig := config.NewInternalConfig()
 
-	log := logger.NewLogrusLogger(internalConfig)
+	logger := logger.NewZapLogger(driverConfig, internalConfig)
+	defer logger.Sync()
 
 	location, err := time.LoadLocation(internalConfig.App.Timezone)
 	if err != nil {
@@ -44,15 +45,15 @@ func main() {
 	time.Local = location
 	log.Printf("Successfully set time base to %s", internalConfig.App.Timezone)
 
-	mongoDB := database.NewMongoDB(driverConfig, log)
-	redis := database.NewRedisClient(driverConfig, log)
+	mongoDB := database.NewMongoDB(driverConfig)
+	redis := database.NewRedisClient(driverConfig)
 	chiRouter := chi.NewRouter()
 
 	bootstrapingTheApp(config.Bootstrap{
 		Router:         chiRouter,
 		MongoDB:        mongoDB,
 		Redis:          redis,
-		Logger:         log,
+		Logger:         logger,
 		DriverConfig:   driverConfig,
 		InternalConfig: internalConfig,
 	})
@@ -77,7 +78,7 @@ func main() {
 
 	<-c
 
-	logrus.Println("Waiting for pending requests that already received by server to be processed..")
+	log.Println("Waiting for pending requests that already received by server to be processed..")
 
 	shutdownCtx, cancel := context.WithTimeout(
 		context.Background(),
@@ -113,19 +114,19 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) {
 	// User
 	userMongoRepository := users.NewUserMongoRepository(bootstrap.MongoDB, bootstrap.DriverConfig.MongoDB.DbName)
 	userUseCase := users.NewUserUsecase(userMongoRepository, patientFhirClient, practitionerFhirClient)
-	userController := users.NewUserController(userUseCase)
+	userController := users.NewUserController(bootstrap.Logger, userUseCase)
 
 	roleMongoRepository := roles.NewRoleMongoRepository(bootstrap.MongoDB, bootstrap.DriverConfig.MongoDB.DbName)
 
 	// Auth
 	authUseCase, err := auth.NewAuthUsecase(userMongoRepository, redisRepository, roleMongoRepository, patientFhirClient, practitionerFhirClient, bootstrap.InternalConfig)
 	if err != nil {
-		bootstrap.Logger.Fatalln(err)
+		log.Fatal(err)
 	}
-	authController := auth.NewAuthController(authUseCase)
+	authController := auth.NewAuthController(bootstrap.Logger, authUseCase)
 
 	// Middlewares
-	middlewares := middlewares.NewMiddlewares(authUseCase, bootstrap.InternalConfig)
+	middlewares := middlewares.NewMiddlewares(bootstrap.Logger, authUseCase, bootstrap.InternalConfig)
 
-	routers.SetupRoutes(bootstrap.Router, bootstrap.InternalConfig, bootstrap.Logger, middlewares, userController, authController)
+	routers.SetupRoutes(bootstrap.Router, bootstrap.InternalConfig, middlewares, userController, authController)
 }
