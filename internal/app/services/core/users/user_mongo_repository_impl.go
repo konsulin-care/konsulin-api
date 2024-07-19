@@ -82,3 +82,16 @@ func (r *UserMongoRepository) UpdateUser(ctx context.Context, userID string, upd
 	}
 	return err
 }
+
+func (r *UserMongoRepository) FindByResetToken(token string) (*models.User, error) {
+	var user models.User
+	filter := bson.M{"resetToken": token}
+	err := r.Collection.FindOne(context.Background(), filter).Decode(&user)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, exceptions.ErrTokenInvalid(err)
+		}
+		return nil, err
+	}
+	return &user, nil
+}

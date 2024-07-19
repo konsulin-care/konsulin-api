@@ -17,6 +17,7 @@ type User struct {
 	WhatsAppNumber string `bson:"whatsAppNumber"`
 	PatientID      string `bson:"patientId,omitempty"`
 	PractitionerID string `bson:"practitionerId,omitempty"`
+	ResetToken     string `bson:"resetToken,omitempty"`
 	Role           `bson:"user_role,omitempty"`
 	TimeModel      `bson:",inline"`
 }
