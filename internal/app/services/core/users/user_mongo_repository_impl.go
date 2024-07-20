@@ -35,7 +35,7 @@ func (r *UserMongoRepository) FindByEmail(ctx context.Context, email string) (*m
 	err := r.Collection.FindOne(ctx, bson.M{"email": email}).Decode(&user)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			return nil, exceptions.ErrMongoDBFindDocument(err)
+			return nil, nil
 		}
 		return nil, exceptions.ErrMongoDBFindDocument(err)
 	}
@@ -47,14 +47,14 @@ func (r *UserMongoRepository) FindByUsername(ctx context.Context, username strin
 	err := r.Collection.FindOne(ctx, bson.M{"username": username}).Decode(&user)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			return nil, exceptions.ErrMongoDBFindDocument(err)
+			return nil, nil
 		}
 		return nil, exceptions.ErrMongoDBFindDocument(err)
 	}
 	return &user, nil
 }
 
-func (r *UserMongoRepository) GetUserByID(ctx context.Context, userID string) (*models.User, error) {
+func (r *UserMongoRepository) FindByID(ctx context.Context, userID string) (*models.User, error) {
 	var user models.User
 	objectID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
@@ -62,6 +62,9 @@ func (r *UserMongoRepository) GetUserByID(ctx context.Context, userID string) (*
 	}
 	err = r.Collection.FindOne(ctx, bson.M{"_id": objectID}).Decode(&user)
 	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, nil
+		}
 		return nil, exceptions.ErrMongoDBFindDocument(err)
 	}
 	return &user, nil
@@ -83,7 +86,7 @@ func (r *UserMongoRepository) FindByResetToken(ctx context.Context, token string
 	err := r.Collection.FindOne(ctx, filter).Decode(&user)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			return nil, exceptions.ErrMongoDBFindDocument(err)
+			return nil, nil
 		}
 		return nil, err
 	}

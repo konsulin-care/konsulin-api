@@ -25,7 +25,6 @@ func (uc *smtpUsecase) SendEmail(to, subject, body string) error {
 	from := uc.Client.EmailSender
 	msg := []byte(fmt.Sprintf(constvars.EmailSendBasicEmailSubjectFormat, to, subject, body))
 	addr := fmt.Sprintf("%s:%d", uc.Client.Host, uc.Client.Port)
-
 	err := smtp.SendMail(addr, uc.Client.Auth, from, []string{to}, msg)
 	if err != nil {
 		return exceptions.ErrSMTPSendEmail(err, uc.Client.Host)

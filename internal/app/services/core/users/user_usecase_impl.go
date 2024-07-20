@@ -133,14 +133,17 @@ func (uc *userUsecase) updatePatientProfile(ctx context.Context, session *models
 		return nil, err
 	}
 
-	user, err := uc.UserRepository.GetUserByID(ctx, session.UserID)
+	existingUser, err := uc.UserRepository.FindByID(ctx, session.UserID)
 	if err != nil {
 		return nil, err
 	}
+	if existingUser == nil {
+		return nil, exceptions.ErrUserNotExist(err)
+	}
 
-	user.SetUpdateProfileData(request)
+	existingUser.SetUpdateProfileData(request)
 
-	err = uc.UserRepository.UpdateUser(ctx, user)
+	err = uc.UserRepository.UpdateUser(ctx, existingUser)
 	if err != nil {
 		return nil, err
 	}
@@ -162,14 +165,17 @@ func (uc *userUsecase) updatePractitionerProfile(ctx context.Context, session *m
 		return nil, err
 	}
 
-	user, err := uc.UserRepository.GetUserByID(ctx, session.UserID)
+	existingUser, err := uc.UserRepository.FindByID(ctx, session.UserID)
 	if err != nil {
 		return nil, err
 	}
+	if existingUser == nil {
+		return nil, exceptions.ErrUserNotExist(err)
+	}
 
-	user.SetUpdateProfileData(request)
+	existingUser.SetUpdateProfileData(request)
 
-	err = uc.UserRepository.UpdateUser(ctx, user)
+	err = uc.UserRepository.UpdateUser(ctx, existingUser)
 	if err != nil {
 		return nil, err
 	}
