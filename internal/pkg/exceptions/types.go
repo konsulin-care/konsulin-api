@@ -112,6 +112,12 @@ var (
 		}
 		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevDBFailedToFindDocument)
 	}
+	ErrMongoDBDeleteDocument = func(err error) *CustomError {
+		if err != nil {
+			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevDBFailedToDeleteDocument)
+		}
+		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevDBFailedToDeleteDocument)
+	}
 	ErrMongoDBIterateDocuments = func(err error) *CustomError {
 		if err != nil {
 			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToIterateDocuments)

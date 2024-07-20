@@ -6,6 +6,7 @@ import (
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
+	"konsulin-service/internal/app/services/shared/redis"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
@@ -17,17 +18,20 @@ type userUsecase struct {
 	UserRepository         UserRepository
 	PatientFhirClient      patients.PatientFhirClient
 	PractitionerFhirClient practitioners.PractitionerFhirClient
+	RedisRepository        redis.RedisRepository
 }
 
 func NewUserUsecase(
 	userMongoRepository UserRepository,
 	patientFhirClient patients.PatientFhirClient,
 	practitionerFhirClient practitioners.PractitionerFhirClient,
+	redisRepository redis.RedisRepository,
 ) UserUsecase {
 	return &userUsecase{
 		UserRepository:         userMongoRepository,
 		PatientFhirClient:      patientFhirClient,
 		PractitionerFhirClient: practitionerFhirClient,
+		RedisRepository:        redisRepository,
 	}
 }
 
@@ -175,4 +179,24 @@ func (uc *userUsecase) updatePractitionerProfile(ctx context.Context, session *m
 	}
 
 	return response, nil
+}
+
+func (uc *userUsecase) DeleteUserBySession(ctx context.Context, sessionData string) error {
+	session := new(models.Session)
+	err := json.Unmarshal([]byte(sessionData), &session)
+	if err != nil {
+		return exceptions.ErrCannotParseJSON(err)
+	}
+
+	err = uc.UserRepository.DeleteByID(ctx, session.UserID)
+	if err != nil {
+		return err
+	}
+
+	err = uc.RedisRepository.Delete(ctx, session.SessionID)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

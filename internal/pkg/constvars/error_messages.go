@@ -114,6 +114,7 @@ const (
 	ErrDevDBFailedToInsertDocument   = "failed to insert document into database"
 	ErrDevDBFailedToUpdateDocument   = "failed to update document into database"
 	ErrDevDBFailedToFindDocument     = "failed when do find document on database"
+	ErrDevDBFailedToDeleteDocument   = "failed when do delete document on database"
 	ErrDevDBFailedToIterateDocuments = "failed when iterating documents from database"
 	ErrDevDBConnectionFailed         = "failed to connect to database"
 	ErrDevDBOperationFailed          = "database operation failed"

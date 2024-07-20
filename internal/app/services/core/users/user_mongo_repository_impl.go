@@ -89,3 +89,16 @@ func (r *UserMongoRepository) FindByResetToken(ctx context.Context, token string
 	}
 	return &user, nil
 }
+
+func (r *UserMongoRepository) DeleteByID(ctx context.Context, userID string) error {
+	objectID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return exceptions.ErrMongoDBNotObjectID(err)
+	}
+	filter := bson.M{"_id": objectID}
+	_, err = r.Collection.DeleteOne(ctx, filter)
+	if err != nil {
+		return exceptions.ErrMongoDBDeleteDocument(err)
+	}
+	return nil
+}

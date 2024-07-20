@@ -131,7 +131,7 @@ func bootstrapingTheApp(bootstrap Bootstrap) {
 
 	// User
 	userMongoRepository := users.NewUserMongoRepository(bootstrap.MongoDB, bootstrap.DriverConfig.MongoDB.DbName)
-	userUseCase := users.NewUserUsecase(userMongoRepository, patientFhirClient, practitionerFhirClient)
+	userUseCase := users.NewUserUsecase(userMongoRepository, patientFhirClient, practitionerFhirClient, redisRepository)
 	userController := users.NewUserController(bootstrap.Logger, userUseCase)
 
 	// Role

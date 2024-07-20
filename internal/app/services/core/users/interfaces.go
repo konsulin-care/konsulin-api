@@ -10,6 +10,7 @@ import (
 type UserUsecase interface {
 	GetUserProfileBySession(ctx context.Context, sessionData string) (*responses.UserProfile, error)
 	UpdateUserProfileBySession(ctx context.Context, sessionData string, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error)
+	DeleteUserBySession(ctx context.Context, sessionData string) error
 }
 
 type UserRepository interface {
@@ -19,4 +20,5 @@ type UserRepository interface {
 	FindByResetToken(ctx context.Context, token string) (*models.User, error)
 	GetUserByID(ctx context.Context, userID string) (*models.User, error)
 	UpdateUser(ctx context.Context, userModel *models.User) error
+	DeleteByID(ctx context.Context, email string) error
 }
