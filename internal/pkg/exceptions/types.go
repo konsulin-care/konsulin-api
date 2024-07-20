@@ -56,9 +56,15 @@ var (
 	}
 	ErrUsernameAlreadyExist = func(err error) *CustomError {
 		if err != nil {
-			return WrapWithError(err, constvars.StatusBadRequest, constvars.ErrClientUsernameAlreadyExists, constvars.ErrDevUsernameAlreadyExists)
+			return WrapWithError(err, constvars.StatusNotFound, constvars.ErrClientUsernameAlreadyExists, constvars.ErrDevUsernameAlreadyExists)
 		}
-		return WrapWithoutError(constvars.StatusBadRequest, constvars.ErrClientUsernameAlreadyExists, constvars.ErrDevUsernameAlreadyExists)
+		return WrapWithoutError(constvars.StatusNotFound, constvars.ErrClientUsernameAlreadyExists, constvars.ErrDevUsernameAlreadyExists)
+	}
+	ErrUserNotExist = func(err error) *CustomError {
+		if err != nil {
+			return WrapWithError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevUserNotExists)
+		}
+		return WrapWithoutError(constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevUserNotExists)
 	}
 	ErrTokenMissing = func(err error) *CustomError {
 		if err != nil {

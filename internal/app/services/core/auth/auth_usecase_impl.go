@@ -404,6 +404,9 @@ func (uc *authUsecase) ForgotPassword(ctx context.Context, request *requests.For
 	if err != nil {
 		return err
 	}
+	if user == nil {
+		return exceptions.ErrUserNotExist(nil)
+	}
 
 	token := uuid.New().String()
 	user.ResetToken = token

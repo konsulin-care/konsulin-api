@@ -88,6 +88,7 @@ const (
 	ErrDevPasswordsDoNotMatch   = "passwords do not match"
 	ErrDevEmailAlreadyExists    = "email already exists"
 	ErrDevUsernameAlreadyExists = "username already exists"
+	ErrDevUserNotExists         = "user not exists in our system"
 
 	// Spark messages
 	ErrDevSparkCreateFHIRResource         = "failed to create FHIR %s from firesly spark"
