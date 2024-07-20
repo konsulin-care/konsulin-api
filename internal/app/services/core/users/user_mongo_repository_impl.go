@@ -2,7 +2,6 @@ package users
 
 import (
 	"context"
-	"fmt"
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
@@ -10,6 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type UserMongoRepository struct {
@@ -27,10 +27,6 @@ func (repo *UserMongoRepository) CreateUser(ctx context.Context, userModel *mode
 	if err != nil {
 		return "", exceptions.ErrMongoDBInsertDocument(err)
 	}
-
-	insertedID := result.InsertedID
-	fmt.Printf("InsertedID Type: %T, Value: %v\n", insertedID, insertedID) // Debug statement
-
 	return result.InsertedID.(primitive.ObjectID).Hex(), nil
 }
 
@@ -39,7 +35,7 @@ func (r *UserMongoRepository) FindByEmail(ctx context.Context, email string) (*m
 	err := r.Collection.FindOne(ctx, bson.M{"email": email}).Decode(&user)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			return nil, nil
+			return nil, exceptions.ErrMongoDBFindDocument(err)
 		}
 		return nil, exceptions.ErrMongoDBFindDocument(err)
 	}
@@ -51,7 +47,7 @@ func (r *UserMongoRepository) FindByUsername(ctx context.Context, username strin
 	err := r.Collection.FindOne(ctx, bson.M{"username": username}).Decode(&user)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			return nil, nil
+			return nil, exceptions.ErrMongoDBFindDocument(err)
 		}
 		return nil, exceptions.ErrMongoDBFindDocument(err)
 	}
@@ -71,25 +67,23 @@ func (r *UserMongoRepository) GetUserByID(ctx context.Context, userID string) (*
 	return &user, nil
 }
 
-func (r *UserMongoRepository) UpdateUser(ctx context.Context, userID string, updateData map[string]interface{}) error {
-	objectID, err := primitive.ObjectIDFromHex(userID)
-	if err != nil {
-		return exceptions.ErrMongoDBNotObjectID(err)
-	}
-	_, err = r.Collection.UpdateOne(ctx, bson.M{"_id": objectID}, bson.M{"$set": updateData})
+func (r *UserMongoRepository) UpdateUser(ctx context.Context, user *models.User) error {
+	filter := bson.M{"_id": user.ID}
+	update := bson.M{"$set": user}
+	_, err := r.Collection.UpdateOne(ctx, filter, update, options.Update().SetUpsert(true))
 	if err != nil {
 		return exceptions.ErrMongoDBUpdateDocument(err)
 	}
-	return err
+	return nil
 }
 
-func (r *UserMongoRepository) FindByResetToken(token string) (*models.User, error) {
+func (r *UserMongoRepository) FindByResetToken(ctx context.Context, token string) (*models.User, error) {
 	var user models.User
 	filter := bson.M{"resetToken": token}
-	err := r.Collection.FindOne(context.Background(), filter).Decode(&user)
+	err := r.Collection.FindOne(ctx, filter).Decode(&user)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			return nil, exceptions.ErrTokenInvalid(err)
+			return nil, exceptions.ErrMongoDBFindDocument(err)
 		}
 		return nil, err
 	}

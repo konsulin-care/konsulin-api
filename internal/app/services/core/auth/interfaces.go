@@ -14,8 +14,8 @@ type AuthUsecase interface {
 	LogoutUser(ctx context.Context, sessionData string) error
 	GetSessionData(ctx context.Context, sessionID string) (sessionData string, err error)
 	IsUserHasPermission(ctx context.Context, request requests.AuthorizeUser) (hasPermission bool, err error)
-	ForgotPassword(request *requests.ForgotPassword) error
-	ResetPassword(request *requests.ResetPassword) error
+	ForgotPassword(ctx context.Context, request *requests.ForgotPassword) error
+	ResetPassword(ctx context.Context, request *requests.ResetPassword) error
 }
 
 type AuthRepository interface{}

@@ -85,7 +85,7 @@ func (uc *userUsecase) getPatientProfile(ctx context.Context, session *models.Se
 		Sex:            patient.Gender,
 		Education:      education,
 		WhatsAppNumber: whatsAppNumber,
-		HomeAddress:    homeAddress,
+		Address:        homeAddress,
 		BirthDate:      formattedBirthDate,
 	}
 
@@ -102,7 +102,7 @@ func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *mode
 	email, whatsAppNumber := utils.GetEmailAndWhatsapp(practitioner.Telecom)
 	age := utils.CalculateAge(practitioner.BirthDate)
 	education := utils.GetEducationFromExtensions(practitioner.Extension)
-	homeAddress := utils.GetHomeAddress(practitioner.Address)
+	workAddress := utils.GetWorkAddress(practitioner.Address)
 	formattedBirthDate := utils.FormatBirthDate(practitioner.BirthDate)
 
 	response := &responses.UserProfile{
@@ -112,7 +112,7 @@ func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *mode
 		Sex:            practitioner.Gender,
 		Education:      education,
 		WhatsAppNumber: whatsAppNumber,
-		HomeAddress:    homeAddress,
+		Address:        workAddress,
 		BirthDate:      formattedBirthDate,
 	}
 
@@ -125,6 +125,18 @@ func (uc *userUsecase) updatePatientProfile(ctx context.Context, session *models
 
 	// Send PUT request to FHIR server to update the user resource
 	fhirPatient, err := uc.PatientFhirClient.UpdatePatient(ctx, patientFhirRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	user, err := uc.UserRepository.GetUserByID(ctx, session.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	user.SetUpdateProfileData(request)
+
+	err = uc.UserRepository.UpdateUser(ctx, user)
 	if err != nil {
 		return nil, err
 	}
@@ -142,6 +154,18 @@ func (uc *userUsecase) updatePractitionerProfile(ctx context.Context, session *m
 
 	// Send PUT request to FHIR server to update the user resource
 	fhirPractitioner, err := uc.PractitionerFhirClient.UpdatePractitioner(ctx, practitionerFhirRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	user, err := uc.UserRepository.GetUserByID(ctx, session.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	user.SetUpdateProfileData(request)
+
+	err = uc.UserRepository.UpdateUser(ctx, user)
 	if err != nil {
 		return nil, err
 	}

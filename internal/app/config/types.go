@@ -1,22 +1,6 @@
 package config
 
-import (
-	"github.com/go-chi/chi/v5"
-	"github.com/redis/go-redis/v9"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.uber.org/zap"
-)
-
 type (
-	Bootstrap struct {
-		Router         *chi.Mux
-		MongoDB        *mongo.Database
-		Redis          *redis.Client
-		Logger         *zap.Logger
-		DriverConfig   *DriverConfig
-		InternalConfig *InternalConfig
-	}
-
 	InternalConfig struct {
 		App  App
 		FHIR FHIR
@@ -27,6 +11,7 @@ type (
 		MongoDB MongoDB
 		Redis   Redis
 		Logger  Logger
+		SMTP    SMTP
 	}
 
 	App struct {
@@ -36,6 +21,7 @@ type (
 		Address                    string
 		Timezone                   string
 		EndpointPrefix             string
+		ResetPasswordUrl           string
 		MaxRequests                int
 		ShutdownTimeout            int
 		MaxTimeRequestsPerSeconds  int
@@ -58,6 +44,14 @@ type (
 		Level               string
 		OutputFileName      string
 		OutputErrorFileName string
+	}
+
+	SMTP struct {
+		Host        string
+		Username    string
+		Password    string
+		EmailSender string
+		Port        int
 	}
 	FHIR struct {
 		BaseUrl string

@@ -23,13 +23,11 @@ func NewPractitionerFhirClient(PractitionerFhirBaseUrl string) PractitionerFhirC
 }
 
 func (c *practitionerFhirClient) CreatePractitioner(ctx context.Context, request *requests.PractitionerFhir) (*responses.Practitioner, error) {
-	fmt.Println("here")
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
 		return nil, exceptions.ErrCannotMarshalJSON(err)
 	}
 
-	fmt.Println("here2")
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodPost, c.BaseUrl, bytes.NewBuffer(requestJSON))
 	if err != nil {
 		return nil, exceptions.ErrCreateHTTPRequest(err)

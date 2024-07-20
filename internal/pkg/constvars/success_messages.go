@@ -13,6 +13,8 @@ const (
 	ProfileGetSuccess  = "get profile successfully"
 
 	// Auth messages
-	LoginSuccess  = "successfully login"
-	LogoutSuccess = "successfully logout"
+	LoginSuccess          = "successfully login"
+	LogoutSuccess         = "successfully logout"
+	ForgotPasswordSuccess = "reset password link already sent to your email"
+	ResetPasswordSuccess  = "password already reset successfully"
 )

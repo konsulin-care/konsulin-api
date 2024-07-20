@@ -23,6 +23,7 @@ type ForgotPassword struct {
 }
 
 type ResetPassword struct {
-	Token       string `json:"token" validate:"required"`
-	NewPassword string `json:"new_password" validate:"required,min=6"`
+	Token             string `json:"token" validate:"required"`
+	NewPassword       string `json:"new_password" validate:"required,min=8"`
+	HashedNewPassword string
 }

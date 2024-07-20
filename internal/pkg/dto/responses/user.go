@@ -7,7 +7,7 @@ type UserProfile struct {
 	Sex            string `json:"sex"`
 	Education      string `json:"education"`
 	WhatsAppNumber string `json:"whatsapp_number"`
-	HomeAddress    string `json:"home_address"`
+	Address        string `json:"address"`
 	BirthDate      string `json:"birth_date"`
 }
 

@@ -51,6 +51,21 @@ func GetHomeAddress(addresses []responses.Address) string {
 	return ""
 }
 
+func GetWorkAddress(addresses []responses.Address) string {
+	for _, address := range addresses {
+		if address.Use == "work" {
+			return fmt.Sprintf("%s, %s, %s, %s, %s",
+				strings.Join(address.Line, " "),
+				address.City,
+				address.State,
+				address.PostalCode,
+				address.Country,
+			)
+		}
+	}
+	return ""
+}
+
 func FormatBirthDate(birthDate string) string {
 	if birthDate == "" {
 		return ""
@@ -70,8 +85,8 @@ func GetFullName(names []responses.HumanName) string {
 		return ""
 	}
 
+	var fullname string
 	name := names[0]
-	fullname := name.Family
 	if len(name.Given) > 0 {
 		fullname += " " + name.Given[0]
 	}

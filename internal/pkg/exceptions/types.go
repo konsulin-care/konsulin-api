@@ -108,9 +108,9 @@ var (
 	// Mongo DB
 	ErrMongoDBFindDocument = func(err error) *CustomError {
 		if err != nil {
-			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToFindDocument)
+			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevDBFailedToFindDocument)
 		}
-		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToFindDocument)
+		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevDBFailedToFindDocument)
 	}
 	ErrMongoDBIterateDocuments = func(err error) *CustomError {
 		if err != nil {
@@ -201,6 +201,14 @@ var (
 		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevSendHTTPRequest)
 	}
 
+	// SMTP
+	ErrSMTPSendEmail = func(err error, hostname string) *CustomError {
+		if err != nil {
+			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, fmt.Sprintf(constvars.ErrDevSMTPSendEmail, hostname))
+		}
+		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, fmt.Sprintf(constvars.ErrDevSMTPSendEmail, hostname))
+	}
+
 	// FHIR
 	ErrCreateFHIRResource = func(err error, resource string) *CustomError {
 		if err != nil {
@@ -225,5 +233,13 @@ var (
 			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkDecodeFHIRResourceResponse, resource))
 		}
 		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkDecodeFHIRResourceResponse, resource))
+	}
+
+	// Deault Server
+	ErrServerProcess = func(err error) *CustomError {
+		if err != nil {
+			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevServerProcess)
+		}
+		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevServerProcess)
 	}
 )

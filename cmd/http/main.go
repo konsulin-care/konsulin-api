@@ -8,12 +8,14 @@ import (
 	"konsulin-service/internal/app/delivery/http/routers"
 	"konsulin-service/internal/app/drivers/database"
 	"konsulin-service/internal/app/drivers/logger"
+	"konsulin-service/internal/app/drivers/mailer"
 	"konsulin-service/internal/app/services/core/auth"
 	"konsulin-service/internal/app/services/core/roles"
 	"konsulin-service/internal/app/services/core/users"
 	"konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
-	"konsulin-service/internal/app/services/shared/redis"
+	redisKonsulin "konsulin-service/internal/app/services/shared/redis"
+	"konsulin-service/internal/app/services/shared/smtp"
 	"konsulin-service/internal/pkg/constvars"
 	"log"
 	"net/http"
@@ -23,6 +25,9 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/redis/go-redis/v9"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.uber.org/zap"
 )
 
 // Version sets the default build version
@@ -30,6 +35,16 @@ var Version = "develop"
 
 // Tag sets the default latest commit tag
 var Tag = "0.0.1-rc"
+
+type Bootstrap struct {
+	Router         *chi.Mux
+	MongoDB        *mongo.Database
+	Redis          *redis.Client
+	Logger         *zap.Logger
+	SMTP           *mailer.SMTPClient
+	DriverConfig   *config.DriverConfig
+	InternalConfig *config.InternalConfig
+}
 
 func main() {
 	driverConfig := config.NewDriverConfig()
@@ -47,13 +62,15 @@ func main() {
 
 	mongoDB := database.NewMongoDB(driverConfig)
 	redis := database.NewRedisClient(driverConfig)
+	smtpClient := mailer.NewSMTPClient(driverConfig)
 	chiRouter := chi.NewRouter()
 
-	bootstrapingTheApp(config.Bootstrap{
+	bootstrapingTheApp(Bootstrap{
 		Router:         chiRouter,
 		MongoDB:        mongoDB,
 		Redis:          redis,
 		Logger:         logger,
+		SMTP:           smtpClient,
 		DriverConfig:   driverConfig,
 		InternalConfig: internalConfig,
 	})
@@ -101,9 +118,10 @@ func main() {
 	log.Println("Server exiting")
 }
 
-func bootstrapingTheApp(bootstrap config.Bootstrap) {
-	// Redis
-	redisRepository := redis.NewRedisRepository(bootstrap.Redis)
+func bootstrapingTheApp(bootstrap Bootstrap) {
+	// Drivers
+	redisRepository := redisKonsulin.NewRedisRepository(bootstrap.Redis)
+	smtpUsecase := smtp.NewSmtpUsecase(bootstrap.SMTP)
 
 	// Patient
 	patientFhirClient := patients.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePatient)
@@ -116,10 +134,11 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) {
 	userUseCase := users.NewUserUsecase(userMongoRepository, patientFhirClient, practitionerFhirClient)
 	userController := users.NewUserController(bootstrap.Logger, userUseCase)
 
+	// Role
 	roleMongoRepository := roles.NewRoleMongoRepository(bootstrap.MongoDB, bootstrap.DriverConfig.MongoDB.DbName)
 
 	// Auth
-	authUseCase, err := auth.NewAuthUsecase(userMongoRepository, redisRepository, roleMongoRepository, patientFhirClient, practitionerFhirClient, bootstrap.InternalConfig)
+	authUseCase, err := auth.NewAuthUsecase(userMongoRepository, redisRepository, roleMongoRepository, patientFhirClient, practitionerFhirClient, smtpUsecase, bootstrap.InternalConfig)
 	if err != nil {
 		log.Fatal(err)
 	}

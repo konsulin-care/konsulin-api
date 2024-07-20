@@ -81,6 +81,9 @@ const (
 	ErrDevCreateHTTPRequest    = "failed to create HTTP request"
 	ErrDevSendHTTPRequest      = "failed to send HTTP request"
 
+	// SMTP
+	ErrDevSMTPSendEmail = "failed to send email via SMTP client hostname %s"
+
 	// Usecase messages
 	ErrDevPasswordsDoNotMatch   = "passwords do not match"
 	ErrDevEmailAlreadyExists    = "email already exists"
@@ -127,6 +130,7 @@ const (
 	ErrDevRedisSMembers        = "failed to SMembers data from set in redis"
 
 	// Server messages
+	ErrDevServerProcess          = "server failed to process something related to machine system"
 	ErrDevServerInternalError    = "internal server error"
 	ErrDevServerNotImplemented   = "feature not implemented"
 	ErrDevServerBadRequest       = "bad request"
