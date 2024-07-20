@@ -12,6 +12,7 @@ func attachAuthRoutes(router chi.Router, middlewares *middlewares.Middlewares, a
 	router.Post("/register/clinician", authController.RegisterClinician)
 	router.Post("/login/patient", authController.LoginPatient)
 	router.Post("/login/clinician", authController.LoginClinician)
-	router.Post("/forgot-password", authController.Logout)
+	router.Post("/forgot-password", authController.ForgotPassword)
+	router.Post("/reset-password", authController.ResetPassword)
 	router.With(middlewares.Authenticate).Post("/logout", authController.Logout)
 }

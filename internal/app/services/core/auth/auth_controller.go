@@ -184,3 +184,71 @@ func (ctrl *AuthController) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.LogoutSuccess, nil)
 }
+
+func (ctrl *AuthController) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	// Bind body to request
+	request := new(requests.ForgotPassword)
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+		return
+	}
+
+	// Validate request
+	err = utils.ValidateStruct(request)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Send request to be processed by usecase
+	err = ctrl.AuthUsecase.ForgotPassword(ctx, request)
+	if err != nil {
+		if err == context.DeadlineExceeded {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	// Send response
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.ForgotPasswordSuccess, nil)
+}
+
+func (ctrl *AuthController) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	// Bind body to request
+	request := new(requests.ResetPassword)
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+		return
+	}
+
+	// Validate request
+	err = utils.ValidateStruct(request)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Send request to be processed by usecase
+	err = ctrl.AuthUsecase.ResetPassword(ctx, request)
+	if err != nil {
+		if err == context.DeadlineExceeded {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	// Send response
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.ResetPasswordSuccess, nil)
+}

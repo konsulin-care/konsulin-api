@@ -29,6 +29,13 @@ func NewDriverConfig() *DriverConfig {
 			OutputFileName:      utils.GetEnvString("LOGGER_OUTPUT_FILENAME", "logger.log"),
 			OutputErrorFileName: utils.GetEnvString("LOGGER_OUTPUT_ERROR_FILENAME", "logger_error.log"),
 		},
+		SMTP: SMTP{
+			Host:        utils.GetEnvString("SMTP_HOST", "smtp_host"),
+			Username:    utils.GetEnvString("SMTP_USERNAME", ""),
+			Password:    utils.GetEnvString("SMTP_PASSWORD", ""),
+			EmailSender: utils.GetEnvString("SMTP_EMAIL_SENDER", ""),
+			Port:        utils.GetEnvInt("SMTP_PORT", 2525),
+		},
 	}
 }
 
@@ -41,6 +48,7 @@ func NewInternalConfig() *InternalConfig {
 			Address:                    utils.GetEnvString("APP_ADDRESS", "localhost"),
 			Timezone:                   utils.GetEnvString("APP_TIMEZONE", "Asia/Jakarta"),
 			EndpointPrefix:             utils.GetEnvString("APP_ENDPOINT_PREFIX", "/v1"),
+			ResetPasswordUrl:           utils.GetEnvString("APP_RESET_PASSWORD_URL", ""),
 			MaxRequests:                utils.GetEnvInt("APP_MAX_REQUEST", 10),
 			ShutdownTimeout:            utils.GetEnvInt("APP_SHUTDOWN_TIMEOUT", 10),
 			MaxTimeRequestsPerSeconds:  utils.GetEnvInt("APP_MAX_TIME_REQUESTS_PER_SECONDS", 10),

@@ -6,6 +6,7 @@ import (
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
+	"konsulin-service/internal/app/services/shared/redis"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
@@ -17,17 +18,20 @@ type userUsecase struct {
 	UserRepository         UserRepository
 	PatientFhirClient      patients.PatientFhirClient
 	PractitionerFhirClient practitioners.PractitionerFhirClient
+	RedisRepository        redis.RedisRepository
 }
 
 func NewUserUsecase(
 	userMongoRepository UserRepository,
 	patientFhirClient patients.PatientFhirClient,
 	practitionerFhirClient practitioners.PractitionerFhirClient,
+	redisRepository redis.RedisRepository,
 ) UserUsecase {
 	return &userUsecase{
 		UserRepository:         userMongoRepository,
 		PatientFhirClient:      patientFhirClient,
 		PractitionerFhirClient: practitionerFhirClient,
+		RedisRepository:        redisRepository,
 	}
 }
 
@@ -85,7 +89,7 @@ func (uc *userUsecase) getPatientProfile(ctx context.Context, session *models.Se
 		Sex:            patient.Gender,
 		Education:      education,
 		WhatsAppNumber: whatsAppNumber,
-		HomeAddress:    homeAddress,
+		Address:        homeAddress,
 		BirthDate:      formattedBirthDate,
 	}
 
@@ -102,7 +106,7 @@ func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *mode
 	email, whatsAppNumber := utils.GetEmailAndWhatsapp(practitioner.Telecom)
 	age := utils.CalculateAge(practitioner.BirthDate)
 	education := utils.GetEducationFromExtensions(practitioner.Extension)
-	homeAddress := utils.GetHomeAddress(practitioner.Address)
+	workAddress := utils.GetWorkAddress(practitioner.Address)
 	formattedBirthDate := utils.FormatBirthDate(practitioner.BirthDate)
 
 	response := &responses.UserProfile{
@@ -112,7 +116,7 @@ func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *mode
 		Sex:            practitioner.Gender,
 		Education:      education,
 		WhatsAppNumber: whatsAppNumber,
-		HomeAddress:    homeAddress,
+		Address:        workAddress,
 		BirthDate:      formattedBirthDate,
 	}
 
@@ -125,6 +129,18 @@ func (uc *userUsecase) updatePatientProfile(ctx context.Context, session *models
 
 	// Send PUT request to FHIR server to update the user resource
 	fhirPatient, err := uc.PatientFhirClient.UpdatePatient(ctx, patientFhirRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	user, err := uc.UserRepository.GetUserByID(ctx, session.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	user.SetUpdateProfileData(request)
+
+	err = uc.UserRepository.UpdateUser(ctx, user)
 	if err != nil {
 		return nil, err
 	}
@@ -146,9 +162,41 @@ func (uc *userUsecase) updatePractitionerProfile(ctx context.Context, session *m
 		return nil, err
 	}
 
+	user, err := uc.UserRepository.GetUserByID(ctx, session.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	user.SetUpdateProfileData(request)
+
+	err = uc.UserRepository.UpdateUser(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+
 	response := &responses.UpdateUserProfile{
 		PractitionerID: fhirPractitioner.ID,
 	}
 
 	return response, nil
+}
+
+func (uc *userUsecase) DeleteUserBySession(ctx context.Context, sessionData string) error {
+	session := new(models.Session)
+	err := json.Unmarshal([]byte(sessionData), &session)
+	if err != nil {
+		return exceptions.ErrCannotParseJSON(err)
+	}
+
+	err = uc.UserRepository.DeleteByID(ctx, session.UserID)
+	if err != nil {
+		return err
+	}
+
+	err = uc.RedisRepository.Delete(ctx, session.SessionID)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

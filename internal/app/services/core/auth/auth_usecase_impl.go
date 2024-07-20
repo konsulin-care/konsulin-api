@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/app/services/core/roles"
@@ -10,6 +11,7 @@ import (
 	"konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
 	"konsulin-service/internal/app/services/shared/redis"
+	"konsulin-service/internal/app/services/shared/smtp"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
@@ -27,6 +29,7 @@ type authUsecase struct {
 	RoleRepository         roles.RoleRepository
 	PatientFhirClient      patients.PatientFhirClient
 	PractitionerFhirClient practitioners.PractitionerFhirClient
+	SMTPUsecase            smtp.SMTPUsecase
 	InternalConfig         *config.InternalConfig
 	Roles                  map[string]*models.Role
 	mu                     sync.RWMutex
@@ -38,6 +41,7 @@ func NewAuthUsecase(
 	rolesRepository roles.RoleRepository,
 	patientFhirClient patients.PatientFhirClient,
 	practitionerFhirClient practitioners.PractitionerFhirClient,
+	smtpUsecase smtp.SMTPUsecase,
 	internalConfig *config.InternalConfig,
 ) (AuthUsecase, error) {
 	authUsecase := &authUsecase{
@@ -46,6 +50,7 @@ func NewAuthUsecase(
 		RoleRepository:         rolesRepository,
 		PatientFhirClient:      patientFhirClient,
 		PractitionerFhirClient: practitionerFhirClient,
+		SMTPUsecase:            smtpUsecase,
 		InternalConfig:         internalConfig,
 		Roles:                  make(map[string]*models.Role),
 	}
@@ -128,7 +133,6 @@ func (uc *authUsecase) RegisterClinician(ctx context.Context, request *requests.
 	}
 
 	return response, nil
-
 }
 
 func (uc *authUsecase) RegisterPatient(ctx context.Context, request *requests.RegisterUser) (*responses.RegisterUser, error) {
@@ -393,4 +397,49 @@ func (uc *authUsecase) GetSessionData(ctx context.Context, sessionID string) (st
 		return "", exceptions.ErrTokenInvalid(err)
 	}
 	return sessionData, nil
+}
+
+func (uc *authUsecase) ForgotPassword(ctx context.Context, request *requests.ForgotPassword) error {
+	user, err := uc.UserRepository.FindByEmail(ctx, request.Email)
+	if err != nil {
+		return err
+	}
+
+	token := uuid.New().String()
+	user.ResetToken = token
+
+	err = uc.UserRepository.UpdateUser(ctx, user)
+	if err != nil {
+		return err
+	}
+
+	resetLink := uc.InternalConfig.App.ResetPasswordUrl + token
+	emailBody := fmt.Sprintf(constvars.EmailBodyResetPassword + resetLink)
+
+	err = uc.SMTPUsecase.SendEmail(user.Email, constvars.EmailForgotPasswordSubjectMessage, emailBody)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (uc *authUsecase) ResetPassword(ctx context.Context, request *requests.ResetPassword) error {
+	user, err := uc.UserRepository.FindByResetToken(ctx, request.Token)
+	if err != nil {
+		return err
+	}
+
+	hashedNewPassword, err := utils.HashPassword(request.NewPassword)
+	if err != nil {
+		return err
+	}
+	request.HashedNewPassword = hashedNewPassword
+	user.SetUpdateResetPassword(request)
+
+	err = uc.UserRepository.UpdateUser(ctx, user)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
