@@ -70,11 +70,14 @@ func (uc *userUsecase) UpdateUserProfileBySession(ctx context.Context, sessionDa
 }
 
 func (uc *userUsecase) getPatientProfile(ctx context.Context, session *models.Session) (*responses.UserProfile, error) {
+	// Get patient data from FHIR Spark Patient Client
 	patient, err := uc.PatientFhirClient.GetPatientByID(ctx, session.PatientID)
 	if err != nil {
 		return nil, err
 	}
 
+	// The 'patient' data that we get from FHIR Spark,
+	// then built into suitable format to be shown to our end-users
 	fullname := utils.GetFullName(patient.Name)
 	email, whatsAppNumber := utils.GetEmailAndWhatsapp(patient.Telecom)
 	age := utils.CalculateAge(patient.BirthDate)
@@ -82,26 +85,32 @@ func (uc *userUsecase) getPatientProfile(ctx context.Context, session *models.Se
 	homeAddress := utils.GetHomeAddress(patient.Address)
 	formattedBirthDate := utils.FormatBirthDate(patient.BirthDate)
 
+	// After changing the 'patient' data into the suitable format,
+	// build it into 'UserProfile' response before sending it back to Controller
 	response := &responses.UserProfile{
 		Fullname:       fullname,
 		Email:          email,
 		Age:            age,
-		Sex:            patient.Gender,
+		Gender:         patient.Gender,
 		Education:      education,
 		WhatsAppNumber: whatsAppNumber,
 		Address:        homeAddress,
 		BirthDate:      formattedBirthDate,
 	}
 
+	// Return the response to Controller
 	return response, nil
 }
 
 func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *models.Session) (*responses.UserProfile, error) {
+	// Get practitioner data from FHIR Spark Practitioner Client
 	practitioner, err := uc.PractitionerFhirClient.GetPractitionerByID(ctx, session.PractitionerID)
 	if err != nil {
 		return nil, err
 	}
 
+	// The 'practitioner' data that we get from FHIR Spark,
+	// then built into suitable format to be shown to our end-users
 	fullname := utils.GetFullName(practitioner.Name)
 	email, whatsAppNumber := utils.GetEmailAndWhatsapp(practitioner.Telecom)
 	age := utils.CalculateAge(practitioner.BirthDate)
@@ -109,17 +118,20 @@ func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *mode
 	workAddress := utils.GetWorkAddress(practitioner.Address)
 	formattedBirthDate := utils.FormatBirthDate(practitioner.BirthDate)
 
+	// After changing the 'practitioner' data into the suitable format,
+	// build it into 'UserProfile' response before sending it back to Controller
 	response := &responses.UserProfile{
 		Fullname:       fullname,
 		Email:          email,
 		Age:            age,
-		Sex:            practitioner.Gender,
+		Gender:         practitioner.Gender,
 		Education:      education,
 		WhatsAppNumber: whatsAppNumber,
 		Address:        workAddress,
 		BirthDate:      formattedBirthDate,
 	}
 
+	// Send the response to the Controller
 	return response, nil
 }
 
@@ -133,25 +145,30 @@ func (uc *userUsecase) updatePatientProfile(ctx context.Context, session *models
 		return nil, err
 	}
 
+	// Find user by ID
 	existingUser, err := uc.UserRepository.FindByID(ctx, session.UserID)
 	if err != nil {
 		return nil, err
 	}
+	// Throw error userNotExist if existingUser doesn't exist
 	if existingUser == nil {
 		return nil, exceptions.ErrUserNotExist(err)
 	}
-
+	// Set the existingUser data with requests.UpdateProfile
 	existingUser.SetUpdateProfileData(request)
 
+	// Update the user
 	err = uc.UserRepository.UpdateUser(ctx, existingUser)
 	if err != nil {
 		return nil, err
 	}
 
+	// Build the response before sending it back to Controller
 	response := &responses.UpdateUserProfile{
 		PatientID: fhirPatient.ID,
 	}
 
+	// Return the response
 	return response, nil
 }
 
