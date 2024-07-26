@@ -10,7 +10,10 @@ import (
 	"konsulin-service/internal/app/drivers/logger"
 	"konsulin-service/internal/app/drivers/mailer"
 	"konsulin-service/internal/app/services/core/auth"
+	educationLevels "konsulin-service/internal/app/services/core/education_levels"
+	"konsulin-service/internal/app/services/core/genders"
 	"konsulin-service/internal/app/services/core/roles"
+	"konsulin-service/internal/app/services/core/session"
 	"konsulin-service/internal/app/services/core/users"
 	"konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
@@ -65,7 +68,7 @@ func main() {
 	smtpClient := mailer.NewSMTPClient(driverConfig)
 	chiRouter := chi.NewRouter()
 
-	bootstrapingTheApp(Bootstrap{
+	err = bootstrapingTheApp(Bootstrap{
 		Router:         chiRouter,
 		MongoDB:        mongoDB,
 		Redis:          redis,
@@ -74,6 +77,10 @@ func main() {
 		DriverConfig:   driverConfig,
 		InternalConfig: internalConfig,
 	})
+
+	if err != nil {
+		log.Fatalf("Error while bootstraping the app: %s", err.Error())
+	}
 
 	server := &http.Server{
 		Addr:    fmt.Sprintf("%s:%s", internalConfig.App.Address, internalConfig.App.Port),
@@ -118,10 +125,12 @@ func main() {
 	log.Println("Server exiting")
 }
 
-func bootstrapingTheApp(bootstrap Bootstrap) {
-	// Drivers
+func bootstrapingTheApp(bootstrap Bootstrap) error {
+	// Drivers are splitted into: 'service' related to functionality and 'repository' related to Data Access Layer
+	// All deps in /internal/app/shared initiated here before injected into usecases
 	redisRepository := redisKonsulin.NewRedisRepository(bootstrap.Redis)
-	smtpUsecase := smtp.NewSmtpUsecase(bootstrap.SMTP)
+	smtpService := smtp.NewSmtpService(bootstrap.SMTP)
+	sessionService := session.NewSessionService(redisRepository)
 
 	// Patient
 	patientFhirClient := patients.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePatient)
@@ -131,21 +140,57 @@ func bootstrapingTheApp(bootstrap Bootstrap) {
 
 	// User
 	userMongoRepository := users.NewUserMongoRepository(bootstrap.MongoDB, bootstrap.DriverConfig.MongoDB.DbName)
-	userUseCase := users.NewUserUsecase(userMongoRepository, patientFhirClient, practitionerFhirClient, redisRepository)
+	userUseCase := users.NewUserUsecase(userMongoRepository, patientFhirClient, practitionerFhirClient, redisRepository, sessionService)
 	userController := users.NewUserController(bootstrap.Logger, userUseCase)
+
+	// Education Level
+	educationLevelMongoRepository := educationLevels.NewEducationLevelMongoRepository(bootstrap.MongoDB, bootstrap.DriverConfig.MongoDB.DbName)
+	educationLevelUseCase, err := educationLevels.NewEducationLevelUsecase(educationLevelMongoRepository, redisRepository)
+	if err != nil {
+		return err
+	}
+	educationLevelController := educationLevels.NewEducationLevelController(bootstrap.Logger, educationLevelUseCase)
+
+	// Gender
+	genderMongoRepository := genders.NewGenderMongoRepository(bootstrap.MongoDB, bootstrap.DriverConfig.MongoDB.DbName)
+	genderUseCase, err := genders.NewGenderUsecase(genderMongoRepository, redisRepository)
+	if err != nil {
+		return err
+	}
+	genderController := genders.NewGenderController(bootstrap.Logger, genderUseCase)
 
 	// Role
 	roleMongoRepository := roles.NewRoleMongoRepository(bootstrap.MongoDB, bootstrap.DriverConfig.MongoDB.DbName)
 
 	// Auth
-	authUseCase, err := auth.NewAuthUsecase(userMongoRepository, redisRepository, roleMongoRepository, patientFhirClient, practitionerFhirClient, smtpUsecase, bootstrap.InternalConfig)
+	authUseCase, err := auth.NewAuthUsecase(
+		userMongoRepository,
+		redisRepository,
+		sessionService,
+		roleMongoRepository,
+		patientFhirClient,
+		practitionerFhirClient,
+		smtpService,
+		bootstrap.InternalConfig,
+	)
+
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	authController := auth.NewAuthController(bootstrap.Logger, authUseCase)
 
 	// Middlewares
-	middlewares := middlewares.NewMiddlewares(bootstrap.Logger, authUseCase, bootstrap.InternalConfig)
+	middlewares := middlewares.NewMiddlewares(bootstrap.Logger, sessionService, authUseCase, bootstrap.InternalConfig)
 
-	routers.SetupRoutes(bootstrap.Router, bootstrap.InternalConfig, middlewares, userController, authController)
+	routers.SetupRoutes(
+		bootstrap.Router,
+		bootstrap.InternalConfig,
+		middlewares,
+		userController,
+		authController,
+		educationLevelController,
+		genderController,
+	)
+
+	return nil
 }

@@ -2,11 +2,11 @@ package auth
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/app/services/core/roles"
+	"konsulin-service/internal/app/services/core/session"
 	"konsulin-service/internal/app/services/core/users"
 	"konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
@@ -26,10 +26,11 @@ import (
 type authUsecase struct {
 	UserRepository         users.UserRepository
 	RedisRepository        redis.RedisRepository
+	SessionService         session.SessionService
 	RoleRepository         roles.RoleRepository
 	PatientFhirClient      patients.PatientFhirClient
 	PractitionerFhirClient practitioners.PractitionerFhirClient
-	SMTPUsecase            smtp.SMTPUsecase
+	SMTPService            smtp.SMTPService
 	InternalConfig         *config.InternalConfig
 	Roles                  map[string]*models.Role
 	mu                     sync.RWMutex
@@ -38,23 +39,27 @@ type authUsecase struct {
 func NewAuthUsecase(
 	userMongoRepository users.UserRepository,
 	redisRepository redis.RedisRepository,
+	sessionService session.SessionService,
 	rolesRepository roles.RoleRepository,
 	patientFhirClient patients.PatientFhirClient,
 	practitionerFhirClient practitioners.PractitionerFhirClient,
-	smtpUsecase smtp.SMTPUsecase,
+	smtpUsecase smtp.SMTPService,
 	internalConfig *config.InternalConfig,
 ) (AuthUsecase, error) {
 	authUsecase := &authUsecase{
 		UserRepository:         userMongoRepository,
 		RedisRepository:        redisRepository,
+		SessionService:         sessionService,
 		RoleRepository:         rolesRepository,
 		PatientFhirClient:      patientFhirClient,
 		PractitionerFhirClient: practitionerFhirClient,
-		SMTPUsecase:            smtpUsecase,
+		SMTPService:            smtpUsecase,
 		InternalConfig:         internalConfig,
 		Roles:                  make(map[string]*models.Role),
 	}
-	err := authUsecase.loadRoles()
+
+	ctx := context.Background()
+	err := authUsecase.loadRoles(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +139,6 @@ func (uc *authUsecase) RegisterClinician(ctx context.Context, request *requests.
 
 	return response, nil
 }
-
 func (uc *authUsecase) RegisterPatient(ctx context.Context, request *requests.RegisterUser) (*responses.RegisterUser, error) {
 	// Check if passwords match
 	if request.Password != request.RetypePassword {
@@ -207,35 +211,40 @@ func (uc *authUsecase) RegisterPatient(ctx context.Context, request *requests.Re
 
 	return response, nil
 }
-
 func (uc *authUsecase) LoginPatient(ctx context.Context, request *requests.LoginUser) (*responses.LoginUser, error) {
-	// Get user by username
+	// Retrieve the user by username from the user repository
 	user, err := uc.UserRepository.FindByUsername(ctx, request.Username)
 	if err != nil {
+		// Return error if there is an issue with the user retrieval
 		return nil, err
 	}
 	if user == nil {
+		// Return error if the user is not found
 		return nil, exceptions.ErrInvalidUsernameOrPassword(nil)
 	}
 
+	// Retrieve the user's role by role ID from the role repository
 	role, err := uc.RoleRepository.FindRoleByID(ctx, user.RoleID)
 	if err != nil {
+		// Return error if there is an issue with role retrieval
 		return nil, err
 	}
 
+	// Check if the role is not of type 'Patient' and return an error if true
 	if role.IsNotPatient() {
 		return nil, exceptions.ErrNotMatchRoleType(nil)
 	}
 
-	// Check password
+	// Verify the provided password with the stored hashed password
 	if !utils.CheckPasswordHash(request.Password, user.Password) {
+		// Return error if the passwords do not match
 		return nil, exceptions.ErrInvalidUsernameOrPassword(nil)
 	}
 
-	// Generate a UUID for the session key
+	// Generate a UUID for the session ID
 	sessionID := uuid.New().String()
 
-	// Create session data
+	// Create session data with user, role, and session details
 	sessionData := models.Session{
 		UserID:    user.ID,
 		PatientID: user.PatientID,
@@ -244,18 +253,21 @@ func (uc *authUsecase) LoginPatient(ctx context.Context, request *requests.Login
 		SessionID: sessionID,
 	}
 
-	// Store session data in Redis
+	// Store the session data in Redis with a 1-hour expiration
 	err = uc.RedisRepository.Set(ctx, sessionID, sessionData, time.Hour)
 	if err != nil {
+		// Return error if there is an issue storing the session data
 		return nil, err
 	}
 
-	// Create a JWT token
-	tokenString, err := utils.GenerateJWT(sessionID, uc.InternalConfig.JWT.Secret)
+	// Generate a JWT token using the session ID and secret
+	tokenString, err := utils.GenerateSessionJWT(sessionID, uc.InternalConfig.JWT.Secret, uc.InternalConfig.JWT.ExpTimeInHour)
 	if err != nil {
+		// Return error if there is an issue generating the JWT token
 		return nil, err
 	}
 
+	// Prepare the response with the generated token and user details
 	response := &responses.LoginUser{
 		Token: tokenString,
 		LoginUserData: responses.LoginUserData{
@@ -266,37 +278,43 @@ func (uc *authUsecase) LoginPatient(ctx context.Context, request *requests.Login
 			RoleName: role.Name,
 		},
 	}
+	// Return the prepared response
 	return response, nil
 }
-
 func (uc *authUsecase) LoginClinician(ctx context.Context, request *requests.LoginUser) (*responses.LoginUser, error) {
-	// Get user by username
+	// Retrieve the user by username from the user repository
 	user, err := uc.UserRepository.FindByUsername(ctx, request.Username)
 	if err != nil {
+		// Return error if there is an issue with the user retrieval
 		return nil, err
 	}
 	if user == nil {
+		// Return error if the user is not found
 		return nil, exceptions.ErrInvalidUsernameOrPassword(nil)
 	}
 
+	// Retrieve the user's role by role ID from the role repository
 	role, err := uc.RoleRepository.FindRoleByID(ctx, user.RoleID)
 	if err != nil {
+		// Return error if there is an issue with role retrieval
 		return nil, err
 	}
 
+	// Check if the role is not of type 'Practitioner' and return an error if true
 	if role.IsNotPractitioner() {
 		return nil, exceptions.ErrNotMatchRoleType(nil)
 	}
 
-	// Check password
+	// Verify the provided password with the stored hashed password
 	if !utils.CheckPasswordHash(request.Password, user.Password) {
+		// Return error if the passwords do not match
 		return nil, exceptions.ErrInvalidUsernameOrPassword(nil)
 	}
 
-	// Generate a UUID for the session key
+	// Generate a UUID for the session ID
 	sessionID := uuid.New().String()
 
-	// Create session data
+	// Create session data with user, role, and session details
 	sessionData := models.Session{
 		UserID:         user.ID,
 		PractitionerID: user.PractitionerID,
@@ -305,18 +323,21 @@ func (uc *authUsecase) LoginClinician(ctx context.Context, request *requests.Log
 		SessionID:      sessionID,
 	}
 
-	// Store session data in Redis
+	// Store the session data in Redis with a 1-hour expiration
 	err = uc.RedisRepository.Set(ctx, sessionID, sessionData, time.Hour)
 	if err != nil {
+		// Return error if there is an issue storing the session data
 		return nil, err
 	}
 
-	// Create a JWT token
-	tokenString, err := utils.GenerateJWT(sessionID, uc.InternalConfig.JWT.Secret)
+	// Generate a JWT token using the session ID and secret
+	tokenString, err := utils.GenerateSessionJWT(sessionID, uc.InternalConfig.JWT.Secret, uc.InternalConfig.JWT.ExpTimeInHour)
 	if err != nil {
+		// Return error if there is an issue generating the JWT token
 		return nil, err
 	}
 
+	// Prepare the response with the generated token and user details
 	response := &responses.LoginUser{
 		Token: tokenString,
 		LoginUserData: responses.LoginUserData{
@@ -327,76 +348,55 @@ func (uc *authUsecase) LoginClinician(ctx context.Context, request *requests.Log
 			RoleName: role.Name,
 		},
 	}
+	// Return the prepared response
 	return response, nil
 }
 
 func (uc *authUsecase) LogoutUser(ctx context.Context, sessionData string) error {
-	session := new(models.Session)
-	err := json.Unmarshal([]byte(sessionData), &session)
+	// Parse the session data using the SessionService
+	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
 	if err != nil {
-		return exceptions.ErrCannotParseJSON(err)
-	}
-
-	err = uc.RedisRepository.Delete(ctx, session.SessionID)
-	if err != nil {
+		// Return an error if parsing the session data fails
 		return err
 	}
 
+	// Delete the session data from Redis using the session ID
+	err = uc.RedisRepository.Delete(ctx, session.SessionID)
+	if err != nil {
+		// Return an error if there is an issue deleting the session data from Redis
+		return err
+	}
+
+	// Return nil if the session was successfully deleted
 	return nil
 }
 
 func (uc *authUsecase) IsUserHasPermission(ctx context.Context, request requests.AuthorizeUser) (bool, error) {
-	session := new(models.Session)
-	err := json.Unmarshal([]byte(request.SessionData), &session)
+	// Parse the session data using the SessionService
+	session, err := uc.SessionService.ParseSessionData(ctx, request.SessionData)
 	if err != nil {
-		return false, exceptions.ErrCannotParseJSON(err)
+		// Return false and an error if parsing the session data fails
+		return false, err
 	}
 
+	// Acquire a read lock on the mutex to safely access the roles map
 	uc.mu.RLock()
 	defer uc.mu.RUnlock()
 
+	// Check if the role associated with the session exists in the roles map
 	role, exists := uc.Roles[session.RoleID]
 	if !exists {
+		// Return false and an error if the role does not exist
 		return false, exceptions.ErrAuthInvalidRole(nil)
 	}
 
-	for _, permission := range role.Permissions {
-		if permission.Resource == request.Resource {
-			for _, allowedAction := range permission.Actions {
-				if allowedAction == request.RequiredAction {
-					return true, nil
-				}
-			}
-		}
+	// Check if the user role has the required permission for the requested resource
+	if uc.isRoleHasPermission(role, request.Resource, request.RequiredAction) {
+		return true, nil
 	}
 
+	// Return false and an error if the user does not have the required permission
 	return false, exceptions.ErrAuthInvalidRole(nil)
-}
-
-func (uc *authUsecase) loadRoles() error {
-	ctx := context.Background()
-	roles, err := uc.RoleRepository.GetAllRoles(ctx)
-	if err != nil {
-		return err
-	}
-
-	uc.mu.Lock()
-	defer uc.mu.Unlock()
-
-	for _, role := range roles {
-		r := role
-		uc.Roles[role.ID] = &r
-	}
-
-	return nil
-}
-
-func (uc *authUsecase) GetSessionData(ctx context.Context, sessionID string) (string, error) {
-	sessionData, err := uc.RedisRepository.Get(ctx, sessionID)
-	if err != nil {
-		return "", exceptions.ErrTokenInvalid(err)
-	}
-	return sessionData, nil
 }
 
 func (uc *authUsecase) ForgotPassword(ctx context.Context, request *requests.ForgotPassword) error {
@@ -408,18 +408,17 @@ func (uc *authUsecase) ForgotPassword(ctx context.Context, request *requests.For
 		return exceptions.ErrUserNotExist(nil)
 	}
 
-	token := uuid.New().String()
-	user.ResetToken = token
+	user.SetDataForUpdateForgotPassword(uc.InternalConfig.App.ForgotPasswordTokenExpTimeInMinute)
 
 	err = uc.UserRepository.UpdateUser(ctx, user)
 	if err != nil {
 		return err
 	}
 
-	resetLink := uc.InternalConfig.App.ResetPasswordUrl + token
+	resetLink := uc.InternalConfig.App.ResetPasswordUrl + user.ResetToken
 	emailBody := fmt.Sprintf(constvars.EmailBodyResetPassword + resetLink)
 
-	err = uc.SMTPUsecase.SendEmail(user.Email, constvars.EmailForgotPasswordSubjectMessage, emailBody)
+	err = uc.SMTPService.SendEmail(user.Email, constvars.EmailForgotPasswordSubjectMessage, emailBody)
 	if err != nil {
 		return err
 	}
@@ -437,11 +436,41 @@ func (uc *authUsecase) ResetPassword(ctx context.Context, request *requests.Rese
 		return err
 	}
 	request.HashedNewPassword = hashedNewPassword
-	user.SetUpdateResetPassword(request)
+	user.SetDataForUpdateResetPassword(request)
 
 	err = uc.UserRepository.UpdateUser(ctx, user)
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (uc *authUsecase) isRoleHasPermission(role *models.Role, resource, requiredAction string) bool {
+	for _, permission := range role.Permissions {
+		if permission.Resource == resource {
+			for _, action := range permission.Actions {
+				if action == requiredAction {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func (uc *authUsecase) loadRoles(ctx context.Context) error {
+	roles, err := uc.RoleRepository.FindAll(ctx)
+	if err != nil {
+		return err
+	}
+
+	uc.mu.Lock()
+	defer uc.mu.Unlock()
+
+	for _, role := range roles {
+		r := role
+		uc.Roles[role.ID] = &r
 	}
 
 	return nil

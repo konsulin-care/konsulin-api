@@ -1,6 +1,6 @@
 package smtp
 
-type SMTPUsecase interface {
+type SMTPService interface {
 	SendEmail(to, subject, body string) error
 	SendHTMLEmail(to, subject, htmlBody string) error
 	SendEmailWithAttachment(to, subject, body, attachmentPath string) error

@@ -59,7 +59,7 @@ func (ctrl *AuthController) RegisterClinician(w http.ResponseWriter, r *http.Req
 	}
 
 	// Send response
-	utils.BuildSuccessResponse(w, constvars.StatusCreated, constvars.UserCreatedSuccess, response)
+	utils.BuildSuccessResponse(w, constvars.StatusCreated, constvars.CreateUserSuccessMessage, response)
 }
 
 func (ctrl *AuthController) RegisterPatient(w http.ResponseWriter, r *http.Request) {
@@ -95,7 +95,7 @@ func (ctrl *AuthController) RegisterPatient(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Send response
-	utils.BuildSuccessResponse(w, constvars.StatusCreated, constvars.UserCreatedSuccess, response)
+	utils.BuildSuccessResponse(w, constvars.StatusCreated, constvars.CreateUserSuccessMessage, response)
 }
 
 func (ctrl *AuthController) LoginPatient(w http.ResponseWriter, r *http.Request) {
@@ -129,7 +129,7 @@ func (ctrl *AuthController) LoginPatient(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Send response
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.LoginSuccess, response)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.LoginSuccessMessage, response)
 }
 
 func (ctrl *AuthController) LoginClinician(w http.ResponseWriter, r *http.Request) {
@@ -163,7 +163,7 @@ func (ctrl *AuthController) LoginClinician(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Send response
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.LoginSuccess, response)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.LoginSuccessMessage, response)
 }
 
 func (ctrl *AuthController) Logout(w http.ResponseWriter, r *http.Request) {
@@ -182,7 +182,7 @@ func (ctrl *AuthController) Logout(w http.ResponseWriter, r *http.Request) {
 		utils.BuildErrorResponse(ctrl.Log, w, err)
 		return
 	}
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.LogoutSuccess, nil)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.LogoutSuccessMessage, nil)
 }
 
 func (ctrl *AuthController) ForgotPassword(w http.ResponseWriter, r *http.Request) {
@@ -216,7 +216,7 @@ func (ctrl *AuthController) ForgotPassword(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Send response
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.ForgotPasswordSuccess, nil)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.ForgotPasswordSuccessMessage, nil)
 }
 
 func (ctrl *AuthController) ResetPassword(w http.ResponseWriter, r *http.Request) {
@@ -250,5 +250,5 @@ func (ctrl *AuthController) ResetPassword(w http.ResponseWriter, r *http.Request
 	}
 
 	// Send response
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.ResetPasswordSuccess, nil)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.ResetPasswordSuccessMessage, nil)
 }

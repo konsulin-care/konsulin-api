@@ -20,6 +20,14 @@ func BuildFhirPatientRequest(username, email string) *requests.PatientFhir {
 }
 
 func BuildFhirPatientUpdateRequest(request *requests.UpdateProfile, patientID string) *requests.PatientFhir {
+	var extensions []requests.Extension
+	for _, education := range request.Educations {
+		extensions = append(extensions, requests.Extension{
+			Url:         "http://example.org/fhir/StructureDefinition/education",
+			ValueString: education,
+		})
+	}
+
 	return &requests.PatientFhir{
 		ResourceType: constvars.ResourcePatient,
 		ID:           patientID,
@@ -51,12 +59,7 @@ func BuildFhirPatientUpdateRequest(request *requests.UpdateProfile, patientID st
 				Line: strings.Split(request.Address, ", "),
 			},
 		},
-		Extension: []requests.Extension{
-			{
-				Url:         "http://example.org/fhir/StructureDefinition/education",
-				ValueString: request.Education,
-			},
-		},
+		Extension: extensions,
 	}
 }
 
@@ -72,8 +75,15 @@ func BuildFhirPractitionerRequest(username, email string) *requests.Practitioner
 		},
 	}
 }
-
 func BuildFhirPractitionerUpdateRequest(request *requests.UpdateProfile, practitionerID string) *requests.PractitionerFhir {
+	var extensions []requests.Extension
+	for _, education := range request.Educations {
+		extensions = append(extensions, requests.Extension{
+			Url:         "http://example.org/fhir/StructureDefinition/education",
+			ValueString: education,
+		})
+	}
+
 	return &requests.PractitionerFhir{
 		ResourceType: constvars.ResourcePractitioner,
 		ID:           practitionerID,
@@ -105,11 +115,6 @@ func BuildFhirPractitionerUpdateRequest(request *requests.UpdateProfile, practit
 				Line: strings.Split(request.Address, ", "),
 			},
 		},
-		Extension: []requests.Extension{
-			{
-				Url:         "http://example.org/fhir/StructureDefinition/education",
-				ValueString: request.Education,
-			},
-		},
+		Extension: extensions,
 	}
 }

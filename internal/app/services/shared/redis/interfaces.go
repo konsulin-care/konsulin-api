@@ -6,7 +6,7 @@ import (
 )
 
 type RedisRepository interface {
-	Delete(ctx context.Context, sessionID string) error
+	Delete(ctx context.Context, key string) error
 	Set(ctx context.Context, key string, value interface{}, exp time.Duration) error
 	Get(ctx context.Context, key string) (string, error)
 	Increment(ctx context.Context, key string) error
