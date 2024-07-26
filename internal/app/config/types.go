@@ -15,17 +15,18 @@ type (
 	}
 
 	App struct {
-		Env                        string
-		Port                       string
-		Version                    string
-		Address                    string
-		Timezone                   string
-		EndpointPrefix             string
-		ResetPasswordUrl           string
-		MaxRequests                int
-		ShutdownTimeout            int
-		MaxTimeRequestsPerSeconds  int
-		RequestBodyLimitInMegabyte int
+		Env                                string
+		Port                               string
+		Version                            string
+		Address                            string
+		Timezone                           string
+		EndpointPrefix                     string
+		ResetPasswordUrl                   string
+		MaxRequests                        int
+		ShutdownTimeout                    int
+		MaxTimeRequestsPerSeconds          int
+		RequestBodyLimitInMegabyte         int
+		ForgotPasswordTokenExpTimeInMinute int
 	}
 
 	MongoDB struct {
@@ -58,6 +59,7 @@ type (
 	}
 
 	JWT struct {
-		Secret string
+		Secret        string
+		ExpTimeInHour int
 	}
 )

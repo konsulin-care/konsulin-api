@@ -2,8 +2,8 @@ package users
 
 import (
 	"context"
-	"encoding/json"
 	"konsulin-service/internal/app/models"
+	"konsulin-service/internal/app/services/core/session"
 	"konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
 	"konsulin-service/internal/app/services/shared/redis"
@@ -19,6 +19,7 @@ type userUsecase struct {
 	PatientFhirClient      patients.PatientFhirClient
 	PractitionerFhirClient practitioners.PractitionerFhirClient
 	RedisRepository        redis.RedisRepository
+	SessionService         session.SessionService
 }
 
 func NewUserUsecase(
@@ -26,22 +27,25 @@ func NewUserUsecase(
 	patientFhirClient patients.PatientFhirClient,
 	practitionerFhirClient practitioners.PractitionerFhirClient,
 	redisRepository redis.RedisRepository,
+	sessionService session.SessionService,
 ) UserUsecase {
 	return &userUsecase{
 		UserRepository:         userMongoRepository,
 		PatientFhirClient:      patientFhirClient,
 		PractitionerFhirClient: practitionerFhirClient,
 		RedisRepository:        redisRepository,
+		SessionService:         sessionService,
 	}
 }
 
 func (uc *userUsecase) GetUserProfileBySession(ctx context.Context, sessionData string) (*responses.UserProfile, error) {
-	session := new(models.Session)
-	err := json.Unmarshal([]byte(sessionData), &session)
+	// Parse session data
+	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
 	if err != nil {
-		return nil, exceptions.ErrCannotParseJSON(err)
+		return nil, err
 	}
 
+	// Handle get user profile based on role
 	switch session.RoleName {
 	case constvars.RoleTypePractitioner:
 		return uc.getPractitionerProfile(ctx, session)
@@ -53,12 +57,13 @@ func (uc *userUsecase) GetUserProfileBySession(ctx context.Context, sessionData 
 }
 
 func (uc *userUsecase) UpdateUserProfileBySession(ctx context.Context, sessionData string, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error) {
-	session := new(models.Session)
-	err := json.Unmarshal([]byte(sessionData), &session)
+	// Parse session data
+	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
 	if err != nil {
-		return nil, exceptions.ErrCannotParseJSON(err)
+		return nil, err
 	}
 
+	// Handle update user profile based on role
 	switch session.RoleName {
 	case constvars.RoleTypePractitioner:
 		return uc.updatePractitionerProfile(ctx, session, request)
@@ -69,95 +74,53 @@ func (uc *userUsecase) UpdateUserProfileBySession(ctx context.Context, sessionDa
 	}
 }
 
-func (uc *userUsecase) getPatientProfile(ctx context.Context, session *models.Session) (*responses.UserProfile, error) {
-	// Get patient data from FHIR Spark Patient Client
-	patient, err := uc.PatientFhirClient.GetPatientByID(ctx, session.PatientID)
+func (uc *userUsecase) DeleteUserBySession(ctx context.Context, sessionData string) error {
+	// Parse session data
+	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	// The 'patient' data that we get from FHIR Spark,
-	// then built into suitable format to be shown to our end-users
-	fullname := utils.GetFullName(patient.Name)
-	email, whatsAppNumber := utils.GetEmailAndWhatsapp(patient.Telecom)
-	age := utils.CalculateAge(patient.BirthDate)
-	education := utils.GetEducationFromExtensions(patient.Extension)
-	homeAddress := utils.GetHomeAddress(patient.Address)
-	formattedBirthDate := utils.FormatBirthDate(patient.BirthDate)
-
-	// After changing the 'patient' data into the suitable format,
-	// build it into 'UserProfile' response before sending it back to Controller
-	response := &responses.UserProfile{
-		Fullname:       fullname,
-		Email:          email,
-		Age:            age,
-		Gender:         patient.Gender,
-		Education:      education,
-		WhatsAppNumber: whatsAppNumber,
-		Address:        homeAddress,
-		BirthDate:      formattedBirthDate,
-	}
-
-	// Return the response to Controller
-	return response, nil
-}
-
-func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *models.Session) (*responses.UserProfile, error) {
-	// Get practitioner data from FHIR Spark Practitioner Client
-	practitioner, err := uc.PractitionerFhirClient.GetPractitionerByID(ctx, session.PractitionerID)
+	// Delete the user by using his/her 'session.UserID'
+	err = uc.UserRepository.DeleteByID(ctx, session.UserID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	// The 'practitioner' data that we get from FHIR Spark,
-	// then built into suitable format to be shown to our end-users
-	fullname := utils.GetFullName(practitioner.Name)
-	email, whatsAppNumber := utils.GetEmailAndWhatsapp(practitioner.Telecom)
-	age := utils.CalculateAge(practitioner.BirthDate)
-	education := utils.GetEducationFromExtensions(practitioner.Extension)
-	workAddress := utils.GetWorkAddress(practitioner.Address)
-	formattedBirthDate := utils.FormatBirthDate(practitioner.BirthDate)
-
-	// After changing the 'practitioner' data into the suitable format,
-	// build it into 'UserProfile' response before sending it back to Controller
-	response := &responses.UserProfile{
-		Fullname:       fullname,
-		Email:          email,
-		Age:            age,
-		Gender:         practitioner.Gender,
-		Education:      education,
-		WhatsAppNumber: whatsAppNumber,
-		Address:        workAddress,
-		BirthDate:      formattedBirthDate,
+	// Delete the session in Redis using 'session.SessionID'
+	err = uc.RedisRepository.Delete(ctx, session.SessionID)
+	if err != nil {
+		return err
 	}
 
-	// Send the response to the Controller
-	return response, nil
+	// Return nil error indicating successful deletion
+	return nil
 }
 
 func (uc *userUsecase) updatePatientProfile(ctx context.Context, session *models.Session, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error) {
-	// Build the update request
+	// Build the 'UpdateProfile' request into 'patientFhirRequest'
 	patientFhirRequest := utils.BuildFhirPatientUpdateRequest(request, session.PatientID)
 
-	// Send PUT request to FHIR server to update the user resource
+	// Send 'patientFhirRequest' to FHIR Spark Patient Client to update the 'patient' resource
 	fhirPatient, err := uc.PatientFhirClient.UpdatePatient(ctx, patientFhirRequest)
 	if err != nil {
 		return nil, err
 	}
 
-	// Find user by ID
+	// Find user by ID by 'session.UserID'
 	existingUser, err := uc.UserRepository.FindByID(ctx, session.UserID)
 	if err != nil {
 		return nil, err
 	}
-	// Throw error userNotExist if existingUser doesn't exist
+	// Throw 'ErrUserNotExist' if existingUser doesn't exist
 	if existingUser == nil {
-		return nil, exceptions.ErrUserNotExist(err)
+		return nil, exceptions.ErrUserNotExist(nil)
 	}
-	// Set the existingUser data with requests.UpdateProfile
-	existingUser.SetUpdateProfileData(request)
 
-	// Update the user
+	// Set the existingUser data with 'UpdateProfile' request
+	existingUser.SetDataForUpdateProfileData(request)
+
+	// Update the user using 'existingUser' that already updated with the request
 	err = uc.UserRepository.UpdateUser(ctx, existingUser)
 	if err != nil {
 		return nil, err
@@ -168,58 +131,72 @@ func (uc *userUsecase) updatePatientProfile(ctx context.Context, session *models
 		PatientID: fhirPatient.ID,
 	}
 
-	// Return the response
+	// Return the response back to Controller
 	return response, nil
 }
 
 func (uc *userUsecase) updatePractitionerProfile(ctx context.Context, session *models.Session, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error) {
-	// Build the update request
+	// Build the 'UpdateProfile' request into 'practitionerFhirRequest'
 	practitionerFhirRequest := utils.BuildFhirPractitionerUpdateRequest(request, session.PractitionerID)
 
-	// Send PUT request to FHIR server to update the user resource
+	// Send 'practitionerFhirRequest' to FHIR Spark Practitioner Client to update the 'practitioner' resource
 	fhirPractitioner, err := uc.PractitionerFhirClient.UpdatePractitioner(ctx, practitionerFhirRequest)
 	if err != nil {
 		return nil, err
 	}
 
+	// Find user by ID by 'session.UserID'
 	existingUser, err := uc.UserRepository.FindByID(ctx, session.UserID)
 	if err != nil {
 		return nil, err
 	}
+	// Throw error 'userNotExist' if existingUser doesn't exist
 	if existingUser == nil {
 		return nil, exceptions.ErrUserNotExist(err)
 	}
 
-	existingUser.SetUpdateProfileData(request)
+	// Set the existingUser data with requests.UpdateProfile
+	existingUser.SetDataForUpdateProfileData(request)
 
+	// Update the user using 'existingUser' that already updated with the request
 	err = uc.UserRepository.UpdateUser(ctx, existingUser)
 	if err != nil {
 		return nil, err
 	}
 
+	// Build the response before sending it back to Controller
 	response := &responses.UpdateUserProfile{
 		PractitionerID: fhirPractitioner.ID,
 	}
 
+	// Return the response back to Controller
 	return response, nil
 }
 
-func (uc *userUsecase) DeleteUserBySession(ctx context.Context, sessionData string) error {
-	session := new(models.Session)
-	err := json.Unmarshal([]byte(sessionData), &session)
+func (uc *userUsecase) getPatientProfile(ctx context.Context, session *models.Session) (*responses.UserProfile, error) {
+	// Get patient data from FHIR Spark Patient Client
+	patientFhir, err := uc.PatientFhirClient.GetPatientByID(ctx, session.PatientID)
 	if err != nil {
-		return exceptions.ErrCannotParseJSON(err)
+		return nil, err
 	}
 
-	err = uc.UserRepository.DeleteByID(ctx, session.UserID)
+	// Build patient profile response
+	response := utils.BuildPatientProfileResponse(patientFhir)
+
+	// Return the response to Controller
+	return response, nil
+}
+
+func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *models.Session) (*responses.UserProfile, error) {
+	// Get practitioner data from FHIR Spark Practitioner Client
+	practitionerFhir, err := uc.PractitionerFhirClient.GetPractitionerByID(ctx, session.PractitionerID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	err = uc.RedisRepository.Delete(ctx, session.SessionID)
-	if err != nil {
-		return err
-	}
+	// Build patient profile response
+	response := utils.BuildPractitionerProfileResponse(practitionerFhir)
 
-	return nil
+	// Return the response to Controller
+	return response, nil
 }

@@ -12,7 +12,6 @@ type AuthUsecase interface {
 	LoginPatient(ctx context.Context, request *requests.LoginUser) (*responses.LoginUser, error)
 	LoginClinician(ctx context.Context, request *requests.LoginUser) (*responses.LoginUser, error)
 	LogoutUser(ctx context.Context, sessionData string) error
-	GetSessionData(ctx context.Context, sessionID string) (sessionData string, err error)
 	IsUserHasPermission(ctx context.Context, request requests.AuthorizeUser) (hasPermission bool, err error)
 	ForgotPassword(ctx context.Context, request *requests.ForgotPassword) error
 	ResetPassword(ctx context.Context, request *requests.ResetPassword) error

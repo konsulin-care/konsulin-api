@@ -42,7 +42,7 @@ func (ctrl *UserController) GetUserProfileBySession(w http.ResponseWriter, r *ht
 		return
 	}
 
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.ProfileGetSuccess, result)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.GetProfileSuccessMessage, result)
 }
 
 func (ctrl *UserController) UpdateUserBySession(w http.ResponseWriter, r *http.Request) {
@@ -75,7 +75,7 @@ func (ctrl *UserController) UpdateUserBySession(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.UserUpdatedSuccess, response)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.UpdateUserSuccessMessage, response)
 }
 
 func (ctrl *UserController) DeleteUserBySession(w http.ResponseWriter, r *http.Request) {
@@ -95,5 +95,5 @@ func (ctrl *UserController) DeleteUserBySession(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.UserDeletedSuccess, nil)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.DeleteUserSuccessMessage, nil)
 }

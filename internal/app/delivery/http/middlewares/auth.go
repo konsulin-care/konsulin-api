@@ -4,6 +4,7 @@ import (
 	"context"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/services/core/auth"
+	"konsulin-service/internal/app/services/core/session"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
@@ -14,9 +15,10 @@ import (
 	"go.uber.org/zap"
 )
 
-func NewMiddlewares(logger *zap.Logger, authUsecase auth.AuthUsecase, internalConfig *config.InternalConfig) *Middlewares {
+func NewMiddlewares(logger *zap.Logger, sessionService session.SessionService, authUsecase auth.AuthUsecase, internalConfig *config.InternalConfig) *Middlewares {
 	return &Middlewares{
 		Log:            logger,
+		SessionService: sessionService,
 		AuthUsecase:    authUsecase,
 		InternalConfig: internalConfig,
 	}
@@ -39,7 +41,7 @@ func (m *Middlewares) Authenticate(next http.Handler) http.Handler {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		sessionData, err := m.AuthUsecase.GetSessionData(ctx, sessionID)
+		sessionData, err := m.SessionService.GetSessionData(ctx, sessionID)
 		if err != nil {
 			if err == context.DeadlineExceeded {
 				utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerDeadlineExceeded(err))
@@ -68,9 +70,15 @@ func (m *Middlewares) Authorize(resource, requiredAction string) func(http.Handl
 				RequiredAction: requiredAction,
 			}
 			hasPermission, err := m.AuthUsecase.IsUserHasPermission(ctx, request)
-			if !hasPermission && err != nil {
-				utils.BuildErrorResponse(m.Log, w, err)
-				return
+			if err != nil {
+				if err == context.DeadlineExceeded {
+					utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+					return
+				}
+				if !hasPermission {
+					utils.BuildErrorResponse(m.Log, w, err)
+					return
+				}
 			}
 
 			next.ServeHTTP(w, r)

@@ -42,23 +42,25 @@ func NewDriverConfig() *DriverConfig {
 func NewInternalConfig() *InternalConfig {
 	return &InternalConfig{
 		App: App{
-			Env:                        utils.GetEnvString("APP_ENV", "v1.0"),
-			Port:                       utils.GetEnvString("APP_PORT", ":8080"),
-			Version:                    utils.GetEnvString("APP_VERSION", "v1.0"),
-			Address:                    utils.GetEnvString("APP_ADDRESS", "localhost"),
-			Timezone:                   utils.GetEnvString("APP_TIMEZONE", "Asia/Jakarta"),
-			EndpointPrefix:             utils.GetEnvString("APP_ENDPOINT_PREFIX", "/v1"),
-			ResetPasswordUrl:           utils.GetEnvString("APP_RESET_PASSWORD_URL", ""),
-			MaxRequests:                utils.GetEnvInt("APP_MAX_REQUEST", 10),
-			ShutdownTimeout:            utils.GetEnvInt("APP_SHUTDOWN_TIMEOUT", 10),
-			MaxTimeRequestsPerSeconds:  utils.GetEnvInt("APP_MAX_TIME_REQUESTS_PER_SECONDS", 10),
-			RequestBodyLimitInMegabyte: utils.GetEnvInt("APP_REQUEST_BODY_LIMIT_IN_MEGABYTE", 6),
+			Env:                                utils.GetEnvString("APP_ENV", "v1.0"),
+			Port:                               utils.GetEnvString("APP_PORT", ":8080"),
+			Version:                            utils.GetEnvString("APP_VERSION", "v1.0"),
+			Address:                            utils.GetEnvString("APP_ADDRESS", "localhost"),
+			Timezone:                           utils.GetEnvString("APP_TIMEZONE", "Asia/Jakarta"),
+			EndpointPrefix:                     utils.GetEnvString("APP_ENDPOINT_PREFIX", "/v1"),
+			ResetPasswordUrl:                   utils.GetEnvString("APP_RESET_PASSWORD_URL", ""),
+			MaxRequests:                        utils.GetEnvInt("APP_MAX_REQUEST", 10),
+			ShutdownTimeout:                    utils.GetEnvInt("APP_SHUTDOWN_TIMEOUT", 10),
+			MaxTimeRequestsPerSeconds:          utils.GetEnvInt("APP_MAX_TIME_REQUESTS_PER_SECONDS", 10),
+			RequestBodyLimitInMegabyte:         utils.GetEnvInt("APP_REQUEST_BODY_LIMIT_IN_MEGABYTE", 6),
+			ForgotPasswordTokenExpTimeInMinute: utils.GetEnvInt("APP_FORGOT_PASSWORD_TOKEN_EXP_TIME_IN_MINUTE", 2),
 		},
 		FHIR: FHIR{
 			BaseUrl: utils.GetEnvString("FHIR_BASE_URL", "http://localhost:5555/fhir"),
 		},
 		JWT: JWT{
-			Secret: utils.GetEnvString("JWT_SECRET", "anyjwt"),
+			Secret:        utils.GetEnvString("JWT_SECRET", "anyjwt"),
+			ExpTimeInHour: utils.GetEnvInt("JWT_EXP_TIME_IN_HOUR", 1),
 		},
 	}
 }

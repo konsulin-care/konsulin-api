@@ -18,10 +18,10 @@ func CheckPasswordHash(password, hash string) bool {
 	return err == nil
 }
 
-func GenerateJWT(sessionID, secret string) (string, error) {
+func GenerateSessionJWT(sessionID, secret string, jwtExpiryTime int) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"session_id": sessionID,
-		"exp":        time.Now().Add(time.Hour).Unix(),
+		"exp":        time.Now().Add(time.Duration(jwtExpiryTime) * time.Hour).Unix(),
 	})
 
 	tokenString, err := token.SignedString([]byte(secret))

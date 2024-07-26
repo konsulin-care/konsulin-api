@@ -7,6 +7,46 @@ import (
 	"time"
 )
 
+func BuildPatientProfileResponse(patientFhir *responses.Patient) *responses.UserProfile {
+	fullname := GetFullName(patientFhir.Name)
+	email, whatsAppNumber := GetEmailAndWhatsapp(patientFhir.Telecom)
+	age := CalculateAge(patientFhir.BirthDate)
+	educations := GetEducationFromExtensions(patientFhir.Extension)
+	formattedAddress := GetHomeAddress(patientFhir.Address)
+	formattedBirthDate := FormatBirthDate(patientFhir.BirthDate)
+
+	return &responses.UserProfile{
+		Fullname:       fullname,
+		Email:          email,
+		Age:            age,
+		Gender:         patientFhir.Gender,
+		Educations:     educations,
+		WhatsAppNumber: whatsAppNumber,
+		Address:        formattedAddress,
+		BirthDate:      formattedBirthDate,
+	}
+}
+
+func BuildPractitionerProfileResponse(practitionerFhir *responses.Practitioner) *responses.UserProfile {
+	fullname := GetFullName(practitionerFhir.Name)
+	email, whatsAppNumber := GetEmailAndWhatsapp(practitionerFhir.Telecom)
+	age := CalculateAge(practitionerFhir.BirthDate)
+	educations := GetEducationFromExtensions(practitionerFhir.Extension)
+	formattedAddress := GetHomeAddress(practitionerFhir.Address)
+	formattedBirthDate := FormatBirthDate(practitionerFhir.BirthDate)
+
+	return &responses.UserProfile{
+		Fullname:       fullname,
+		Email:          email,
+		Age:            age,
+		Gender:         practitionerFhir.Gender,
+		Educations:     educations,
+		WhatsAppNumber: whatsAppNumber,
+		Address:        formattedAddress,
+		BirthDate:      formattedBirthDate,
+	}
+}
+
 func CalculateAge(birthDate string) int {
 	if birthDate == "" {
 		return 0
@@ -27,13 +67,14 @@ func CalculateAge(birthDate string) int {
 	return age
 }
 
-func GetEducationFromExtensions(extensions []responses.Extension) string {
+func GetEducationFromExtensions(extensions []responses.Extension) []string {
+	var educations []string
 	for _, ext := range extensions {
 		if ext.Url == "http://example.org/fhir/StructureDefinition/education" {
-			return ext.ValueString
+			educations = append(educations, ext.ValueString)
 		}
 	}
-	return ""
+	return educations
 }
 
 func GetHomeAddress(addresses []responses.Address) string {
