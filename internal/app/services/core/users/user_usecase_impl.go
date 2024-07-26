@@ -118,7 +118,7 @@ func (uc *userUsecase) updatePatientProfile(ctx context.Context, session *models
 	}
 
 	// Set the existingUser data with 'UpdateProfile' request
-	existingUser.SetDataForUpdateProfileData(request)
+	existingUser.SetDataForUpdateProfile(request)
 
 	// Update the user using 'existingUser' that already updated with the request
 	err = uc.UserRepository.UpdateUser(ctx, existingUser)
@@ -156,7 +156,7 @@ func (uc *userUsecase) updatePractitionerProfile(ctx context.Context, session *m
 	}
 
 	// Set the existingUser data with requests.UpdateProfile
-	existingUser.SetDataForUpdateProfileData(request)
+	existingUser.SetDataForUpdateProfile(request)
 
 	// Update the user using 'existingUser' that already updated with the request
 	err = uc.UserRepository.UpdateUser(ctx, existingUser)

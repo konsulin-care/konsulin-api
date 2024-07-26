@@ -90,6 +90,12 @@ var (
 		}
 		return WrapWithoutError(constvars.StatusUnauthorized, constvars.ErrClientNotLoggedIn, constvars.ErrDevAuthTokenInvalid)
 	}
+	ErrTokenResetPasswordExpired = func(err error) *CustomError {
+		if err != nil {
+			return WrapWithError(err, constvars.StatusUnauthorized, constvars.ErrClientResetPasswordToken, constvars.ErrDevAuthTokenExpired)
+		}
+		return WrapWithoutError(constvars.StatusUnauthorized, constvars.ErrClientResetPasswordToken, constvars.ErrDevAuthTokenExpired)
+	}
 	ErrInvalidRoleType = func(err error) *CustomError {
 		if err != nil {
 			return WrapWithError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevInvalidRoleType)

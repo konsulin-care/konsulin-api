@@ -27,7 +27,7 @@ type User struct {
 	TimeModel        `bson:",inline"`
 }
 
-func (u *User) SetDataForUpdateProfileData(request *requests.UpdateProfile) {
+func (u *User) SetDataForUpdateProfile(request *requests.UpdateProfile) {
 	u.Fullname = request.Fullname
 	u.Email = request.Email
 	u.BirthDate = request.BirthDate
@@ -44,8 +44,10 @@ func (u *User) SetDataForUpdateResetPassword(request *requests.ResetPassword) {
 	u.SetUpdatedAt()
 }
 
-func (u *User) SetDataForUpdateForgotPassword(tokenExpiryTime int) {
+func (u *User) SetDataForUpdateForgotPassword(tokenExpiryTimeInMinute int) {
+
 	u.ResetToken = uuid.New().String()
-	u.ResetTokenExpiry = time.Now().Add(time.Duration(tokenExpiryTime) * time.Minute)
+	u.ResetTokenExpiry = time.Now().Add(time.Duration(tokenExpiryTimeInMinute) * time.Minute)
+
 	u.SetUpdatedAt()
 }

@@ -64,6 +64,7 @@ const (
 	ErrClientServerLongRespond             = "the app taking too long to respond"
 	ErrClientNotAuthorized                 = "you can't access this feature"
 	ErrClientNotLoggedIn                   = "your session ended, please login again"
+	ErrClientResetPasswordToken            = "your reset password request already expired"
 )
 
 // Error messages for developers
