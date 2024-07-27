@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
@@ -42,7 +43,21 @@ func (c *patientFhirClient) CreatePatient(ctx context.Context, request *requests
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
-		return nil, exceptions.ErrCreateFHIRResource(nil, constvars.ResourcePatient)
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, exceptions.ErrCreateFHIRResource(err, constvars.ResourcePatient)
+		}
+
+		var outcome responses.OperationOutcome
+		err = json.Unmarshal(bodyBytes, &outcome)
+		if err != nil {
+			return nil, exceptions.ErrCreateFHIRResource(err, constvars.ResourcePatient)
+		}
+
+		if len(outcome.Issue) > 0 {
+			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			return nil, exceptions.ErrCreateFHIRResource(fhirErrorIssue, constvars.ResourcePatient)
+		}
 	}
 
 	patientFhir := new(responses.Patient)
@@ -69,7 +84,21 @@ func (c *patientFhirClient) GetPatientByID(ctx context.Context, patientID string
 	defer resp.Body.Close()
 
 	if resp.StatusCode != constvars.StatusOK {
-		return nil, exceptions.ErrGetFHIRResource(nil, constvars.ResourcePatient)
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePatient)
+		}
+
+		var outcome responses.OperationOutcome
+		err = json.Unmarshal(bodyBytes, &outcome)
+		if err != nil {
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePatient)
+		}
+
+		if len(outcome.Issue) > 0 {
+			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourcePatient)
+		}
 	}
 
 	patientFhir := new(responses.Patient)
@@ -103,7 +132,21 @@ func (c *patientFhirClient) UpdatePatient(ctx context.Context, request *requests
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, exceptions.ErrUpdateFHIRResource(nil, constvars.ResourcePatient)
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, exceptions.ErrUpdateFHIRResource(err, constvars.ResourcePatient)
+		}
+
+		var outcome responses.OperationOutcome
+		err = json.Unmarshal(bodyBytes, &outcome)
+		if err != nil {
+			return nil, exceptions.ErrUpdateFHIRResource(err, constvars.ResourcePatient)
+		}
+
+		if len(outcome.Issue) > 0 {
+			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			return nil, exceptions.ErrUpdateFHIRResource(fhirErrorIssue, constvars.ResourcePatient)
+		}
 	}
 
 	patientFhir := new(responses.Patient)
