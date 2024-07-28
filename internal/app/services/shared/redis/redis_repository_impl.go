@@ -41,9 +41,13 @@ func (r *redisRepository) Set(ctx context.Context, key string, value interface{}
 
 func (r *redisRepository) Get(ctx context.Context, key string) (string, error) {
 	data, err := r.client.Get(ctx, key).Result()
-	if err != nil {
+
+	if err == redis.Nil {
+		return data, nil
+	} else if err != nil {
 		return data, exceptions.ErrRedisGet(err)
 	}
+
 	return data, err
 }
 

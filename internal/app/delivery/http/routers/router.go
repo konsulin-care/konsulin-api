@@ -5,22 +5,24 @@ import (
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/delivery/http/middlewares"
 	"konsulin-service/internal/app/services/core/auth"
+	educationLevels "konsulin-service/internal/app/services/core/education_levels"
+	"konsulin-service/internal/app/services/core/genders"
 	"konsulin-service/internal/app/services/core/users"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
 	"github.com/go-chi/httprate"
-	"github.com/sirupsen/logrus"
 )
 
 func SetupRoutes(
 	router *chi.Mux,
 	internalConfig *config.InternalConfig,
-	log *logrus.Logger,
 	middlewares *middlewares.Middlewares,
 	userController *users.UserController,
 	authController *auth.AuthController,
+	educationLevelController *educationLevels.EducationLevelController,
+	genderController *genders.GenderController,
 ) {
 
 	corsOptions := cors.Options{
@@ -42,7 +44,6 @@ func SetupRoutes(
 	endpointPrefix := fmt.Sprintf("/%s", internalConfig.App.EndpointPrefix)
 	versionPrefix := fmt.Sprintf("/%s", internalConfig.App.Version)
 
-	// router := chi.NewRouter()
 	router.Route(endpointPrefix, func(r chi.Router) {
 		r.Route(versionPrefix, func(r chi.Router) {
 			r.Route("/auth", func(r chi.Router) {
@@ -51,6 +52,14 @@ func SetupRoutes(
 
 			r.Route("/users", func(r chi.Router) {
 				attachUserRoutes(r, middlewares, userController)
+			})
+
+			r.Route("/education-levels", func(r chi.Router) {
+				attachEducationLevelRoutes(r, middlewares, educationLevelController)
+			})
+
+			r.Route("/genders", func(r chi.Router) {
+				attachGenderRoutes(r, middlewares, genderController)
 			})
 		})
 	})

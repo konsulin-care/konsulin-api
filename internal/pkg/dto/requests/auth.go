@@ -5,17 +5,25 @@ type RegisterUser struct {
 	Username       string `json:"username" validate:"required,alphanum,min=8,max=15"`
 	Password       string `json:"password" validate:"password"`
 	RetypePassword string `json:"retype_password"`
-	UserType       string `validate:"required,user_type"`
 }
 
 type LoginUser struct {
 	Username string `json:"username" validate:"required,alphanum,min=8"`
 	Password string `json:"password" validate:"required,min=8"`
-	UserType string `validate:"required,user_type"`
 }
 
 type AuthorizeUser struct {
 	SessionData    string
 	Resource       string
 	RequiredAction string
+}
+
+type ForgotPassword struct {
+	Email string `json:"email" validate:"required,email"`
+}
+
+type ResetPassword struct {
+	Token             string `json:"token" validate:"required"`
+	NewPassword       string `json:"new_password" validate:"required,min=8"`
+	HashedNewPassword string
 }

@@ -7,17 +7,17 @@ import (
 )
 
 type CustomError struct {
-	StatusCode    int      `json:"status_code"`
-	Success       bool     `json:"success"`
-	ClientMessage string   `json:"message"`
-	DevMessage    string   `json:"-"`
-	Location      Location `json:"-"`
+	StatusCode    int       `json:"status_code"`
+	Success       bool      `json:"success"`
+	ClientMessage string    `json:"message"`
+	DevMessage    string    `json:"dev_message,omitempty"`
+	Location      *Location `json:"location,omitempty"`
 }
 
 type Location struct {
-	File         string
-	Line         int
-	FunctionName string
+	File         string `json:"file,omitempty"`
+	Line         int    `json:"line,omitempty"`
+	FunctionName string `json:"function_name,omitempty"`
 }
 
 func (e *CustomError) Error() string {
@@ -44,17 +44,17 @@ func WrapWithError(err error, statusCode int, clientMessage, devMessage string) 
 	}
 }
 
-func getLocation(skip int) Location {
+func getLocation(skip int) *Location {
 	pc, file, line, ok := runtime.Caller(skip)
 	if !ok {
-		return Location{
+		return &Location{
 			File:         constvars.ResponseUnknown,
 			Line:         0,
 			FunctionName: constvars.ResponseUnknown,
 		}
 	}
 	function := runtime.FuncForPC(pc).Name()
-	return Location{
+	return &Location{
 		File:         file,
 		Line:         line,
 		FunctionName: function,

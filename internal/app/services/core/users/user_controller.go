@@ -9,14 +9,18 @@ import (
 	"konsulin-service/internal/pkg/utils"
 	"net/http"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 type UserController struct {
+	Log         *zap.Logger
 	UserUsecase UserUsecase
 }
 
-func NewUserController(userUsecase UserUsecase) *UserController {
+func NewUserController(logger *zap.Logger, userUsecase UserUsecase) *UserController {
 	return &UserController{
+		Log:         logger,
 		UserUsecase: userUsecase,
 	}
 }
@@ -31,28 +35,28 @@ func (ctrl *UserController) GetUserProfileBySession(w http.ResponseWriter, r *ht
 	result, err := ctrl.UserUsecase.GetUserProfileBySession(ctx, sessionData)
 	if err != nil {
 		if err == context.DeadlineExceeded {
-			utils.BuildErrorResponse(w, exceptions.ErrServerDeadlineExceeded(err))
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
 			return
 		}
-		utils.BuildErrorResponse(w, err)
+		utils.BuildErrorResponse(ctrl.Log, w, err)
 		return
 	}
 
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.ProfileGetSuccess, result)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.GetProfileSuccessMessage, result)
 }
 
 func (ctrl *UserController) UpdateUserBySession(w http.ResponseWriter, r *http.Request) {
 	request := new(requests.UpdateProfile)
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		utils.BuildErrorResponse(w, exceptions.ErrCannotParseJSON(err))
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
 		return
 	}
 
 	// Validate request
 	err = utils.ValidateStruct(request)
 	if err != nil {
-		utils.BuildErrorResponse(w, exceptions.ErrInputValidation(err))
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
 		return
 	}
 
@@ -64,12 +68,32 @@ func (ctrl *UserController) UpdateUserBySession(w http.ResponseWriter, r *http.R
 	response, err := ctrl.UserUsecase.UpdateUserProfileBySession(ctx, sessionData, request)
 	if err != nil {
 		if err == context.DeadlineExceeded {
-			utils.BuildErrorResponse(w, exceptions.ErrServerDeadlineExceeded(err))
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
 			return
 		}
-		utils.BuildErrorResponse(w, err)
+		utils.BuildErrorResponse(ctrl.Log, w, err)
 		return
 	}
 
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.UserUpdatedSuccess, response)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.UpdateUserSuccessMessage, response)
+}
+
+func (ctrl *UserController) DeleteUserBySession(w http.ResponseWriter, r *http.Request) {
+	// Get session data from context
+	sessionData := r.Context().Value("sessionData").(string)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err := ctrl.UserUsecase.DeleteUserBySession(ctx, sessionData)
+	if err != nil {
+		if err == context.DeadlineExceeded {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.DeleteUserSuccessMessage, nil)
 }

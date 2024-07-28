@@ -9,6 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type UserMongoRepository struct {
@@ -53,7 +54,7 @@ func (r *UserMongoRepository) FindByUsername(ctx context.Context, username strin
 	return &user, nil
 }
 
-func (r *UserMongoRepository) GetUserByID(ctx context.Context, userID string) (*models.User, error) {
+func (r *UserMongoRepository) FindByID(ctx context.Context, userID string) (*models.User, error) {
 	var user models.User
 	objectID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
@@ -61,19 +62,46 @@ func (r *UserMongoRepository) GetUserByID(ctx context.Context, userID string) (*
 	}
 	err = r.Collection.FindOne(ctx, bson.M{"_id": objectID}).Decode(&user)
 	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, nil
+		}
 		return nil, exceptions.ErrMongoDBFindDocument(err)
 	}
 	return &user, nil
 }
 
-func (r *UserMongoRepository) UpdateUser(ctx context.Context, userID string, updateData map[string]interface{}) error {
+func (r *UserMongoRepository) UpdateUser(ctx context.Context, user *models.User) error {
+	filter := bson.M{"_id": user.ID}
+	update := bson.M{"$set": user}
+	_, err := r.Collection.UpdateOne(ctx, filter, update, options.Update().SetUpsert(true))
+	if err != nil {
+		return exceptions.ErrMongoDBUpdateDocument(err)
+	}
+	return nil
+}
+
+func (r *UserMongoRepository) FindByResetToken(ctx context.Context, token string) (*models.User, error) {
+	var user models.User
+	filter := bson.M{"resetToken": token}
+	err := r.Collection.FindOne(ctx, filter).Decode(&user)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (r *UserMongoRepository) DeleteByID(ctx context.Context, userID string) error {
 	objectID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
 		return exceptions.ErrMongoDBNotObjectID(err)
 	}
-	_, err = r.Collection.UpdateOne(ctx, bson.M{"_id": objectID}, bson.M{"$set": updateData})
+	filter := bson.M{"_id": objectID}
+	_, err = r.Collection.DeleteOne(ctx, filter)
 	if err != nil {
-		return exceptions.ErrMongoDBUpdateDocument(err)
+		return exceptions.ErrMongoDBDeleteDocument(err)
 	}
-	return err
+	return nil
 }

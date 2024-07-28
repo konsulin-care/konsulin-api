@@ -56,9 +56,15 @@ var (
 	}
 	ErrUsernameAlreadyExist = func(err error) *CustomError {
 		if err != nil {
-			return WrapWithError(err, constvars.StatusBadRequest, constvars.ErrClientUsernameAlreadyExists, constvars.ErrDevUsernameAlreadyExists)
+			return WrapWithError(err, constvars.StatusNotFound, constvars.ErrClientUsernameAlreadyExists, constvars.ErrDevUsernameAlreadyExists)
 		}
-		return WrapWithoutError(constvars.StatusBadRequest, constvars.ErrClientUsernameAlreadyExists, constvars.ErrDevUsernameAlreadyExists)
+		return WrapWithoutError(constvars.StatusNotFound, constvars.ErrClientUsernameAlreadyExists, constvars.ErrDevUsernameAlreadyExists)
+	}
+	ErrUserNotExist = func(err error) *CustomError {
+		if err != nil {
+			return WrapWithError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevUserNotExists)
+		}
+		return WrapWithoutError(constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevUserNotExists)
 	}
 	ErrTokenMissing = func(err error) *CustomError {
 		if err != nil {
@@ -84,33 +90,45 @@ var (
 		}
 		return WrapWithoutError(constvars.StatusUnauthorized, constvars.ErrClientNotLoggedIn, constvars.ErrDevAuthTokenInvalid)
 	}
-	ErrInvalidUserType = func(err error) *CustomError {
+	ErrTokenResetPasswordExpired = func(err error) *CustomError {
 		if err != nil {
-			return WrapWithError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevInvalidUserType)
+			return WrapWithError(err, constvars.StatusUnauthorized, constvars.ErrClientResetPasswordToken, constvars.ErrDevAuthTokenExpired)
 		}
-		return WrapWithoutError(constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevInvalidUserType)
+		return WrapWithoutError(constvars.StatusUnauthorized, constvars.ErrClientResetPasswordToken, constvars.ErrDevAuthTokenExpired)
 	}
-	ErrNotMatchUserType = func(err error) *CustomError {
+	ErrInvalidRoleType = func(err error) *CustomError {
 		if err != nil {
-			return WrapWithError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevUserTypeDoesntMatch)
+			return WrapWithError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevInvalidRoleType)
 		}
-		return WrapWithoutError(constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevUserTypeDoesntMatch)
+		return WrapWithoutError(constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevInvalidRoleType)
+	}
+	ErrNotMatchRoleType = func(err error) *CustomError {
+		if err != nil {
+			return WrapWithError(err, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, constvars.ErrDevRoleTypeDoesntMatch)
+		}
+		return WrapWithoutError(constvars.StatusForbidden, constvars.ErrClientNotAuthorized, constvars.ErrDevRoleTypeDoesntMatch)
 	}
 
 	// Auth
 	ErrAuthInvalidRole = func(err error) *CustomError {
 		if err != nil {
-			return WrapWithError(err, constvars.StatusBadRequest, constvars.ErrClientNotAuthorized, constvars.ErrDevUserTypeDoesntMatch)
+			return WrapWithError(err, constvars.StatusBadRequest, constvars.ErrClientNotAuthorized, constvars.ErrDevRoleTypeDoesntMatch)
 		}
-		return WrapWithoutError(constvars.StatusBadRequest, constvars.ErrClientNotAuthorized, constvars.ErrDevUserTypeDoesntMatch)
+		return WrapWithoutError(constvars.StatusBadRequest, constvars.ErrClientNotAuthorized, constvars.ErrDevRoleTypeDoesntMatch)
 	}
 
 	// Mongo DB
 	ErrMongoDBFindDocument = func(err error) *CustomError {
 		if err != nil {
-			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToFindDocument)
+			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevDBFailedToFindDocument)
 		}
-		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToFindDocument)
+		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevDBFailedToFindDocument)
+	}
+	ErrMongoDBDeleteDocument = func(err error) *CustomError {
+		if err != nil {
+			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevDBFailedToDeleteDocument)
+		}
+		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevDBFailedToDeleteDocument)
 	}
 	ErrMongoDBIterateDocuments = func(err error) *CustomError {
 		if err != nil {
@@ -201,6 +219,14 @@ var (
 		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevSendHTTPRequest)
 	}
 
+	// SMTP
+	ErrSMTPSendEmail = func(err error, hostname string) *CustomError {
+		if err != nil {
+			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, fmt.Sprintf(constvars.ErrDevSMTPSendEmail, hostname))
+		}
+		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, fmt.Sprintf(constvars.ErrDevSMTPSendEmail, hostname))
+	}
+
 	// FHIR
 	ErrCreateFHIRResource = func(err error, resource string) *CustomError {
 		if err != nil {
@@ -225,5 +251,13 @@ var (
 			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkDecodeFHIRResourceResponse, resource))
 		}
 		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkDecodeFHIRResourceResponse, resource))
+	}
+
+	// Deault Server
+	ErrServerProcess = func(err error) *CustomError {
+		if err != nil {
+			return WrapWithError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevServerProcess)
+		}
+		return WrapWithoutError(constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevServerProcess)
 	}
 )

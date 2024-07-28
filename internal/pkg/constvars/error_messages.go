@@ -64,6 +64,7 @@ const (
 	ErrClientServerLongRespond             = "the app taking too long to respond"
 	ErrClientNotAuthorized                 = "you can't access this feature"
 	ErrClientNotLoggedIn                   = "your session ended, please login again"
+	ErrClientResetPasswordToken            = "your reset password request already expired"
 )
 
 // Error messages for developers
@@ -71,8 +72,8 @@ const (
 	ErrDevInvalidInput         = "invalid input"
 	ErrDevCannotParseJSON      = "cannot parse JSON into struct or other data types"
 	ErrDevCannotMarshalJSON    = "cannot convert struct or other data types to JSON"
-	ErrDevInvalidUserType      = "invalid user type, should be 'practitioner' or 'patient'"
-	ErrDevUserTypeDoesntMatch  = "invalid user type, request done by user with different type"
+	ErrDevInvalidRoleType      = "invalid role type, should be 'practitioner' or 'patient'"
+	ErrDevRoleTypeDoesntMatch  = "invalid role type, request done by user with different type"
 	ErrDevFailedToCreateUser   = "failed to create user"
 	ErrDevFailedToHashPassword = "failed to hash password"
 	ErrDevDocumentNotFound     = "document not found"
@@ -81,10 +82,14 @@ const (
 	ErrDevCreateHTTPRequest    = "failed to create HTTP request"
 	ErrDevSendHTTPRequest      = "failed to send HTTP request"
 
+	// SMTP
+	ErrDevSMTPSendEmail = "failed to send email via SMTP client hostname %s"
+
 	// Usecase messages
 	ErrDevPasswordsDoNotMatch   = "passwords do not match"
 	ErrDevEmailAlreadyExists    = "email already exists"
 	ErrDevUsernameAlreadyExists = "username already exists"
+	ErrDevUserNotExists         = "user not exists in our system"
 
 	// Spark messages
 	ErrDevSparkCreateFHIRResource         = "failed to create FHIR %s from firesly spark"
@@ -111,6 +116,7 @@ const (
 	ErrDevDBFailedToInsertDocument   = "failed to insert document into database"
 	ErrDevDBFailedToUpdateDocument   = "failed to update document into database"
 	ErrDevDBFailedToFindDocument     = "failed when do find document on database"
+	ErrDevDBFailedToDeleteDocument   = "failed when do delete document on database"
 	ErrDevDBFailedToIterateDocuments = "failed when iterating documents from database"
 	ErrDevDBConnectionFailed         = "failed to connect to database"
 	ErrDevDBOperationFailed          = "database operation failed"
@@ -127,6 +133,7 @@ const (
 	ErrDevRedisSMembers        = "failed to SMembers data from set in redis"
 
 	// Server messages
+	ErrDevServerProcess          = "server failed to process something related to machine system"
 	ErrDevServerInternalError    = "internal server error"
 	ErrDevServerNotImplemented   = "feature not implemented"
 	ErrDevServerBadRequest       = "bad request"

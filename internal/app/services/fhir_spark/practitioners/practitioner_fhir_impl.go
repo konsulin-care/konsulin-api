@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
@@ -42,16 +43,30 @@ func (c *practitionerFhirClient) CreatePractitioner(ctx context.Context, request
 	defer resp.Body.Close()
 
 	if resp.StatusCode != constvars.StatusCreated {
-		return nil, exceptions.ErrCreateFHIRResource(nil, constvars.ResourcePractitioner)
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, exceptions.ErrCreateFHIRResource(err, constvars.ResourcePractitioner)
+		}
+
+		var outcome responses.OperationOutcome
+		err = json.Unmarshal(bodyBytes, &outcome)
+		if err != nil {
+			return nil, exceptions.ErrCreateFHIRResource(err, constvars.ResourcePractitioner)
+		}
+
+		if len(outcome.Issue) > 0 {
+			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			return nil, exceptions.ErrCreateFHIRResource(fhirErrorIssue, constvars.ResourcePractitioner)
+		}
 	}
 
-	PractitionerFhir := new(responses.Practitioner)
-	err = json.NewDecoder(resp.Body).Decode(&PractitionerFhir)
+	practitionerFhir := new(responses.Practitioner)
+	err = json.NewDecoder(resp.Body).Decode(&practitionerFhir)
 	if err != nil {
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePractitioner)
 	}
 
-	return PractitionerFhir, nil
+	return practitionerFhir, nil
 }
 
 func (c *practitionerFhirClient) GetPractitionerByID(ctx context.Context, PractitionerID string) (*responses.Practitioner, error) {
@@ -69,7 +84,21 @@ func (c *practitionerFhirClient) GetPractitionerByID(ctx context.Context, Practi
 	defer resp.Body.Close()
 
 	if resp.StatusCode != constvars.StatusOK {
-		return nil, exceptions.ErrGetFHIRResource(nil, constvars.ResourcePractitioner)
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePractitioner)
+		}
+
+		var outcome responses.OperationOutcome
+		err = json.Unmarshal(bodyBytes, &outcome)
+		if err != nil {
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePractitioner)
+		}
+
+		if len(outcome.Issue) > 0 {
+			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourcePractitioner)
+		}
 	}
 
 	PractitionerFhir := new(responses.Practitioner)
@@ -103,7 +132,21 @@ func (c *practitionerFhirClient) UpdatePractitioner(ctx context.Context, request
 	defer resp.Body.Close()
 
 	if resp.StatusCode != constvars.StatusOK {
-		return nil, exceptions.ErrUpdateFHIRResource(nil, constvars.ResourcePractitioner)
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, exceptions.ErrUpdateFHIRResource(err, constvars.ResourcePractitioner)
+		}
+
+		var outcome responses.OperationOutcome
+		err = json.Unmarshal(bodyBytes, &outcome)
+		if err != nil {
+			return nil, exceptions.ErrUpdateFHIRResource(err, constvars.ResourcePractitioner)
+		}
+
+		if len(outcome.Issue) > 0 {
+			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			return nil, exceptions.ErrUpdateFHIRResource(fhirErrorIssue, constvars.ResourcePractitioner)
+		}
 	}
 
 	PractitionerFhir := new(responses.Practitioner)

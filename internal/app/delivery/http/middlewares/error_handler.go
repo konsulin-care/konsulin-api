@@ -20,7 +20,7 @@ func (m *Middlewares) ErrorHandler(next http.Handler) http.Handler {
 					err = errors.New("unknown error")
 				}
 
-				utils.BuildErrorResponse(w, err)
+				utils.BuildErrorResponse(m.Log, w, err)
 			}
 		}()
 		next.ServeHTTP(w, r)

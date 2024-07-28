@@ -2,18 +2,25 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/delivery/http/middlewares"
 	"konsulin-service/internal/app/delivery/http/routers"
 	"konsulin-service/internal/app/drivers/database"
 	"konsulin-service/internal/app/drivers/logger"
+	"konsulin-service/internal/app/drivers/mailer"
 	"konsulin-service/internal/app/services/core/auth"
+	educationLevels "konsulin-service/internal/app/services/core/education_levels"
+	"konsulin-service/internal/app/services/core/genders"
 	"konsulin-service/internal/app/services/core/roles"
+	"konsulin-service/internal/app/services/core/session"
 	"konsulin-service/internal/app/services/core/users"
 	"konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
-	"konsulin-service/internal/app/services/shared/redis"
+	redisKonsulin "konsulin-service/internal/app/services/shared/redis"
+	"konsulin-service/internal/app/services/shared/smtp"
 	"konsulin-service/internal/pkg/constvars"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -21,14 +28,33 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/sirupsen/logrus"
+	"github.com/redis/go-redis/v9"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.uber.org/zap"
 )
+
+// Version sets the default build version
+var Version = "develop"
+
+// Tag sets the default latest commit tag
+var Tag = "0.0.1-rc"
+
+type Bootstrap struct {
+	Router         *chi.Mux
+	MongoDB        *mongo.Database
+	Redis          *redis.Client
+	Logger         *zap.Logger
+	SMTP           *mailer.SMTPClient
+	DriverConfig   *config.DriverConfig
+	InternalConfig *config.InternalConfig
+}
 
 func main() {
 	driverConfig := config.NewDriverConfig()
 	internalConfig := config.NewInternalConfig()
 
-	log := logger.NewLogger(internalConfig)
+	logger := logger.NewZapLogger(driverConfig, internalConfig)
+	defer logger.Sync()
 
 	location, err := time.LoadLocation(internalConfig.App.Timezone)
 	if err != nil {
@@ -37,26 +63,34 @@ func main() {
 	time.Local = location
 	log.Printf("Successfully set time base to %s", internalConfig.App.Timezone)
 
-	mongoDB := database.NewMongoDB(driverConfig, log)
-	redis := database.NewRedisClient(driverConfig, log)
+	mongoDB := database.NewMongoDB(driverConfig)
+	redis := database.NewRedisClient(driverConfig)
+	smtpClient := mailer.NewSMTPClient(driverConfig)
 	chiRouter := chi.NewRouter()
 
-	bootstrapingTheApp(config.Bootstrap{
+	err = bootstrapingTheApp(Bootstrap{
 		Router:         chiRouter,
 		MongoDB:        mongoDB,
 		Redis:          redis,
-		Logger:         log,
+		Logger:         logger,
+		SMTP:           smtpClient,
 		DriverConfig:   driverConfig,
 		InternalConfig: internalConfig,
 	})
 
+	if err != nil {
+		log.Fatalf("Error while bootstraping the app: %s", err.Error())
+	}
+
 	server := &http.Server{
-		Addr:    internalConfig.App.Port,
+		Addr:    fmt.Sprintf("%s:%s", internalConfig.App.Address, internalConfig.App.Port),
 		Handler: chiRouter,
 	}
 
 	go func() {
-		log.Printf("Server is running on port%s", internalConfig.App.Port)
+		log.Printf("Server is running on port: %s", internalConfig.App.Port)
+		log.Printf("Server Version: %s", Version)
+		log.Printf("Server Tag: %s", Tag)
 		err := server.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server failed to start: %v", err)
@@ -68,17 +102,17 @@ func main() {
 
 	<-c
 
-	logrus.Println("Waiting for pending requests that already received by server to be processed..")
+	log.Println("Waiting for pending requests that already received by server to be processed..")
 
 	shutdownCtx, cancel := context.WithTimeout(
 		context.Background(),
 		time.Second*time.Duration(internalConfig.App.ShutdownTimeout),
 	)
 	defer cancel()
-	// for i := internalConfig.App.ShutdownTimeout; i > 0; i-- {
-	// 	time.Sleep(1 * time.Second)
-	// 	log.Printf("Shutting down in %d...", i)
-	// }
+	for i := internalConfig.App.ShutdownTimeout; i > 0; i-- {
+		time.Sleep(1 * time.Second)
+		log.Printf("Shutting down in %d...", i)
+	}
 
 	// Shutdown the server
 	err = server.Shutdown(shutdownCtx)
@@ -91,9 +125,12 @@ func main() {
 	log.Println("Server exiting")
 }
 
-func bootstrapingTheApp(bootstrap config.Bootstrap) {
-	// Redis
-	redisRepository := redis.NewRedisRepository(bootstrap.Redis)
+func bootstrapingTheApp(bootstrap Bootstrap) error {
+	// Drivers are splitted into: 'service' related to functionality and 'repository' related to Data Access Layer
+	// All deps in /internal/app/shared initiated here before injected into usecases
+	redisRepository := redisKonsulin.NewRedisRepository(bootstrap.Redis)
+	smtpService := smtp.NewSmtpService(bootstrap.SMTP)
+	sessionService := session.NewSessionService(redisRepository)
 
 	// Patient
 	patientFhirClient := patients.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePatient)
@@ -103,20 +140,57 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) {
 
 	// User
 	userMongoRepository := users.NewUserMongoRepository(bootstrap.MongoDB, bootstrap.DriverConfig.MongoDB.DbName)
-	userUseCase := users.NewUserUsecase(userMongoRepository, patientFhirClient, practitionerFhirClient)
-	userController := users.NewUserController(userUseCase)
+	userUseCase := users.NewUserUsecase(userMongoRepository, patientFhirClient, practitionerFhirClient, redisRepository, sessionService)
+	userController := users.NewUserController(bootstrap.Logger, userUseCase)
 
+	// Education Level
+	educationLevelMongoRepository := educationLevels.NewEducationLevelMongoRepository(bootstrap.MongoDB, bootstrap.DriverConfig.MongoDB.DbName)
+	educationLevelUseCase, err := educationLevels.NewEducationLevelUsecase(educationLevelMongoRepository, redisRepository)
+	if err != nil {
+		return err
+	}
+	educationLevelController := educationLevels.NewEducationLevelController(bootstrap.Logger, educationLevelUseCase)
+
+	// Gender
+	genderMongoRepository := genders.NewGenderMongoRepository(bootstrap.MongoDB, bootstrap.DriverConfig.MongoDB.DbName)
+	genderUseCase, err := genders.NewGenderUsecase(genderMongoRepository, redisRepository)
+	if err != nil {
+		return err
+	}
+	genderController := genders.NewGenderController(bootstrap.Logger, genderUseCase)
+
+	// Role
 	roleMongoRepository := roles.NewRoleMongoRepository(bootstrap.MongoDB, bootstrap.DriverConfig.MongoDB.DbName)
 
 	// Auth
-	authUseCase, err := auth.NewAuthUsecase(userMongoRepository, redisRepository, roleMongoRepository, patientFhirClient, practitionerFhirClient, bootstrap.InternalConfig)
+	authUseCase, err := auth.NewAuthUsecase(
+		userMongoRepository,
+		redisRepository,
+		sessionService,
+		roleMongoRepository,
+		patientFhirClient,
+		practitionerFhirClient,
+		smtpService,
+		bootstrap.InternalConfig,
+	)
+
 	if err != nil {
-		bootstrap.Logger.Fatalln(err)
+		return err
 	}
-	authController := auth.NewAuthController(authUseCase)
+	authController := auth.NewAuthController(bootstrap.Logger, authUseCase)
 
 	// Middlewares
-	middlewares := middlewares.NewMiddlewares(authUseCase, bootstrap.InternalConfig)
+	middlewares := middlewares.NewMiddlewares(bootstrap.Logger, sessionService, authUseCase, bootstrap.InternalConfig)
 
-	routers.SetupRoutes(bootstrap.Router, bootstrap.InternalConfig, bootstrap.Logger, middlewares, userController, authController)
+	routers.SetupRoutes(
+		bootstrap.Router,
+		bootstrap.InternalConfig,
+		middlewares,
+		userController,
+		authController,
+		educationLevelController,
+		genderController,
+	)
+
+	return nil
 }

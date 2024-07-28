@@ -10,30 +10,29 @@ import (
 	"time"
 
 	"github.com/goccy/go-json"
+	"go.uber.org/zap"
 )
 
 type AuthController struct {
+	Log         *zap.Logger
 	AuthUsecase AuthUsecase
 }
 
-func NewAuthController(authUsecase AuthUsecase) *AuthController {
+func NewAuthController(logger *zap.Logger, authUsecase AuthUsecase) *AuthController {
 	return &AuthController{
+		Log:         logger,
 		AuthUsecase: authUsecase,
 	}
 }
 
-func (ctrl *AuthController) RegisterUser(w http.ResponseWriter, r *http.Request) {
+func (ctrl *AuthController) RegisterClinician(w http.ResponseWriter, r *http.Request) {
 	// Bind body to request
 	request := new(requests.RegisterUser)
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		utils.BuildErrorResponse(w, exceptions.ErrCannotParseJSON(err))
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
 		return
 	}
-
-	// Get query params and attach to request struct
-	queryParams := r.URL.Query()
-	request.UserType = queryParams.Get(constvars.QueryParamsUserType)
 
 	// Sanitize request
 	utils.SanitizeRegisterUserRequest(request)
@@ -41,7 +40,7 @@ func (ctrl *AuthController) RegisterUser(w http.ResponseWriter, r *http.Request)
 	// Validate request
 	err = utils.ValidateStruct(request)
 	if err != nil {
-		utils.BuildErrorResponse(w, exceptions.ErrInputValidation(err))
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
 		return
 	}
 
@@ -49,39 +48,69 @@ func (ctrl *AuthController) RegisterUser(w http.ResponseWriter, r *http.Request)
 	defer cancel()
 
 	// Send it to be processed by usecase
-	response, err := ctrl.AuthUsecase.RegisterUser(ctx, request)
+	response, err := ctrl.AuthUsecase.RegisterClinician(ctx, request)
 	if err != nil {
 		if err == context.DeadlineExceeded {
-			utils.BuildErrorResponse(w, exceptions.ErrServerDeadlineExceeded(err))
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
 			return
 		}
-		utils.BuildErrorResponse(w, err)
+		utils.BuildErrorResponse(ctrl.Log, w, err)
 		return
 	}
 
 	// Send response
-	utils.BuildSuccessResponse(w, constvars.StatusCreated, constvars.UserCreatedSuccess, response)
+	utils.BuildSuccessResponse(w, constvars.StatusCreated, constvars.CreateUserSuccessMessage, response)
 }
 
-func (ctrl *AuthController) LoginUser(w http.ResponseWriter, r *http.Request) {
+func (ctrl *AuthController) RegisterPatient(w http.ResponseWriter, r *http.Request) {
 	// Bind body to request
-	request := new(requests.LoginUser)
+	request := new(requests.RegisterUser)
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		utils.BuildErrorResponse(w, exceptions.ErrCannotParseJSON(err))
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
 		return
 	}
-
-	// Get query params and attach to request struct
-	queryParams := r.URL.Query()
-	request.UserType = queryParams.Get(constvars.QueryParamsUserType)
-
-	utils.SanitizeLoginUserRequest(request)
+	// Sanitize request
+	utils.SanitizeRegisterUserRequest(request)
 
 	// Validate request
 	err = utils.ValidateStruct(request)
 	if err != nil {
-		utils.BuildErrorResponse(w, exceptions.ErrInputValidation(err))
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Send it to be processed by usecase
+	response, err := ctrl.AuthUsecase.RegisterPatient(ctx, request)
+	if err != nil {
+		if err == context.DeadlineExceeded {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	// Send response
+	utils.BuildSuccessResponse(w, constvars.StatusCreated, constvars.CreateUserSuccessMessage, response)
+}
+
+func (ctrl *AuthController) LoginPatient(w http.ResponseWriter, r *http.Request) {
+	// Bind body to request
+	request := new(requests.LoginUser)
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+		return
+	}
+
+	// Validate request
+	err = utils.ValidateStruct(request)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
 		return
 	}
 
@@ -89,18 +118,52 @@ func (ctrl *AuthController) LoginUser(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	// Send request to be processed by usecase
-	response, err := ctrl.AuthUsecase.LoginUser(ctx, request)
+	response, err := ctrl.AuthUsecase.LoginPatient(ctx, request)
 	if err != nil {
 		if err == context.DeadlineExceeded {
-			utils.BuildErrorResponse(w, exceptions.ErrServerDeadlineExceeded(err))
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
 			return
 		}
-		utils.BuildErrorResponse(w, err)
+		utils.BuildErrorResponse(ctrl.Log, w, err)
 		return
 	}
 
 	// Send response
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.LoginSuccess, response)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.LoginSuccessMessage, response)
+}
+
+func (ctrl *AuthController) LoginClinician(w http.ResponseWriter, r *http.Request) {
+	// Bind body to request
+	request := new(requests.LoginUser)
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+		return
+	}
+
+	// Validate request
+	err = utils.ValidateStruct(request)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Send request to be processed by usecase
+	response, err := ctrl.AuthUsecase.LoginClinician(ctx, request)
+	if err != nil {
+		if err == context.DeadlineExceeded {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	// Send response
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.LoginSuccessMessage, response)
 }
 
 func (ctrl *AuthController) Logout(w http.ResponseWriter, r *http.Request) {
@@ -113,11 +176,79 @@ func (ctrl *AuthController) Logout(w http.ResponseWriter, r *http.Request) {
 	err := ctrl.AuthUsecase.LogoutUser(ctx, sessionData)
 	if err != nil {
 		if err == context.DeadlineExceeded {
-			utils.BuildErrorResponse(w, exceptions.ErrServerDeadlineExceeded(err))
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
 			return
 		}
-		utils.BuildErrorResponse(w, err)
+		utils.BuildErrorResponse(ctrl.Log, w, err)
 		return
 	}
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.LogoutSuccess, nil)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.LogoutSuccessMessage, nil)
+}
+
+func (ctrl *AuthController) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	// Bind body to request
+	request := new(requests.ForgotPassword)
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+		return
+	}
+
+	// Validate request
+	err = utils.ValidateStruct(request)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Send request to be processed by usecase
+	err = ctrl.AuthUsecase.ForgotPassword(ctx, request)
+	if err != nil {
+		if err == context.DeadlineExceeded {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	// Send response
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.ForgotPasswordSuccessMessage, nil)
+}
+
+func (ctrl *AuthController) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	// Bind body to request
+	request := new(requests.ResetPassword)
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+		return
+	}
+
+	// Validate request
+	err = utils.ValidateStruct(request)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Send request to be processed by usecase
+	err = ctrl.AuthUsecase.ResetPassword(ctx, request)
+	if err != nil {
+		if err == context.DeadlineExceeded {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	// Send response
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.ResetPasswordSuccessMessage, nil)
 }

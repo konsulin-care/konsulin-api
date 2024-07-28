@@ -21,6 +21,19 @@ func NewRoleMongoRepository(db *mongo.Database, dbName string) RoleRepository {
 	}
 }
 
+func (repo *RoleMongoRepository) FindAll(ctx context.Context) ([]models.Role, error) {
+	var levels []models.Role
+	cursor, err := repo.Collection.Find(ctx, bson.M{})
+	if err != nil {
+		return nil, exceptions.ErrMongoDBFindDocument(err)
+	}
+	err = cursor.All(ctx, &levels)
+	if err != nil {
+		return nil, exceptions.ErrMongoDBIterateDocuments(err)
+	}
+	return levels, nil
+}
+
 func (repo *RoleMongoRepository) CreateRole(ctx context.Context, entityRole *models.Role) (roleID string, err error) {
 	result, err := repo.Collection.InsertOne(ctx, entityRole)
 	if err != nil {
@@ -29,9 +42,9 @@ func (repo *RoleMongoRepository) CreateRole(ctx context.Context, entityRole *mod
 	return result.InsertedID.(primitive.ObjectID).Hex(), nil
 }
 
-func (r *RoleMongoRepository) FindByEmail(ctx context.Context, email string) (*models.Role, error) {
+func (repo *RoleMongoRepository) FindByEmail(ctx context.Context, email string) (*models.Role, error) {
 	role := new(models.Role)
-	err := r.Collection.FindOne(ctx, bson.M{"email": email}).Decode(&role)
+	err := repo.Collection.FindOne(ctx, bson.M{"email": email}).Decode(&role)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, nil
@@ -41,9 +54,9 @@ func (r *RoleMongoRepository) FindByEmail(ctx context.Context, email string) (*m
 	return role, nil
 }
 
-func (r *RoleMongoRepository) FindByName(ctx context.Context, roleName string) (*models.Role, error) {
+func (repo *RoleMongoRepository) FindByName(ctx context.Context, roleName string) (*models.Role, error) {
 	role := new(models.Role)
-	err := r.Collection.FindOne(ctx, bson.M{"name": roleName}).Decode(&role)
+	err := repo.Collection.FindOne(ctx, bson.M{"name": roleName}).Decode(&role)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, nil
@@ -53,41 +66,27 @@ func (r *RoleMongoRepository) FindByName(ctx context.Context, roleName string) (
 	return role, nil
 }
 
-func (r *RoleMongoRepository) GetRoleByID(ctx context.Context, roleID string) (*models.Role, error) {
+func (repo *RoleMongoRepository) FindRoleByID(ctx context.Context, roleID string) (*models.Role, error) {
 	role := new(models.Role)
 	objectID, err := primitive.ObjectIDFromHex(roleID)
 	if err != nil {
 		return nil, exceptions.ErrMongoDBNotObjectID(err)
 	}
-	err = r.Collection.FindOne(ctx, bson.M{"_id": objectID}).Decode(&role)
+	err = repo.Collection.FindOne(ctx, bson.M{"_id": objectID}).Decode(&role)
 	if err != nil {
 		return nil, exceptions.ErrMongoDBFindDocument(err)
 	}
 	return role, nil
 }
 
-func (r *RoleMongoRepository) UpdateRole(ctx context.Context, roleID string, updateData map[string]interface{}) error {
+func (repo *RoleMongoRepository) UpdateRole(ctx context.Context, roleID string, updateData map[string]interface{}) error {
 	objectID, err := primitive.ObjectIDFromHex(roleID)
 	if err != nil {
 		return exceptions.ErrMongoDBNotObjectID(err)
 	}
-	_, err = r.Collection.UpdateOne(ctx, bson.M{"_id": objectID}, bson.M{"$set": updateData})
+	_, err = repo.Collection.UpdateOne(ctx, bson.M{"_id": objectID}, bson.M{"$set": updateData})
 	if err != nil {
 		return exceptions.ErrMongoDBUpdateDocument(err)
 	}
 	return err
-}
-
-func (r *RoleMongoRepository) GetAllRoles(ctx context.Context) ([]models.Role, error) {
-	var roles []models.Role
-	cursor, err := r.Collection.Find(ctx, bson.M{})
-	if err != nil {
-		return nil, exceptions.ErrMongoDBFindDocument(err)
-	}
-
-	err = cursor.All(ctx, &roles)
-	if err != nil {
-		return nil, exceptions.ErrMongoDBIterateDocuments(err)
-	}
-	return roles, nil
 }
