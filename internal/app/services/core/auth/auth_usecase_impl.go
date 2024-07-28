@@ -2,8 +2,6 @@ package auth
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/app/services/core/roles"
@@ -416,10 +414,6 @@ func (uc *authUsecase) ForgotPassword(ctx context.Context, request *requests.For
 	if err != nil {
 		return err
 	}
-
-	fmt.Println(user.ResetToken)
-
-	return errors.New("try")
 
 	err = uc.UserRepository.UpdateUser(ctx, user)
 	if err != nil {
