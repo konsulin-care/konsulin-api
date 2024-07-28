@@ -450,14 +450,14 @@ func (uc *authUsecase) ResetPassword(ctx context.Context, request *requests.Rese
 		return err
 	}
 
-	hashedNewPassword, err := utils.HashPassword(request.NewPassword)
-	if err != nil {
-		return exceptions.ErrHashPassword(err)
-	}
-
 	// Check if the reset token is expired
 	if time.Now().After(user.ResetTokenExpiry) {
 		return exceptions.ErrTokenResetPasswordExpired(nil)
+	}
+
+	hashedNewPassword, err := utils.HashPassword(request.NewPassword)
+	if err != nil {
+		return exceptions.ErrHashPassword(err)
 	}
 
 	request.HashedNewPassword = hashedNewPassword
