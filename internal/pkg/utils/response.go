@@ -52,7 +52,7 @@ func BuildErrorResponse(log *zap.Logger, w http.ResponseWriter, err error) {
 	}
 
 	appEnvironment := GetEnvString("APP_ENV", "development")
-	if appEnvironment != "production" {
+	if customErr != nil && appEnvironment != "production" {
 		response.DevMessage = customErr.DevMessage
 		response.Location = customErr.Location
 	}

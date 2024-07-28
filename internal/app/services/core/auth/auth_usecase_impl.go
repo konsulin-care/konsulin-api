@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/app/services/core/roles"
@@ -407,12 +409,17 @@ func (uc *authUsecase) ForgotPassword(ctx context.Context, request *requests.For
 		return exceptions.ErrUserNotExist(nil)
 	}
 
-	user.ResetToken, err = utils.GenerateResetPasswordJWT(uc.InternalConfig.JWT.Secret, uc.InternalConfig.App.ForgotPasswordTokenExpTimeInMinute)
+	uuid := uuid.New().String()
+	user.ResetToken, err = utils.GenerateResetPasswordJWT(uuid, uc.InternalConfig.JWT.Secret, uc.InternalConfig.App.ForgotPasswordTokenExpTimeInMinute)
 	user.ResetTokenExpiry = time.Now().Add(time.Duration(uc.InternalConfig.App.ForgotPasswordTokenExpTimeInMinute) * time.Minute)
 	user.SetUpdatedAt()
 	if err != nil {
 		return err
 	}
+
+	fmt.Println(user.ResetToken)
+
+	return errors.New("try")
 
 	err = uc.UserRepository.UpdateUser(ctx, user)
 	if err != nil {
