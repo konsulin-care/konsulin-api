@@ -36,7 +36,8 @@ func GenerateSessionJWT(sessionID, secret string, jwtExpiryTime int) (string, er
 
 func GenerateResetPasswordJWT(uuid, secret string, jwtExpiryTime int) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"exp": time.Now().Add(time.Duration(jwtExpiryTime) * time.Minute).Unix(),
+		"uuid": uuid,
+		"exp":  time.Now().Add(time.Duration(jwtExpiryTime) * time.Minute).Unix(),
 	})
 
 	tokenString, err := token.SignedString([]byte(secret))
