@@ -247,6 +247,7 @@ func (uc *authUsecase) LoginPatient(ctx context.Context, request *requests.Login
 	sessionData := models.Session{
 		UserID:    user.ID,
 		PatientID: user.PatientID,
+		Email:     user.Email,
 		RoleID:    role.ID,
 		RoleName:  role.Name,
 		SessionID: sessionID,
@@ -317,6 +318,7 @@ func (uc *authUsecase) LoginClinician(ctx context.Context, request *requests.Log
 	sessionData := models.Session{
 		UserID:         user.ID,
 		PractitionerID: user.PractitionerID,
+		Email:          user.Email,
 		RoleID:         role.ID,
 		RoleName:       role.Name,
 		SessionID:      sessionID,
@@ -438,6 +440,11 @@ func (uc *authUsecase) ForgotPassword(ctx context.Context, request *requests.For
 }
 
 func (uc *authUsecase) ResetPassword(ctx context.Context, request *requests.ResetPassword) error {
+	// Check if passwords match
+	if request.NewPassword != request.RetypeNewPassword {
+		return exceptions.ErrPasswordDoNotMatch(nil)
+	}
+
 	user, err := uc.UserRepository.FindByResetToken(ctx, request.Token)
 	if err != nil {
 		return err
