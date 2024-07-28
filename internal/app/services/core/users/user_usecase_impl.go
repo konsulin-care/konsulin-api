@@ -64,7 +64,7 @@ func (uc *userUsecase) UpdateUserProfileBySession(ctx context.Context, sessionDa
 	}
 
 	// Check if email already exists
-	existingUser, err := uc.UserRepository.FindByEmail(ctx, session.Email)
+	existingUser, err := uc.UserRepository.FindByEmail(ctx, request.Email)
 	if err != nil {
 		return nil, err
 	}
