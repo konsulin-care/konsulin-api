@@ -18,7 +18,7 @@ func NewRedisClient(driverConfig *config.DriverConfig) *redis.Client {
 
 	_, err := rdb.Ping(ctx).Result()
 	if err != nil {
-		log.Fatalf("Could not connect to Redis: %v", err)
+		log.Fatalf("Could not connect to Redis: %s", err.Error())
 	}
 	log.Println("Successfully connected to redis")
 	return rdb

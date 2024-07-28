@@ -8,25 +8,31 @@ type (
 	}
 
 	DriverConfig struct {
-		MongoDB MongoDB
-		Redis   Redis
-		Logger  Logger
-		SMTP    SMTP
+		MongoDB  MongoDB
+		Redis    Redis
+		Logger   Logger
+		SMTP     SMTP
+		RabbitMQ RabbitMQ
+		Minio    Minio
 	}
 
 	App struct {
-		Env                                string
-		Port                               string
-		Version                            string
-		Address                            string
-		Timezone                           string
-		EndpointPrefix                     string
-		ResetPasswordUrl                   string
-		MaxRequests                        int
-		ShutdownTimeout                    int
-		MaxTimeRequestsPerSeconds          int
-		RequestBodyLimitInMegabyte         int
-		ForgotPasswordTokenExpTimeInMinute int
+		Env                                  string
+		Port                                 string
+		Version                              string
+		Address                              string
+		Timezone                             string
+		EndpointPrefix                       string
+		ResetPasswordUrl                     string
+		MailerEmailSender                    string
+		RabbitMQMailerQueue                  string
+		RabbitMQWhatsAppQueue                string
+		MaxRequests                          int
+		ShutdownTimeout                      int
+		MaxTimeRequestsPerSeconds            int
+		RequestBodyLimitInMegabyte           int
+		ForgotPasswordTokenExpTimeInMinute   int
+		MinioProfilePictureMaxUploadSizeInMB int64
 	}
 
 	MongoDB struct {
@@ -53,6 +59,20 @@ type (
 		Password    string
 		EmailSender string
 		Port        int
+	}
+
+	RabbitMQ struct {
+		Port     string
+		Host     string
+		Username string
+		Password string
+	}
+	Minio struct {
+		Port       string
+		Host       string
+		Username   string
+		Password   string
+		BucketName string
 	}
 	FHIR struct {
 		BaseUrl string

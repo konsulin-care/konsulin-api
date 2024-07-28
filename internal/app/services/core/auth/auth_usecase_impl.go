@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"fmt"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/app/services/core/roles"
@@ -10,8 +9,8 @@ import (
 	"konsulin-service/internal/app/services/core/users"
 	"konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
+	"konsulin-service/internal/app/services/shared/mailer"
 	"konsulin-service/internal/app/services/shared/redis"
-	"konsulin-service/internal/app/services/shared/smtp"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
@@ -30,7 +29,7 @@ type authUsecase struct {
 	RoleRepository         roles.RoleRepository
 	PatientFhirClient      patients.PatientFhirClient
 	PractitionerFhirClient practitioners.PractitionerFhirClient
-	SMTPService            smtp.SMTPService
+	MailerService          mailer.MailerService
 	InternalConfig         *config.InternalConfig
 	Roles                  map[string]*models.Role
 	mu                     sync.RWMutex
@@ -43,7 +42,7 @@ func NewAuthUsecase(
 	rolesRepository roles.RoleRepository,
 	patientFhirClient patients.PatientFhirClient,
 	practitionerFhirClient practitioners.PractitionerFhirClient,
-	smtpUsecase smtp.SMTPService,
+	mailerService mailer.MailerService,
 	internalConfig *config.InternalConfig,
 ) (AuthUsecase, error) {
 	authUsecase := &authUsecase{
@@ -53,7 +52,7 @@ func NewAuthUsecase(
 		RoleRepository:         rolesRepository,
 		PatientFhirClient:      patientFhirClient,
 		PractitionerFhirClient: practitionerFhirClient,
-		SMTPService:            smtpUsecase,
+		MailerService:          mailerService,
 		InternalConfig:         internalConfig,
 		Roles:                  make(map[string]*models.Role),
 	}
@@ -408,17 +407,29 @@ func (uc *authUsecase) ForgotPassword(ctx context.Context, request *requests.For
 		return exceptions.ErrUserNotExist(nil)
 	}
 
-	user.SetDataForUpdateForgotPassword(uc.InternalConfig.App.ForgotPasswordTokenExpTimeInMinute)
+	user.ResetToken, err = utils.GenerateResetPasswordJWT(uc.InternalConfig.JWT.Secret, uc.InternalConfig.App.ForgotPasswordTokenExpTimeInMinute)
+	user.ResetTokenExpiry = time.Now().Add(time.Duration(uc.InternalConfig.App.ForgotPasswordTokenExpTimeInMinute) * time.Minute)
+	user.SetUpdatedAt()
+	if err != nil {
+		return err
+	}
 
 	err = uc.UserRepository.UpdateUser(ctx, user)
 	if err != nil {
 		return err
 	}
 
+	expiryTimeString := user.ResetTokenExpiry.Format("02 January 2006, 15:04 MST")
 	resetLink := uc.InternalConfig.App.ResetPasswordUrl + user.ResetToken
-	emailBody := fmt.Sprintf(constvars.EmailBodyResetPassword + resetLink)
+	emailPayload := utils.BuildForgotPasswordEmailPayload(
+		uc.InternalConfig.App.MailerEmailSender,
+		request.Email,
+		resetLink,
+		user.Fullname,
+		expiryTimeString,
+	)
 
-	err = uc.SMTPService.SendEmail(user.Email, constvars.EmailForgotPasswordSubjectMessage, emailBody)
+	err = uc.MailerService.SendEmail(ctx, emailPayload)
 	if err != nil {
 		return err
 	}

@@ -21,11 +21,11 @@ func NewMongoDB(driverConfig *config.DriverConfig) *mongo.Database {
 	dbOptions := options.Client().ApplyURI(connectionString)
 	client, err := mongo.Connect(context.TODO(), dbOptions)
 	if err != nil {
-		log.Fatal("Failed to connect to database")
+		log.Fatalf("Failed to connect to database: %s", err.Error())
 	}
 	err = client.Ping(context.TODO(), nil)
 	if err != nil {
-		log.Fatal("Failed to connect to database")
+		log.Fatalf("Failed to connect to database: %s", err.Error())
 	}
 	log.Println("Successfully connected to mongo database")
 	return client.Database(driverConfig.MongoDB.DbName)
