@@ -441,7 +441,7 @@ func (uc *authUsecase) ForgotPassword(ctx context.Context, request *requests.For
 
 func (uc *authUsecase) ResetPassword(ctx context.Context, request *requests.ResetPassword) error {
 	// Check if passwords match
-	if request.NewPassword != request.NewPasswordConfirmation {
+	if request.NewPassword != request.RetypeNewPassword {
 		return exceptions.ErrPasswordDoNotMatch(nil)
 	}
 
