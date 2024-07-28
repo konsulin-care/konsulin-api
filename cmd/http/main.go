@@ -8,7 +8,9 @@ import (
 	"konsulin-service/internal/app/delivery/http/routers"
 	"konsulin-service/internal/app/drivers/database"
 	"konsulin-service/internal/app/drivers/logger"
-	"konsulin-service/internal/app/drivers/mailer"
+	mailerDriver "konsulin-service/internal/app/drivers/mailer"
+	"konsulin-service/internal/app/drivers/messaging"
+	"konsulin-service/internal/app/drivers/storage"
 	"konsulin-service/internal/app/services/core/auth"
 	educationLevels "konsulin-service/internal/app/services/core/education_levels"
 	"konsulin-service/internal/app/services/core/genders"
@@ -17,8 +19,8 @@ import (
 	"konsulin-service/internal/app/services/core/users"
 	"konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
+	"konsulin-service/internal/app/services/shared/mailer"
 	redisKonsulin "konsulin-service/internal/app/services/shared/redis"
-	"konsulin-service/internal/app/services/shared/smtp"
 	"konsulin-service/internal/pkg/constvars"
 	"log"
 	"net/http"
@@ -28,6 +30,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/rabbitmq/amqp091-go"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.uber.org/zap"
@@ -44,7 +47,8 @@ type Bootstrap struct {
 	MongoDB        *mongo.Database
 	Redis          *redis.Client
 	Logger         *zap.Logger
-	SMTP           *mailer.SMTPClient
+	SMTP           *mailerDriver.SMTPClient
+	RabbitMQ       *amqp091.Connection
 	DriverConfig   *config.DriverConfig
 	InternalConfig *config.InternalConfig
 }
@@ -65,7 +69,14 @@ func main() {
 
 	mongoDB := database.NewMongoDB(driverConfig)
 	redis := database.NewRedisClient(driverConfig)
-	smtpClient := mailer.NewSMTPClient(driverConfig)
+	smtpClient := mailerDriver.NewSMTPClient(driverConfig)
+
+	rabbitMQ := messaging.NewRabbitMQ(driverConfig)
+	defer rabbitMQ.Close()
+
+	minio := storage.NewMinio(driverConfig)
+	log.Println(minio)
+
 	chiRouter := chi.NewRouter()
 
 	err = bootstrapingTheApp(Bootstrap{
@@ -74,6 +85,7 @@ func main() {
 		Redis:          redis,
 		Logger:         logger,
 		SMTP:           smtpClient,
+		RabbitMQ:       rabbitMQ,
 		DriverConfig:   driverConfig,
 		InternalConfig: internalConfig,
 	})
@@ -129,7 +141,10 @@ func bootstrapingTheApp(bootstrap Bootstrap) error {
 	// Drivers are splitted into: 'service' related to functionality and 'repository' related to Data Access Layer
 	// All deps in /internal/app/shared initiated here before injected into usecases
 	redisRepository := redisKonsulin.NewRedisRepository(bootstrap.Redis)
-	smtpService := smtp.NewSmtpService(bootstrap.SMTP)
+	mailerService, err := mailer.NewMailerService(bootstrap.SMTP, bootstrap.RabbitMQ, bootstrap.InternalConfig.App.RabbitMQMailerQueue)
+	if err != nil {
+		return err
+	}
 	sessionService := session.NewSessionService(redisRepository)
 
 	// Patient
@@ -170,7 +185,7 @@ func bootstrapingTheApp(bootstrap Bootstrap) error {
 		roleMongoRepository,
 		patientFhirClient,
 		practitionerFhirClient,
-		smtpService,
+		mailerService,
 		bootstrap.InternalConfig,
 	)
 
