@@ -15,9 +15,9 @@ type RoleMongoRepository struct {
 	Collection *mongo.Collection
 }
 
-func NewRoleMongoRepository(db *mongo.Database, dbName string) RoleRepository {
+func NewRoleMongoRepository(db *mongo.Client, dbName string) RoleRepository {
 	return &RoleMongoRepository{
-		Collection: db.Collection(constvars.MongoCollectionRoles),
+		Collection: db.Database(dbName).Collection(constvars.MongoCollectionRoles),
 	}
 }
 

@@ -10,7 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-func NewMongoDB(driverConfig *config.DriverConfig) *mongo.Database {
+func NewMongoDB(driverConfig *config.DriverConfig) *mongo.Client {
 	connectionString := fmt.Sprintf(
 		"mongodb://%s:%s@%s:%s",
 		driverConfig.MongoDB.Username,
@@ -21,12 +21,12 @@ func NewMongoDB(driverConfig *config.DriverConfig) *mongo.Database {
 	dbOptions := options.Client().ApplyURI(connectionString)
 	client, err := mongo.Connect(context.TODO(), dbOptions)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %s", err.Error())
+		log.Fatalf("Failed to connect to mongo database: %s", err.Error())
 	}
 	err = client.Ping(context.TODO(), nil)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %s", err.Error())
+		log.Fatalf("Failed to connect to mongo database: %s", err.Error())
 	}
 	log.Println("Successfully connected to mongo database")
-	return client.Database(driverConfig.MongoDB.DbName)
+	return client
 }

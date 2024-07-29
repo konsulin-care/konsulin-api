@@ -8,13 +8,12 @@ import (
 )
 
 func BuildForgotPasswordEmailPayload(fromEmail, toEmail, resetLink, userFullName, expiryTime string) *requests.EmailPayload {
-	subject := constvars.EmailForgotPasswordSubjectMessage
 	to := []string{toEmail}
 	htmlCode := fmt.Sprintf(constvars.EmailSendHTMLSubjectFormat2, userFullName, resetLink, expiryTime)
 	encoded := base64.StdEncoding.EncodeToString([]byte(htmlCode))
 
 	return &requests.EmailPayload{
-		Subject:  subject,
+		Subject:  constvars.EmailForgotPasswordSubjectMessage,
 		From:     fromEmail,
 		To:       to,
 		Cc:       []string{},
