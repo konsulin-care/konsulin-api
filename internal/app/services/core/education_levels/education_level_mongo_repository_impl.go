@@ -15,7 +15,7 @@ type EducationLevelMongoRepository struct {
 	Collection *mongo.Collection
 }
 
-func NewEducationLevelMongoRepository(db *mongo.Database, dbName string) EducationLevelRepository {
+func NewEducationLevelMongoRepository(db *mongo.Database) EducationLevelRepository {
 	return &EducationLevelMongoRepository{
 		Collection: db.Collection(constvars.MongoCollectionEducationLevels),
 	}

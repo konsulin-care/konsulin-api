@@ -407,7 +407,7 @@ func (uc *authUsecase) ForgotPassword(ctx context.Context, request *requests.For
 	expiryTimeString := user.ResetTokenExpiry.Format("02 January 2006, 15:04 MST")
 	resetLink := uc.InternalConfig.App.ResetPasswordUrl + user.ResetToken
 	emailPayload := utils.BuildForgotPasswordEmailPayload(
-		uc.InternalConfig.App.MailerEmailSender,
+		uc.InternalConfig.Mailer.EmailSender,
 		request.Email,
 		resetLink,
 		user.Fullname,

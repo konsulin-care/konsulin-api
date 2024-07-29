@@ -22,7 +22,7 @@ func NewMinioStorage(minioClient *minio.Client, bucketName string) Storage {
 }
 
 func (m *minioStorage) UploadFile(ctx context.Context, file multipart.File, fileHeader *multipart.FileHeader) (string, error) {
-	if fileHeader.Size > m.InternalConfig.App.MinioProfilePictureMaxUploadSizeInMB {
+	if fileHeader.Size > m.InternalConfig.Minio.ProfilePictureMaxUploadSizeInMB {
 		// return "", fmt.Errorf("file size exceeds the maximum limit of %d MB", m.MaxSize/(1024*1024))
 		return "", nil
 	}

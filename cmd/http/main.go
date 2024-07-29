@@ -49,7 +49,6 @@ type Bootstrap struct {
 	Logger         *zap.Logger
 	SMTP           *mailerDriver.SMTPClient
 	RabbitMQ       *amqp091.Connection
-	DriverConfig   *config.DriverConfig
 	InternalConfig *config.InternalConfig
 }
 
@@ -79,6 +78,8 @@ func main() {
 
 	chiRouter := chi.NewRouter()
 
+	// Now that we already init all the infrastructure
+	// No need to pass the 'driverConfig' to Bootstrap anymore
 	err = bootstrapingTheApp(Bootstrap{
 		Router:         chiRouter,
 		MongoDB:        mongoDB,
@@ -86,7 +87,6 @@ func main() {
 		Logger:         logger,
 		SMTP:           smtpClient,
 		RabbitMQ:       rabbitMQ,
-		DriverConfig:   driverConfig,
 		InternalConfig: internalConfig,
 	})
 
@@ -118,10 +118,10 @@ func main() {
 
 	shutdownCtx, cancel := context.WithTimeout(
 		context.Background(),
-		time.Second*time.Duration(internalConfig.App.ShutdownTimeout),
+		time.Second*time.Duration(internalConfig.App.ShutdownTimeoutInSecond),
 	)
 	defer cancel()
-	for i := internalConfig.App.ShutdownTimeout; i > 0; i-- {
+	for i := internalConfig.App.ShutdownTimeoutInSecond; i > 0; i-- {
 		time.Sleep(1 * time.Second)
 		log.Printf("Shutting down in %d...", i)
 	}
@@ -141,7 +141,7 @@ func bootstrapingTheApp(bootstrap Bootstrap) error {
 	// Drivers are splitted into: 'service' related to functionality and 'repository' related to Data Access Layer
 	// All deps in /internal/app/shared initiated here before injected into usecases
 	redisRepository := redisKonsulin.NewRedisRepository(bootstrap.Redis)
-	mailerService, err := mailer.NewMailerService(bootstrap.SMTP, bootstrap.RabbitMQ, bootstrap.InternalConfig.App.RabbitMQMailerQueue)
+	mailerService, err := mailer.NewMailerService(bootstrap.SMTP, bootstrap.RabbitMQ, bootstrap.InternalConfig.RabbitMQ.MailerQueue)
 	if err != nil {
 		return err
 	}
@@ -154,12 +154,12 @@ func bootstrapingTheApp(bootstrap Bootstrap) error {
 	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePractitioner)
 
 	// User
-	userMongoRepository := users.NewUserMongoRepository(bootstrap.MongoDB, bootstrap.DriverConfig.MongoDB.DbName)
+	userMongoRepository := users.NewUserMongoRepository(bootstrap.MongoDB)
 	userUseCase := users.NewUserUsecase(userMongoRepository, patientFhirClient, practitionerFhirClient, redisRepository, sessionService)
 	userController := users.NewUserController(bootstrap.Logger, userUseCase)
 
 	// Education Level
-	educationLevelMongoRepository := educationLevels.NewEducationLevelMongoRepository(bootstrap.MongoDB, bootstrap.DriverConfig.MongoDB.DbName)
+	educationLevelMongoRepository := educationLevels.NewEducationLevelMongoRepository(bootstrap.MongoDB)
 	educationLevelUseCase, err := educationLevels.NewEducationLevelUsecase(educationLevelMongoRepository, redisRepository)
 	if err != nil {
 		return err
@@ -167,7 +167,7 @@ func bootstrapingTheApp(bootstrap Bootstrap) error {
 	educationLevelController := educationLevels.NewEducationLevelController(bootstrap.Logger, educationLevelUseCase)
 
 	// Gender
-	genderMongoRepository := genders.NewGenderMongoRepository(bootstrap.MongoDB, bootstrap.DriverConfig.MongoDB.DbName)
+	genderMongoRepository := genders.NewGenderMongoRepository(bootstrap.MongoDB)
 	genderUseCase, err := genders.NewGenderUsecase(genderMongoRepository, redisRepository)
 	if err != nil {
 		return err
@@ -175,7 +175,7 @@ func bootstrapingTheApp(bootstrap Bootstrap) error {
 	genderController := genders.NewGenderController(bootstrap.Logger, genderUseCase)
 
 	// Role
-	roleMongoRepository := roles.NewRoleMongoRepository(bootstrap.MongoDB, bootstrap.DriverConfig.MongoDB.DbName)
+	roleMongoRepository := roles.NewRoleMongoRepository(bootstrap.MongoDB)
 
 	// Auth
 	authUseCase, err := auth.NewAuthUsecase(

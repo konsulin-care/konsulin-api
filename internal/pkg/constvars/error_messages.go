@@ -159,3 +159,7 @@ const (
 	ErrLineLocationUnknown = "line location unknown"
 	ErrFunctionNameUnknown = "function name unknown"
 )
+
+const (
+	ErrEnvParsing = "Error parsing %s: %v, will use default value"
+)
