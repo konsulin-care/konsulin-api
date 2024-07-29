@@ -8,7 +8,6 @@ import (
 	"konsulin-service/internal/app/delivery/http/routers"
 	"konsulin-service/internal/app/drivers/database"
 	"konsulin-service/internal/app/drivers/logger"
-	mailerDriver "konsulin-service/internal/app/drivers/mailer"
 	"konsulin-service/internal/app/drivers/messaging"
 	"konsulin-service/internal/app/drivers/storage"
 	"konsulin-service/internal/app/services/core/auth"
@@ -30,10 +29,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/rabbitmq/amqp091-go"
-	"github.com/redis/go-redis/v9"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.uber.org/zap"
 )
 
 // Version sets the default build version
@@ -42,22 +37,11 @@ var Version = "develop"
 // Tag sets the default latest commit tag
 var Tag = "0.0.1-rc"
 
-type Bootstrap struct {
-	Router         *chi.Mux
-	MongoDB        *mongo.Client
-	Redis          *redis.Client
-	Logger         *zap.Logger
-	SMTP           *mailerDriver.SMTPClient
-	RabbitMQ       *amqp091.Connection
-	InternalConfig *config.InternalConfig
-}
-
 func main() {
 	driverConfig := config.NewDriverConfig()
 	internalConfig := config.NewInternalConfig()
 
 	logger := logger.NewZapLogger(driverConfig, internalConfig)
-	defer logger.Sync()
 
 	location, err := time.LoadLocation(internalConfig.App.Timezone)
 	if err != nil {
@@ -68,27 +52,24 @@ func main() {
 
 	mongoDB := database.NewMongoDB(driverConfig)
 	redis := database.NewRedisClient(driverConfig)
-	smtpClient := mailerDriver.NewSMTPClient(driverConfig)
-
 	rabbitMQ := messaging.NewRabbitMQ(driverConfig)
-	defer rabbitMQ.Close()
-
 	minio := storage.NewMinio(driverConfig)
 	log.Println(minio)
 
 	chiRouter := chi.NewRouter()
 
-	// Now that we already init all the infrastructure
-	// No need to pass the 'driverConfig' to Bootstrap anymore
-	err = bootstrapingTheApp(Bootstrap{
+	bootstrap := config.Bootstrap{
 		Router:         chiRouter,
 		MongoDB:        mongoDB,
 		Redis:          redis,
 		Logger:         logger,
-		SMTP:           smtpClient,
 		RabbitMQ:       rabbitMQ,
 		InternalConfig: internalConfig,
-	})
+	}
+
+	// Now that we already init all the infrastructure
+	// No need to pass the 'driverConfig' to Bootstrap anymore
+	err = bootstrapingTheApp(bootstrap)
 
 	if err != nil {
 		log.Fatalf("Error while bootstraping the app: %s", err.Error())
@@ -132,16 +113,22 @@ func main() {
 		log.Fatalf("Server forced to shutdown: %v", err)
 	}
 
+	// Shutdown the bootstrap components
+	err = bootstrap.Shutdown(shutdownCtx)
+	if err != nil {
+		log.Fatalf("Error during shutdown: %v", err)
+	}
+
 	<-shutdownCtx.Done()
 
 	log.Println("Server exiting")
 }
 
-func bootstrapingTheApp(bootstrap Bootstrap) error {
+func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	// Drivers are splitted into: 'service' related to functionality and 'repository' related to Data Access Layer
 	// All deps in /internal/app/shared initiated here before injected into usecases
 	redisRepository := redisKonsulin.NewRedisRepository(bootstrap.Redis)
-	mailerService, err := mailer.NewMailerService(bootstrap.SMTP, bootstrap.RabbitMQ, bootstrap.InternalConfig.RabbitMQ.MailerQueue)
+	mailerService, err := mailer.NewMailerService(bootstrap.RabbitMQ, bootstrap.InternalConfig.RabbitMQ.MailerQueue)
 	if err != nil {
 		return err
 	}
