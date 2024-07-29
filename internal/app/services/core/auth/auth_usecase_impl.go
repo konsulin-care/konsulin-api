@@ -72,22 +72,13 @@ func (uc *authUsecase) RegisterClinician(ctx context.Context, request *requests.
 		return nil, exceptions.ErrPasswordDoNotMatch(nil)
 	}
 
-	// Check if email already exists
-	existingUser, err := uc.UserRepository.FindByEmail(ctx, request.Email)
+	// Check if email or username already exists
+	existingUser, err := uc.UserRepository.FindByEmailOrUsername(ctx, request.Email, request.Username)
 	if err != nil {
 		return nil, err
 	}
 	if existingUser != nil {
 		return nil, exceptions.ErrEmailAlreadyExist(nil)
-	}
-
-	// Check if username already exists
-	existingUser, err = uc.UserRepository.FindByUsername(ctx, request.Username)
-	if err != nil {
-		return nil, err
-	}
-	if existingUser != nil {
-		return nil, exceptions.ErrUsernameAlreadyExist(nil)
 	}
 
 	// Build FHIR practitioner request
@@ -144,22 +135,13 @@ func (uc *authUsecase) RegisterPatient(ctx context.Context, request *requests.Re
 		return nil, exceptions.ErrPasswordDoNotMatch(nil)
 	}
 
-	// Check if email already exists
-	existingUser, err := uc.UserRepository.FindByEmail(ctx, request.Email)
+	// Check if email or username already exists
+	existingUser, err := uc.UserRepository.FindByEmailOrUsername(ctx, request.Email, request.Username)
 	if err != nil {
 		return nil, err
 	}
 	if existingUser != nil {
 		return nil, exceptions.ErrEmailAlreadyExist(nil)
-	}
-
-	// Check if username already exists
-	existingUser, err = uc.UserRepository.FindByUsername(ctx, request.Username)
-	if err != nil {
-		return nil, err
-	}
-	if existingUser != nil {
-		return nil, exceptions.ErrUsernameAlreadyExist(nil)
 	}
 
 	// Build FHIR patient request

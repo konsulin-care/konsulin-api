@@ -54,6 +54,25 @@ func (r *UserMongoRepository) FindByUsername(ctx context.Context, username strin
 	return &user, nil
 }
 
+func (r *UserMongoRepository) FindByEmailOrUsername(ctx context.Context, email, username string) (*models.User, error) {
+	var user models.User
+	filter := bson.M{
+		"$or": []bson.M{
+			{"email": email},
+			{"username": username},
+		},
+	}
+
+	err := r.Collection.FindOne(ctx, filter).Decode(&user)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, nil
+		}
+		return nil, exceptions.ErrMongoDBFindDocument(err)
+	}
+	return &user, nil
+}
+
 func (r *UserMongoRepository) FindByID(ctx context.Context, userID string) (*models.User, error) {
 	var user models.User
 	objectID, err := primitive.ObjectIDFromHex(userID)
