@@ -10,11 +10,12 @@ type (
 		Minio    Minio
 	}
 	MongoDB struct {
-		Port     string
-		Host     string
-		DbName   string
-		Username string
-		Password string
+		Port           string
+		Host           string
+		Username       string
+		Password       string
+		FhirDbName     string
+		KonsulinDbName string
 	}
 	Redis struct {
 		Host     string

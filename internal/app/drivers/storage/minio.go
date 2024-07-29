@@ -17,11 +17,9 @@ type MinioClient struct {
 
 func NewMinio(driverConfig *config.DriverConfig) *minio.Client {
 	endPoint := fmt.Sprintf("%s:%s", driverConfig.Minio.Host, driverConfig.Minio.Port)
-	useSSL := false
-
 	minioClient, err := minio.New(endPoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(driverConfig.Minio.Username, driverConfig.Minio.Password, ""),
-		Secure: useSSL,
+		Secure: driverConfig.Minio.UseSSL,
 	})
 	if err != nil {
 		log.Fatalf("Failed to connect to Minio: %s", err.Error())

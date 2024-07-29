@@ -13,11 +13,12 @@ func init() {
 func NewDriverConfig() *DriverConfig {
 	return &DriverConfig{
 		MongoDB: MongoDB{
-			Port:     utils.GetEnvString("MONGODB_PORT", "17017"),
-			Host:     utils.GetEnvString("MONGODB_HOST", "localhost"),
-			DbName:   utils.GetEnvString("MONGODB_DB_NAME", "spark"),
-			Username: utils.GetEnvString("MONGODB_USERNAME", "defaultUsername"),
-			Password: utils.GetEnvString("MONGODB_PASSWORD", "defaultPassword"),
+			Port:           utils.GetEnvString("MONGODB_PORT", "17017"),
+			Host:           utils.GetEnvString("MONGODB_HOST", "localhost"),
+			Username:       utils.GetEnvString("MONGODB_USERNAME", "defaultUsername"),
+			Password:       utils.GetEnvString("MONGODB_PASSWORD", "defaultPassword"),
+			FhirDbName:     utils.GetEnvString("MONGODB_FHIR_DB_NAME", "spark"),
+			KonsulinDbName: utils.GetEnvString("MONGODB_KONSULIN_DB_NAME", "konsulin"),
 		},
 		Redis: Redis{
 			Host:     utils.GetEnvString("REDIS_HOST", "localhost"),
