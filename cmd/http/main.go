@@ -147,6 +147,7 @@ func bootstrapingTheApp(bootstrap Bootstrap) error {
 	}
 	sessionService := session.NewSessionService(redisRepository)
 
+	// All deps in /internal/app/core
 	// Patient
 	patientFhirClient := patients.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePatient)
 
@@ -194,7 +195,7 @@ func bootstrapingTheApp(bootstrap Bootstrap) error {
 	}
 	authController := auth.NewAuthController(bootstrap.Logger, authUseCase)
 
-	// Middlewares
+	// All Middlewares
 	middlewares := middlewares.NewMiddlewares(bootstrap.Logger, sessionService, authUseCase, bootstrap.InternalConfig)
 
 	routers.SetupRoutes(
