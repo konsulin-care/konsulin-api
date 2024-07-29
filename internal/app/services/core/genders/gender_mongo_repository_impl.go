@@ -15,9 +15,9 @@ type GenderMongoRepository struct {
 	Collection *mongo.Collection
 }
 
-func NewGenderMongoRepository(db *mongo.Database) GenderRepository {
+func NewGenderMongoRepository(db *mongo.Client, dbName string) GenderRepository {
 	return &GenderMongoRepository{
-		Collection: db.Collection(constvars.MongoCollectionGenders),
+		Collection: db.Database(dbName).Collection(constvars.MongoCollectionGenders),
 	}
 }
 

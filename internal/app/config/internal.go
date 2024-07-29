@@ -8,6 +8,7 @@ type (
 		Mailer   AppMailer
 		Minio    AppMinio
 		RabbitMQ AppRabbitMQ
+		MongoDB  AppMongoDB
 	}
 	App struct {
 		Env                                string
@@ -43,5 +44,9 @@ type (
 	AppRabbitMQ struct {
 		MailerQueue   string
 		WhatsAppQueue string
+	}
+	AppMongoDB struct {
+		FhirDBName     string
+		KonsulinDBName string
 	}
 )

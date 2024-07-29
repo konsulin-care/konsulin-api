@@ -44,7 +44,7 @@ var Tag = "0.0.1-rc"
 
 type Bootstrap struct {
 	Router         *chi.Mux
-	MongoDB        *mongo.Database
+	MongoDB        *mongo.Client
 	Redis          *redis.Client
 	Logger         *zap.Logger
 	SMTP           *mailerDriver.SMTPClient
@@ -155,12 +155,12 @@ func bootstrapingTheApp(bootstrap Bootstrap) error {
 	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePractitioner)
 
 	// User
-	userMongoRepository := users.NewUserMongoRepository(bootstrap.MongoDB)
+	userMongoRepository := users.NewUserMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
 	userUseCase := users.NewUserUsecase(userMongoRepository, patientFhirClient, practitionerFhirClient, redisRepository, sessionService)
 	userController := users.NewUserController(bootstrap.Logger, userUseCase)
 
 	// Education Level
-	educationLevelMongoRepository := educationLevels.NewEducationLevelMongoRepository(bootstrap.MongoDB)
+	educationLevelMongoRepository := educationLevels.NewEducationLevelMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
 	educationLevelUseCase, err := educationLevels.NewEducationLevelUsecase(educationLevelMongoRepository, redisRepository)
 	if err != nil {
 		return err
@@ -168,7 +168,7 @@ func bootstrapingTheApp(bootstrap Bootstrap) error {
 	educationLevelController := educationLevels.NewEducationLevelController(bootstrap.Logger, educationLevelUseCase)
 
 	// Gender
-	genderMongoRepository := genders.NewGenderMongoRepository(bootstrap.MongoDB)
+	genderMongoRepository := genders.NewGenderMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
 	genderUseCase, err := genders.NewGenderUsecase(genderMongoRepository, redisRepository)
 	if err != nil {
 		return err
@@ -176,7 +176,7 @@ func bootstrapingTheApp(bootstrap Bootstrap) error {
 	genderController := genders.NewGenderController(bootstrap.Logger, genderUseCase)
 
 	// Role
-	roleMongoRepository := roles.NewRoleMongoRepository(bootstrap.MongoDB)
+	roleMongoRepository := roles.NewRoleMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
 
 	// Auth
 	authUseCase, err := auth.NewAuthUsecase(

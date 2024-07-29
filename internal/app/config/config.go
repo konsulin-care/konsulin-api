@@ -87,5 +87,9 @@ func NewInternalConfig() *InternalConfig {
 			MailerQueue:   utils.GetEnvString("APP_RABBITMQ_MAILER_QUEUE", ""),
 			WhatsAppQueue: utils.GetEnvString("APP_RABBITMQ_WHATSAPP_QUEUE", ""),
 		},
+		MongoDB: AppMongoDB{
+			FhirDBName:     utils.GetEnvString("APP_MONGODB_FHIR_DB_NAME", "spark"),
+			KonsulinDBName: utils.GetEnvString("APP_MONGODB_KONSULIN_DB_NAME", "konsulin"),
+		},
 	}
 }
