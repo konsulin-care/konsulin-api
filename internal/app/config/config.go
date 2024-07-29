@@ -30,13 +30,6 @@ func NewDriverConfig() *DriverConfig {
 			OutputFileName:      utils.GetEnvString("LOGGER_OUTPUT_FILENAME", "logger.log"),
 			OutputErrorFileName: utils.GetEnvString("LOGGER_OUTPUT_ERROR_FILENAME", "logger_error.log"),
 		},
-		SMTP: SMTP{
-			Host:        utils.GetEnvString("SMTP_HOST", "smtp_host"),
-			Username:    utils.GetEnvString("SMTP_USERNAME", ""),
-			Password:    utils.GetEnvString("SMTP_PASSWORD", ""),
-			EmailSender: utils.GetEnvString("SMTP_EMAIL_SENDER", ""),
-			Port:        utils.GetEnvInt("SMTP_PORT", 2525),
-		},
 		RabbitMQ: RabbitMQ{
 			Port:     utils.GetEnvString("RABBITMQ_PORT", "17017"),
 			Host:     utils.GetEnvString("RABBITMQ_HOST", "localhost"),
