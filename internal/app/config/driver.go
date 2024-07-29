@@ -5,7 +5,6 @@ type (
 		MongoDB  MongoDB
 		Redis    Redis
 		Logger   Logger
-		SMTP     SMTP
 		RabbitMQ RabbitMQ
 		Minio    Minio
 	}
@@ -26,13 +25,6 @@ type (
 		Level               string
 		OutputFileName      string
 		OutputErrorFileName string
-	}
-	SMTP struct {
-		Host        string
-		Username    string
-		Password    string
-		EmailSender string
-		Port        int
 	}
 	RabbitMQ struct {
 		Port     string
