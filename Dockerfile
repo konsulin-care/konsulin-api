@@ -1,9 +1,9 @@
 # global arguments
-ARG TZ_ARG="Asia/Jakarta"
-ARG AUTHOR="CI/CD"
-ARG VERSION=latest
-ARG TAG=v0.0.1-rc
-ARG BUILD_TIME="1990-07-14_07:54:00_+0700"
+ARG TZ_ARG
+ARG AUTHOR
+ARG VERSION
+ARG TAG
+ARG BUILD_TIME
 
 FROM debian:buster-slim AS base
 LABEL maintainer="Muhammad Febrian Ardiansyah <mfardiansyah.id@gmail.com>"
@@ -21,7 +21,7 @@ RUN apt-get update && \
     dpkg-reconfigure -f noninteractive tzdata
 ENV TZ=$TZ_ARG
 
-FROM konsulin/golang-vendor:latest as gobuild
+FROM repository.konsulin.care/repository/private/be-konsulin:latest as gobuild
 LABEL stage=gobuild
 
 # captures argument
