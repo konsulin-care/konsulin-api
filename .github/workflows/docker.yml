@@ -2,10 +2,6 @@ name: Docker
 on:
   workflow_call:
     inputs:
-      USERNAME:
-        type: string
-        required: true
-        default: admin
       TZ_ARG:
         type: string
         required: true
@@ -23,7 +19,9 @@ on:
         type: string
         required: true
     secrets:
-      PASSWORD:
+      DOCKER_USERNAME:
+        required: true
+      DOCKER_PASSWORD:
         required: true
 jobs:
   docker:
@@ -41,8 +39,8 @@ jobs:
       uses: docker/login-action@v1
       with:
         registry: repository.konsulin.care
-        username: ${{ inputs.USERNAME }}
-        password: ${{ secrets.PASSWORD }}
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
 
     - name: Get sha short
       id: tags

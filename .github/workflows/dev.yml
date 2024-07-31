@@ -4,7 +4,7 @@ on:
   push:
     branches:
     - develop
-    - test
+
 jobs:
   docker:
     name: Containerization
@@ -17,7 +17,7 @@ jobs:
       GIT_COMMIT: ${{ github.sha }}
       TAG: v0.0.1
     secrets:
-      PASSWORD: ${{ secrets.PASSWORD }}
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
 
   deploy:
     name: Deployment
