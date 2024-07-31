@@ -1,0 +1,36 @@
+name: Production
+on:
+  workflow_dispatch:
+  push:
+    tags:
+    - '*'
+jobs:
+  docker:
+    name: Containerization
+    uses: ./.github/workflows/docker.yml
+    with:
+      USERNAME: admin
+      TZ_ARG: Asia/Jakarta
+      AUTHOR: ardihikaru
+      VERSION: production
+      GIT_COMMIT: ${{ github.sha }}
+      TAG: v0.0.1
+    secrets:
+      PASSWORD: ${{ secrets.PASSWORD }}
+
+  deploy:
+    name: Deployment
+    uses: ./.github/workflows/deploy.yml
+    needs:
+    - docker
+    with:
+      ENVIRONMENT: production
+      SERVICE_NAME: api
+    secrets:
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USERNAME: ${{ secrets.SSH_USERNAME }}
+      SSH_KEY: ${{ secrets.SSH_KEY }}
+      SSH_PORT: ${{ secrets.SSH_PORT }}
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+
