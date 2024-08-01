@@ -4,6 +4,7 @@ ARG AUTHOR
 ARG VERSION
 ARG TAG
 ARG BUILD_TIME
+ARG RUN_NUMBER
 
 FROM debian:buster-slim AS base
 LABEL maintainer="Muhammad Febrian Ardiansyah <mfardiansyah.id@gmail.com>"
@@ -44,7 +45,7 @@ RUN echo "Set ARG value of [BUILD_TIME] as $BUILD_TIME"
 RUN echo "Set ARG value of [TAG] as $TAG"
 
 # get current commit and create build number
-ARG RELEASE_NOTE="author=$AUTHOR \nversion=$VERSION \ncommit=${GIT_COMMIT} \ntag=$TAG \nbuild time=$BUILD_TIME"
+ARG RELEASE_NOTE="author=$AUTHOR \nversion=$VERSION \ncommit=${GIT_COMMIT} \ntag=$TAG \nbuild time=$BUILD_TIME \nrun number=$RUN_NUMBER"
 RUN echo "${RELEASE_NOTE}" > /go/src/github.com/konsulin-id/be-konsulin/RELEASE
 
 ADD go.mod go.sum ./
