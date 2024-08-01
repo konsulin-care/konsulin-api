@@ -4,20 +4,22 @@ on:
   push:
     branches:
     - develop
-    - test
+
 jobs:
   docker:
     name: Containerization
     uses: ./.github/workflows/docker.yml
     with:
-      USERNAME: admin
       TZ_ARG: Asia/Jakarta
-      AUTHOR: ardihikaru
+      AUTHOR: ${{ github.actor }}
       VERSION: development
       GIT_COMMIT: ${{ github.sha }}
-      TAG: v0.0.1
+      TAG: $(git describe --tags --abbrev=0)
+      RUN_NUMBER: ${{ github.run_number }}
+      BUILD_TIME: $(date '+%Y-%m-%d_%H:%M:%S_%z')
     secrets:
-      PASSWORD: ${{ secrets.PASSWORD }}
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
 
   deploy:
     name: Deployment
