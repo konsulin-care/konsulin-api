@@ -1,9 +1,10 @@
 # global arguments
-ARG TZ_ARG="Asia/Jakarta"
-ARG AUTHOR="CI/CD"
-ARG VERSION=latest
-ARG TAG=v0.0.1-rc
-ARG BUILD_TIME="1990-07-14_07:54:00_+0700"
+ARG TZ_ARG
+ARG AUTHOR
+ARG VERSION
+ARG TAG
+ARG BUILD_TIME
+ARG RUN_NUMBER
 
 FROM debian:buster-slim AS base
 LABEL maintainer="Muhammad Febrian Ardiansyah <mfardiansyah.id@gmail.com>"
@@ -21,7 +22,7 @@ RUN apt-get update && \
     dpkg-reconfigure -f noninteractive tzdata
 ENV TZ=$TZ_ARG
 
-FROM konsulin/golang-vendor:latest as gobuild
+FROM repository.konsulin.care/repository/private/be-konsulin:latest as gobuild
 LABEL stage=gobuild
 
 # captures argument
@@ -44,7 +45,7 @@ RUN echo "Set ARG value of [BUILD_TIME] as $BUILD_TIME"
 RUN echo "Set ARG value of [TAG] as $TAG"
 
 # get current commit and create build number
-ARG RELEASE_NOTE="author=$AUTHOR \nversion=$VERSION \ncommit=${GIT_COMMIT} \ntag=$TAG \nbuild time=$BUILD_TIME"
+ARG RELEASE_NOTE="author=$AUTHOR \nversion=$VERSION \ncommit=${GIT_COMMIT} \ntag=$TAG \nbuild time=$BUILD_TIME \nrun number=$RUN_NUMBER"
 RUN echo "${RELEASE_NOTE}" > /go/src/github.com/konsulin-id/be-konsulin/RELEASE
 
 ADD go.mod go.sum ./

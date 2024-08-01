@@ -3,8 +3,6 @@ package models
 import (
 	"konsulin-service/internal/pkg/dto/requests"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 type User struct {
@@ -41,13 +39,5 @@ func (u *User) SetDataForUpdateProfile(request *requests.UpdateProfile) {
 func (u *User) SetDataForUpdateResetPassword(request *requests.ResetPassword) {
 	u.Password = request.HashedNewPassword
 	u.ResetToken = ""
-	u.SetUpdatedAt()
-}
-
-func (u *User) SetDataForUpdateForgotPassword(tokenExpiryTimeInMinute int) {
-
-	u.ResetToken = uuid.New().String()
-	u.ResetTokenExpiry = time.Now().Add(time.Duration(tokenExpiryTimeInMinute) * time.Minute)
-
 	u.SetUpdatedAt()
 }

@@ -1,0 +1,96 @@
+name: Docker
+on:
+  workflow_call:
+    inputs:
+      TZ_ARG:
+        type: string
+        required: true
+        default: Asia/Jakarta
+      AUTHOR:
+        type: string
+        required: true
+      VERSION:
+        type: string
+        required: true
+      TAG:
+        type: string
+        required: true
+      GIT_COMMIT:
+        type: string
+        required: true
+      BUILD_TIME:
+        type: string
+        required: true
+      RUN_NUMBER:
+        type: string
+        required: true
+    secrets:
+      DOCKER_USERNAME:
+        required: true
+      DOCKER_PASSWORD:
+        required: true
+jobs:
+  docker:
+    name: Docker
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+        - ubuntu-latest
+    steps:
+    - name: Prepare
+      uses: actions/checkout@v2
+
+    - name: Login to Registry
+      uses: docker/login-action@v1
+      with:
+        registry: repository.konsulin.care
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Get sha short
+      id: tags
+      run: |
+        echo "SHORT_SHA=`echo ${GITHUB_SHA} | cut -c1-8`" >> $GITHUB_ENV
+
+    - name: Get Branch
+      run: echo "BRANCH=${GITHUB_REF##*/}" >> $GITHUB_ENV
+
+    - name: Change vendor tags
+      run: |
+        sed -i 's|FROM repository.konsulin.care/repository/private/be-konsulin:latest|FROM repository.konsulin.care/repository/private/be-konsulin:sha-${{ env.BRANCH }}-${{ env.SHORT_SHA }}-vendor|' Dockerfile
+
+    - name: Build Vendor Image
+      run: >-
+        docker
+        build
+        -t repository.konsulin.care/repository/private/be-konsulin:sha-${{ env.BRANCH }}-${{ env.SHORT_SHA }}-vendor
+        -f Dockerfile-vendor
+        .
+
+    - name: Push sha-${{ env.BRANCH }}-${{ env.SHORT_SHA }}-vendor
+      run: >-
+        docker
+        push
+        repository.konsulin.care/repository/private/be-konsulin:sha-${{ env.BRANCH }}-${{ env.SHORT_SHA }}-vendor
+
+    - name: Build App Image
+      run: >-
+        docker
+        build
+        -t repository.konsulin.care/repository/private/be-konsulin:sha-${{ env.BRANCH }}-${{ env.SHORT_SHA }}
+        -f Dockerfile
+        --build-arg TZ_ARG=${{ inputs.TZ_ARG }}
+        --build-arg VERSION=${{ inputs.VERSION }}
+        --build-arg GIT_COMMIT=${{ inputs.GIT_COMMIT }}
+        --build-arg TAG=${{ inputs.TAG }}
+        --build-arg AUTHOR=${{ inputs.AUTHOR }}
+        --build-arg RUN_NUMBER=${{ inputs.RUN_NUMBER }}
+        --build-arg BUILD_TIME=${{ inputs.BUILD_TIME }}
+        .
+
+    - name: Push sha-${{ env.BRANCH }}-${{ env.SHORT_SHA }}
+      run: >-
+        docker
+        push
+        repository.konsulin.care/repository/private/be-konsulin:sha-${{ env.BRANCH }}-${{ env.SHORT_SHA }}

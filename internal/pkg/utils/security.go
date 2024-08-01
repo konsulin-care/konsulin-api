@@ -1,7 +1,9 @@
 package utils
 
 import (
+	"crypto/rand"
 	"konsulin-service/internal/pkg/exceptions"
+	"math/big"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
@@ -32,6 +34,20 @@ func GenerateSessionJWT(sessionID, secret string, jwtExpiryTime int) (string, er
 	return tokenString, nil
 }
 
+func GenerateResetPasswordJWT(uuid, secret string, jwtExpiryTime int) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"uuid": uuid,
+		"exp":  time.Now().Add(time.Duration(jwtExpiryTime) * time.Minute).Unix(),
+	})
+
+	tokenString, err := token.SignedString([]byte(secret))
+	if err != nil {
+		return "", exceptions.ErrTokenGenerate(err)
+	}
+
+	return tokenString, nil
+}
+
 func ParseJWT(tokenString, secret string) (string, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -51,4 +67,20 @@ func ParseJWT(tokenString, secret string) (string, error) {
 	}
 
 	return "", exceptions.ErrTokenInvalid(nil)
+}
+
+func GenerateOTP(otpLength int) (string, error) {
+	const otpDigits = "0123456789"
+	max := big.NewInt(int64(len(otpDigits)))
+
+	otp := make([]byte, otpLength)
+	for i := range otp {
+		num, err := rand.Int(rand.Reader, max)
+		if err != nil {
+			return "", err
+		}
+		otp[i] = otpDigits[num.Int64()]
+	}
+
+	return string(otp), nil
 }

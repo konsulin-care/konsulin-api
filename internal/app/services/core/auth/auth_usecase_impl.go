@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"fmt"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/app/services/core/roles"
@@ -10,8 +9,8 @@ import (
 	"konsulin-service/internal/app/services/core/users"
 	"konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
+	"konsulin-service/internal/app/services/shared/mailer"
 	"konsulin-service/internal/app/services/shared/redis"
-	"konsulin-service/internal/app/services/shared/smtp"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
@@ -30,7 +29,7 @@ type authUsecase struct {
 	RoleRepository         roles.RoleRepository
 	PatientFhirClient      patients.PatientFhirClient
 	PractitionerFhirClient practitioners.PractitionerFhirClient
-	SMTPService            smtp.SMTPService
+	MailerService          mailer.MailerService
 	InternalConfig         *config.InternalConfig
 	Roles                  map[string]*models.Role
 	mu                     sync.RWMutex
@@ -43,7 +42,7 @@ func NewAuthUsecase(
 	rolesRepository roles.RoleRepository,
 	patientFhirClient patients.PatientFhirClient,
 	practitionerFhirClient practitioners.PractitionerFhirClient,
-	smtpUsecase smtp.SMTPService,
+	mailerService mailer.MailerService,
 	internalConfig *config.InternalConfig,
 ) (AuthUsecase, error) {
 	authUsecase := &authUsecase{
@@ -53,7 +52,7 @@ func NewAuthUsecase(
 		RoleRepository:         rolesRepository,
 		PatientFhirClient:      patientFhirClient,
 		PractitionerFhirClient: practitionerFhirClient,
-		SMTPService:            smtpUsecase,
+		MailerService:          mailerService,
 		InternalConfig:         internalConfig,
 		Roles:                  make(map[string]*models.Role),
 	}
@@ -73,22 +72,13 @@ func (uc *authUsecase) RegisterClinician(ctx context.Context, request *requests.
 		return nil, exceptions.ErrPasswordDoNotMatch(nil)
 	}
 
-	// Check if email already exists
-	existingUser, err := uc.UserRepository.FindByEmail(ctx, request.Email)
+	// Check if email or username already exists
+	existingUser, err := uc.UserRepository.FindByEmailOrUsername(ctx, request.Email, request.Username)
 	if err != nil {
 		return nil, err
 	}
 	if existingUser != nil {
 		return nil, exceptions.ErrEmailAlreadyExist(nil)
-	}
-
-	// Check if username already exists
-	existingUser, err = uc.UserRepository.FindByUsername(ctx, request.Username)
-	if err != nil {
-		return nil, err
-	}
-	if existingUser != nil {
-		return nil, exceptions.ErrUsernameAlreadyExist(nil)
 	}
 
 	// Build FHIR practitioner request
@@ -145,22 +135,13 @@ func (uc *authUsecase) RegisterPatient(ctx context.Context, request *requests.Re
 		return nil, exceptions.ErrPasswordDoNotMatch(nil)
 	}
 
-	// Check if email already exists
-	existingUser, err := uc.UserRepository.FindByEmail(ctx, request.Email)
+	// Check if email or username already exists
+	existingUser, err := uc.UserRepository.FindByEmailOrUsername(ctx, request.Email, request.Username)
 	if err != nil {
 		return nil, err
 	}
 	if existingUser != nil {
 		return nil, exceptions.ErrEmailAlreadyExist(nil)
-	}
-
-	// Check if username already exists
-	existingUser, err = uc.UserRepository.FindByUsername(ctx, request.Username)
-	if err != nil {
-		return nil, err
-	}
-	if existingUser != nil {
-		return nil, exceptions.ErrUsernameAlreadyExist(nil)
 	}
 
 	// Build FHIR patient request
@@ -248,6 +229,7 @@ func (uc *authUsecase) LoginPatient(ctx context.Context, request *requests.Login
 	sessionData := models.Session{
 		UserID:    user.ID,
 		PatientID: user.PatientID,
+		Email:     user.Email,
 		RoleID:    role.ID,
 		RoleName:  role.Name,
 		SessionID: sessionID,
@@ -318,6 +300,7 @@ func (uc *authUsecase) LoginClinician(ctx context.Context, request *requests.Log
 	sessionData := models.Session{
 		UserID:         user.ID,
 		PractitionerID: user.PractitionerID,
+		Email:          user.Email,
 		RoleID:         role.ID,
 		RoleName:       role.Name,
 		SessionID:      sessionID,
@@ -408,17 +391,30 @@ func (uc *authUsecase) ForgotPassword(ctx context.Context, request *requests.For
 		return exceptions.ErrUserNotExist(nil)
 	}
 
-	user.SetDataForUpdateForgotPassword(uc.InternalConfig.App.ForgotPasswordTokenExpTimeInMinute)
+	uuid := uuid.New().String()
+	user.ResetToken, err = utils.GenerateResetPasswordJWT(uuid, uc.InternalConfig.JWT.Secret, uc.InternalConfig.App.ForgotPasswordTokenExpTimeInMinute)
+	user.ResetTokenExpiry = time.Now().Add(time.Duration(uc.InternalConfig.App.ForgotPasswordTokenExpTimeInMinute) * time.Minute)
+	user.SetUpdatedAt()
+	if err != nil {
+		return err
+	}
 
 	err = uc.UserRepository.UpdateUser(ctx, user)
 	if err != nil {
 		return err
 	}
 
+	expiryTimeString := user.ResetTokenExpiry.Format("02 January 2006, 15:04 MST")
 	resetLink := uc.InternalConfig.App.ResetPasswordUrl + user.ResetToken
-	emailBody := fmt.Sprintf(constvars.EmailBodyResetPassword + resetLink)
+	emailPayload := utils.BuildForgotPasswordEmailPayload(
+		uc.InternalConfig.Mailer.EmailSender,
+		request.Email,
+		resetLink,
+		user.Fullname,
+		expiryTimeString,
+	)
 
-	err = uc.SMTPService.SendEmail(user.Email, constvars.EmailForgotPasswordSubjectMessage, emailBody)
+	err = uc.MailerService.SendEmail(ctx, emailPayload)
 	if err != nil {
 		return err
 	}
@@ -426,19 +422,24 @@ func (uc *authUsecase) ForgotPassword(ctx context.Context, request *requests.For
 }
 
 func (uc *authUsecase) ResetPassword(ctx context.Context, request *requests.ResetPassword) error {
+	// Check if passwords match
+	if request.NewPassword != request.RetypeNewPassword {
+		return exceptions.ErrPasswordDoNotMatch(nil)
+	}
+
 	user, err := uc.UserRepository.FindByResetToken(ctx, request.Token)
 	if err != nil {
 		return err
 	}
 
-	hashedNewPassword, err := utils.HashPassword(request.NewPassword)
-	if err != nil {
-		return exceptions.ErrHashPassword(err)
-	}
-
 	// Check if the reset token is expired
 	if time.Now().After(user.ResetTokenExpiry) {
 		return exceptions.ErrTokenResetPasswordExpired(nil)
+	}
+
+	hashedNewPassword, err := utils.HashPassword(request.NewPassword)
+	if err != nil {
+		return exceptions.ErrHashPassword(err)
 	}
 
 	request.HashedNewPassword = hashedNewPassword

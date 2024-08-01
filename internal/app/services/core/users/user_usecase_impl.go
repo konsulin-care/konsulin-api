@@ -63,6 +63,15 @@ func (uc *userUsecase) UpdateUserProfileBySession(ctx context.Context, sessionDa
 		return nil, err
 	}
 
+	// Check if email already exists
+	existingUser, err := uc.UserRepository.FindByEmail(ctx, request.Email)
+	if err != nil {
+		return nil, err
+	}
+	if existingUser != nil {
+		return nil, exceptions.ErrEmailAlreadyExist(nil)
+	}
+
 	// Handle update user profile based on role
 	switch session.RoleName {
 	case constvars.RoleTypePractitioner:

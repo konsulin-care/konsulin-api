@@ -16,9 +16,9 @@ type UserMongoRepository struct {
 	Collection *mongo.Collection
 }
 
-func NewUserMongoRepository(db *mongo.Database, dbName string) UserRepository {
+func NewUserMongoRepository(db *mongo.Client, dbName string) UserRepository {
 	return &UserMongoRepository{
-		Collection: db.Collection(constvars.MongoCollectionUsers),
+		Collection: db.Database(dbName).Collection(constvars.MongoCollectionUsers),
 	}
 }
 
@@ -45,6 +45,25 @@ func (r *UserMongoRepository) FindByEmail(ctx context.Context, email string) (*m
 func (r *UserMongoRepository) FindByUsername(ctx context.Context, username string) (*models.User, error) {
 	var user models.User
 	err := r.Collection.FindOne(ctx, bson.M{"username": username}).Decode(&user)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, nil
+		}
+		return nil, exceptions.ErrMongoDBFindDocument(err)
+	}
+	return &user, nil
+}
+
+func (r *UserMongoRepository) FindByEmailOrUsername(ctx context.Context, email, username string) (*models.User, error) {
+	var user models.User
+	filter := bson.M{
+		"$or": []bson.M{
+			{"email": email},
+			{"username": username},
+		},
+	}
+
+	err := r.Collection.FindOne(ctx, filter).Decode(&user)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, nil
