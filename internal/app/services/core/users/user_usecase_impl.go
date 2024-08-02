@@ -1,17 +1,21 @@
 package users
 
 import (
+	"bytes"
 	"context"
+	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/app/services/core/session"
 	"konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
 	"konsulin-service/internal/app/services/shared/redis"
+	"konsulin-service/internal/app/services/shared/storage"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
+	"mime/multipart"
 )
 
 type userUsecase struct {
@@ -20,6 +24,8 @@ type userUsecase struct {
 	PractitionerFhirClient practitioners.PractitionerFhirClient
 	RedisRepository        redis.RedisRepository
 	SessionService         session.SessionService
+	MinioStorage           storage.Storage
+	InternalConfig         *config.InternalConfig
 }
 
 func NewUserUsecase(
@@ -28,6 +34,8 @@ func NewUserUsecase(
 	practitionerFhirClient practitioners.PractitionerFhirClient,
 	redisRepository redis.RedisRepository,
 	sessionService session.SessionService,
+	minioStorage storage.Storage,
+	internalConfig *config.InternalConfig,
 ) UserUsecase {
 	return &userUsecase{
 		UserRepository:         userMongoRepository,
@@ -35,6 +43,8 @@ func NewUserUsecase(
 		PractitionerFhirClient: practitionerFhirClient,
 		RedisRepository:        redisRepository,
 		SessionService:         sessionService,
+		MinioStorage:           minioStorage,
+		InternalConfig:         internalConfig,
 	}
 }
 
@@ -57,12 +67,6 @@ func (uc *userUsecase) GetUserProfileBySession(ctx context.Context, sessionData 
 }
 
 func (uc *userUsecase) UpdateUserProfileBySession(ctx context.Context, sessionData string, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error) {
-	// Parse session data
-	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
-	if err != nil {
-		return nil, err
-	}
-
 	// Check if email already exists
 	existingUser, err := uc.UserRepository.FindByEmail(ctx, request.Email)
 	if err != nil {
@@ -70,6 +74,19 @@ func (uc *userUsecase) UpdateUserProfileBySession(ctx context.Context, sessionDa
 	}
 	if existingUser != nil {
 		return nil, exceptions.ErrEmailAlreadyExist(nil)
+	}
+
+	// Parse session data
+	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
+	if err != nil {
+		return nil, err
+	}
+
+	if request.ProfilePicture != nil && request.ProfilePictureName != "" {
+		request.ProfilePictureUrl, err = uc.uploadProfilePicture(ctx, session.Username, request)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Handle update user profile based on role
@@ -208,4 +225,27 @@ func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *mode
 
 	// Return the response to Controller
 	return response, nil
+}
+
+func (uc *userUsecase) uploadProfilePicture(ctx context.Context, username string, request *requests.UpdateProfile) (string, error) {
+	fileName := utils.GenerateFileName(constvars.IMAGE_PROFILE_PICTURE_PREFIX, username, request.ProfilePictureName)
+	fileHeader := &multipart.FileHeader{
+		Filename: fileName,
+		Size:     int64(len(request.ProfilePicture)),
+		Header:   make(map[string][]string),
+	}
+
+	err := utils.ValidateImage(fileHeader, uc.InternalConfig.Minio.ProfilePictureMaxUploadSizeInMB)
+	if err != nil {
+		return "", exceptions.ErrImageValidation(err)
+	}
+
+	file := bytes.NewReader(request.ProfilePicture)
+
+	profilePictureURL, err := uc.MinioStorage.UploadFile(ctx, file, fileHeader, uc.InternalConfig.Minio.BucketName)
+	if err != nil {
+		return "", err
+	}
+
+	return profilePictureURL, nil
 }

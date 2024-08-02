@@ -246,7 +246,7 @@ func (uc *authUsecase) LoginPatient(ctx context.Context, request *requests.Login
 	tokenString, err := utils.GenerateSessionJWT(sessionID, uc.InternalConfig.JWT.Secret, uc.InternalConfig.JWT.ExpTimeInHour)
 	if err != nil {
 		// Return error if there is an issue generating the JWT token
-		return nil, err
+		return nil, exceptions.ErrTokenGenerate(err)
 	}
 
 	// Prepare the response with the generated token and user details
@@ -301,6 +301,7 @@ func (uc *authUsecase) LoginClinician(ctx context.Context, request *requests.Log
 		UserID:         user.ID,
 		PractitionerID: user.PractitionerID,
 		Email:          user.Email,
+		Username:       user.Username,
 		RoleID:         role.ID,
 		RoleName:       role.Name,
 		SessionID:      sessionID,
@@ -317,7 +318,7 @@ func (uc *authUsecase) LoginClinician(ctx context.Context, request *requests.Log
 	tokenString, err := utils.GenerateSessionJWT(sessionID, uc.InternalConfig.JWT.Secret, uc.InternalConfig.JWT.ExpTimeInHour)
 	if err != nil {
 		// Return error if there is an issue generating the JWT token
-		return nil, err
+		return nil, exceptions.ErrTokenGenerate(err)
 	}
 
 	// Prepare the response with the generated token and user details
@@ -393,11 +394,11 @@ func (uc *authUsecase) ForgotPassword(ctx context.Context, request *requests.For
 
 	uuid := uuid.New().String()
 	user.ResetToken, err = utils.GenerateResetPasswordJWT(uuid, uc.InternalConfig.JWT.Secret, uc.InternalConfig.App.ForgotPasswordTokenExpTimeInMinute)
+	if err != nil {
+		return exceptions.ErrTokenGenerate(err)
+	}
 	user.ResetTokenExpiry = time.Now().Add(time.Duration(uc.InternalConfig.App.ForgotPasswordTokenExpTimeInMinute) * time.Minute)
 	user.SetUpdatedAt()
-	if err != nil {
-		return err
-	}
 
 	err = uc.UserRepository.UpdateUser(ctx, user)
 	if err != nil {

@@ -24,24 +24,18 @@ func (e *CustomError) Error() string {
 	return fmt.Sprintf("%s (%s:%d %s)", e.DevMessage, e.Location.File, e.Location.Line, e.Location.FunctionName)
 }
 
-func WrapWithoutError(statusCode int, clientMessage, devMessage string) *CustomError {
+func BuildNewCustomError(err error, statusCode int, clientMessage, devMessage string) *CustomError {
 	location := getLocation(3)
-	return &CustomError{
+	customError := &CustomError{
 		StatusCode:    statusCode,
 		ClientMessage: clientMessage,
 		DevMessage:    devMessage,
 		Location:      location,
 	}
-}
-
-func WrapWithError(err error, statusCode int, clientMessage, devMessage string) *CustomError {
-	location := getLocation(3)
-	return &CustomError{
-		StatusCode:    statusCode,
-		ClientMessage: clientMessage,
-		DevMessage:    fmt.Sprintf("%s: %s", devMessage, err.Error()),
-		Location:      location,
+	if err != nil {
+		customError.DevMessage = fmt.Sprintf("%s: %s", devMessage, err.Error())
 	}
+	return customError
 }
 
 func getLocation(skip int) *Location {
