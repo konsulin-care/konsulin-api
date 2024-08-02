@@ -20,10 +20,10 @@ func BuildPagination(total, page, pageSize int, baseURL string) *responses.Pagin
 	}
 
 	if (page)*pageSize <= total {
-		pagination.NextURL = fmt.Sprintf("%s?page=%d&page_size=%d", baseURL, page+1, pageSize)
+		pagination.NextURL = fmt.Sprintf(constvars.AppPaginationUrlFormat, baseURL, page+1, pageSize)
 	}
 	if page > 1 {
-		pagination.PrevURL = fmt.Sprintf("%s?page=%d&page_size=%d", baseURL, page-1, pageSize)
+		pagination.PrevURL = fmt.Sprintf(constvars.AppPaginationUrlFormat, baseURL, page-1, pageSize)
 	}
 
 	return pagination

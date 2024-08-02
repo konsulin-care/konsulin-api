@@ -8,3 +8,7 @@ const (
 	ResourceGenders         = "genders"
 	ResourceEducationLevels = "education-levels"
 )
+
+const (
+	AppPaginationUrlFormat = "%s?page=%d&page_size=%d"
+)
