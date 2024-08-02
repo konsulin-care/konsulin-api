@@ -2,9 +2,10 @@ package storage
 
 import (
 	"context"
+	"io"
 	"mime/multipart"
 )
 
 type Storage interface {
-	UploadFile(ctx context.Context, file multipart.File, fileHeader *multipart.FileHeader) (string, error)
+	UploadFile(ctx context.Context, file io.Reader, fileHeader *multipart.FileHeader, bucketName string) (string, error)
 }

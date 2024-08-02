@@ -47,6 +47,7 @@ func NewDriverConfig() *DriverConfig {
 }
 
 func NewInternalConfig() *InternalConfig {
+	var profilePictureMaxUploadSizeInMB int64 = utils.GetEnvInt64("APP_MINIO_PROFILE_PICTURE_UPLOAD_MAX_SIZE_IN_MB", 2) * 1024 * 1024
 	return &InternalConfig{
 		App: App{
 			Env:                                utils.GetEnvString("APP_ENV", "v1.0"),
@@ -74,7 +75,7 @@ func NewInternalConfig() *InternalConfig {
 		},
 		Minio: AppMinio{
 			BucketName:                      utils.GetEnvString("APP_MINIO_BUCKET_NAME", "konsulin-dev"),
-			ProfilePictureMaxUploadSizeInMB: utils.GetEnvInt64("APP_MINIO_PROFILE_PICTURE_UPLOAD_MAX_SIZE_IN_MB", 2),
+			ProfilePictureMaxUploadSizeInMB: profilePictureMaxUploadSizeInMB,
 		},
 		RabbitMQ: AppRabbitMQ{
 			MailerQueue:   utils.GetEnvString("APP_RABBITMQ_MAILER_QUEUE", ""),

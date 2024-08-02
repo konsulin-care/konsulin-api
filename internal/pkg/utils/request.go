@@ -3,6 +3,7 @@ package utils
 import (
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
+	"net/http"
 	"strings"
 )
 
@@ -75,6 +76,7 @@ func BuildFhirPractitionerRequest(username, email string) *requests.Practitioner
 		},
 	}
 }
+
 func BuildFhirPractitionerUpdateRequest(request *requests.UpdateProfile, practitionerID string) *requests.PractitionerFhir {
 	var extensions []requests.Extension
 	for _, education := range request.Educations {
@@ -117,4 +119,29 @@ func BuildFhirPractitionerUpdateRequest(request *requests.UpdateProfile, practit
 		},
 		Extension: extensions,
 	}
+}
+
+func BuildUpdateUserProfileRequest(r *http.Request) (*requests.UpdateProfile, error) {
+	request := new(requests.UpdateProfile)
+
+	request.Fullname = r.FormValue("fullname")
+	request.Email = r.FormValue("email")
+	request.BirthDate = r.FormValue("birth_date")
+	request.WhatsAppNumber = r.FormValue("whatsapp_number")
+	request.Address = r.FormValue("address")
+	request.Gender = r.FormValue("gender")
+	request.Educations = r.Form["educations"]
+
+	file, fileHeader, err := r.FormFile("profile_picture")
+	if err == nil {
+		defer file.Close()
+		request.ProfilePicture = make([]byte, fileHeader.Size)
+		_, err := file.Read(request.ProfilePicture)
+		if err != nil {
+			return nil, err
+		}
+		request.ProfilePictureName = fileHeader.Filename
+	}
+
+	return request, nil
 }

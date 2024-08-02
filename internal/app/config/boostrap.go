@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/minio/minio-go/v7"
 	"github.com/rabbitmq/amqp091-go"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -17,6 +18,7 @@ type Bootstrap struct {
 	Redis          *redis.Client
 	Logger         *zap.Logger
 	RabbitMQ       *amqp091.Connection
+	Minio          *minio.Client
 	InternalConfig *InternalConfig
 }
 

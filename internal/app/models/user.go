@@ -6,23 +6,26 @@ import (
 )
 
 type User struct {
-	ID               string    `bson:"_id,omitempty"`
-	RoleID           string    `bson:"roleId"`
-	Fullname         string    `bson:"fullName"`
-	Email            string    `bson:"email"`
-	Username         string    `bson:"username"`
-	Password         string    `bson:"password"`
-	BirthDate        string    `bson:"birthDate"`
-	Address          string    `bson:"address"`
-	Gender           string    `bson:"gender"`
+	ID                string `bson:"_id,omitempty"`
+	Email             string `bson:"email"`
+	Gender            string `bson:"gender"`
+	RoleID            string `bson:"roleId"`
+	Address           string `bson:"address"`
+	Fullname          string `bson:"fullName"`
+	Username          string `bson:"username"`
+	Password          string `bson:"password"`
+	BirthDate         string `bson:"birthDate"`
+	PatientID         string `bson:"patientId,omitempty"`
+	ResetToken        string `bson:"resetToken, omitempty"`
+	WhatsAppNumber    string `bson:"whatsAppNumber"`
+	PractitionerID    string `bson:"practitionerId,omitempty"`
+	ProfilePictureUrl string `bson:"profilePictureUrl"`
+
 	Educations       []string  `bson:"educations"`
-	WhatsAppNumber   string    `bson:"whatsAppNumber"`
-	PatientID        string    `bson:"patientId,omitempty"`
-	PractitionerID   string    `bson:"practitionerId,omitempty"`
-	ResetToken       string    `bson:"resetToken, omitempty"`
 	ResetTokenExpiry time.Time `bson:"resetTokenExpiry, omitempty"`
-	Role             `bson:"user_role,omitempty"`
-	TimeModel        `bson:",inline"`
+
+	Role      `bson:"user_role,omitempty"`
+	TimeModel `bson:",inline"`
 }
 
 func (u *User) SetDataForUpdateProfile(request *requests.UpdateProfile) {

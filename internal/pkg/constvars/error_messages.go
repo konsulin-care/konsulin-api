@@ -44,6 +44,7 @@ var TagsWithParams = map[string]bool{
 	"lte":                  true,
 	"excludes":             true,
 	"user_type":            true,
+	"oneof":                true,
 	"excludesrune":         true,
 	"required_if":          true,
 	"required_unless":      true,
@@ -60,6 +61,7 @@ const (
 	ErrClientUsernameAlreadyExists         = "username already used"
 	ErrClientCannotProcessRequest          = "failed to process your request"
 	ErrClientInvalidUsernameOrPassword     = "invalid username or password"
+	ErrClientInvalidImageFormat            = "the image you uploaded does not meet the specified standards"
 	ErrClientSomethingWrongWithApplication = "there is something wrong with the application"
 	ErrClientServerLongRespond             = "the app taking too long to respond"
 	ErrClientNotAuthorized                 = "you can't access this feature"
@@ -69,18 +71,20 @@ const (
 
 // Error messages for developers
 const (
-	ErrDevInvalidInput         = "invalid input"
-	ErrDevCannotParseJSON      = "cannot parse JSON into struct or other data types"
-	ErrDevCannotMarshalJSON    = "cannot convert struct or other data types to JSON"
-	ErrDevInvalidRoleType      = "invalid role type, should be 'practitioner' or 'patient'"
-	ErrDevRoleTypeDoesntMatch  = "invalid role type, request done by user with different type"
-	ErrDevFailedToCreateUser   = "failed to create user"
-	ErrDevFailedToHashPassword = "failed to hash password"
-	ErrDevDocumentNotFound     = "document not found"
-	ErrDevInvalidCredentials   = "invalid credentials"
-	ErrDevUnauthorized         = "unauthorized access"
-	ErrDevCreateHTTPRequest    = "failed to create HTTP request"
-	ErrDevSendHTTPRequest      = "failed to send HTTP request"
+	ErrDevInvalidInput             = "invalid input"
+	ErrDevCannotParseJSON          = "cannot parse JSON into struct or other data types"
+	ErrDevCannotMarshalJSON        = "cannot convert struct or other data types to JSON"
+	ErrDevCannotParseMultipartForm = "cannot parse multipart form body"
+	ErrDevBuildRequest             = "encountering error while building request DTO"
+	ErrDevInvalidRoleType          = "invalid role type, should be 'practitioner' or 'patient'"
+	ErrDevRoleTypeDoesntMatch      = "invalid role type, request done by user with different type"
+	ErrDevFailedToCreateUser       = "failed to create user"
+	ErrDevFailedToHashPassword     = "failed to hash password"
+	ErrDevDocumentNotFound         = "document not found"
+	ErrDevInvalidCredentials       = "invalid credentials"
+	ErrDevUnauthorized             = "unauthorized access"
+	ErrDevCreateHTTPRequest        = "failed to create HTTP request"
+	ErrDevSendHTTPRequest          = "failed to send HTTP request"
 
 	// SMTP
 	ErrDevSMTPSendEmail = "failed to send email via SMTP client hostname %s"
@@ -99,6 +103,7 @@ const (
 
 	// Validation messages
 	ErrDevValidationFailed      = "validation failed"
+	ErrDevImageValidationFailed = "image validation failed"
 	ErrDevInvalidRequestPayload = "invalid request payload"
 	ErrDevMissingRequiredFields = "missing required fields"
 
@@ -121,6 +126,9 @@ const (
 	ErrDevDBConnectionFailed         = "failed to connect to database"
 	ErrDevDBOperationFailed          = "database operation failed"
 	ErrDevDBStringNotObjectID        = "given ID is not valid object ID"
+
+	// Minio messages
+	ErrDevMinioFailedToCreateObject = "failed to create object into minio storage, with bucket name '%s'"
 
 	// Redis messages
 	ErrDevRedisSetData         = "failed to SET data into redis"
