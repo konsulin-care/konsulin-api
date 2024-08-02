@@ -1,0 +1,10 @@
+package constvars
+
+const (
+	ResourceUsers           = "users"
+	ResourceRoles           = "roles"
+	ResourceAuth            = "auth"
+	ResourceClinics         = "clinics"
+	ResourceGenders         = "genders"
+	ResourceEducationLevels = "education-levels"
+)

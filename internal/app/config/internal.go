@@ -15,6 +15,7 @@ type (
 		Port                               string
 		Version                            string
 		Address                            string
+		BaseUrl                            string
 		Timezone                           string
 		EndpointPrefix                     string
 		ResetPasswordUrl                   string

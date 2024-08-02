@@ -2,6 +2,7 @@ package utils
 
 import (
 	"errors"
+	"fmt"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
@@ -11,11 +12,40 @@ import (
 	"go.uber.org/zap"
 )
 
+func BuildPagination(total, page, pageSize int, baseURL string) *responses.Pagination {
+	pagination := &responses.Pagination{
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	}
+
+	if (page)*pageSize <= total {
+		pagination.NextURL = fmt.Sprintf("%s?page=%d&page_size=%d", baseURL, page+1, pageSize)
+	}
+	if page > 1 {
+		pagination.PrevURL = fmt.Sprintf("%s?page=%d&page_size=%d", baseURL, page-1, pageSize)
+	}
+
+	return pagination
+}
+
 func BuildSuccessResponse(w http.ResponseWriter, code int, message string, data interface{}) {
 	response := responses.ResponseDTO{
 		Success: true,
 		Message: message,
 		Data:    data,
+	}
+	w.Header().Set(constvars.HeaderContentType, constvars.MIMEApplicationJSON)
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(response)
+}
+
+func BuildSuccessResponseWithPagination(w http.ResponseWriter, code int, message string, pagination *responses.Pagination, data interface{}) {
+	response := responses.ResponseDTO{
+		Success:    true,
+		Message:    message,
+		Data:       data,
+		Pagination: pagination,
 	}
 	w.Header().Set(constvars.HeaderContentType, constvars.MIMEApplicationJSON)
 	w.WriteHeader(code)

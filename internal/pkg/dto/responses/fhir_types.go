@@ -12,10 +12,11 @@ type Duration struct {
 }
 
 type Identifier struct {
-	Use    string `json:"use,omitempty" bson:"use,omitempty"`
-	Type   string `json:"type,omitempty" bson:"type,omitempty"`
-	System string `json:"system,omitempty" bson:"system,omitempty"`
-	Value  string `json:"value,omitempty" bson:"value,omitempty"`
+	Use    string          `json:"use,omitempty" bson:"use,omitempty"`
+	System string          `json:"system,omitempty" bson:"system,omitempty"`
+	Value  string          `json:"value,omitempty" bson:"value,omitempty"`
+	Period Period          `json:"period,omitempty" bson:"period,omitempty"`
+	Type   CodeableConcept `json:"type,omitempty" bson:"type,omitempty"`
 }
 
 type HumanName struct {

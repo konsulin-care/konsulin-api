@@ -11,7 +11,7 @@ type PatientUsecase interface{}
 type PatientRepository interface{}
 
 type PatientFhirClient interface {
-	CreatePatient(ctx context.Context, patient *requests.PatientFhir) (*responses.Patient, error)
-	UpdatePatient(ctx context.Context, patient *requests.PatientFhir) (*responses.Patient, error)
+	CreatePatient(ctx context.Context, request *requests.PatientFhir) (*responses.Patient, error)
+	UpdatePatient(ctx context.Context, request *requests.PatientFhir) (*responses.Patient, error)
 	GetPatientByID(ctx context.Context, patientID string) (*responses.Patient, error)
 }

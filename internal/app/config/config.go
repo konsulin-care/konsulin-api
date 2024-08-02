@@ -54,6 +54,7 @@ func NewInternalConfig() *InternalConfig {
 			Port:                               utils.GetEnvString("APP_PORT", ":8080"),
 			Version:                            utils.GetEnvString("APP_VERSION", "v1.0"),
 			Address:                            utils.GetEnvString("APP_ADDRESS", "localhost"),
+			BaseUrl:                            utils.GetEnvString("APP_BASE_URL", "localhost"),
 			Timezone:                           utils.GetEnvString("APP_TIMEZONE", "Asia/Jakarta"),
 			EndpointPrefix:                     utils.GetEnvString("APP_ENDPOINT_PREFIX", "/v1"),
 			ResetPasswordUrl:                   utils.GetEnvString("APP_RESET_PASSWORD_URL", ""),

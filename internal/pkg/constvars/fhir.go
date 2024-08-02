@@ -19,3 +19,7 @@ const (
 	ResourceLocation           = "Location"
 	ResourceHealthcareService  = "HealthcareService"
 )
+
+const (
+	FhirFetchResourceWithPagination = "%s?_offset=%d&_count=%d"
+)
