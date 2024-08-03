@@ -6,7 +6,7 @@ import (
 )
 
 func sanitizeString(s string) string {
-	return strings.TrimSpace(strings.ToLower(s))
+	return strings.TrimSpace(s)
 }
 
 func sanitizeStringArray(input []string) []string {

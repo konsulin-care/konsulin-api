@@ -201,7 +201,7 @@ func (uc *userUsecase) updatePractitionerProfile(ctx context.Context, session *m
 
 func (uc *userUsecase) getPatientProfile(ctx context.Context, session *models.Session) (*responses.UserProfile, error) {
 	// Get patient data from FHIR Spark Patient Client
-	patientFhir, err := uc.PatientFhirClient.GetPatientByID(ctx, session.PatientID)
+	patientFhir, err := uc.PatientFhirClient.FindPatientByID(ctx, session.PatientID)
 	if err != nil {
 		return nil, err
 	}
@@ -215,7 +215,7 @@ func (uc *userUsecase) getPatientProfile(ctx context.Context, session *models.Se
 
 func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *models.Session) (*responses.UserProfile, error) {
 	// Get practitioner data from FHIR Spark Practitioner Client
-	practitionerFhir, err := uc.PractitionerFhirClient.GetPractitionerByID(ctx, session.PractitionerID)
+	practitionerFhir, err := uc.PractitionerFhirClient.FindPractitionerByID(ctx, session.PractitionerID)
 	if err != nil {
 		return nil, err
 	}

@@ -4,8 +4,29 @@ import (
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"net/http"
+	"strconv"
 	"strings"
 )
+
+func BuildPaginationRequest(r *http.Request) *requests.Pagination {
+	pageStr := r.URL.Query().Get("page")
+	pageSizeStr := r.URL.Query().Get("page_size")
+
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page <= 0 {
+		page = 1
+	}
+
+	pageSize, err := strconv.Atoi(pageSizeStr)
+	if err != nil || pageSize <= 0 {
+		pageSize = 10
+	}
+
+	return &requests.Pagination{
+		Page:     page,
+		PageSize: pageSize,
+	}
+}
 
 func BuildFhirPatientRequest(username, email string) *requests.PatientFhir {
 	return &requests.PatientFhir{

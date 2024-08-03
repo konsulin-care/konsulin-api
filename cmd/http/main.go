@@ -11,12 +11,15 @@ import (
 	"konsulin-service/internal/app/drivers/messaging"
 	"konsulin-service/internal/app/drivers/storage"
 	"konsulin-service/internal/app/services/core/auth"
+	"konsulin-service/internal/app/services/core/clinics"
 	educationLevels "konsulin-service/internal/app/services/core/education_levels"
 	"konsulin-service/internal/app/services/core/genders"
 	"konsulin-service/internal/app/services/core/roles"
 	"konsulin-service/internal/app/services/core/session"
 	"konsulin-service/internal/app/services/core/users"
+	"konsulin-service/internal/app/services/fhir_spark/organizations"
 	"konsulin-service/internal/app/services/fhir_spark/patients"
+	practitionerRoles "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
 	"konsulin-service/internal/app/services/shared/mailer"
 	redisKonsulin "konsulin-service/internal/app/services/shared/redis"
@@ -162,47 +165,39 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	// Initialize session service with Redis repository
 	sessionService := session.NewSessionService(redisRepository)
 
-	// Initialize FHIR client for Patient resource
+	// Initialize FHIR clients
 	patientFhirClient := patients.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePatient)
-
-	// Initialize FHIR client for Practitioner resource
 	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePractitioner)
+	organizationFhirClient := organizations.NewOrganizationFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourceOrganization)
+	practitionerRoleFhirClient := practitionerRoles.NewPractitionerRoleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePractitionerRole)
 
-	// Initialize User repository with MongoDB
+	// Initialize Users dependencies
 	userMongoRepository := users.NewUserMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
-
-	// Initialize User usecase with dependencies
 	userUseCase := users.NewUserUsecase(userMongoRepository, patientFhirClient, practitionerFhirClient, redisRepository, sessionService, minioStorage, bootstrap.InternalConfig)
-
-	// Initialize User controller with logger and usecase
 	userController := users.NewUserController(bootstrap.Logger, userUseCase)
 
-	// Initialize Education Level repository with MongoDB
+	// Initialize Education Level dependencies
 	educationLevelMongoRepository := educationLevels.NewEducationLevelMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
-
-	// Initialize Education Level usecase with dependencies
 	educationLevelUseCase, err := educationLevels.NewEducationLevelUsecase(educationLevelMongoRepository, redisRepository)
 	if err != nil {
 		return err
 	}
-
-	// Initialize Education Level controller with logger and usecase
 	educationLevelController := educationLevels.NewEducationLevelController(bootstrap.Logger, educationLevelUseCase)
 
-	// Initialize Gender repository with MongoDB
+	// Initialize Gender dependencies
 	genderMongoRepository := genders.NewGenderMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
-
-	// Initialize Gender usecase with dependencies
 	genderUseCase, err := genders.NewGenderUsecase(genderMongoRepository, redisRepository)
 	if err != nil {
 		return err
 	}
-
-	// Initialize Gender controller with logger and usecase
 	genderController := genders.NewGenderController(bootstrap.Logger, genderUseCase)
 
 	// Initialize Role repository with MongoDB
 	roleMongoRepository := roles.NewRoleMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
+
+	// Initialize Clinic dependencies
+	clinicUsecase := clinics.NewClinicUsecase(organizationFhirClient, practitionerRoleFhirClient, practitionerFhirClient, redisRepository, bootstrap.InternalConfig)
+	clinicController := clinics.NewClinicController(bootstrap.Logger, clinicUsecase)
 
 	// Initialize Auth usecase with dependencies
 	authUseCase, err := auth.NewAuthUsecase(
@@ -218,8 +213,6 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	if err != nil {
 		return err
 	}
-
-	// Initialize Auth controller with logger and usecase
 	authController := auth.NewAuthController(bootstrap.Logger, authUseCase)
 
 	// Initialize middlewares with logger, session service, and auth usecase
@@ -232,6 +225,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 		middlewares,
 		userController,
 		authController,
+		clinicController,
 		educationLevelController,
 		genderController,
 	)

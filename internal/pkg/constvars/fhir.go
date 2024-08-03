@@ -13,9 +13,15 @@ const (
 	ResourceAppointment        = "Appointment"
 	ResourceCarePlan           = "CarePlan"
 	ResourceDiagnosticReport   = "DiagnosticReport"
+	ResourcePractitionerRole   = "PractitionerRole"
 	ResourcePractitioner       = "Practitioner"
 	ResourceOrganization       = "Organization"
 	ResourceDevice             = "Device"
 	ResourceLocation           = "Location"
 	ResourceHealthcareService  = "HealthcareService"
+)
+
+const (
+	FhirFetchResourceFilterName     = "%s?name=%s"
+	FhirFetchResourceWithPagination = "%s?_offset=%d&_count=%d"
 )
