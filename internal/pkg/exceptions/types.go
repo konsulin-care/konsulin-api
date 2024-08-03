@@ -6,8 +6,11 @@ import (
 )
 
 var (
+	ErrURLParamIDValidation = func(err error, paramName string) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevURLParamIDValidationFailed, paramName))
+	}
 	ErrImageValidation = func(err error) *CustomError {
-		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientInvalidImageFormat, constvars.ErrDevValidationFailed)
+		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientInvalidImageFormat, constvars.ErrDevImageValidationFailed)
 	}
 	ErrInputValidation = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusBadRequest, FormatFirstValidationError(err), constvars.ErrDevValidationFailed)

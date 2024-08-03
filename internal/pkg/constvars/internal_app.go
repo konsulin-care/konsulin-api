@@ -12,3 +12,7 @@ const (
 const (
 	AppPaginationUrlFormat = "%s?page=%d&page_size=%d"
 )
+
+const (
+	URLParamClinicID = "clinic_id"
+)

@@ -13,5 +13,5 @@ type PractitionerRepository interface{}
 type PractitionerFhirClient interface {
 	CreatePractitioner(ctx context.Context, request *requests.PractitionerFhir) (*responses.Practitioner, error)
 	UpdatePractitioner(ctx context.Context, request *requests.PractitionerFhir) (*responses.Practitioner, error)
-	GetPractitionerByID(ctx context.Context, PractitionerID string) (*responses.Practitioner, error)
+	FindPractitionerByID(ctx context.Context, PractitionerID string) (*responses.Practitioner, error)
 }

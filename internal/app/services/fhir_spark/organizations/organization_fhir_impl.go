@@ -21,8 +21,8 @@ func NewOrganizationFhirClient(OrganizationFhirBaseUrl string) OrganizationFhirC
 	}
 }
 
-func (c *organizationFhirClient) ListOrganizations(ctx context.Context, page, row int) ([]responses.Organization, int, error) {
-	url := fmt.Sprintf(constvars.FhirFetchResourceWithPagination, c.BaseUrl, page, row)
+func (c *organizationFhirClient) FindAll(ctx context.Context, page, pageSize int) ([]responses.Organization, int, error) {
+	url := fmt.Sprintf(constvars.FhirFetchResourceWithPagination, c.BaseUrl, page, pageSize)
 
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, url, nil)
 	if err != nil {
@@ -73,4 +73,45 @@ func (c *organizationFhirClient) ListOrganizations(ctx context.Context, page, ro
 	}
 
 	return organizations, result.Total, nil
+}
+
+func (c *organizationFhirClient) FindOrganizationByID(ctx context.Context, organizationID string) (*responses.Organization, error) {
+	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, fmt.Sprintf("%s/%s", c.BaseUrl, organizationID), nil)
+	if err != nil {
+		return nil, exceptions.ErrCreateHTTPRequest(err)
+	}
+	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, exceptions.ErrSendHTTPRequest(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != constvars.StatusOK {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceOrganization)
+		}
+
+		var outcome responses.OperationOutcome
+		err = json.Unmarshal(bodyBytes, &outcome)
+		if err != nil {
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceOrganization)
+		}
+
+		if len(outcome.Issue) > 0 {
+			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourceOrganization)
+		}
+	}
+
+	organizationFhir := new(responses.Organization)
+	err = json.NewDecoder(resp.Body).Decode(&organizationFhir)
+	if err != nil {
+		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourceOrganization)
+	}
+
+	return organizationFhir, nil
 }

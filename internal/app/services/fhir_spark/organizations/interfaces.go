@@ -10,5 +10,6 @@ type OrganizationUsecase interface{}
 type OrganizationRepository interface{}
 
 type OrganizationFhirClient interface {
-	ListOrganizations(ctx context.Context, page, row int) ([]responses.Organization, int, error)
+	FindAll(ctx context.Context, page, pageSize int) ([]responses.Organization, int, error)
+	FindOrganizationByID(ctx context.Context, organizationID string) (*responses.Organization, error)
 }

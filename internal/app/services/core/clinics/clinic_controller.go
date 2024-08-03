@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 )
 
@@ -51,5 +52,33 @@ func (ctrl *ClinicController) FindAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.BuildSuccessResponseWithPagination(w, constvars.StatusOK, constvars.GetGenderSuccessMessage, paginationData, result)
+	utils.BuildSuccessResponseWithPagination(w, constvars.StatusOK, constvars.GetClinicsSuccessfully, paginationData, result)
+}
+
+func (ctrl *ClinicController) FindByID(w http.ResponseWriter, r *http.Request) {
+	clinicID := chi.URLParam(r, constvars.URLParamClinicID)
+
+	err := utils.ValidateUrlParamID(clinicID)
+
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrURLParamIDValidation(err, constvars.URLParamClinicID))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// organization, err := ctrl.ClinicUsecase.FindAll(ctx, page, pageSize)
+	result, paginationData, err := ctrl.ClinicUsecase.FindAll(ctx, 1, 1)
+
+	if err != nil {
+		if err == context.DeadlineExceeded {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	utils.BuildSuccessResponseWithPagination(w, constvars.StatusOK, constvars.GetClinicsSuccessfully, paginationData, result)
 }

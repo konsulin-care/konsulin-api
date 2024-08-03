@@ -9,5 +9,5 @@ import (
 
 func attachClinicRoutes(router chi.Router, middlewares *middlewares.Middlewares, clinicController *clinics.ClinicController) {
 	router.With(middlewares.Authenticate).Get("/", clinicController.FindAll)
-
+	router.With(middlewares.Authenticate).Get("/{clinic_id}", clinicController.FindByID)
 }

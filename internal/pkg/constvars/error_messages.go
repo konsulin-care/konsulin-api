@@ -102,10 +102,11 @@ const (
 	ErrDevSparkDecodeFHIRResourceResponse = "failed to decode FHIR %s response from firely spark"
 
 	// Validation messages
-	ErrDevValidationFailed      = "validation failed"
-	ErrDevImageValidationFailed = "image validation failed"
-	ErrDevInvalidRequestPayload = "invalid request payload"
-	ErrDevMissingRequiredFields = "missing required fields"
+	ErrDevValidationFailed           = "validation failed"
+	ErrDevImageValidationFailed      = "image validation failed"
+	ErrDevInvalidRequestPayload      = "invalid request payload"
+	ErrDevMissingRequiredFields      = "missing required fields"
+	ErrDevURLParamIDValidationFailed = "parameter %s validation failed"
 
 	// Authentication messages
 	ErrDevAuthSigningMethod    = "unexpected signing method"

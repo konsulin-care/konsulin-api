@@ -13,6 +13,7 @@ const (
 	ResourceAppointment        = "Appointment"
 	ResourceCarePlan           = "CarePlan"
 	ResourceDiagnosticReport   = "DiagnosticReport"
+	ResourcePractitionerRole   = "PractitionerRole"
 	ResourcePractitioner       = "Practitioner"
 	ResourceOrganization       = "Organization"
 	ResourceDevice             = "Device"

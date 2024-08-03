@@ -17,12 +17,11 @@ type Organization struct {
 	PartOf       Reference         `json:"partOf,omitempty"`
 }
 
-func (org *Organization) ConvertToClinicResponse() Clinic {
+func (org *Organization) ConvertToClinicDetailResponse() Clinic {
 	clinic := Clinic{
 		ID:          org.ID,
 		ClinicName:  org.Name,
 		Affiliation: org.PartOf.Display,
-		Tags:        org.Alias,
 	}
 
 	if len(org.Address) > 0 {
@@ -41,5 +40,25 @@ func (org *Organization) ConvertToClinicResponse() Clinic {
 		}
 	}
 
+	for _, codeableConcept := range org.Type {
+		for _, coding := range codeableConcept.Coding {
+			clinic.Tags = append(clinic.Tags, coding.Display)
+		}
+	}
+
+	return clinic
+}
+
+func (org *Organization) ConvertToClinicResponse() Clinic {
+	clinic := Clinic{
+		ID:         org.ID,
+		ClinicName: org.Name,
+	}
+
+	for _, codeableConcept := range org.Type {
+		for _, coding := range codeableConcept.Coding {
+			clinic.Tags = append(clinic.Tags, coding.Display)
+		}
+	}
 	return clinic
 }

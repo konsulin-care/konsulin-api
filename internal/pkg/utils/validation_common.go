@@ -4,6 +4,8 @@ import (
 	"errors"
 	"mime/multipart"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 func ValidateImage(fileHeader *multipart.FileHeader, maxSizeInMegabytes int64) error {
@@ -22,4 +24,17 @@ func ValidateImage(fileHeader *multipart.FileHeader, maxSizeInMegabytes int64) e
 		}
 	}
 	return errors.New("invalid file format")
+}
+
+func ValidateUrlParamID(param string) error {
+	if param == "" {
+		return errors.New("parameter is missing from url path")
+	}
+
+	_, err := uuid.Parse(param)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

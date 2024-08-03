@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func BuildPagination(total, page, pageSize int, baseURL string) *responses.Pagination {
+func BuildPaginationResponse(total, page, pageSize int, baseURL string) *responses.Pagination {
 	pagination := &responses.Pagination{
 		Total:    total,
 		Page:     page,

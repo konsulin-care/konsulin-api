@@ -69,7 +69,7 @@ func (c *practitionerFhirClient) CreatePractitioner(ctx context.Context, request
 	return practitionerFhir, nil
 }
 
-func (c *practitionerFhirClient) GetPractitionerByID(ctx context.Context, PractitionerID string) (*responses.Practitioner, error) {
+func (c *practitionerFhirClient) FindPractitionerByID(ctx context.Context, PractitionerID string) (*responses.Practitioner, error) {
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, fmt.Sprintf("%s/%s", c.BaseUrl, PractitionerID), nil)
 	if err != nil {
 		return nil, exceptions.ErrCreateHTTPRequest(err)

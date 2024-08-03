@@ -28,8 +28,8 @@ func NewClinicUsecase(
 	}
 }
 
-func (uc *clinicUsecase) FindAll(ctx context.Context, page, row int) ([]responses.Clinic, *responses.Pagination, error) {
-	organizationsFhir, totalData, err := uc.OrganizationFhirClient.ListOrganizations(ctx, page, row)
+func (uc *clinicUsecase) FindAll(ctx context.Context, page, pageSize int) ([]responses.Clinic, *responses.Pagination, error) {
+	organizationsFhir, totalData, err := uc.OrganizationFhirClient.FindAll(ctx, page, pageSize)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -39,7 +39,18 @@ func (uc *clinicUsecase) FindAll(ctx context.Context, page, row int) ([]response
 		response[i] = eachOrganization.ConvertToClinicResponse()
 	}
 
-	paginationData := utils.BuildPagination(totalData, page, row, uc.InternalConfig.App.BaseUrl+constvars.ResourceClinics)
+	paginationData := utils.BuildPaginationResponse(totalData, page, pageSize, uc.InternalConfig.App.BaseUrl+constvars.ResourceClinics)
 
 	return response, paginationData, nil
+}
+
+func (uc *clinicUsecase) FindByID(ctx context.Context, clinicID string) (*responses.Clinic, error) {
+	organization, err := uc.OrganizationFhirClient.FindOrganizationByID(ctx, clinicID)
+	if err != nil {
+		return nil, err
+	}
+	// Build the response
+	response := organization.ConvertToClinicResponse()
+
+	return &response, nil
 }

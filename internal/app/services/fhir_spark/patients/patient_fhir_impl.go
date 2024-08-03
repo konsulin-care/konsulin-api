@@ -69,7 +69,7 @@ func (c *patientFhirClient) CreatePatient(ctx context.Context, request *requests
 	return patientFhir, nil
 }
 
-func (c *patientFhirClient) GetPatientByID(ctx context.Context, patientID string) (*responses.Patient, error) {
+func (c *patientFhirClient) FindPatientByID(ctx context.Context, patientID string) (*responses.Patient, error) {
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, fmt.Sprintf("%s/%s", c.BaseUrl, patientID), nil)
 	if err != nil {
 		return nil, exceptions.ErrCreateHTTPRequest(err)
