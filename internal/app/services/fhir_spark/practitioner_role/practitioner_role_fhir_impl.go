@@ -21,8 +21,8 @@ func NewPractitionerRoleFhirClient(practitionerRoleFhirBaseUrl string) Practitio
 	}
 }
 
-func (c *practitionerRoleFhirClient) GetPractitionerRoleByOrganizationID(ctx context.Context, practitionerRoleID string) (*responses.PractitionerRole, error) {
-	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, fmt.Sprintf("%s/%s", c.BaseUrl, practitionerRoleID), nil)
+func (c *practitionerRoleFhirClient) GetPractitionerRoleByOrganizationID(ctx context.Context, organizationID string) (*responses.PractitionerRole, error) {
+	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, fmt.Sprintf("%s/?organization=Organization/%s", c.BaseUrl, organizationID), nil)
 	if err != nil {
 		return nil, exceptions.ErrCreateHTTPRequest(err)
 	}

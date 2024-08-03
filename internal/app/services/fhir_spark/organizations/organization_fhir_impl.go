@@ -21,8 +21,11 @@ func NewOrganizationFhirClient(OrganizationFhirBaseUrl string) OrganizationFhirC
 	}
 }
 
-func (c *organizationFhirClient) FindAll(ctx context.Context, page, pageSize int) ([]responses.Organization, int, error) {
-	url := fmt.Sprintf(constvars.FhirFetchResourceWithPagination, c.BaseUrl, page, pageSize)
+func (c *organizationFhirClient) FindAll(ctx context.Context, organizationName string, page, pageSize int) ([]responses.Organization, int, error) {
+	url := fmt.Sprintf(constvars.FhirFetchResourceFilterName, c.BaseUrl, organizationName)
+	if organizationName == "" {
+		url = fmt.Sprintf(constvars.FhirFetchResourceWithPagination, c.BaseUrl, page, pageSize)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, url, nil)
 	if err != nil {

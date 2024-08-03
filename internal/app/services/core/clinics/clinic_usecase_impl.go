@@ -28,8 +28,8 @@ func NewClinicUsecase(
 	}
 }
 
-func (uc *clinicUsecase) FindAll(ctx context.Context, page, pageSize int) ([]responses.Clinic, *responses.Pagination, error) {
-	organizationsFhir, totalData, err := uc.OrganizationFhirClient.FindAll(ctx, page, pageSize)
+func (uc *clinicUsecase) FindAll(ctx context.Context, nameFilter string, page, pageSize int) ([]responses.Clinic, *responses.Pagination, error) {
+	organizationsFhir, totalData, err := uc.OrganizationFhirClient.FindAll(ctx, nameFilter, page, pageSize)
 	if err != nil {
 		return nil, nil, err
 	}
