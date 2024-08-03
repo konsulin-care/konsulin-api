@@ -68,8 +68,7 @@ func (ctrl *ClinicController) FindByID(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// organization, err := ctrl.ClinicUsecase.FindAll(ctx, page, pageSize)
-	result, paginationData, err := ctrl.ClinicUsecase.FindAll(ctx, 1, 1)
+	result, err := ctrl.ClinicUsecase.FindByID(ctx, clinicID)
 
 	if err != nil {
 		if err == context.DeadlineExceeded {
@@ -80,5 +79,5 @@ func (ctrl *ClinicController) FindByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.BuildSuccessResponseWithPagination(w, constvars.StatusOK, constvars.GetClinicsSuccessfully, paginationData, result)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.GetClinicsSuccessfully, result)
 }
