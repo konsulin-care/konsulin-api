@@ -10,5 +10,5 @@ type PractitionerRoleUsecase interface{}
 type PractitionerRoleRepository interface{}
 
 type PractitionerRoleFhirClient interface {
-	GetPractitionerRoleByOrganizationID(ctx context.Context, organizationID string) (*responses.PractitionerRole, error)
+	FindPractitionerRoleByOrganizationID(ctx context.Context, organizationID string) ([]responses.PractitionerRole, error)
 }

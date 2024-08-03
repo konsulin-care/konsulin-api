@@ -47,6 +47,26 @@ func BuildPractitionerProfileResponse(practitionerFhir *responses.Practitioner) 
 	}
 }
 
+func extractSpecialties(qualifications []responses.Qualification) []string {
+	specialties := []string{}
+	for _, qualification := range qualifications {
+		for _, coding := range qualification.Code.Coding {
+			specialties = append(specialties, coding.Display)
+		}
+	}
+	return specialties
+}
+
+func MapPractitionerToClinicClinician(practitioner *responses.Practitioner, clinicName, affiliationName string) responses.ClinicClinician {
+	return responses.ClinicClinician{
+		PractitionerID: practitioner.ID,
+		Name:           GetFullName(practitioner.Name),
+		ClinicName:     clinicName,
+		Affiliation:    affiliationName,
+		Specialties:    extractSpecialties(practitioner.Qualification),
+	}
+}
+
 func CalculateAge(birthDate string) int {
 	if birthDate == "" {
 		return 0

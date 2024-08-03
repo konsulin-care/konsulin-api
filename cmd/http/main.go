@@ -19,6 +19,7 @@ import (
 	"konsulin-service/internal/app/services/core/users"
 	"konsulin-service/internal/app/services/fhir_spark/organizations"
 	"konsulin-service/internal/app/services/fhir_spark/patients"
+	practitionerRoles "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
 	"konsulin-service/internal/app/services/shared/mailer"
 	redisKonsulin "konsulin-service/internal/app/services/shared/redis"
@@ -168,6 +169,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	patientFhirClient := patients.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePatient)
 	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePractitioner)
 	organizationFhirClient := organizations.NewOrganizationFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourceOrganization)
+	practitionerRoleFhirClient := practitionerRoles.NewPractitionerRoleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePractitionerRole)
 
 	// Initialize Users dependencies
 	userMongoRepository := users.NewUserMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
@@ -194,7 +196,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	roleMongoRepository := roles.NewRoleMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
 
 	// Initialize Clinic dependencies
-	clinicUsecase := clinics.NewClinicUsecase(organizationFhirClient, redisRepository, bootstrap.InternalConfig)
+	clinicUsecase := clinics.NewClinicUsecase(organizationFhirClient, practitionerRoleFhirClient, practitionerFhirClient, redisRepository, bootstrap.InternalConfig)
 	clinicController := clinics.NewClinicController(bootstrap.Logger, clinicUsecase)
 
 	// Initialize Auth usecase with dependencies

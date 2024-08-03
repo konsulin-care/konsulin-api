@@ -58,6 +58,10 @@ type CodeableConcept struct {
 }
 
 type Period struct {
+	Start string `json:"start,omitempty" bson:"start,omitempty"`
+	End   string `json:"end,omitempty" bson:"end,omitempty"`
+}
+type PeriodBackup struct {
 	Start time.Time `json:"start,omitempty" bson:"start,omitempty"`
 	End   time.Time `json:"end,omitempty" bson:"end,omitempty"`
 }

@@ -7,5 +7,6 @@ import (
 
 type ClinicUsecase interface {
 	FindAll(ctx context.Context, nameFilter string, page, pageSize int) ([]responses.Clinic, *responses.Pagination, error)
+	FindAllCliniciansByClinicID(ctx context.Context, nameFilter, clinicID string, page, pageSize int) ([]responses.ClinicClinician, *responses.Pagination, error)
 	FindByID(ctx context.Context, clinicID string) (*responses.Clinic, error)
 }

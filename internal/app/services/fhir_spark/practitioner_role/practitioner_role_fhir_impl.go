@@ -21,7 +21,7 @@ func NewPractitionerRoleFhirClient(practitionerRoleFhirBaseUrl string) Practitio
 	}
 }
 
-func (c *practitionerRoleFhirClient) GetPractitionerRoleByOrganizationID(ctx context.Context, organizationID string) (*responses.PractitionerRole, error) {
+func (c *practitionerRoleFhirClient) FindPractitionerRoleByOrganizationID(ctx context.Context, organizationID string) ([]responses.PractitionerRole, error) {
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, fmt.Sprintf("%s/?organization=Organization/%s", c.BaseUrl, organizationID), nil)
 	if err != nil {
 		return nil, exceptions.ErrCreateHTTPRequest(err)
@@ -38,26 +38,36 @@ func (c *practitionerRoleFhirClient) GetPractitionerRoleByOrganizationID(ctx con
 	if resp.StatusCode != constvars.StatusOK {
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePractitionerRole)
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceOrganization)
 		}
 
 		var outcome responses.OperationOutcome
 		err = json.Unmarshal(bodyBytes, &outcome)
 		if err != nil {
-			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePractitionerRole)
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceOrganization)
 		}
 
 		if len(outcome.Issue) > 0 {
 			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
-			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourcePractitionerRole)
+			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourceOrganization)
 		}
 	}
 
-	practitionerRoleFhir := new(responses.PractitionerRole)
-	err = json.NewDecoder(resp.Body).Decode(&practitionerRoleFhir)
+	var result responses.FHIRBundle
+	err = json.NewDecoder(resp.Body).Decode(&result)
 	if err != nil {
-		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePractitionerRole)
+		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourceOrganization)
 	}
 
-	return practitionerRoleFhir, nil
+	practitionerRoles := make([]responses.PractitionerRole, len(result.Entry))
+	for _, entry := range result.Entry {
+		var practitionerRole responses.PractitionerRole
+		err := json.Unmarshal(entry.Resource, &practitionerRole)
+		if err != nil {
+			return nil, exceptions.ErrCannotParseJSON(err)
+		}
+		practitionerRoles = append(practitionerRoles, practitionerRole)
+	}
+
+	return practitionerRoles, nil
 }

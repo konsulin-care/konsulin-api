@@ -101,13 +101,13 @@ func (c *practitionerFhirClient) FindPractitionerByID(ctx context.Context, Pract
 		}
 	}
 
-	PractitionerFhir := new(responses.Practitioner)
-	err = json.NewDecoder(resp.Body).Decode(&PractitionerFhir)
+	practitionerFhir := new(responses.Practitioner)
+	err = json.NewDecoder(resp.Body).Decode(&practitionerFhir)
 	if err != nil {
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePractitioner)
 	}
 
-	return PractitionerFhir, nil
+	return practitionerFhir, nil
 }
 
 func (c *practitionerFhirClient) UpdatePractitioner(ctx context.Context, request *requests.PractitionerFhir) (*responses.Practitioner, error) {
@@ -149,11 +149,11 @@ func (c *practitionerFhirClient) UpdatePractitioner(ctx context.Context, request
 		}
 	}
 
-	PractitionerFhir := new(responses.Practitioner)
-	err = json.NewDecoder(resp.Body).Decode(&PractitionerFhir)
+	practitionerFhir := new(responses.Practitioner)
+	err = json.NewDecoder(resp.Body).Decode(&practitionerFhir)
 	if err != nil {
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePractitioner)
 	}
 
-	return PractitionerFhir, nil
+	return practitionerFhir, nil
 }

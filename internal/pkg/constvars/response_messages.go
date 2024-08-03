@@ -14,6 +14,7 @@ const (
 	GetEducationLevelSuccessMessage = "get education levels successfully"
 	GetGenderSuccessMessage         = "get genders successfully"
 	GetClinicsSuccessfully          = "get clinics successfully"
+	GetCliniciansSuccessfully       = "get clinicians successfully"
 
 	// Auth messages
 	LoginSuccessMessage          = "successfully login"
