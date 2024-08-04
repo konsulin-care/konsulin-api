@@ -92,7 +92,7 @@ func (ctrl *ClinicController) FindAllCliniciansByClinicID(w http.ResponseWriter,
 		return
 	}
 
-	utils.BuildSuccessResponseWithPagination(w, constvars.StatusOK, constvars.GetClinicsSuccessfully, paginationData, result)
+	utils.BuildSuccessResponseWithPagination(w, constvars.StatusOK, constvars.GetCliniciansSuccessfully, paginationData, result)
 }
 
 func (ctrl *ClinicController) FindByID(w http.ResponseWriter, r *http.Request) {

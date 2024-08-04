@@ -16,6 +16,7 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
 	"mime/multipart"
+	"time"
 )
 
 type userUsecase struct {
@@ -67,25 +68,28 @@ func (uc *userUsecase) GetUserProfileBySession(ctx context.Context, sessionData 
 }
 
 func (uc *userUsecase) UpdateUserProfileBySession(ctx context.Context, sessionData string, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error) {
-	// Check if email already exists
-	existingUser, err := uc.UserRepository.FindByEmail(ctx, request.Email)
-	if err != nil {
-		return nil, err
-	}
-	if existingUser != nil {
-		return nil, exceptions.ErrEmailAlreadyExist(nil)
-	}
-
 	// Parse session data
 	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
 	if err != nil {
 		return nil, err
 	}
 
-	if request.ProfilePicture != nil && request.ProfilePictureName != "" {
-		request.ProfilePictureUrl, err = uc.uploadProfilePicture(ctx, session.Username, request)
+	// Make sure to allow the changes if current (session) email is the same as the requested email
+	if session.Email != request.Email {
+		// Check if email already exists
+		existingUser, err := uc.UserRepository.FindByEmail(ctx, request.Email)
 		if err != nil {
 			return nil, err
+		}
+		if existingUser != nil {
+			return nil, exceptions.ErrEmailAlreadyExist(nil)
+		}
+
+		if request.ProfilePicture != nil && request.ProfilePictureName != "" {
+			request.ProfilePictureUrl, err = uc.uploadProfilePicture(ctx, session.Username, request)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -152,6 +156,24 @@ func (uc *userUsecase) updatePatientProfile(ctx context.Context, session *models
 		return nil, err
 	}
 
+	// Create session data with updated user, existing role, and session details
+	sessionData := models.Session{
+		UserID:    existingUser.ID,
+		PatientID: existingUser.PatientID,
+		Email:     existingUser.Email,
+		Username:  existingUser.Username,
+		RoleID:    session.RoleID,
+		RoleName:  session.RoleName,
+		SessionID: session.SessionID,
+	}
+
+	// Store the session data in Redis with a 1-hour expiration
+	err = uc.RedisRepository.Set(ctx, session.SessionID, sessionData, time.Hour)
+	if err != nil {
+		// Return error if there is an issue storing the session data
+		return nil, err
+	}
+
 	// Build the response before sending it back to Controller
 	response := &responses.UpdateUserProfile{
 		PatientID: fhirPatient.ID,
@@ -187,6 +209,24 @@ func (uc *userUsecase) updatePractitionerProfile(ctx context.Context, session *m
 	// Update the user using 'existingUser' that already updated with the request
 	err = uc.UserRepository.UpdateUser(ctx, existingUser)
 	if err != nil {
+		return nil, err
+	}
+
+	// Create session data with updated user, existing role, and session details
+	sessionData := models.Session{
+		UserID:         existingUser.ID,
+		PractitionerID: existingUser.PractitionerID,
+		Email:          existingUser.Email,
+		Username:       existingUser.Username,
+		RoleID:         session.RoleID,
+		RoleName:       session.RoleName,
+		SessionID:      session.SessionID,
+	}
+
+	// Store the session data in Redis with a 1-hour expiration
+	err = uc.RedisRepository.Set(ctx, session.SessionID, sessionData, time.Hour)
+	if err != nil {
+		// Return error if there is an issue storing the session data
 		return nil, err
 	}
 
