@@ -93,15 +93,54 @@ func (uc *userUsecase) UpdateUserProfileBySession(ctx context.Context, sessionDa
 		}
 	}
 
+	// Find user by ID by 'session.UserID'
+	existingUser, err := uc.UserRepository.FindByID(ctx, session.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Throw 'ErrUserNotExist' if existingUser doesn't exist
+	if existingUser == nil {
+		return nil, exceptions.ErrUserNotExist(nil)
+	}
+
+	// Set the existingUser data with 'UpdateProfile' request
+	existingUser.SetDataForUpdateProfile(request)
+
+	// Update the user using 'existingUser' that already updated with the request
+	err = uc.UserRepository.UpdateUser(ctx, existingUser)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create session data with updated user, existing role, and session details
+	sessionModel := models.Session{
+		UserID:    existingUser.ID,
+		PatientID: existingUser.PatientID,
+		Email:     existingUser.Email,
+		Username:  existingUser.Username,
+		RoleID:    session.RoleID,
+		RoleName:  session.RoleName,
+		SessionID: session.SessionID,
+	}
+
+	// Store the session data in Redis with a 1-hour expiration
+	err = uc.RedisRepository.Set(ctx, session.SessionID, sessionModel, time.Hour)
+	if err != nil {
+		// Return error if there is an issue storing the session data
+		return nil, err
+	}
+
 	// Handle update user profile based on role
 	switch session.RoleName {
 	case constvars.RoleTypePractitioner:
-		return uc.updatePractitionerProfile(ctx, session, request)
+		return uc.updatePractitionerFhirProfile(ctx, session, request)
 	case constvars.RoleTypePatient:
-		return uc.updatePatientProfile(ctx, session, request)
+		return uc.updatePatientFhirProfile(ctx, session, request)
 	default:
 		return nil, exceptions.ErrInvalidRoleType(nil)
 	}
+
 }
 
 func (uc *userUsecase) DeleteUserBySession(ctx context.Context, sessionData string) error {
@@ -127,50 +166,79 @@ func (uc *userUsecase) DeleteUserBySession(ctx context.Context, sessionData stri
 	return nil
 }
 
-func (uc *userUsecase) updatePatientProfile(ctx context.Context, session *models.Session, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error) {
-	// Build the 'UpdateProfile' request into 'patientFhirRequest'
-	patientFhirRequest := utils.BuildFhirPatientUpdateRequest(request, session.PatientID)
-
-	// Send 'patientFhirRequest' to FHIR Spark Patient Client to update the 'patient' resource
-	fhirPatient, err := uc.PatientFhirClient.UpdatePatient(ctx, patientFhirRequest)
+func (uc *userUsecase) DeactivateUserBySession(ctx context.Context, sessionData string) error {
+	// Parse session data
+	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	// Find user by ID by 'session.UserID'
+	// Delete the user by using his/her 'session.UserID'
 	existingUser, err := uc.UserRepository.FindByID(ctx, session.UserID)
 	if err != nil {
-		return nil, err
-	}
-	// Throw 'ErrUserNotExist' if existingUser doesn't exist
-	if existingUser == nil {
-		return nil, exceptions.ErrUserNotExist(nil)
+		return err
 	}
 
-	// Set the existingUser data with 'UpdateProfile' request
-	existingUser.SetDataForUpdateProfile(request)
+	// Set deleted at for existing user
+	existingUser.SetDeletedAt()
 
 	// Update the user using 'existingUser' that already updated with the request
 	err = uc.UserRepository.UpdateUser(ctx, existingUser)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	// Create session data with updated user, existing role, and session details
-	sessionData := models.Session{
-		UserID:    existingUser.ID,
-		PatientID: existingUser.PatientID,
-		Email:     existingUser.Email,
-		Username:  existingUser.Username,
-		RoleID:    session.RoleID,
-		RoleName:  session.RoleName,
-		SessionID: session.SessionID,
-	}
-
-	// Store the session data in Redis with a 1-hour expiration
-	err = uc.RedisRepository.Set(ctx, session.SessionID, sessionData, time.Hour)
+	// Delete the session in Redis using 'session.SessionID'
+	err = uc.RedisRepository.Delete(ctx, session.SessionID)
 	if err != nil {
-		// Return error if there is an issue storing the session data
+		return err
+	}
+
+	switch session.RoleName {
+	case constvars.RoleTypePractitioner:
+		return uc.deactivatePractitionerFhirData(ctx, session)
+	case constvars.RoleTypePatient:
+		return uc.deactivatePatientFhirData(ctx, session)
+	default:
+		return exceptions.ErrInvalidRoleType(nil)
+	}
+}
+
+func (uc *userUsecase) deactivatePractitionerFhirData(ctx context.Context, session *models.Session) error {
+	// Set deactivate account request for User's fhir resource
+	practitionerFhirRequest := utils.BuildFhirPractitionerDeactivateRequest(session.PractitionerID)
+
+	// Send 'patientFhirRequest' to FHIR Spark Patient Client to update the 'patient' resource
+	_, err := uc.PractitionerFhirClient.UpdatePractitioner(ctx, practitionerFhirRequest)
+	if err != nil {
+		return err
+	}
+
+	// Return the response back to Controller
+	return nil
+}
+
+func (uc *userUsecase) deactivatePatientFhirData(ctx context.Context, session *models.Session) error {
+	// Set deactivate account request for User's fhir resource
+	patientFhirRequest := utils.BuildFhirPatientDeactivateRequest(session.PatientID)
+
+	// Send 'patientFhirRequest' to FHIR Spark Patient Client to update the 'patient' resource
+	_, err := uc.PatientFhirClient.UpdatePatient(ctx, patientFhirRequest)
+	if err != nil {
+		return err
+	}
+
+	// Return the response back to Controller
+	return nil
+}
+
+func (uc *userUsecase) updatePatientFhirProfile(ctx context.Context, session *models.Session, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error) {
+	// Build the 'UpdateProfile' request into 'patientFhirRequest'
+	patientFhirRequest := utils.BuildFhirPatientUpdateProfileRequest(request, session.PatientID)
+
+	// Send 'patientFhirRequest' to FHIR Spark Patient Client to update the 'patient' resource
+	fhirPatient, err := uc.PatientFhirClient.UpdatePatient(ctx, patientFhirRequest)
+	if err != nil {
 		return nil, err
 	}
 
@@ -183,50 +251,13 @@ func (uc *userUsecase) updatePatientProfile(ctx context.Context, session *models
 	return response, nil
 }
 
-func (uc *userUsecase) updatePractitionerProfile(ctx context.Context, session *models.Session, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error) {
+func (uc *userUsecase) updatePractitionerFhirProfile(ctx context.Context, session *models.Session, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error) {
 	// Build the 'UpdateProfile' request into 'practitionerFhirRequest'
-	practitionerFhirRequest := utils.BuildFhirPractitionerUpdateRequest(request, session.PractitionerID)
+	practitionerFhirRequest := utils.BuildFhirPractitionerUpdateProfileRequest(request, session.PractitionerID)
 
 	// Send 'practitionerFhirRequest' to FHIR Spark Practitioner Client to update the 'practitioner' resource
 	fhirPractitioner, err := uc.PractitionerFhirClient.UpdatePractitioner(ctx, practitionerFhirRequest)
 	if err != nil {
-		return nil, err
-	}
-
-	// Find user by ID by 'session.UserID'
-	existingUser, err := uc.UserRepository.FindByID(ctx, session.UserID)
-	if err != nil {
-		return nil, err
-	}
-	// Throw error 'userNotExist' if existingUser doesn't exist
-	if existingUser == nil {
-		return nil, exceptions.ErrUserNotExist(err)
-	}
-
-	// Set the existingUser data with requests.UpdateProfile
-	existingUser.SetDataForUpdateProfile(request)
-
-	// Update the user using 'existingUser' that already updated with the request
-	err = uc.UserRepository.UpdateUser(ctx, existingUser)
-	if err != nil {
-		return nil, err
-	}
-
-	// Create session data with updated user, existing role, and session details
-	sessionData := models.Session{
-		UserID:         existingUser.ID,
-		PractitionerID: existingUser.PractitionerID,
-		Email:          existingUser.Email,
-		Username:       existingUser.Username,
-		RoleID:         session.RoleID,
-		RoleName:       session.RoleName,
-		SessionID:      session.SessionID,
-	}
-
-	// Store the session data in Redis with a 1-hour expiration
-	err = uc.RedisRepository.Set(ctx, session.SessionID, sessionData, time.Hour)
-	if err != nil {
-		// Return error if there is an issue storing the session data
 		return nil, err
 	}
 

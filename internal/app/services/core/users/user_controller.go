@@ -95,14 +95,14 @@ func (ctrl *UserController) UpdateUserBySession(w http.ResponseWriter, r *http.R
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.UpdateUserSuccessMessage, response)
 }
 
-func (ctrl *UserController) DeleteUserBySession(w http.ResponseWriter, r *http.Request) {
+func (ctrl *UserController) DeactivateUserBySession(w http.ResponseWriter, r *http.Request) {
 	// Get session data from context
 	sessionData := r.Context().Value("sessionData").(string)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	err := ctrl.UserUsecase.DeleteUserBySession(ctx, sessionData)
+	err := ctrl.UserUsecase.DeactivateUserBySession(ctx, sessionData)
 	if err != nil {
 		if err == context.DeadlineExceeded {
 			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))

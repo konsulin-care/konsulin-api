@@ -21,7 +21,7 @@ type Location struct {
 }
 
 func (e *CustomError) Error() string {
-	return fmt.Sprintf("%s (%s:%d %s)", e.DevMessage, e.Location.File, e.Location.Line, e.Location.FunctionName)
+	return e.DevMessage
 }
 
 func BuildNewCustomError(err error, statusCode int, clientMessage, devMessage string) *CustomError {

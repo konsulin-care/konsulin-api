@@ -10,6 +10,7 @@ import (
 func getEnv(key string, defaultValue interface{}) interface{} {
 	value, exists := os.LookupEnv(key)
 	if !exists {
+		log.Printf(constvars.ErrEnvKeyNotExist, key)
 		return defaultValue
 	}
 
