@@ -28,7 +28,7 @@ func BuildPaginationRequest(r *http.Request) *requests.Pagination {
 	}
 }
 
-func BuildFhirPatientRequest(username, email string) *requests.PatientFhir {
+func BuildFhirPatientRegistrationRequest(username, email string) *requests.PatientFhir {
 	return &requests.PatientFhir{
 		ResourceType: constvars.ResourcePatient,
 		Telecom: []requests.ContactPoint{
@@ -41,7 +41,7 @@ func BuildFhirPatientRequest(username, email string) *requests.PatientFhir {
 	}
 }
 
-func BuildFhirPatientUpdateRequest(request *requests.UpdateProfile, patientID string) *requests.PatientFhir {
+func BuildFhirPatientUpdateProfileRequest(request *requests.UpdateProfile, patientID string) *requests.PatientFhir {
 	var extensions []requests.Extension
 	for _, education := range request.Educations {
 		extensions = append(extensions, requests.Extension{
@@ -85,7 +85,7 @@ func BuildFhirPatientUpdateRequest(request *requests.UpdateProfile, patientID st
 	}
 }
 
-func BuildFhirPractitionerRequest(username, email string) *requests.PractitionerFhir {
+func BuildFhirPractitionerRegistrationRequest(username, email string) *requests.PractitionerFhir {
 	return &requests.PractitionerFhir{
 		ResourceType: constvars.ResourcePractitioner,
 		Telecom: []requests.ContactPoint{
@@ -98,7 +98,7 @@ func BuildFhirPractitionerRequest(username, email string) *requests.Practitioner
 	}
 }
 
-func BuildFhirPractitionerUpdateRequest(request *requests.UpdateProfile, practitionerID string) *requests.PractitionerFhir {
+func BuildFhirPractitionerUpdateProfileRequest(request *requests.UpdateProfile, practitionerID string) *requests.PractitionerFhir {
 	var extensions []requests.Extension
 	for _, education := range request.Educations {
 		extensions = append(extensions, requests.Extension{
@@ -139,6 +139,37 @@ func BuildFhirPractitionerUpdateRequest(request *requests.UpdateProfile, practit
 			},
 		},
 		Extension: extensions,
+	}
+}
+
+func BuildFhirPractitionerDeactivateRequest(practitionerID string) *requests.PractitionerFhir {
+	return &requests.PractitionerFhir{
+		ResourceType: constvars.ResourcePractitioner,
+		ID:           practitionerID,
+		Active:       false,
+	}
+}
+
+func BuildFhirPatientDeactivateRequest(patientID string) *requests.PatientFhir {
+	return &requests.PatientFhir{
+		ResourceType: constvars.ResourcePatient,
+		ID:           patientID,
+		Active:       false,
+	}
+}
+
+func BuildFhirPatientReactivateRequest(patientID string) *requests.PatientFhir {
+	return &requests.PatientFhir{
+		ResourceType: constvars.ResourcePatient,
+		ID:           patientID,
+		Active:       true,
+	}
+}
+func BuildFhirPractitionerReactivateRequest(practitionerID string) *requests.PractitionerFhir {
+	return &requests.PractitionerFhir{
+		ResourceType: constvars.ResourcePractitioner,
+		ID:           practitionerID,
+		Active:       true,
 	}
 }
 

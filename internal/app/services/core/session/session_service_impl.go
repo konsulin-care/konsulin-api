@@ -4,15 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"konsulin-service/internal/app/models"
-	"konsulin-service/internal/app/services/shared/redis"
+	konsulinRedis "konsulin-service/internal/app/services/shared/redis"
 	"konsulin-service/internal/pkg/exceptions"
 )
 
 type sessionService struct {
-	RedisRepository redis.RedisRepository
+	RedisRepository konsulinRedis.RedisRepository
 }
 
-func NewSessionService(redisRepository redis.RedisRepository) SessionService {
+func NewSessionService(redisRepository konsulinRedis.RedisRepository) SessionService {
 	return &sessionService{
 		RedisRepository: redisRepository,
 	}
@@ -30,7 +30,7 @@ func (svc *sessionService) ParseSessionData(ctx context.Context, sessionData str
 func (svc *sessionService) GetSessionData(ctx context.Context, sessionID string) (string, error) {
 	sessionData, err := svc.RedisRepository.Get(ctx, sessionID)
 	if err != nil {
-		return "", exceptions.ErrTokenInvalid(err)
+		return "", exceptions.ErrTokenInvalidOrExpired(err)
 	}
 	return sessionData, nil
 }

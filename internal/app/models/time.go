@@ -18,6 +18,10 @@ func (m *TimeModel) SetUpdatedAt() {
 	m.UpdatedAt = time.Now()
 }
 
+func (m *TimeModel) SetEmptyDeletedAt() {
+	m.DeletedAt = nil
+}
+
 func (m *TimeModel) SetDeletedAt() {
 	currentTime := time.Now()
 	m.DeletedAt = &currentTime

@@ -22,6 +22,10 @@ func NewUserMongoRepository(db *mongo.Client, dbName string) UserRepository {
 	}
 }
 
+func (repo *UserMongoRepository) GetClient(ctx context.Context) interface{} {
+	return repo.Collection.Database().Client()
+}
+
 func (repo *UserMongoRepository) CreateUser(ctx context.Context, userModel *models.User) (userID string, err error) {
 	result, err := repo.Collection.InsertOne(ctx, userModel)
 	if err != nil {
@@ -90,9 +94,14 @@ func (r *UserMongoRepository) FindByID(ctx context.Context, userID string) (*mod
 }
 
 func (r *UserMongoRepository) UpdateUser(ctx context.Context, user *models.User) error {
-	filter := bson.M{"_id": user.ID}
-	update := bson.M{"$set": user}
-	_, err := r.Collection.UpdateOne(ctx, filter, update, options.Update().SetUpsert(true))
+	objectID, err := primitive.ObjectIDFromHex(user.ID)
+	if err != nil {
+		return exceptions.ErrMongoDBNotObjectID(err)
+	}
+	filter := bson.M{"_id": objectID}
+	update := bson.M{"$set": user.ConvertToBsonM()}
+
+	_, err = r.Collection.UpdateOne(ctx, filter, update, options.Update().SetUpsert(false))
 	if err != nil {
 		return exceptions.ErrMongoDBUpdateDocument(err)
 	}

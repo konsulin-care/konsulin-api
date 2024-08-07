@@ -36,6 +36,9 @@ var (
 	ErrInvalidUsernameOrPassword = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusUnauthorized, constvars.ErrClientInvalidUsernameOrPassword, constvars.ErrDevInvalidCredentials)
 	}
+	ErrAccountDeactivationAgeExpired = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusUnauthorized, constvars.ErrClientInvalidUsernameOrPassword, constvars.ErrDevAccountDeactivationAgeExpired)
+	}
 	ErrPasswordDoNotMatch = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientPasswordsDoNotMatch, constvars.ErrDevPasswordsDoNotMatch)
 	}
@@ -54,8 +57,8 @@ var (
 	ErrTokenGenerate = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevAuthGenerateToken)
 	}
-	ErrTokenInvalid = func(err error) *CustomError {
-		return BuildNewCustomError(err, constvars.StatusUnauthorized, constvars.ErrClientNotLoggedIn, constvars.ErrDevAuthTokenInvalid)
+	ErrTokenInvalidOrExpired = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusUnauthorized, constvars.ErrClientNotLoggedIn, constvars.ErrDevAuthTokenInvalidOrExpired)
 	}
 	ErrTokenResetPasswordExpired = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusUnauthorized, constvars.ErrClientResetPasswordToken, constvars.ErrDevAuthTokenExpired)
@@ -98,6 +101,9 @@ var (
 	}
 
 	// Redis
+	ErrRedisGetNoData = func(err error, redisKey string) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, fmt.Sprintf(constvars.ErrDevRedisGetNoData, redisKey))
+	}
 	ErrRedisDelete = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevRedisDeleteData)
 	}

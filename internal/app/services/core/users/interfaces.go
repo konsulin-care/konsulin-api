@@ -11,9 +11,11 @@ type UserUsecase interface {
 	GetUserProfileBySession(ctx context.Context, sessionData string) (*responses.UserProfile, error)
 	UpdateUserProfileBySession(ctx context.Context, sessionData string, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error)
 	DeleteUserBySession(ctx context.Context, sessionData string) error
+	DeactivateUserBySession(ctx context.Context, sessionData string) error
 }
 
 type UserRepository interface {
+	GetClient(ctx context.Context) (databaseClient interface{})
 	CreateUser(ctx context.Context, userModel *models.User) (userID string, err error)
 	FindByEmail(ctx context.Context, email string) (*models.User, error)
 	FindByUsername(ctx context.Context, username string) (*models.User, error)

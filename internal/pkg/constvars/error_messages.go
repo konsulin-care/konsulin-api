@@ -71,20 +71,21 @@ const (
 
 // Error messages for developers
 const (
-	ErrDevInvalidInput             = "invalid input"
-	ErrDevCannotParseJSON          = "cannot parse JSON into struct or other data types"
-	ErrDevCannotMarshalJSON        = "cannot convert struct or other data types to JSON"
-	ErrDevCannotParseMultipartForm = "cannot parse multipart form body"
-	ErrDevBuildRequest             = "encountering error while building request DTO"
-	ErrDevInvalidRoleType          = "invalid role type, should be 'practitioner' or 'patient'"
-	ErrDevRoleTypeDoesntMatch      = "invalid role type, request done by user with different type"
-	ErrDevFailedToCreateUser       = "failed to create user"
-	ErrDevFailedToHashPassword     = "failed to hash password"
-	ErrDevDocumentNotFound         = "document not found"
-	ErrDevInvalidCredentials       = "invalid credentials"
-	ErrDevUnauthorized             = "unauthorized access"
-	ErrDevCreateHTTPRequest        = "failed to create HTTP request"
-	ErrDevSendHTTPRequest          = "failed to send HTTP request"
+	ErrDevInvalidInput                  = "invalid input"
+	ErrDevCannotParseJSON               = "cannot parse JSON into struct or other data types"
+	ErrDevCannotMarshalJSON             = "cannot convert struct or other data types to JSON"
+	ErrDevCannotParseMultipartForm      = "cannot parse multipart form body"
+	ErrDevBuildRequest                  = "encountering error while building request DTO"
+	ErrDevInvalidRoleType               = "invalid role type, should be 'practitioner' or 'patient'"
+	ErrDevRoleTypeDoesntMatch           = "invalid role type, request done by user with different type"
+	ErrDevFailedToCreateUser            = "failed to create user"
+	ErrDevFailedToHashPassword          = "failed to hash password"
+	ErrDevDocumentNotFound              = "document not found"
+	ErrDevInvalidCredentials            = "invalid credentials"
+	ErrDevUnauthorized                  = "unauthorized access"
+	ErrDevCreateHTTPRequest             = "failed to create HTTP request"
+	ErrDevSendHTTPRequest               = "failed to send HTTP request"
+	ErrDevAccountDeactivationAgeExpired = "Account is no longer on the system and is in the process of being removed completely"
 
 	// SMTP
 	ErrDevSMTPSendEmail = "failed to send email via SMTP client hostname %s"
@@ -109,14 +110,14 @@ const (
 	ErrDevURLParamIDValidationFailed = "parameter %s validation failed"
 
 	// Authentication messages
-	ErrDevAuthSigningMethod    = "unexpected signing method"
-	ErrDevAuthTokenInvalid     = "invalid token"
-	ErrDevAuthTokenExpired     = "token expired"
-	ErrDevAuthTokenMissing     = "token missing"
-	ErrDevAuthInvalidSession   = "invalid session"
-	ErrDevAuthPermissionDenied = "permission denied"
-	ErrDevAuthGenerateToken    = "failed to generate token"
-	ErrDevAuthRoleNotExists    = "role doesn't exist on the system"
+	ErrDevAuthSigningMethod         = "unexpected signing method"
+	ErrDevAuthTokenInvalidOrExpired = "invalid or expired token"
+	ErrDevAuthTokenExpired          = "token expired"
+	ErrDevAuthTokenMissing          = "token missing"
+	ErrDevAuthInvalidSession        = "invalid session"
+	ErrDevAuthPermissionDenied      = "permission denied"
+	ErrDevAuthGenerateToken         = "failed to generate token"
+	ErrDevAuthRoleNotExists         = "role doesn't exist on the system"
 
 	// Database messages
 	ErrDevDBFailedToInsertDocument   = "failed to insert document into database"
@@ -134,6 +135,7 @@ const (
 	// Redis messages
 	ErrDevRedisSetData         = "failed to SET data into redis"
 	ErrDevRedisGetData         = "failed to GET data from redis"
+	ErrDevRedisGetNoData       = "failed to GET data from redis, there is no data associated with key %s"
 	ErrDevRedisDeleteData      = "failed to DELETE data from redis"
 	ErrDevRedisIncrementValue  = "failed to INCR data in redis"
 	ErrDevRedisRightPushToList = "failed to RPUSH data into list in redis"
@@ -170,5 +172,6 @@ const (
 )
 
 const (
-	ErrEnvParsing = "Error parsing %s: %v, will use default value"
+	ErrEnvParsing     = "Error parsing %s: %v, will use default value"
+	ErrEnvKeyNotExist = "Error getting env key: %s, will use default value"
 )

@@ -120,12 +120,12 @@ func main() {
 	// Create a context with a timeout for the shutdown process
 	shutdownCtx, cancel := context.WithTimeout(
 		context.Background(),
-		time.Second*time.Duration(internalConfig.App.ShutdownTimeoutInSecond),
+		time.Second*time.Duration(internalConfig.App.ShutdownTimeoutInSeconds),
 	)
 	defer cancel()
 
 	// Countdown for shutdown
-	for i := internalConfig.App.ShutdownTimeoutInSecond; i > 0; i-- {
+	for i := internalConfig.App.ShutdownTimeoutInSeconds; i > 0; i-- {
 		time.Sleep(1 * time.Second)
 		log.Printf("Shutting down in %d...", i)
 	}
