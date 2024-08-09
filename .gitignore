@@ -6,6 +6,10 @@
 
 tmp
 
+_data/
+!_data/.gitkeep
+vendor/
+
 .idea/
 
 resources/http-client.env.json
