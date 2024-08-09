@@ -1,52 +1,57 @@
 package config
 
-type (
-	InternalConfig struct {
-		App      App
-		FHIR     AppFHIR
-		JWT      AppJWT
-		Mailer   AppMailer
-		Minio    AppMinio
-		RabbitMQ AppRabbitMQ
-		MongoDB  AppMongoDB
-	}
-	App struct {
-		Env                                string
-		Port                               string
-		Version                            string
-		Address                            string
-		Timezone                           string
-		EndpointPrefix                     string
-		ResetPasswordUrl                   string
-		MaxRequests                        int
-		ShutdownTimeoutInSecond            int
-		MaxTimeRequestsPerSeconds          int
-		RequestBodyLimitInMegabyte         int
-		ForgotPasswordTokenExpTimeInMinute int
-	}
-	AppFHIR struct {
-		BaseUrl string
-	}
+type InternalConfig struct {
+	App      App         `mapstructure:"app"`
+	FHIR     AppFHIR     `mapstructure:"fhir"`
+	JWT      AppJWT      `mapstructure:"jwt"`
+	Mailer   AppMailer   `mapstructure:"mailer"`
+	Minio    AppMinio    `mapstructure:"minio"`
+	RabbitMQ AppRabbitMQ `mapstructure:"rabbitmq"`
+	MongoDB  AppMongoDB  `mapstructure:"mongodb"`
+}
 
-	AppJWT struct {
-		Secret        string
-		ExpTimeInHour int
-	}
+type App struct {
+	Env                                     string `mapstructure:"env"`
+	Port                                    string `mapstructure:"port"`
+	Version                                 string `mapstructure:"version"`
+	Address                                 string `mapstructure:"address"`
+	BaseUrl                                 string `mapstructure:"base_url"`
+	Timezone                                string `mapstructure:"timezone"`
+	EndpointPrefix                          string `mapstructure:"endpoint_prefix"`
+	ResetPasswordUrl                        string `mapstructure:"reset_password_url"`
+	MaxRequests                             int    `mapstructure:"max_requests"`
+	ShutdownTimeoutInSeconds                int    `mapstructure:"shutdown_timeout_in_seconds"`
+	MaxTimeRequestsPerSeconds               int    `mapstructure:"max_time_requests_per_seconds"`
+	RequestBodyLimitInMegabyte              int    `mapstructure:"request_body_limit_in_megabyte"`
+	AccountDeactivationAgeInDays            int    `mapstructure:"account_deactivation_age_in_days"`
+	LoginSessionExpiredTimeInHours          int    `mapstructure:"login_session_expired_time_in_hours"`
+	ForgotPasswordTokenExpiredTimeInMinutes int    `mapstructure:"forgot_password_token_expired_time_in_minutes"`
+}
 
-	AppMailer struct {
-		EmailSender string
-	}
+type AppFHIR struct {
+	BaseUrl string `mapstructure:"base_url"`
+}
 
-	AppMinio struct {
-		ProfilePictureMaxUploadSizeInMB int64
-		BucketName                      string
-	}
-	AppRabbitMQ struct {
-		MailerQueue   string
-		WhatsAppQueue string
-	}
-	AppMongoDB struct {
-		FhirDBName     string
-		KonsulinDBName string
-	}
-)
+type AppJWT struct {
+	Secret        string `mapstructure:"secret"`
+	ExpTimeInHour int    `mapstructure:"exp_time_in_hour"`
+}
+
+type AppMailer struct {
+	EmailSender string `mapstructure:"email_sender"`
+}
+
+type AppMinio struct {
+	ProfilePictureMaxUploadSizeInMB int64  `mapstructure:"profile_picture_max_upload_size_in_mb"`
+	BucketName                      string `mapstructure:"bucket_name"`
+}
+
+type AppRabbitMQ struct {
+	MailerQueue   string `mapstructure:"mailer_queue"`
+	WhatsAppQueue string `mapstructure:"whatsapp_queue"`
+}
+
+type AppMongoDB struct {
+	FhirDBName     string `mapstructure:"fhir_db_name"`
+	KonsulinDBName string `mapstructure:"konsulin_db_name"`
+}

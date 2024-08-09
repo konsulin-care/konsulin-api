@@ -1,11 +1,14 @@
 package models
 
-import "time"
+import (
+	"time"
+)
 
 type Session struct {
 	SessionID      string
 	UserID         string
 	Email          string
+	Username       string
 	PatientID      string
 	PractitionerID string
 	RoleID         string

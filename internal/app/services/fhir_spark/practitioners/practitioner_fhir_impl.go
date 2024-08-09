@@ -69,7 +69,7 @@ func (c *practitionerFhirClient) CreatePractitioner(ctx context.Context, request
 	return practitionerFhir, nil
 }
 
-func (c *practitionerFhirClient) GetPractitionerByID(ctx context.Context, PractitionerID string) (*responses.Practitioner, error) {
+func (c *practitionerFhirClient) FindPractitionerByID(ctx context.Context, PractitionerID string) (*responses.Practitioner, error) {
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, fmt.Sprintf("%s/%s", c.BaseUrl, PractitionerID), nil)
 	if err != nil {
 		return nil, exceptions.ErrCreateHTTPRequest(err)
@@ -101,13 +101,13 @@ func (c *practitionerFhirClient) GetPractitionerByID(ctx context.Context, Practi
 		}
 	}
 
-	PractitionerFhir := new(responses.Practitioner)
-	err = json.NewDecoder(resp.Body).Decode(&PractitionerFhir)
+	practitionerFhir := new(responses.Practitioner)
+	err = json.NewDecoder(resp.Body).Decode(&practitionerFhir)
 	if err != nil {
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePractitioner)
 	}
 
-	return PractitionerFhir, nil
+	return practitionerFhir, nil
 }
 
 func (c *practitionerFhirClient) UpdatePractitioner(ctx context.Context, request *requests.PractitionerFhir) (*responses.Practitioner, error) {
@@ -149,11 +149,11 @@ func (c *practitionerFhirClient) UpdatePractitioner(ctx context.Context, request
 		}
 	}
 
-	PractitionerFhir := new(responses.Practitioner)
-	err = json.NewDecoder(resp.Body).Decode(&PractitionerFhir)
+	practitionerFhir := new(responses.Practitioner)
+	err = json.NewDecoder(resp.Body).Decode(&practitionerFhir)
 	if err != nil {
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePractitioner)
 	}
 
-	return PractitionerFhir, nil
+	return practitionerFhir, nil
 }

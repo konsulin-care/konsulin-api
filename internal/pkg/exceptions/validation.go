@@ -1,6 +1,7 @@
 package exceptions
 
 import (
+	"fmt"
 	"konsulin-service/internal/pkg/constvars"
 	"strings"
 
@@ -8,6 +9,10 @@ import (
 )
 
 func FormatAllValidationErrors(err error) string {
+	if err == nil {
+		return constvars.ErrClientCannotProcessRequest
+	}
+
 	var errors []string
 	for _, err := range err.(validator.ValidationErrors) {
 		fieldName := strings.ToLower(err.Field())
@@ -17,7 +22,11 @@ func FormatAllValidationErrors(err error) string {
 			customMessage = "is invalid"
 		}
 		if constvars.TagsWithParams[tag] {
-			customMessage = strings.Replace(customMessage, "%s", err.Param(), 1)
+			if tag == "oneof" {
+				customMessage = strings.Replace(customMessage, "%s", strings.Join(strings.Fields(err.Param()), ", "), 1)
+			} else {
+				customMessage = strings.Replace(customMessage, "%s", err.Param(), 1)
+			}
 		}
 		errors = append(errors, fieldName+" "+customMessage)
 	}
@@ -25,6 +34,10 @@ func FormatAllValidationErrors(err error) string {
 }
 
 func FormatFirstValidationError(err error) string {
+	if err == nil {
+		return constvars.ErrClientCannotProcessRequest
+	}
+
 	if validationErrors, ok := err.(validator.ValidationErrors); ok {
 		firstErr := validationErrors[0]
 		fieldName := strings.ToLower(firstErr.Field())
@@ -33,9 +46,16 @@ func FormatFirstValidationError(err error) string {
 		if !ok {
 			customMessage = "is invalid"
 		}
+		fmt.Println(firstErr.Param())
+		fmt.Println(tag)
 		if constvars.TagsWithParams[tag] {
-			customMessage = strings.Replace(customMessage, "%s", firstErr.Param(), 1)
+			if tag == "oneof" {
+				customMessage = strings.Replace(customMessage, "%s", strings.Join(strings.Fields(firstErr.Param()), ", "), 1)
+			} else {
+				customMessage = strings.Replace(customMessage, "%s", firstErr.Param(), 1)
+			}
 		}
+		fmt.Println(customMessage)
 		return fieldName + " " + customMessage
 	}
 	return constvars.ErrDevInvalidInput

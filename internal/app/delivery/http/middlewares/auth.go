@@ -34,7 +34,7 @@ func (m *Middlewares) Authenticate(next http.Handler) http.Handler {
 		token := strings.TrimPrefix(authHeader, "Bearer ")
 		sessionID, err := utils.ParseJWT(token, m.InternalConfig.JWT.Secret)
 		if err != nil {
-			utils.BuildErrorResponse(m.Log, w, err)
+			utils.BuildErrorResponse(m.Log, w, exceptions.ErrTokenInvalidOrExpired(err))
 			return
 		}
 
