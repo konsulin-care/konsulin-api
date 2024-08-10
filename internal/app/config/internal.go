@@ -42,7 +42,7 @@ type AppMailer struct {
 }
 
 type AppMinio struct {
-	ProfilePictureMaxUploadSizeInMB int64  `mapstructure:"profile_picture_max_upload_size_in_mb"`
+	ProfilePictureMaxUploadSizeInMB int    `mapstructure:"profile_picture_max_upload_size_in_mb"`
 	BucketName                      string `mapstructure:"bucket_name"`
 }
 

@@ -31,7 +31,6 @@ func SanitizeUpdateProfileRequest(input *requests.UpdateProfile) {
 	input.Fullname = sanitizeString(input.Fullname)
 	input.BirthDate = sanitizeString(input.BirthDate)
 	input.WhatsAppNumber = sanitizeString(input.WhatsAppNumber)
-	input.ProfilePictureName = sanitizeString(input.ProfilePictureName)
 
 	input.Educations = sanitizeStringArray(input.Educations)
 }

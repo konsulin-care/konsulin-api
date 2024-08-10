@@ -15,6 +15,8 @@ const (
 	ResourceDiagnosticReport   = "DiagnosticReport"
 	ResourcePractitionerRole   = "PractitionerRole"
 	ResourcePractitioner       = "Practitioner"
+	ResourceSchedule           = "Schedule"
+	ResourceSlot               = "Slot"
 	ResourceOrganization       = "Organization"
 	ResourceDevice             = "Device"
 	ResourceLocation           = "Location"

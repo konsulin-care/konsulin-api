@@ -1,5 +1,37 @@
 package requests
 
+type Reference struct {
+	Reference  string     `json:"reference,omitempty" bson:"reference,omitempty"`
+	Type       string     `json:"type,omitempty" bson:"type,omitempty"`
+	Identifier Identifier `json:"identifier,omitempty" bson:"identifier,omitempty"`
+	Display    string     `json:"display,omitempty" bson:"display,omitempty"`
+}
+
+type Identifier struct {
+	Use    string          `json:"use,omitempty" bson:"use,omitempty"`
+	System string          `json:"system,omitempty" bson:"system,omitempty"`
+	Value  string          `json:"value,omitempty" bson:"value,omitempty"`
+	Period Period          `json:"period,omitempty" bson:"period,omitempty"`
+	Type   CodeableConcept `json:"type,omitempty" bson:"type,omitempty"`
+}
+
+type CodeableConcept struct {
+	Coding []Coding `json:"coding,omitempty" bson:"coding,omitempty"`
+	Text   string   `json:"text,omitempty" bson:"text,omitempty"`
+}
+
+type Coding struct {
+	System  string `json:"system,omitempty" bson:"system,omitempty"`
+	Version string `json:"version,omitempty" bson:"version,omitempty"`
+	Code    string `json:"code,omitempty" bson:"code,omitempty"`
+	Display string `json:"display,omitempty" bson:"display,omitempty"`
+}
+
+type Period struct {
+	Start string `json:"start,omitempty" bson:"start,omitempty"`
+	End   string `json:"end,omitempty" bson:"end,omitempty"`
+}
+
 type HumanName struct {
 	Use    string   `json:"use"`
 	Family string   `json:"family"`
@@ -26,4 +58,10 @@ type Address struct {
 	State      string   `json:"state"`
 	PostalCode string   `json:"postalCode"`
 	Country    string   `json:"country"`
+}
+
+type AvailableTime struct {
+	DaysOfWeek         []string `json:"daysOfWeek"`
+	AvailableStartTime string   `json:"availableStartTime"`
+	AvailableEndTime   string   `json:"availableEndTime"`
 }

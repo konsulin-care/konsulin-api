@@ -12,10 +12,11 @@ type LoginUser struct {
 }
 
 type LoginUserData struct {
-	Name           string `json:"name"`
-	Email          string `json:"email"`
-	UserID         string `json:"user_id"`
-	RoleID         string `json:"role_id"`
-	RoleName       string `json:"role_name"`
-	ProfilePicture string `json:"profile_picture,omitempty"`
+	Name           string   `json:"name"`
+	Email          string   `json:"email"`
+	UserID         string   `json:"user_id"`
+	RoleID         string   `json:"role_id"`
+	RoleName       string   `json:"role_name"`
+	ProfilePicture string   `json:"profile_picture,omitempty"`
+	ClinicIDs      []string `json:"clinic_ids,omitempty"`
 }

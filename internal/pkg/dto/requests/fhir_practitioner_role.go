@@ -1,4 +1,4 @@
-package responses
+package requests
 
 type PractitionerRole struct {
 	ResourceType  string            `json:"resourceType"`

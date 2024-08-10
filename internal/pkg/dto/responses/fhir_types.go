@@ -24,6 +24,7 @@ type HumanName struct {
 	Text   string   `json:"text,omitempty" bson:"text,omitempty"`
 	Family string   `json:"family,omitempty" bson:"family,omitempty"`
 	Given  []string `json:"given,omitempty" bson:"given,omitempty"`
+	Prefix []string `json:"prefix,omitempty" bson:"prefix,omitempty"`
 }
 
 type Address struct {
@@ -293,4 +294,10 @@ type EncounterLocation struct {
 	Status       *string          `json:"status,omitempty" bson:"status,omitempty"`
 	PhysicalType *CodeableConcept `json:"physicalType,omitempty" bson:"physicalType,omitempty"`
 	Period       *Period          `json:"period,omitempty" bson:"period,omitempty"`
+}
+
+type AvailableTime struct {
+	DaysOfWeek         []string `json:"daysOfWeek"`
+	AvailableStartTime string   `json:"availableStartTime"`
+	AvailableEndTime   string   `json:"availableEndTime"`
 }

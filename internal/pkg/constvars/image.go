@@ -1,5 +1,9 @@
 package constvars
 
 const (
-	IMAGE_PROFILE_PICTURE_PREFIX = "profile_picture"
+	ImageProfilePicturePrefix = "profile_picture"
+)
+
+var (
+	ImageAllowedProfilePictureFormats = []string{".jpg", ".jpeg", ".png"}
 )

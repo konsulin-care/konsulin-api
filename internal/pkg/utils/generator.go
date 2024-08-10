@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"fmt"
 	"math/big"
-	"path/filepath"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
@@ -54,8 +53,7 @@ func GenerateOTP(otpLength int) (string, error) {
 	return string(otp), nil
 }
 
-func GenerateFileName(prefix, username, originalName string) string {
-	extension := filepath.Ext(originalName)
+func GenerateFileName(prefix, username, fileExtension string) string {
 	timestamp := time.Now().Format("20060102150405")
-	return fmt.Sprintf("%s_%s_%s%s", prefix, username, timestamp, extension)
+	return fmt.Sprintf("%s_%s_%s%s", prefix, username, timestamp, fileExtension)
 }

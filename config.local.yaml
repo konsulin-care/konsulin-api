@@ -63,7 +63,7 @@ driver_config:
 
   minio:
     port: "9001"
-    host: minio.konsulin.care
+    host: 172.26.30.112
     username: minioUserKonsln
     password: QbSZRmX9rWebFehKFioA
     use_ssl: false

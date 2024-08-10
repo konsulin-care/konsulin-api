@@ -18,13 +18,13 @@ var (
 	ErrHashPassword = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevFailedToHashPassword)
 	}
-	ErrCannotParseJSON = func(err error) *CustomError {
-		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevCannotParseJSON)
-	}
 	ErrBuildRequest = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevBuildRequest)
 	}
 	ErrCannotParseMultipartForm = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevCannotParseMultipartForm)
+	}
+	ErrCannotParseDate = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevCannotParseMultipartForm)
 	}
 	ErrCannotMarshalJSON = func(err error) *CustomError {
@@ -68,6 +68,11 @@ var (
 	}
 	ErrNotMatchRoleType = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, constvars.ErrDevRoleTypeDoesntMatch)
+	}
+
+	// Image
+	ErrCannotParseJSON = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevCannotParseJSON)
 	}
 
 	// Auth
@@ -149,6 +154,9 @@ var (
 	ErrGetFHIRResource = func(err error, resource string) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkGetFHIRResource, resource))
 	}
+	ErrGetFHIRResourceDuplicate = func(err error, resource string) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkGetFHIRResourceDuplicate, resource))
+	}
 	ErrUpdateFHIRResource = func(err error, resource string) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkUpdateFHIRResource, resource))
 	}
@@ -159,5 +167,9 @@ var (
 	// Default Server
 	ErrServerProcess = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevServerProcess)
+	}
+
+	ErrClientCustomMessage = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusBadRequest, err.Error(), constvars.ErrDevServerProcess)
 	}
 )

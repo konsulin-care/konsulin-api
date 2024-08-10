@@ -157,3 +157,51 @@ func (c *practitionerFhirClient) UpdatePractitioner(ctx context.Context, request
 
 	return practitionerFhir, nil
 }
+
+func (c *practitionerFhirClient) PatchPractitioner(ctx context.Context, request *requests.PractitionerFhir) (*responses.Practitioner, error) {
+	// Convert FHIR Practitioner to JSON
+	requestJSON, err := json.Marshal(request)
+	if err != nil {
+		return nil, exceptions.ErrCannotMarshalJSON(err)
+	}
+
+	// Send PUT request to FHIR server
+	req, err := http.NewRequestWithContext(ctx, constvars.MethodPatch, fmt.Sprintf("%s/%s", c.BaseUrl, request.ID), bytes.NewBuffer(requestJSON))
+	if err != nil {
+		return nil, exceptions.ErrCreateHTTPRequest(err)
+	}
+	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, exceptions.ErrSendHTTPRequest(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != constvars.StatusOK {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, exceptions.ErrUpdateFHIRResource(err, constvars.ResourcePractitioner)
+		}
+
+		var outcome responses.OperationOutcome
+		err = json.Unmarshal(bodyBytes, &outcome)
+		if err != nil {
+			return nil, exceptions.ErrUpdateFHIRResource(err, constvars.ResourcePractitioner)
+		}
+
+		if len(outcome.Issue) > 0 {
+			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			return nil, exceptions.ErrUpdateFHIRResource(fhirErrorIssue, constvars.ResourcePractitioner)
+		}
+	}
+
+	practitionerFhir := new(responses.Practitioner)
+	err = json.NewDecoder(resp.Body).Decode(&practitionerFhir)
+	if err != nil {
+		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePractitioner)
+	}
+
+	return practitionerFhir, nil
+}
