@@ -1,7 +1,6 @@
 package users
 
 import (
-	"bytes"
 	"context"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/models"
@@ -15,7 +14,6 @@ import (
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
-	"mime/multipart"
 	"time"
 )
 
@@ -85,8 +83,8 @@ func (uc *userUsecase) UpdateUserProfileBySession(ctx context.Context, sessionDa
 			return nil, exceptions.ErrEmailAlreadyExist(nil)
 		}
 
-		if request.ProfilePicture != nil && request.ProfilePictureName != "" {
-			request.ProfilePictureUrl, err = uc.uploadProfilePicture(ctx, session.Username, request)
+		if request.ProfilePicture != "" {
+			request.ProfilePictureMinioUrl, err = uc.uploadProfilePicture(ctx, session.Username, request)
 			if err != nil {
 				return nil, err
 			}
@@ -196,17 +194,17 @@ func (uc *userUsecase) DeactivateUserBySession(ctx context.Context, sessionData 
 
 	switch session.RoleName {
 	case constvars.RoleTypePractitioner:
-		return uc.deactivatePractitionerFhirData(ctx, session)
+		return uc.deactivatePractitionerFhirData(ctx, existingUser)
 	case constvars.RoleTypePatient:
-		return uc.deactivatePatientFhirData(ctx, session)
+		return uc.deactivatePatientFhirData(ctx, existingUser)
 	default:
 		return exceptions.ErrInvalidRoleType(nil)
 	}
 }
 
-func (uc *userUsecase) deactivatePractitionerFhirData(ctx context.Context, session *models.Session) error {
+func (uc *userUsecase) deactivatePractitionerFhirData(ctx context.Context, user *models.User) error {
 	// Set deactivate account request for User's fhir resource
-	practitionerFhirRequest := utils.BuildFhirPractitionerDeactivateRequest(session.PractitionerID)
+	practitionerFhirRequest := user.ConvertToPractitionerFhirDeactivationRequest()
 
 	// Send 'patientFhirRequest' to FHIR Spark Patient Client to update the 'patient' resource
 	_, err := uc.PractitionerFhirClient.UpdatePractitioner(ctx, practitionerFhirRequest)
@@ -218,9 +216,9 @@ func (uc *userUsecase) deactivatePractitionerFhirData(ctx context.Context, sessi
 	return nil
 }
 
-func (uc *userUsecase) deactivatePatientFhirData(ctx context.Context, session *models.Session) error {
+func (uc *userUsecase) deactivatePatientFhirData(ctx context.Context, user *models.User) error {
 	// Set deactivate account request for User's fhir resource
-	patientFhirRequest := utils.BuildFhirPatientDeactivateRequest(session.PatientID)
+	patientFhirRequest := user.ConvertToPatientFhirDeactivationRequest()
 
 	// Send 'patientFhirRequest' to FHIR Spark Patient Client to update the 'patient' resource
 	_, err := uc.PatientFhirClient.UpdatePatient(ctx, patientFhirRequest)
@@ -299,21 +297,16 @@ func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *mode
 }
 
 func (uc *userUsecase) uploadProfilePicture(ctx context.Context, username string, request *requests.UpdateProfile) (string, error) {
-	fileName := utils.GenerateFileName(constvars.IMAGE_PROFILE_PICTURE_PREFIX, username, request.ProfilePictureName)
-	fileHeader := &multipart.FileHeader{
-		Filename: fileName,
-		Size:     int64(len(request.ProfilePicture)),
-		Header:   make(map[string][]string),
-	}
+	fileName := utils.GenerateFileName(constvars.ImageProfilePicturePrefix, username, request.ProfilePictureExtension)
 
-	err := utils.ValidateImage(fileHeader, uc.InternalConfig.Minio.ProfilePictureMaxUploadSizeInMB)
-	if err != nil {
-		return "", exceptions.ErrImageValidation(err)
-	}
+	profilePictureURL, err := uc.MinioStorage.UploadBase64Image(
+		ctx,
+		request.ProfilePictureData,
+		uc.InternalConfig.Minio.BucketName,
+		fileName,
+		request.ProfilePictureExtension,
+	)
 
-	file := bytes.NewReader(request.ProfilePicture)
-
-	profilePictureURL, err := uc.MinioStorage.UploadFile(ctx, file, fileHeader, uc.InternalConfig.Minio.BucketName)
 	if err != nil {
 		return "", err
 	}

@@ -75,6 +75,7 @@ const (
 	ErrDevCannotParseJSON               = "cannot parse JSON into struct or other data types"
 	ErrDevCannotMarshalJSON             = "cannot convert struct or other data types to JSON"
 	ErrDevCannotParseMultipartForm      = "cannot parse multipart form body"
+	ErrDevCannotParsedate               = "cannot parse the requested date"
 	ErrDevBuildRequest                  = "encountering error while building request DTO"
 	ErrDevInvalidRoleType               = "invalid role type, should be 'practitioner' or 'patient'"
 	ErrDevRoleTypeDoesntMatch           = "invalid role type, request done by user with different type"
@@ -100,6 +101,7 @@ const (
 	ErrDevSparkCreateFHIRResource         = "failed to create FHIR %s from firesly spark"
 	ErrDevSparkUpdateFHIRResource         = "failed to update FHIR %s from firesly spark"
 	ErrDevSparkGetFHIRResource            = "failed to get FHIR %s from firely spark"
+	ErrDevSparkGetFHIRResourceDuplicate   = "got more than one document when get FHIR %s from firely spark, which should be unique and contain only one result"
 	ErrDevSparkDecodeFHIRResourceResponse = "failed to decode FHIR %s response from firely spark"
 
 	// Validation messages

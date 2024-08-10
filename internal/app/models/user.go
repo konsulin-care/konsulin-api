@@ -1,7 +1,9 @@
 package models
 
 import (
+	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -23,10 +25,10 @@ type User struct {
 	PractitionerID    string `bson:"practitionerId,omitempty"`
 	ProfilePictureUrl string `bson:"profilePictureUrl,omitempty"`
 
-	Educations       []string  `bson:"educations,omitempty"`
-	ResetTokenExpiry time.Time `bson:"resetTokenExpiry, omitempty"`
+	Educations       []string   `bson:"educations,omitempty"`
+	ResetTokenExpiry *time.Time `bson:"resetTokenExpiry,omitempty"`
 
-	Role      `bson:"user_role,omitempty"`
+	Role      *Role `bson:"user_role,omitempty"`
 	TimeModel `bson:",inline"`
 }
 
@@ -50,6 +52,7 @@ func (u *User) ConvertToBsonM() bson.M {
 		"user_role":         u.Role,
 		"createdAt":         u.TimeModel.CreatedAt,
 		"updatedAt":         u.TimeModel.UpdatedAt,
+		"deletedAt":         u.TimeModel.DeletedAt,
 	}
 }
 
@@ -70,6 +73,100 @@ func (u *User) SetDataForUpdateResetPassword(request *requests.ResetPassword) {
 	u.SetUpdatedAt()
 }
 
+func (u *User) SetResetTokenExpiryTime(durationInMinutes int) {
+	resetTokenExpiryTime := time.Now().Add(time.Duration(durationInMinutes) * time.Minute)
+	u.ResetTokenExpiry = &resetTokenExpiryTime
+	u.SetUpdatedAt()
+}
+
 func (u *User) IsDeactivated() bool {
 	return u.DeletedAt != nil
+}
+
+func (u *User) ConvertToPatientFhirDeactivationRequest() *requests.PatientFhir {
+	var extensions []requests.Extension
+	for _, education := range u.Educations {
+		extensions = append(extensions, requests.Extension{
+			Url:         "http://example.org/fhir/StructureDefinition/education",
+			ValueString: education,
+		})
+	}
+
+	return &requests.PatientFhir{
+		ResourceType: constvars.ResourcePatient,
+		ID:           u.PatientID,
+		Active:       false,
+		Name: []requests.HumanName{
+			{
+				Use:    "official",
+				Family: u.Fullname,
+				Given:  []string{u.Fullname},
+			},
+		},
+		Telecom: []requests.ContactPoint{
+			{
+				System: "email",
+				Value:  u.Email,
+				Use:    "home",
+			},
+			{
+				System: "phone",
+				Value:  u.WhatsAppNumber,
+				Use:    "mobile",
+			},
+		},
+		Gender:    u.Gender,
+		BirthDate: u.BirthDate,
+		Address: []requests.Address{
+			{
+				Use:  "home",
+				Line: strings.Split(u.Address, ", "),
+			},
+		},
+		Extension: extensions,
+	}
+}
+
+func (u *User) ConvertToPractitionerFhirDeactivationRequest() *requests.PractitionerFhir {
+	var extensions []requests.Extension
+	for _, education := range u.Educations {
+		extensions = append(extensions, requests.Extension{
+			Url:         "http://example.org/fhir/StructureDefinition/education",
+			ValueString: education,
+		})
+	}
+
+	return &requests.PractitionerFhir{
+		ResourceType: constvars.ResourcePatient,
+		ID:           u.PractitionerID,
+		Active:       false,
+		Name: []requests.HumanName{
+			{
+				Use:    "official",
+				Family: u.Fullname,
+				Given:  []string{u.Fullname},
+			},
+		},
+		Telecom: []requests.ContactPoint{
+			{
+				System: "email",
+				Value:  u.Email,
+				Use:    "home",
+			},
+			{
+				System: "phone",
+				Value:  u.WhatsAppNumber,
+				Use:    "mobile",
+			},
+		},
+		Gender:    u.Gender,
+		BirthDate: u.BirthDate,
+		Address: []requests.Address{
+			{
+				Use:  "home",
+				Line: strings.Split(u.Address, ", "),
+			},
+		},
+		Extension: extensions,
+	}
 }

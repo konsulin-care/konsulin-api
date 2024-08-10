@@ -1,6 +1,7 @@
 package exceptions
 
 import (
+	"context"
 	"fmt"
 	"konsulin-service/internal/pkg/constvars"
 	"runtime"
@@ -33,6 +34,10 @@ func BuildNewCustomError(err error, statusCode int, clientMessage, devMessage st
 		Location:      location,
 	}
 	if err != nil {
+		if err == context.DeadlineExceeded {
+			customError.ClientMessage = constvars.ErrClientServerLongRespond
+			devMessage = constvars.ErrDevServerDeadlineExceeded
+		}
 		customError.DevMessage = fmt.Sprintf("%s: %s", devMessage, err.Error())
 	}
 	return customError

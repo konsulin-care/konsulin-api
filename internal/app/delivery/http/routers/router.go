@@ -5,6 +5,7 @@ import (
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/delivery/http/middlewares"
 	"konsulin-service/internal/app/services/core/auth"
+	"konsulin-service/internal/app/services/core/clinicians"
 	"konsulin-service/internal/app/services/core/clinics"
 	educationLevels "konsulin-service/internal/app/services/core/education_levels"
 	"konsulin-service/internal/app/services/core/genders"
@@ -23,6 +24,7 @@ func SetupRoutes(
 	userController *users.UserController,
 	authController *auth.AuthController,
 	clinicController *clinics.ClinicController,
+	clinicianController *clinicians.ClinicianController,
 	educationLevelController *educationLevels.EducationLevelController,
 	genderController *genders.GenderController,
 ) {
@@ -66,6 +68,9 @@ func SetupRoutes(
 
 			r.Route("/clinics", func(r chi.Router) {
 				attachClinicRoutes(r, middlewares, clinicController)
+			})
+			r.Route("/clinicians", func(r chi.Router) {
+				attachClinicianRouter(r, middlewares, clinicianController)
 			})
 		})
 	})

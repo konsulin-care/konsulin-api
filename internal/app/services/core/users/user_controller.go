@@ -2,7 +2,10 @@ package users
 
 import (
 	"context"
+	"encoding/json"
+	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
 	"net/http"
@@ -12,14 +15,16 @@ import (
 )
 
 type UserController struct {
-	Log         *zap.Logger
-	UserUsecase UserUsecase
+	Log            *zap.Logger
+	UserUsecase    UserUsecase
+	InternalConfig *config.InternalConfig
 }
 
-func NewUserController(logger *zap.Logger, userUsecase UserUsecase) *UserController {
+func NewUserController(logger *zap.Logger, userUsecase UserUsecase, internalConfig *config.InternalConfig) *UserController {
 	return &UserController{
-		Log:         logger,
-		UserUsecase: userUsecase,
+		Log:            logger,
+		UserUsecase:    userUsecase,
+		InternalConfig: internalConfig,
 	}
 }
 
@@ -42,21 +47,37 @@ func (ctrl *UserController) GetUserProfileBySession(w http.ResponseWriter, r *ht
 
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.GetProfileSuccessMessage, result)
 }
+
 func (ctrl *UserController) UpdateUserBySession(w http.ResponseWriter, r *http.Request) {
-	// Parse the multipart form from the request with a maximum memory of 10 MB
-	err := r.ParseMultipartForm(10 << 20)
+	// Bind body to request
+	request := new(requests.UpdateProfile)
+	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
-		// If there is an error parsing the form, build and send an error response
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
 		return
 	}
 
-	// Build the update user profile request from the form data
-	request, err := utils.BuildUpdateUserProfileRequest(r)
-	if err != nil {
-		// If there is an error building the request, build and send an error response
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrBuildRequest(err))
-		return
+	if request.ProfilePicture != "" {
+		data, ext, err := utils.DecodeBase64Image(request.ProfilePicture)
+		if err != nil {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrImageValidation(err))
+			return
+		}
+
+		err = utils.ValidateImageFormat(ext, constvars.ImageAllowedProfilePictureFormats)
+		if err != nil {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrImageValidation(err))
+			return
+		}
+
+		err = utils.ValidateImageSize(data, ctrl.InternalConfig.Minio.ProfilePictureMaxUploadSizeInMB)
+		if err != nil {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrImageValidation(err))
+			return
+		}
+
+		request.ProfilePictureData = data
+		request.ProfilePictureExtension = ext
 	}
 
 	// Sanitize the request data to remove any unwanted characters or spaces

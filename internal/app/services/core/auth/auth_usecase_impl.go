@@ -8,6 +8,7 @@ import (
 	"konsulin-service/internal/app/services/core/session"
 	"konsulin-service/internal/app/services/core/users"
 	"konsulin-service/internal/app/services/fhir_spark/patients"
+	practitionerRoles "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
 	"konsulin-service/internal/app/services/shared/mailer"
 	"konsulin-service/internal/app/services/shared/redis"
@@ -23,16 +24,17 @@ import (
 )
 
 type authUsecase struct {
-	UserRepository         users.UserRepository
-	RedisRepository        redis.RedisRepository
-	SessionService         session.SessionService
-	RoleRepository         roles.RoleRepository
-	PatientFhirClient      patients.PatientFhirClient
-	PractitionerFhirClient practitioners.PractitionerFhirClient
-	MailerService          mailer.MailerService
-	InternalConfig         *config.InternalConfig
-	Roles                  map[string]*models.Role
-	mu                     sync.RWMutex
+	UserRepository             users.UserRepository
+	RedisRepository            redis.RedisRepository
+	SessionService             session.SessionService
+	RoleRepository             roles.RoleRepository
+	PatientFhirClient          patients.PatientFhirClient
+	PractitionerFhirClient     practitioners.PractitionerFhirClient
+	PractitionerRoleFhirClient practitionerRoles.PractitionerRoleFhirClient
+	MailerService              mailer.MailerService
+	InternalConfig             *config.InternalConfig
+	Roles                      map[string]*models.Role
+	mu                         sync.RWMutex
 }
 
 func NewAuthUsecase(
@@ -42,19 +44,21 @@ func NewAuthUsecase(
 	rolesRepository roles.RoleRepository,
 	patientFhirClient patients.PatientFhirClient,
 	practitionerFhirClient practitioners.PractitionerFhirClient,
+	practitionerRoleFhirClient practitionerRoles.PractitionerRoleFhirClient,
 	mailerService mailer.MailerService,
 	internalConfig *config.InternalConfig,
 ) (AuthUsecase, error) {
 	authUsecase := &authUsecase{
-		UserRepository:         userMongoRepository,
-		RedisRepository:        redisRepository,
-		SessionService:         sessionService,
-		RoleRepository:         rolesRepository,
-		PatientFhirClient:      patientFhirClient,
-		PractitionerFhirClient: practitionerFhirClient,
-		MailerService:          mailerService,
-		InternalConfig:         internalConfig,
-		Roles:                  make(map[string]*models.Role),
+		UserRepository:             userMongoRepository,
+		RedisRepository:            redisRepository,
+		SessionService:             sessionService,
+		RoleRepository:             rolesRepository,
+		PatientFhirClient:          patientFhirClient,
+		PractitionerFhirClient:     practitionerFhirClient,
+		PractitionerRoleFhirClient: practitionerRoleFhirClient,
+		MailerService:              mailerService,
+		InternalConfig:             internalConfig,
+		Roles:                      make(map[string]*models.Role),
 	}
 
 	ctx := context.Background()
@@ -216,8 +220,8 @@ func (uc *authUsecase) LoginPatient(ctx context.Context, request *requests.Login
 			return nil, err
 		}
 
-		patietFhirRequest := utils.BuildFhirPatientReactivateRequest(user.PatientID)
-		_, err = uc.PatientFhirClient.UpdatePatient(ctx, patietFhirRequest)
+		patientFhirRequest := utils.BuildFhirPatientReactivateRequest(user.PatientID)
+		_, err = uc.PatientFhirClient.UpdatePatient(ctx, patientFhirRequest)
 		if err != nil {
 			return nil, err
 		}
@@ -254,15 +258,15 @@ func (uc *authUsecase) LoginPatient(ctx context.Context, request *requests.Login
 		SessionID: sessionID,
 	}
 
-	// Store the session data in Redis with a 1-hour expiration
-	err = uc.RedisRepository.Set(ctx, sessionID, sessionModel, time.Hour)
+	// Store the session data in Redis with a 2-hour expirations
+	err = uc.RedisRepository.Set(ctx, sessionID, sessionModel, time.Hour*time.Duration(uc.InternalConfig.App.LoginSessionExpiredTimeInHours))
 	if err != nil {
 		// Return error if there is an issue storing the session data
 		return nil, err
 	}
 
 	// Generate a JWT token using the session ID and secret
-	tokenString, err := utils.GenerateSessionJWT(sessionID, uc.InternalConfig.JWT.Secret, uc.InternalConfig.JWT.ExpTimeInHour)
+	tokenString, err := utils.GenerateSessionJWT(sessionID, uc.InternalConfig.JWT.Secret, uc.InternalConfig.App.LoginSessionExpiredTimeInHours)
 	if err != nil {
 		// Return error if there is an issue generating the JWT token
 		return nil, exceptions.ErrTokenGenerate(err)
@@ -272,7 +276,7 @@ func (uc *authUsecase) LoginPatient(ctx context.Context, request *requests.Login
 	response := &responses.LoginUser{
 		Token: tokenString,
 		LoginUserData: responses.LoginUserData{
-			Name:     user.Name,
+			Name:     user.Fullname,
 			Email:    user.Email,
 			UserID:   user.ID,
 			RoleID:   userRole.ID,
@@ -294,6 +298,25 @@ func (uc *authUsecase) LoginClinician(ctx context.Context, request *requests.Log
 		return nil, exceptions.ErrInvalidUsernameOrPassword(nil)
 	}
 
+	if user.IsDeactivated() {
+		deactivationDeadline := user.DeletedAt.AddDate(0, 0, uc.InternalConfig.App.AccountDeactivationAgeInDays)
+		if time.Now().After(deactivationDeadline) {
+			return nil, exceptions.ErrAccountDeactivationAgeExpired(nil)
+		}
+
+		user.SetEmptyDeletedAt()
+		err = uc.UserRepository.UpdateUser(ctx, user)
+		if err != nil {
+			return nil, err
+		}
+
+		practitionerFhirRequest := utils.BuildFhirPractitionerReactivateRequest(user.PractitionerID)
+		_, err = uc.PractitionerFhirClient.UpdatePractitioner(ctx, practitionerFhirRequest)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// Retrieve the user's role by role ID from the role repository
 	userRole, err := uc.RoleRepository.FindRoleByID(ctx, user.RoleID)
 	if err != nil {
@@ -312,6 +335,14 @@ func (uc *authUsecase) LoginClinician(ctx context.Context, request *requests.Log
 		return nil, exceptions.ErrInvalidUsernameOrPassword(nil)
 	}
 
+	// Get the organizations linked to this practitioner
+	practitionerRoles, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerID(ctx, user.PractitionerID)
+	if err != nil {
+		return nil, err
+	}
+
+	practitionerOrganizationIDs := utils.ExtractOrganizationIDsFromPractitionerRoles(practitionerRoles)
+
 	// Generate a UUID for the session ID
 	sessionID := uuid.New().String()
 
@@ -324,17 +355,18 @@ func (uc *authUsecase) LoginClinician(ctx context.Context, request *requests.Log
 		RoleID:         userRole.ID,
 		RoleName:       userRole.Name,
 		SessionID:      sessionID,
+		ClinicIDs:      practitionerOrganizationIDs,
 	}
 
 	// Store the session data in Redis with a 1-hour expiration
-	err = uc.RedisRepository.Set(ctx, sessionID, sessionData, time.Hour)
+	err = uc.RedisRepository.Set(ctx, sessionID, sessionData, time.Hour*time.Duration(uc.InternalConfig.App.LoginSessionExpiredTimeInHours))
 	if err != nil {
 		// Return error if there is an issue storing the session data
 		return nil, err
 	}
 
 	// Generate a JWT token using the session ID and secret
-	tokenString, err := utils.GenerateSessionJWT(sessionID, uc.InternalConfig.JWT.Secret, uc.InternalConfig.JWT.ExpTimeInHour)
+	tokenString, err := utils.GenerateSessionJWT(sessionID, uc.InternalConfig.JWT.Secret, uc.InternalConfig.App.LoginSessionExpiredTimeInHours)
 	if err != nil {
 		// Return error if there is an issue generating the JWT token
 		return nil, exceptions.ErrTokenGenerate(err)
@@ -344,11 +376,12 @@ func (uc *authUsecase) LoginClinician(ctx context.Context, request *requests.Log
 	response := &responses.LoginUser{
 		Token: tokenString,
 		LoginUserData: responses.LoginUserData{
-			Name:     user.Name,
-			Email:    user.Email,
-			UserID:   user.ID,
-			RoleID:   userRole.ID,
-			RoleName: userRole.Name,
+			Name:      user.Fullname,
+			Email:     user.Email,
+			UserID:    user.ID,
+			RoleID:    userRole.ID,
+			RoleName:  userRole.Name,
+			ClinicIDs: practitionerOrganizationIDs,
 		},
 	}
 	// Return the prepared response
@@ -416,8 +449,7 @@ func (uc *authUsecase) ForgotPassword(ctx context.Context, request *requests.For
 	if err != nil {
 		return exceptions.ErrTokenGenerate(err)
 	}
-	user.ResetTokenExpiry = time.Now().Add(time.Duration(uc.InternalConfig.App.ForgotPasswordTokenExpiredTimeInMinutes) * time.Minute)
-	user.SetUpdatedAt()
+	user.SetResetTokenExpiryTime(uc.InternalConfig.App.ForgotPasswordTokenExpiredTimeInMinutes)
 
 	err = uc.UserRepository.UpdateUser(ctx, user)
 	if err != nil {
@@ -453,7 +485,7 @@ func (uc *authUsecase) ResetPassword(ctx context.Context, request *requests.Rese
 	}
 
 	// Check if the reset token is expired
-	if time.Now().After(user.ResetTokenExpiry) {
+	if time.Now().After(*user.ResetTokenExpiry) {
 		return exceptions.ErrTokenResetPasswordExpired(nil)
 	}
 

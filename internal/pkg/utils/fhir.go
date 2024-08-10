@@ -47,23 +47,46 @@ func BuildPractitionerProfileResponse(practitionerFhir *responses.Practitioner) 
 	}
 }
 
-func extractSpecialties(qualifications []responses.Qualification) []string {
-	specialties := []string{}
-	for _, qualification := range qualifications {
-		for _, coding := range qualification.Code.Coding {
-			specialties = append(specialties, coding.Display)
+func ExtractOrganizationIDsFromPractitionerRoles(practitionerRoles []responses.PractitionerRole) []string {
+	organizationIDs := make([]string, 0, len(practitionerRoles))
+
+	for _, role := range practitionerRoles {
+		parts := strings.Split(role.Organization.Reference, "/")
+		if len(parts) == 2 && parts[0] == "Organization" {
+			organizationIDs = append(organizationIDs, parts[1])
 		}
 	}
-	return specialties
+
+	return organizationIDs
 }
 
-func MapPractitionerToClinicClinician(practitioner *responses.Practitioner, clinicName, affiliationName string) responses.ClinicClinician {
+func ExtractQualifications(qualifications []responses.Qualification) []string {
+	qualificationsResponse := []string{}
+	for _, qualification := range qualifications {
+		for _, coding := range qualification.Code.Coding {
+			qualificationsResponse = append(qualificationsResponse, coding.Display)
+		}
+	}
+	return qualificationsResponse
+}
+
+func ExtractSpecialties(specialties []responses.CodeableConcept) []string {
+	qualificationsResponse := []string{}
+	for _, specialty := range specialties {
+		for _, coding := range specialty.Coding {
+			qualificationsResponse = append(qualificationsResponse, coding.Display)
+		}
+	}
+	return qualificationsResponse
+}
+
+func MapPractitionerToClinicClinician(practitioner *responses.Practitioner, specialty []responses.CodeableConcept, organizationName string) responses.ClinicClinician {
 	return responses.ClinicClinician{
 		PractitionerID: practitioner.ID,
 		Name:           GetFullName(practitioner.Name),
-		ClinicName:     clinicName,
-		Affiliation:    affiliationName,
-		Specialties:    extractSpecialties(practitioner.Qualification),
+		ClinicName:     organizationName,
+		Affiliation:    organizationName,
+		Specialties:    ExtractSpecialties(specialty),
 	}
 }
 
@@ -148,8 +171,16 @@ func GetFullName(names []responses.HumanName) string {
 
 	var fullname string
 	name := names[0]
+
+	if len(name.Prefix) > 0 {
+		fullname += name.Prefix[0] + " "
+	}
 	if len(name.Given) > 0 {
-		fullname += " " + name.Given[0]
+		fullname += name.Given[0]
+	}
+
+	if name.Family != "" {
+		fullname += " " + name.Family
 	}
 	return fullname
 }

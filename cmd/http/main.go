@@ -11,16 +11,19 @@ import (
 	"konsulin-service/internal/app/drivers/messaging"
 	"konsulin-service/internal/app/drivers/storage"
 	"konsulin-service/internal/app/services/core/auth"
+	"konsulin-service/internal/app/services/core/clinicians"
 	"konsulin-service/internal/app/services/core/clinics"
 	educationLevels "konsulin-service/internal/app/services/core/education_levels"
 	"konsulin-service/internal/app/services/core/genders"
 	"konsulin-service/internal/app/services/core/roles"
 	"konsulin-service/internal/app/services/core/session"
 	"konsulin-service/internal/app/services/core/users"
+	"konsulin-service/internal/app/services/fhir_spark/appointments"
 	"konsulin-service/internal/app/services/fhir_spark/organizations"
 	"konsulin-service/internal/app/services/fhir_spark/patients"
 	practitionerRoles "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
+	"konsulin-service/internal/app/services/fhir_spark/schedules"
 	"konsulin-service/internal/app/services/shared/mailer"
 	redisKonsulin "konsulin-service/internal/app/services/shared/redis"
 	storageKonsulin "konsulin-service/internal/app/services/shared/storage"
@@ -169,12 +172,14 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	patientFhirClient := patients.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePatient)
 	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePractitioner)
 	organizationFhirClient := organizations.NewOrganizationFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourceOrganization)
-	practitionerRoleFhirClient := practitionerRoles.NewPractitionerRoleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePractitionerRole)
+	practitionerRoleFhirClient := practitionerRoles.NewPractitionerRoleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.InternalConfig.FHIR.BaseUrl+constvars.ResourcePractitionerRole)
+	scheduleFhirClient := schedules.NewScheduleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourceSchedule)
+	appointmentFhirClient := appointments.NewAppointmentFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourceAppointment)
 
 	// Initialize Users dependencies
 	userMongoRepository := users.NewUserMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
 	userUseCase := users.NewUserUsecase(userMongoRepository, patientFhirClient, practitionerFhirClient, redisRepository, sessionService, minioStorage, bootstrap.InternalConfig)
-	userController := users.NewUserController(bootstrap.Logger, userUseCase)
+	userController := users.NewUserController(bootstrap.Logger, userUseCase, bootstrap.InternalConfig)
 
 	// Initialize Education Level dependencies
 	educationLevelMongoRepository := educationLevels.NewEducationLevelMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
@@ -199,6 +204,10 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	clinicUsecase := clinics.NewClinicUsecase(organizationFhirClient, practitionerRoleFhirClient, practitionerFhirClient, redisRepository, bootstrap.InternalConfig)
 	clinicController := clinics.NewClinicController(bootstrap.Logger, clinicUsecase)
 
+	// Initialize Clinic dependencies
+	clinicianUsecase := clinicians.NewClinicianUsecase(practitionerFhirClient, practitionerRoleFhirClient, scheduleFhirClient, appointmentFhirClient, sessionService)
+	clinicianController := clinicians.NewClinicianController(bootstrap.Logger, clinicianUsecase)
+
 	// Initialize Auth usecase with dependencies
 	authUseCase, err := auth.NewAuthUsecase(
 		userMongoRepository,
@@ -207,6 +216,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 		roleMongoRepository,
 		patientFhirClient,
 		practitionerFhirClient,
+		practitionerRoleFhirClient,
 		mailerService,
 		bootstrap.InternalConfig,
 	)
@@ -226,6 +236,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 		userController,
 		authController,
 		clinicController,
+		clinicianController,
 		educationLevelController,
 		genderController,
 	)

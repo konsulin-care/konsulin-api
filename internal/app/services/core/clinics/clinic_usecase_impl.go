@@ -62,13 +62,6 @@ func (uc *clinicUsecase) FindAllCliniciansByClinicID(ctx context.Context, nameFi
 	if err != nil {
 		return nil, nil, err
 	}
-	// // Build the response
-	// response := make([]responses.Clinic, len(organizationsFhir))
-	// for i, eachOrganization := range organizationsFhir {
-	// 	response[i] = eachOrganization.ConvertToClinicResponse()
-	// }
-
-	// paginationData := utils.BuildPaginationResponse(totalData, page, pageSize, uc.InternalConfig.App.BaseUrl+constvars.ResourceClinics)
 
 	return clinicians, paginationData, nil
 }
@@ -82,7 +75,11 @@ func (uc *clinicUsecase) fetchAllCliniciansByPractitionerRoles(ctx context.Conte
 			if err != nil {
 				return nil, nil, err
 			}
-			clinicians = append(clinicians, utils.MapPractitionerToClinicClinician(practitioner, practitionerRole.Organization.Display, practitionerRole.Organization.Display))
+			clinicians = append(clinicians, utils.MapPractitionerToClinicClinician(
+				practitioner,
+				practitionerRole.Specialty,
+				practitionerRole.Organization.Display,
+			))
 		}
 	}
 	return clinicians, nil, nil

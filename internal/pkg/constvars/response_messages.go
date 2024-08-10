@@ -15,6 +15,11 @@ const (
 	GetGenderSuccessMessage         = "get genders successfully"
 	GetClinicsSuccessfully          = "get clinics successfully"
 	GetCliniciansSuccessfully       = "get clinicians successfully"
+	GetClinicianSummarySuccessfully = "get clinician summary successfully"
+
+	// Clinician-related messages
+	CreateClinicianClinicsSuccessMessage = "clinics successfully created for clinician"
+	DeleteClinicianClinicSuccessMessage  = "clinic successfully deleted for clinician"
 
 	// Auth messages
 	LoginSuccessMessage          = "successfully login"

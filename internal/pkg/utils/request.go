@@ -158,6 +158,44 @@ func BuildFhirPatientDeactivateRequest(patientID string) *requests.PatientFhir {
 	}
 }
 
+func BuildPractitionerRolesBundleRequestByPractitionerID(practitionerID string, organizationIDs []string) interface{} {
+	practitionerRoles := make([]requests.PractitionerRole, len(organizationIDs))
+
+	for i, orgID := range organizationIDs {
+		practitionerReference := requests.Reference{
+			Reference: "Practitioner/" + practitionerID,
+		}
+		organizationReference := requests.Reference{
+			Reference: "Organization/" + orgID,
+		}
+
+		practitionerRoles[i] = requests.PractitionerRole{
+			ResourceType: "PractitionerRole",
+			Practitioner: practitionerReference,
+			Organization: organizationReference,
+		}
+	}
+
+	bundle := map[string]interface{}{
+		"resourceType": "Bundle",
+		"type":         "transaction",
+		"entry":        []interface{}{},
+	}
+
+	for _, practitionerRole := range practitionerRoles {
+		entry := map[string]interface{}{
+			"resource": practitionerRole,
+			"request": map[string]string{
+				"method": "POST",
+				"url":    "PractitionerRole",
+			},
+		}
+		bundle["entry"] = append(bundle["entry"].([]interface{}), entry)
+	}
+
+	return bundle
+}
+
 func BuildFhirPatientReactivateRequest(patientID string) *requests.PatientFhir {
 	return &requests.PatientFhir{
 		ResourceType: constvars.ResourcePatient,
@@ -165,35 +203,11 @@ func BuildFhirPatientReactivateRequest(patientID string) *requests.PatientFhir {
 		Active:       true,
 	}
 }
+
 func BuildFhirPractitionerReactivateRequest(practitionerID string) *requests.PractitionerFhir {
 	return &requests.PractitionerFhir{
 		ResourceType: constvars.ResourcePractitioner,
 		ID:           practitionerID,
 		Active:       true,
 	}
-}
-
-func BuildUpdateUserProfileRequest(r *http.Request) (*requests.UpdateProfile, error) {
-	request := new(requests.UpdateProfile)
-
-	request.Fullname = r.FormValue("fullname")
-	request.Email = r.FormValue("email")
-	request.BirthDate = r.FormValue("birth_date")
-	request.WhatsAppNumber = r.FormValue("whatsapp_number")
-	request.Address = r.FormValue("address")
-	request.Gender = r.FormValue("gender")
-	request.Educations = r.Form["educations"]
-
-	file, fileHeader, err := r.FormFile("profile_picture")
-	if err == nil {
-		defer file.Close()
-		request.ProfilePicture = make([]byte, fileHeader.Size)
-		_, err := file.Read(request.ProfilePicture)
-		if err != nil {
-			return nil, err
-		}
-		request.ProfilePictureName = fileHeader.Filename
-	}
-
-	return request, nil
 }
