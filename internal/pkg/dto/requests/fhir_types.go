@@ -1,5 +1,7 @@
 package requests
 
+import "time"
+
 type Reference struct {
 	Reference  string     `json:"reference,omitempty" bson:"reference,omitempty"`
 	Type       string     `json:"type,omitempty" bson:"type,omitempty"`
@@ -38,6 +40,14 @@ type HumanName struct {
 	Given  []string `json:"given"`
 }
 
+type Meta struct {
+	VersionId   string    `json:"versionId,omitempty" bson:"versionId,omitempty"`
+	LastUpdated time.Time `json:"lastUpdated,omitempty" bson:"lastUpdated,omitempty"`
+	Source      string    `json:"source,omitempty" bson:"source,omitempty"`
+	Profile     []string  `json:"profile,omitempty" bson:"profile,omitempty"`
+	Security    []Coding  `json:"security,omitempty" bson:"security,omitempty"`
+	Tag         []Coding  `json:"tag,omitempty" bson:"tag,omitempty"`
+}
 type ContactPoint struct {
 	System string `json:"system"`
 	Value  string `json:"value"`

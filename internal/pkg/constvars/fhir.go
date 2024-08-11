@@ -27,3 +27,23 @@ const (
 	FhirFetchResourceFilterName     = "%s?name=%s"
 	FhirFetchResourceWithPagination = "%s?_offset=%d&_count=%d"
 )
+
+const (
+	FhirSlotStatusBusy = "busy"
+)
+
+const (
+	FhirAppointmentStatusBooked    = "booked"
+	FhirAppointmentStatusProposed  = "proposed"
+	FhirAppointmentStatusPending   = "pending"
+	FhirAppointmentStatusFulfilled = "fulfilled"
+	FhirAppointmentStatusArrived   = "arrived"
+	FhirAppointmentStatusCancelled = "cancelled"
+)
+
+const (
+	FhirParticipantStatusAccepted    = "accepted"
+	FhirParticipantStatusDeclined    = "declined"
+	FhirParticipantStatusTentative   = "tentative"
+	FhirParticipantStatusNeedsAction = "needs-action"
+)

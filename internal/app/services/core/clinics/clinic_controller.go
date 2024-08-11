@@ -29,6 +29,7 @@ func (ctrl *ClinicController) FindAll(w http.ResponseWriter, r *http.Request) {
 	pageStr := r.URL.Query().Get("page")
 	pageSizeStr := r.URL.Query().Get("page_size")
 	nameStr := r.URL.Query().Get("name")
+	fetchType := r.URL.Query().Get("type")
 
 	page, err := strconv.Atoi(pageStr)
 	if err != nil || page <= 0 {
@@ -43,7 +44,7 @@ func (ctrl *ClinicController) FindAll(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	result, paginationData, err := ctrl.ClinicUsecase.FindAll(ctx, nameStr, page, pageSize)
+	result, paginationData, err := ctrl.ClinicUsecase.FindAll(ctx, nameStr, fetchType, page, pageSize)
 	if err != nil {
 		if err == context.DeadlineExceeded {
 			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
@@ -54,6 +55,32 @@ func (ctrl *ClinicController) FindAll(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.BuildSuccessResponseWithPagination(w, constvars.StatusOK, constvars.GetClinicsSuccessfully, paginationData, result)
+}
+
+func (ctrl *ClinicController) FindClinicianByClinicAndClinicianID(w http.ResponseWriter, r *http.Request) {
+	clinicID := chi.URLParam(r, constvars.URLParamClinicID)
+	clinicianID := chi.URLParam(r, constvars.URLParamClinicianID)
+
+	// err := utils.ValidateUrlParamID(clinicianID)
+	// if err != nil {
+	// 	utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrURLParamIDValidation(err, constvars.URLParamPractitionerID))
+	// 	return
+	// }
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	result, err := ctrl.ClinicUsecase.FindClinicianByClinicAndClinicianID(ctx, clinicID, clinicianID)
+	if err != nil {
+		if err == context.DeadlineExceeded {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.GetClinicianSummarySuccessfully, result)
 }
 
 func (ctrl *ClinicController) FindAllCliniciansByClinicID(w http.ResponseWriter, r *http.Request) {

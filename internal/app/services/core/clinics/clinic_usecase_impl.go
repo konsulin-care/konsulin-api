@@ -6,6 +6,7 @@ import (
 	"konsulin-service/internal/app/services/fhir_spark/organizations"
 	practitionerRoles "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
+	"konsulin-service/internal/app/services/fhir_spark/schedules"
 	"konsulin-service/internal/app/services/shared/redis"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/responses"
@@ -13,31 +14,34 @@ import (
 )
 
 type clinicUsecase struct {
-	OrganizationFhirClient organizations.OrganizationFhirClient
-	PractitionerRoleClient practitionerRoles.PractitionerRoleFhirClient
-	PractitionerClient     practitioners.PractitionerFhirClient
-	RedisRepository        redis.RedisRepository
-	InternalConfig         *config.InternalConfig
+	OrganizationFhirClient     organizations.OrganizationFhirClient
+	PractitionerRoleFhirClient practitionerRoles.PractitionerRoleFhirClient
+	PractitionerFhirClient     practitioners.PractitionerFhirClient
+	ScheduleFhirClient         schedules.ScheduleFhirClient
+	RedisRepository            redis.RedisRepository
+	InternalConfig             *config.InternalConfig
 }
 
 func NewClinicUsecase(
 	organizationFhirClient organizations.OrganizationFhirClient,
 	practitionerRoleFhirClient practitionerRoles.PractitionerRoleFhirClient,
 	practitionerFhirClient practitioners.PractitionerFhirClient,
+	scheduleFhirClient schedules.ScheduleFhirClient,
 	redisRepository redis.RedisRepository,
 	internalConfig *config.InternalConfig,
 ) ClinicUsecase {
 	return &clinicUsecase{
-		OrganizationFhirClient: organizationFhirClient,
-		PractitionerClient:     practitionerFhirClient,
-		PractitionerRoleClient: practitionerRoleFhirClient,
-		RedisRepository:        redisRepository,
-		InternalConfig:         internalConfig,
+		OrganizationFhirClient:     organizationFhirClient,
+		PractitionerFhirClient:     practitionerFhirClient,
+		PractitionerRoleFhirClient: practitionerRoleFhirClient,
+		ScheduleFhirClient:         scheduleFhirClient,
+		RedisRepository:            redisRepository,
+		InternalConfig:             internalConfig,
 	}
 }
 
-func (uc *clinicUsecase) FindAll(ctx context.Context, nameFilter string, page, pageSize int) ([]responses.Clinic, *responses.Pagination, error) {
-	organizationsFhir, totalData, err := uc.OrganizationFhirClient.FindAll(ctx, nameFilter, page, pageSize)
+func (uc *clinicUsecase) FindAll(ctx context.Context, nameFilter, fetchType string, page, pageSize int) ([]responses.Clinic, *responses.Pagination, error) {
+	organizationsFhir, totalData, err := uc.OrganizationFhirClient.FindAll(ctx, nameFilter, fetchType, page, pageSize)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -53,7 +57,7 @@ func (uc *clinicUsecase) FindAll(ctx context.Context, nameFilter string, page, p
 }
 
 func (uc *clinicUsecase) FindAllCliniciansByClinicID(ctx context.Context, nameFilter, clinicID string, page, pageSize int) ([]responses.ClinicClinician, *responses.Pagination, error) {
-	practitionerRoles, err := uc.PractitionerRoleClient.FindPractitionerRoleByOrganizationID(ctx, clinicID)
+	practitionerRoles, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByOrganizationID(ctx, clinicID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -71,7 +75,7 @@ func (uc *clinicUsecase) fetchAllCliniciansByPractitionerRoles(ctx context.Conte
 	for _, practitionerRole := range practitionerRoles {
 		if practitionerRole.Practitioner.Reference != "" {
 			practitionerID := practitionerRole.Practitioner.Reference[len("Practitioner/"):]
-			practitioner, err := uc.PractitionerClient.FindPractitionerByID(ctx, practitionerID)
+			practitioner, err := uc.PractitionerFhirClient.FindPractitionerByID(ctx, practitionerID)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -104,4 +108,46 @@ func (uc *clinicUsecase) FindByID(ctx context.Context, clinicID string) (*respon
 	response := organization.ConvertToClinicDetailResponse()
 
 	return &response, nil
+}
+
+func (uc *clinicUsecase) FindClinicianByClinicAndClinicianID(ctx context.Context, clinicID, clinicianID string) (*responses.ClinicianSummary, error) {
+	practitioner, err := uc.PractitionerFhirClient.FindPractitionerByID(ctx, clinicianID)
+	if err != nil {
+		return nil, err
+	}
+
+	practitionerRoles, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerIDAndOrganizationID(ctx, practitioner.ID, clinicID)
+	if err != nil {
+		return nil, err
+	}
+
+	schedules, err := uc.ScheduleFhirClient.FindScheduleByPractitionerRoleID(ctx, practitionerRoles[0].ID)
+	if err != nil {
+		return nil, err
+	}
+
+	var specialties []string
+
+	for _, practitionerRole := range practitionerRoles {
+		specialties = append(specialties, utils.ExtractSpecialties(practitionerRole.Specialty)...)
+	}
+
+	practiceInformation := responses.PracticeInformation{
+		Affiliation: "Konsulin",
+		Experience:  "2 Years",
+		Fee:         "250.000/session",
+	}
+
+	response := &responses.ClinicianSummary{
+		PractitionerID:      practitioner.ID,
+		PractitionerRoleID:  practitionerRoles[0].ID,
+		ScheduleID:          schedules[0].ID,
+		Name:                utils.GetFullName(practitioner.Name),
+		Affiliation:         "Konsulin",
+		Specialties:         specialties,
+		PracticeInformation: practiceInformation,
+		// Availability:        availableTimes,
+	}
+
+	return response, nil
 }

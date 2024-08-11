@@ -70,8 +70,11 @@ var (
 		return BuildNewCustomError(err, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, constvars.ErrDevRoleTypeDoesntMatch)
 	}
 
-	// Image
+	// Parse
 	ErrCannotParseJSON = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevCannotParseJSON)
+	}
+	ErrCannotParseTime = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevCannotParseJSON)
 	}
 

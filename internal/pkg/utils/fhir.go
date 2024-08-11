@@ -200,3 +200,12 @@ func GetEmailAndWhatsapp(telecoms []responses.ContactPoint) (string, string) {
 	}
 	return email, whatsAppNumber
 }
+
+func Contains(slice []string, item string) bool {
+	for _, v := range slice {
+		if v == item {
+			return true
+		}
+	}
+	return false
+}

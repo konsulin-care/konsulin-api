@@ -5,7 +5,7 @@ import (
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/app/services/core/session"
-	"konsulin-service/internal/app/services/fhir_spark/patients"
+	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
 	"konsulin-service/internal/app/services/shared/redis"
 	"konsulin-service/internal/app/services/shared/storage"
@@ -19,7 +19,7 @@ import (
 
 type userUsecase struct {
 	UserRepository         UserRepository
-	PatientFhirClient      patients.PatientFhirClient
+	PatientFhirClient      patientsFhir.PatientFhirClient
 	PractitionerFhirClient practitioners.PractitionerFhirClient
 	RedisRepository        redis.RedisRepository
 	SessionService         session.SessionService
@@ -29,7 +29,7 @@ type userUsecase struct {
 
 func NewUserUsecase(
 	userMongoRepository UserRepository,
-	patientFhirClient patients.PatientFhirClient,
+	patientFhirClient patientsFhir.PatientFhirClient,
 	practitionerFhirClient practitioners.PractitionerFhirClient,
 	redisRepository redis.RedisRepository,
 	sessionService session.SessionService,

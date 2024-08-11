@@ -6,7 +6,9 @@ type ClinicianSummary struct {
 	Affiliation         string              `json:"affiliation,omitempty"`
 	PracticeInformation PracticeInformation `json:"practice_information,omitempty"`
 	Specialties         []string            `json:"specialties,omitempty"`
-	Availability        []AvailableTime     `json:"availability,omitempty"`
+	ScheduleID          string              `json:"schedule_id,omitempty"`
+	PractitionerRoleID  string              `json:"practitioner_role_id,omitempty"`
+	// Availability        []AvailableTime     `json:"availability,omitempty"`
 }
 
 type PracticeInformation struct {

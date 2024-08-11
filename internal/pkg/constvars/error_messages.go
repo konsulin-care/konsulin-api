@@ -73,6 +73,7 @@ const (
 const (
 	ErrDevInvalidInput                  = "invalid input"
 	ErrDevCannotParseJSON               = "cannot parse JSON into struct or other data types"
+	ErrDevCannotParseTime               = "cannot parse time into the given format"
 	ErrDevCannotMarshalJSON             = "cannot convert struct or other data types to JSON"
 	ErrDevCannotParseMultipartForm      = "cannot parse multipart form body"
 	ErrDevCannotParsedate               = "cannot parse the requested date"

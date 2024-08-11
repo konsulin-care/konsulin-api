@@ -26,31 +26,6 @@ func NewClinicianController(logger *zap.Logger, clinicianUsecase ClinicianUsecas
 	}
 }
 
-func (ctrl *ClinicianController) FindClinicianByID(w http.ResponseWriter, r *http.Request) {
-	clinicianID := chi.URLParam(r, constvars.URLParamClinicianID)
-
-	// err := utils.ValidateUrlParamID(clinicianID)
-	// if err != nil {
-	// 	utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrURLParamIDValidation(err, constvars.URLParamPractitionerID))
-	// 	return
-	// }
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	result, err := ctrl.ClinicianUsecase.FindClinicianSummaryByID(ctx, clinicianID)
-	if err != nil {
-		if err == context.DeadlineExceeded {
-			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
-			return
-		}
-		utils.BuildErrorResponse(ctrl.Log, w, err)
-		return
-	}
-
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.GetProfileSuccessMessage, result)
-}
-
 func (ctrl *ClinicianController) CreateClinics(w http.ResponseWriter, r *http.Request) {
 	// Bind body to request
 	request := new(requests.ClinicianCreateClinics)
@@ -79,7 +54,35 @@ func (ctrl *ClinicianController) CreateClinics(w http.ResponseWriter, r *http.Re
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.CreateClinicianClinicsSuccessMessage, nil)
 }
 
-func (ctrl *ClinicianController) DeleteOrganization(w http.ResponseWriter, r *http.Request) {
+func (ctrl *ClinicianController) CreateClinicsAvailability(w http.ResponseWriter, r *http.Request) {
+	// Bind body to request
+	request := new(requests.CreateClinicsAvailability)
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+		return
+	}
+
+	// Get session data from context
+	sessionData := r.Context().Value("sessionData").(string)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err = ctrl.ClinicianUsecase.CreateClinicsAvailability(ctx, sessionData, request)
+	if err != nil {
+		if err == context.DeadlineExceeded {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.CreateClinicianClinicsSuccessMessage, nil)
+}
+
+func (ctrl *ClinicianController) DeleteClinicByID(w http.ResponseWriter, r *http.Request) {
 	clinicID := chi.URLParam(r, constvars.URLParamClinicID)
 
 	// err := utils.ValidateUrlParamID(clinicID)
@@ -123,38 +126,6 @@ func (ctrl *ClinicianController) CreateAvailibilityTime(w http.ResponseWriter, r
 	defer cancel()
 
 	err = ctrl.ClinicianUsecase.CreateAvailibilityTime(ctx, sessionData, request)
-	if err != nil {
-		if err == context.DeadlineExceeded {
-			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
-			return
-		}
-		utils.BuildErrorResponse(ctrl.Log, w, err)
-		return
-	}
-
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.DeleteUserSuccessMessage, nil)
-}
-
-func (ctrl *ClinicianController) CreateAppointment(w http.ResponseWriter, r *http.Request) {
-	clinicianID := chi.URLParam(r, constvars.URLParamClinicianID)
-
-	// Bind body to request
-	request := new(requests.CreateAppointmentRequest)
-	err := json.NewDecoder(r.Body).Decode(&request)
-	if err != nil {
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
-		return
-	}
-
-	request.ClinicianId = clinicianID
-
-	// Get session data from context
-	sessionData := r.Context().Value("sessionData").(string)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-	defer cancel()
-
-	err = ctrl.ClinicianUsecase.CreateAppointment(ctx, sessionData, request)
 	if err != nil {
 		if err == context.DeadlineExceeded {
 			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
