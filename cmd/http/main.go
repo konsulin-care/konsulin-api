@@ -15,15 +15,17 @@ import (
 	"konsulin-service/internal/app/services/core/clinics"
 	educationLevels "konsulin-service/internal/app/services/core/education_levels"
 	"konsulin-service/internal/app/services/core/genders"
+	"konsulin-service/internal/app/services/core/patients"
 	"konsulin-service/internal/app/services/core/roles"
 	"konsulin-service/internal/app/services/core/session"
 	"konsulin-service/internal/app/services/core/users"
 	"konsulin-service/internal/app/services/fhir_spark/appointments"
 	"konsulin-service/internal/app/services/fhir_spark/organizations"
-	"konsulin-service/internal/app/services/fhir_spark/patients"
+	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
 	practitionerRoles "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
 	"konsulin-service/internal/app/services/fhir_spark/schedules"
+	"konsulin-service/internal/app/services/fhir_spark/slots"
 	"konsulin-service/internal/app/services/shared/mailer"
 	redisKonsulin "konsulin-service/internal/app/services/shared/redis"
 	storageKonsulin "konsulin-service/internal/app/services/shared/storage"
@@ -169,11 +171,12 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	sessionService := session.NewSessionService(redisRepository)
 
 	// Initialize FHIR clients
-	patientFhirClient := patients.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePatient)
+	patientFhirClient := patientsFhir.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePatient)
 	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePractitioner)
 	organizationFhirClient := organizations.NewOrganizationFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourceOrganization)
 	practitionerRoleFhirClient := practitionerRoles.NewPractitionerRoleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.InternalConfig.FHIR.BaseUrl+constvars.ResourcePractitionerRole)
 	scheduleFhirClient := schedules.NewScheduleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourceSchedule)
+	slotFhirClient := slots.NewSlotFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourceSlot)
 	appointmentFhirClient := appointments.NewAppointmentFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourceAppointment)
 
 	// Initialize Users dependencies
@@ -201,12 +204,16 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	roleMongoRepository := roles.NewRoleMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
 
 	// Initialize Clinic dependencies
-	clinicUsecase := clinics.NewClinicUsecase(organizationFhirClient, practitionerRoleFhirClient, practitionerFhirClient, redisRepository, bootstrap.InternalConfig)
+	clinicUsecase := clinics.NewClinicUsecase(organizationFhirClient, practitionerRoleFhirClient, practitionerFhirClient, scheduleFhirClient, redisRepository, bootstrap.InternalConfig)
 	clinicController := clinics.NewClinicController(bootstrap.Logger, clinicUsecase)
 
 	// Initialize Clinic dependencies
-	clinicianUsecase := clinicians.NewClinicianUsecase(practitionerFhirClient, practitionerRoleFhirClient, scheduleFhirClient, appointmentFhirClient, sessionService)
+	clinicianUsecase := clinicians.NewClinicianUsecase(practitionerFhirClient, practitionerRoleFhirClient, scheduleFhirClient, slotFhirClient, appointmentFhirClient, sessionService)
 	clinicianController := clinicians.NewClinicianController(bootstrap.Logger, clinicianUsecase)
+
+	// Initialize Clinic dependencies
+	patientUsecase := patients.NewPatientUsecase(practitionerFhirClient, practitionerRoleFhirClient, scheduleFhirClient, slotFhirClient, appointmentFhirClient, sessionService)
+	patientController := patients.NewPatientController(bootstrap.Logger, patientUsecase)
 
 	// Initialize Auth usecase with dependencies
 	authUseCase, err := auth.NewAuthUsecase(
@@ -237,6 +244,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 		authController,
 		clinicController,
 		clinicianController,
+		patientController,
 		educationLevelController,
 		genderController,
 	)

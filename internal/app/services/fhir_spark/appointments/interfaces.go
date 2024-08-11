@@ -2,7 +2,8 @@ package appointments
 
 import (
 	"context"
-	"time"
+	"konsulin-service/internal/pkg/dto/requests"
+	"konsulin-service/internal/pkg/dto/responses"
 )
 
 type AppointmentUsecase interface{}
@@ -10,5 +11,5 @@ type AppointmentUsecase interface{}
 type AppointmentRepository interface{}
 
 type AppointmentFhirClient interface {
-	CheckClinicianAvailability(ctx context.Context, clinicianId string, startTime, endTime time.Time) (bool, error)
+	CreateAppointment(ctx context.Context, request *requests.AppointmentFhir) (*responses.Appointment, error)
 }

@@ -7,7 +7,7 @@ import (
 	"konsulin-service/internal/app/services/core/roles"
 	"konsulin-service/internal/app/services/core/session"
 	"konsulin-service/internal/app/services/core/users"
-	"konsulin-service/internal/app/services/fhir_spark/patients"
+	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
 	practitionerRoles "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
 	"konsulin-service/internal/app/services/shared/mailer"
@@ -28,7 +28,7 @@ type authUsecase struct {
 	RedisRepository            redis.RedisRepository
 	SessionService             session.SessionService
 	RoleRepository             roles.RoleRepository
-	PatientFhirClient          patients.PatientFhirClient
+	PatientFhirClient          patientsFhir.PatientFhirClient
 	PractitionerFhirClient     practitioners.PractitionerFhirClient
 	PractitionerRoleFhirClient practitionerRoles.PractitionerRoleFhirClient
 	MailerService              mailer.MailerService
@@ -42,7 +42,7 @@ func NewAuthUsecase(
 	redisRepository redis.RedisRepository,
 	sessionService session.SessionService,
 	rolesRepository roles.RoleRepository,
-	patientFhirClient patients.PatientFhirClient,
+	patientFhirClient patientsFhir.PatientFhirClient,
 	practitionerFhirClient practitioners.PractitionerFhirClient,
 	practitionerRoleFhirClient practitionerRoles.PractitionerRoleFhirClient,
 	mailerService mailer.MailerService,

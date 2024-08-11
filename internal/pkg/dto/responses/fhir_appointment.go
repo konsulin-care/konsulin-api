@@ -1,8 +1,8 @@
-package requests
+package responses
 
 import "time"
 
-type AppointmentFhir struct {
+type Appointment struct {
 	ResourceType       string                   `json:"resourceType"`
 	ID                 string                   `json:"id,omitempty"`
 	Meta               Meta                     `json:"meta,omitempty"`

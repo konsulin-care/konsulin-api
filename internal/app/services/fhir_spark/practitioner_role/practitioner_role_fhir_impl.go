@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
 	"net/http"
@@ -142,26 +143,29 @@ func (c *practitionerRoleFhirClient) FindPractitionerRoleByPractitionerID(ctx co
 		}
 	}
 
-	var result responses.FHIRBundle
+	var result struct {
+		Total        int    `json:"total"`
+		ResourceType string `json:"resourceType"`
+		Entry        []struct {
+			FullUrl  string                     `json:"fullUrl"`
+			Resource responses.PractitionerRole `json:"resource"`
+		} `json:"entry"`
+	}
+
 	err = json.NewDecoder(resp.Body).Decode(&result)
 	if err != nil {
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePractitionerRole)
 	}
 
 	practitionerRoles := make([]responses.PractitionerRole, len(result.Entry))
-	for _, entry := range result.Entry {
-		var practitionerRole responses.PractitionerRole
-		err := json.Unmarshal(entry.Resource, &practitionerRole)
-		if err != nil {
-			return nil, exceptions.ErrCannotParseJSON(err)
-		}
-		practitionerRoles = append(practitionerRoles, practitionerRole)
+	for i, entry := range result.Entry {
+		practitionerRoles[i] = entry.Resource
 	}
 
 	return practitionerRoles, nil
 }
 
-func (c *practitionerRoleFhirClient) FindPractitionerRoleByPractitionerIDAndOrganizationID(ctx context.Context, practitionerID, organizationID string) (*responses.PractitionerRole, error) {
+func (c *practitionerRoleFhirClient) FindPractitionerRoleByPractitionerIDAndOrganizationID(ctx context.Context, practitionerID, organizationID string) ([]responses.PractitionerRole, error) {
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, fmt.Sprintf("%s?practitioner=Practitioner/%s&organization=Organization/%s", c.BaseUrl, practitionerID, organizationID), nil)
 	if err != nil {
 		return nil, exceptions.ErrCreateHTTPRequest(err)
@@ -211,17 +215,12 @@ func (c *practitionerRoleFhirClient) FindPractitionerRoleByPractitionerIDAndOrga
 		return nil, exceptions.ErrGetFHIRResource(fhirError, constvars.ResourcePractitionerRole)
 	}
 
-	if len(result.Entry) > 1 {
-		fhirError := fmt.Errorf("duplicate result for practitionerID: %s organizationID: %s", practitionerID, organizationID)
-		return nil, exceptions.ErrGetFHIRResourceDuplicate(fhirError, constvars.ResourcePractitionerRole)
-	}
-
 	practitionerRoles := make([]responses.PractitionerRole, len(result.Entry))
 	for i, entry := range result.Entry {
 		practitionerRoles[i] = entry.Resource
 	}
 
-	return &practitionerRoles[0], nil
+	return practitionerRoles, nil
 }
 
 func (c *practitionerRoleFhirClient) CreatePractitionerRoles(ctx context.Context, request interface{}) error {
@@ -262,4 +261,52 @@ func (c *practitionerRoleFhirClient) CreatePractitionerRoles(ctx context.Context
 	}
 
 	return nil
+}
+
+func (c *practitionerRoleFhirClient) CreatePractitionerRole(ctx context.Context, request *requests.PractitionerRole) (*responses.PractitionerRole, error) {
+	requestJSON, err := json.Marshal(request)
+	if err != nil {
+		return nil, exceptions.ErrCannotMarshalJSON(err)
+	}
+
+	fmt.Println(c.BaseUrl)
+
+	req, err := http.NewRequestWithContext(ctx, constvars.MethodPost, c.BaseUrl, bytes.NewBuffer(requestJSON))
+	if err != nil {
+		return nil, exceptions.ErrCreateHTTPRequest(err)
+	}
+	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, exceptions.ErrSendHTTPRequest(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != constvars.StatusCreated {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, exceptions.ErrCreateFHIRResource(err, constvars.ResourcePractitionerRole)
+		}
+
+		var outcome responses.OperationOutcome
+		err = json.Unmarshal(bodyBytes, &outcome)
+		if err != nil {
+			return nil, exceptions.ErrCreateFHIRResource(err, constvars.ResourcePractitionerRole)
+		}
+
+		if len(outcome.Issue) > 0 {
+			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			return nil, exceptions.ErrCreateFHIRResource(fhirErrorIssue, constvars.ResourcePractitionerRole)
+		}
+	}
+
+	practitionerRoleFhir := new(responses.PractitionerRole)
+	err = json.NewDecoder(resp.Body).Decode(&practitionerRoleFhir)
+	if err != nil {
+		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePractitionerRole)
+	}
+
+	return practitionerRoleFhir, nil
 }

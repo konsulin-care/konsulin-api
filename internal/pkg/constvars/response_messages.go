@@ -21,6 +21,9 @@ const (
 	CreateClinicianClinicsSuccessMessage = "clinics successfully created for clinician"
 	DeleteClinicianClinicSuccessMessage  = "clinic successfully deleted for clinician"
 
+	// Patient-related messages
+	CreatePatientAppointmentSuccessMessage = "appoinment successfully created for patient"
+
 	// Auth messages
 	LoginSuccessMessage          = "successfully login"
 	LogoutSuccessMessage         = "successfully logout"

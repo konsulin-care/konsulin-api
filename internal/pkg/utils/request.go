@@ -211,3 +211,15 @@ func BuildFhirPractitionerReactivateRequest(practitionerID string) *requests.Pra
 		Active:       true,
 	}
 }
+
+func ConvertToModelAvailableTimes(availableTimes []requests.AvailableTimeRequest) []requests.AvailableTime {
+	var result []requests.AvailableTime
+	for _, at := range availableTimes {
+		result = append(result, requests.AvailableTime{
+			DaysOfWeek:         at.DaysOfWeek,
+			AvailableStartTime: at.AvailableStartTime,
+			AvailableEndTime:   at.AvailableEndTime,
+		})
+	}
+	return result
+}
