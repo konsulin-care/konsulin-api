@@ -23,7 +23,7 @@ func NewPatientFhirClient(patientFhirBaseUrl string) PatientFhirClient {
 	}
 }
 
-func (c *patientFhirClient) CreatePatient(ctx context.Context, request *requests.PatientFhir) (*responses.Patient, error) {
+func (c *patientFhirClient) CreatePatient(ctx context.Context, request *requests.Patient) (*responses.Patient, error) {
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
 		return nil, exceptions.ErrCannotMarshalJSON(err)
@@ -110,7 +110,7 @@ func (c *patientFhirClient) FindPatientByID(ctx context.Context, patientID strin
 	return patientFhir, nil
 }
 
-func (c *patientFhirClient) UpdatePatient(ctx context.Context, request *requests.PatientFhir) (*responses.Patient, error) {
+func (c *patientFhirClient) UpdatePatient(ctx context.Context, request *requests.Patient) (*responses.Patient, error) {
 	// Convert FHIR Patient to JSON
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
@@ -158,7 +158,7 @@ func (c *patientFhirClient) UpdatePatient(ctx context.Context, request *requests
 	return patientFhir, nil
 }
 
-func (c *patientFhirClient) PatchPatient(ctx context.Context, request *requests.PatientFhir) (*responses.Patient, error) {
+func (c *patientFhirClient) PatchPatient(ctx context.Context, request *requests.Patient) (*responses.Patient, error) {
 	// Convert FHIR Patient to JSON
 	requestJSON, err := json.Marshal(request)
 	if err != nil {

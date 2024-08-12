@@ -111,30 +111,12 @@ func (uc *userUsecase) UpdateUserProfileBySession(ctx context.Context, sessionDa
 		return nil, err
 	}
 
-	// Create session data with updated user, existing role, and session details
-	sessionModel := models.Session{
-		UserID:    existingUser.ID,
-		PatientID: existingUser.PatientID,
-		Email:     existingUser.Email,
-		Username:  existingUser.Username,
-		RoleID:    session.RoleID,
-		RoleName:  session.RoleName,
-		SessionID: session.SessionID,
-	}
-
-	// Store the session data in Redis with a 1-hour expiration
-	err = uc.RedisRepository.Set(ctx, session.SessionID, sessionModel, time.Hour)
-	if err != nil {
-		// Return error if there is an issue storing the session data
-		return nil, err
-	}
-
 	// Handle update user profile based on role
 	switch session.RoleName {
 	case constvars.RoleTypePractitioner:
-		return uc.updatePractitionerFhirProfile(ctx, session, request)
+		return uc.updatePractitionerFhirProfile(ctx, existingUser, session, request)
 	case constvars.RoleTypePatient:
-		return uc.updatePatientFhirProfile(ctx, session, request)
+		return uc.updatePatientFhirProfile(ctx, existingUser, session, request)
 	default:
 		return nil, exceptions.ErrInvalidRoleType(nil)
 	}
@@ -230,7 +212,25 @@ func (uc *userUsecase) deactivatePatientFhirData(ctx context.Context, user *mode
 	return nil
 }
 
-func (uc *userUsecase) updatePatientFhirProfile(ctx context.Context, session *models.Session, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error) {
+func (uc *userUsecase) updatePatientFhirProfile(ctx context.Context, user *models.User, session *models.Session, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error) {
+	// Create session data with updated user, existing role, and session details
+	sessionModel := models.Session{
+		UserID:    user.ID,
+		PatientID: user.PatientID,
+		Email:     user.Email,
+		Username:  user.Username,
+		RoleID:    session.RoleID,
+		RoleName:  session.RoleName,
+		SessionID: session.SessionID,
+	}
+
+	// Store the session data in Redis with a 1-hour expiration
+	err := uc.RedisRepository.Set(ctx, session.SessionID, sessionModel, time.Hour)
+	if err != nil {
+		// Return error if there is an issue storing the session data
+		return nil, err
+	}
+
 	// Build the 'UpdateProfile' request into 'patientFhirRequest'
 	patientFhirRequest := utils.BuildFhirPatientUpdateProfileRequest(request, session.PatientID)
 
@@ -249,7 +249,25 @@ func (uc *userUsecase) updatePatientFhirProfile(ctx context.Context, session *mo
 	return response, nil
 }
 
-func (uc *userUsecase) updatePractitionerFhirProfile(ctx context.Context, session *models.Session, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error) {
+func (uc *userUsecase) updatePractitionerFhirProfile(ctx context.Context, user *models.User, session *models.Session, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error) {
+	// Create session data with updated user, existing role, and session details
+	sessionModel := models.Session{
+		UserID:         user.ID,
+		PractitionerID: user.PractitionerID,
+		Email:          user.Email,
+		Username:       user.Username,
+		RoleID:         session.RoleID,
+		RoleName:       session.RoleName,
+		SessionID:      session.SessionID,
+	}
+
+	// Store the session data in Redis with a 1-hour expiration
+	err := uc.RedisRepository.Set(ctx, session.SessionID, sessionModel, time.Hour)
+	if err != nil {
+		// Return error if there is an issue storing the session data
+		return nil, err
+	}
+
 	// Build the 'UpdateProfile' request into 'practitionerFhirRequest'
 	practitionerFhirRequest := utils.BuildFhirPractitionerUpdateProfileRequest(request, session.PractitionerID)
 

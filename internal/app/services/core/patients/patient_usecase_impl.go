@@ -65,7 +65,7 @@ func (uc *patientUsecase) CreateAppointment(ctx context.Context, sessionData str
 		startTime := appointmentStartTime.Add(time.Duration(i) * 30 * time.Minute)
 		endTime := startTime.Add(30 * time.Minute)
 
-		slotFhirRequest := &requests.SlotFhir{
+		slotFhirRequest := &requests.Slot{
 			ResourceType: constvars.ResourceSlot,
 			Schedule: requests.Reference{
 				Reference: fmt.Sprintf("Schedule/%s", request.ScheduleID),
@@ -90,7 +90,7 @@ func (uc *patientUsecase) CreateAppointment(ctx context.Context, sessionData str
 		}
 	}
 
-	appointmentFhirRequest := &requests.AppointmentFhir{
+	appointmentFhirRequest := &requests.Appointment{
 		ResourceType: constvars.ResourceAppointment,
 		Status:       constvars.FhirAppointmentStatusBooked,
 		Start:        appointmentStartTime,

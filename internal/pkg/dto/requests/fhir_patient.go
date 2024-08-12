@@ -1,6 +1,6 @@
 package requests
 
-type PatientFhir struct {
+type Patient struct {
 	ID           string         `json:"id"`
 	ResourceType string         `json:"resourceType"`
 	Active       bool           `json:"active"`

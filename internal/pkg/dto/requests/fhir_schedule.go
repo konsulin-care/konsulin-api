@@ -1,6 +1,6 @@
 package requests
 
-type ScheduleFhir struct {
+type Schedule struct {
 	ResourceType    string            `json:"resourceType"`
 	ID              string            `json:"id,omitempty"`
 	Meta            Meta              `json:"meta,omitempty"`

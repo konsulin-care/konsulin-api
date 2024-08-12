@@ -213,7 +213,7 @@ func (uc *clinicianUsecase) CreateClinicsAvailability(ctx context.Context, sessi
 			return err
 		}
 
-		scheduleFhirRequest := &requests.ScheduleFhir{
+		scheduleFhirRequest := &requests.Schedule{
 			ResourceType: constvars.ResourceSchedule,
 			Actor: []requests.Reference{
 				{

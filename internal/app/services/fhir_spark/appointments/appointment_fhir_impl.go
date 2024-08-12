@@ -23,7 +23,7 @@ func NewAppointmentFhirClient(appointmentFhirBaseUrl string) AppointmentFhirClie
 	}
 }
 
-func (c *appointmentFhirClient) CreateAppointment(ctx context.Context, request *requests.AppointmentFhir) (*responses.Appointment, error) {
+func (c *appointmentFhirClient) CreateAppointment(ctx context.Context, request *requests.Appointment) (*responses.Appointment, error) {
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
 		return nil, exceptions.ErrCannotMarshalJSON(err)

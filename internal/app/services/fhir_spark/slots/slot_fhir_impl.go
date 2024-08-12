@@ -129,7 +129,7 @@ func (c *slotFhirClient) FindSlotByScheduleIDAndStatus(ctx context.Context, sche
 	return slotsFhir, nil
 }
 
-func (c *slotFhirClient) CreateSlot(ctx context.Context, request *requests.SlotFhir) (*responses.Slot, error) {
+func (c *slotFhirClient) CreateSlot(ctx context.Context, request *requests.Slot) (*responses.Slot, error) {
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
 		return nil, exceptions.ErrCannotMarshalJSON(err)

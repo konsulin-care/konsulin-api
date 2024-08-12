@@ -13,5 +13,5 @@ type SlotRepository interface{}
 type SlotFhirClient interface {
 	FindSlotByScheduleID(ctx context.Context, scheduleID string) ([]responses.Slot, error)
 	FindSlotByScheduleIDAndStatus(ctx context.Context, scheduleID, status string) ([]responses.Slot, error)
-	CreateSlot(ctx context.Context, request *requests.SlotFhir) (*responses.Slot, error)
+	CreateSlot(ctx context.Context, request *requests.Slot) (*responses.Slot, error)
 }
