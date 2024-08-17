@@ -82,12 +82,12 @@ func (uc *userUsecase) UpdateUserProfileBySession(ctx context.Context, sessionDa
 		if existingUser != nil {
 			return nil, exceptions.ErrEmailAlreadyExist(nil)
 		}
+	}
 
-		if request.ProfilePicture != "" {
-			request.ProfilePictureMinioUrl, err = uc.uploadProfilePicture(ctx, session.Username, request)
-			if err != nil {
-				return nil, err
-			}
+	if request.ProfilePicture != "" {
+		request.ProfilePictureMinioUrl, err = uc.uploadProfilePicture(ctx, session.Username, request)
+		if err != nil {
+			return nil, err
 		}
 	}
 

@@ -3,6 +3,7 @@ package clinicians
 import (
 	"context"
 	"konsulin-service/internal/pkg/dto/requests"
+	"konsulin-service/internal/pkg/dto/responses"
 )
 
 type ClinicianUsecase interface {
@@ -11,6 +12,7 @@ type ClinicianUsecase interface {
 	CreateClinics(ctx context.Context, sessionData string, request *requests.ClinicianCreateClinics) error
 	CreateClinicsAvailability(ctx context.Context, sessionData string, request *requests.CreateClinicsAvailability) error
 	DeleteClinicByID(ctx context.Context, sessionData string, clinicID string) error
+	FindClinicsByClinicianID(ctx context.Context, clinicianID string) ([]responses.ClinicianClinic, error)
 }
 
 type ClinicianRepository interface{}

@@ -62,7 +62,7 @@ driver_config:
     password: va12mFaswaCOzM90Ed7K
 
   minio:
-    port: "9001"
+    port: "9000"
     host: 172.26.30.112
     username: minioUserKonsln
     password: QbSZRmX9rWebFehKFioA

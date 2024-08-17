@@ -54,6 +54,25 @@ func (ctrl *ClinicianController) CreateClinics(w http.ResponseWriter, r *http.Re
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.CreateClinicianClinicsSuccessMessage, nil)
 }
 
+func (ctrl *ClinicianController) FindClinicsByClinicianID(w http.ResponseWriter, r *http.Request) {
+	clinicianID := chi.URLParam(r, constvars.URLParamClinicianID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	result, err := ctrl.ClinicianUsecase.FindClinicsByClinicianID(ctx, clinicianID)
+	if err != nil {
+		if err == context.DeadlineExceeded {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.GetClinicsSuccessfully, result)
+}
+
 func (ctrl *ClinicianController) CreateClinicsAvailability(w http.ResponseWriter, r *http.Request) {
 	// Bind body to request
 	request := new(requests.CreateClinicsAvailability)

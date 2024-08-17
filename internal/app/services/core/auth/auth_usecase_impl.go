@@ -133,6 +133,7 @@ func (uc *authUsecase) RegisterClinician(ctx context.Context, request *requests.
 
 	return response, nil
 }
+
 func (uc *authUsecase) RegisterPatient(ctx context.Context, request *requests.RegisterUser) (*responses.RegisterUser, error) {
 	// Check if passwords match
 	if request.Password != request.RetypePassword {
@@ -196,6 +197,7 @@ func (uc *authUsecase) RegisterPatient(ctx context.Context, request *requests.Re
 
 	return response, nil
 }
+
 func (uc *authUsecase) LoginPatient(ctx context.Context, request *requests.LoginUser) (*responses.LoginUser, error) {
 	// Retrieve the user by username from the user repository
 	user, err := uc.UserRepository.FindByUsername(ctx, request.Username)

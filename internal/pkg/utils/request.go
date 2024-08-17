@@ -174,6 +174,7 @@ func BuildPractitionerRolesBundleRequestByPractitionerID(practitionerID string, 
 			ResourceType: constvars.ResourcePractitionerRole,
 			Practitioner: practitionerReference,
 			Organization: organizationReference,
+			Active:       true,
 		}
 	}
 

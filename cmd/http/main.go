@@ -208,7 +208,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	clinicController := clinics.NewClinicController(bootstrap.Logger, clinicUsecase)
 
 	// Initialize Clinic dependencies
-	clinicianUsecase := clinicians.NewClinicianUsecase(practitionerFhirClient, practitionerRoleFhirClient, scheduleFhirClient, slotFhirClient, appointmentFhirClient, sessionService)
+	clinicianUsecase := clinicians.NewClinicianUsecase(practitionerFhirClient, practitionerRoleFhirClient, organizationFhirClient, scheduleFhirClient, slotFhirClient, appointmentFhirClient, sessionService)
 	clinicianController := clinicians.NewClinicianController(bootstrap.Logger, clinicianUsecase)
 
 	// Initialize Clinic dependencies
