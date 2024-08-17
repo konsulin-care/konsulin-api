@@ -23,7 +23,7 @@ func NewScheduleFhirClient(scheduleFhirBaseUrl string) ScheduleFhirClient {
 	}
 }
 
-func (c *scheduleFhirClient) CreateSchedule(ctx context.Context, request *requests.ScheduleFhir) (*responses.Schedule, error) {
+func (c *scheduleFhirClient) CreateSchedule(ctx context.Context, request *requests.Schedule) (*responses.Schedule, error) {
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
 		return nil, exceptions.ErrCannotMarshalJSON(err)

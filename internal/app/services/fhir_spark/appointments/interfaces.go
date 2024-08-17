@@ -11,5 +11,5 @@ type AppointmentUsecase interface{}
 type AppointmentRepository interface{}
 
 type AppointmentFhirClient interface {
-	CreateAppointment(ctx context.Context, request *requests.AppointmentFhir) (*responses.Appointment, error)
+	CreateAppointment(ctx context.Context, request *requests.Appointment) (*responses.Appointment, error)
 }

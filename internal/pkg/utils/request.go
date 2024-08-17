@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"net/http"
@@ -28,8 +29,8 @@ func BuildPaginationRequest(r *http.Request) *requests.Pagination {
 	}
 }
 
-func BuildFhirPatientRegistrationRequest(username, email string) *requests.PatientFhir {
-	return &requests.PatientFhir{
+func BuildFhirPatientRegistrationRequest(username, email string) *requests.Patient {
+	return &requests.Patient{
 		ResourceType: constvars.ResourcePatient,
 		Telecom: []requests.ContactPoint{
 			{
@@ -41,7 +42,7 @@ func BuildFhirPatientRegistrationRequest(username, email string) *requests.Patie
 	}
 }
 
-func BuildFhirPatientUpdateProfileRequest(request *requests.UpdateProfile, patientID string) *requests.PatientFhir {
+func BuildFhirPatientUpdateProfileRequest(request *requests.UpdateProfile, patientID string) *requests.Patient {
 	var extensions []requests.Extension
 	for _, education := range request.Educations {
 		extensions = append(extensions, requests.Extension{
@@ -50,7 +51,7 @@ func BuildFhirPatientUpdateProfileRequest(request *requests.UpdateProfile, patie
 		})
 	}
 
-	return &requests.PatientFhir{
+	return &requests.Patient{
 		ResourceType: constvars.ResourcePatient,
 		ID:           patientID,
 		Active:       true,
@@ -85,8 +86,8 @@ func BuildFhirPatientUpdateProfileRequest(request *requests.UpdateProfile, patie
 	}
 }
 
-func BuildFhirPractitionerRegistrationRequest(username, email string) *requests.PractitionerFhir {
-	return &requests.PractitionerFhir{
+func BuildFhirPractitionerRegistrationRequest(username, email string) *requests.Practitioner {
+	return &requests.Practitioner{
 		ResourceType: constvars.ResourcePractitioner,
 		Telecom: []requests.ContactPoint{
 			{
@@ -98,7 +99,7 @@ func BuildFhirPractitionerRegistrationRequest(username, email string) *requests.
 	}
 }
 
-func BuildFhirPractitionerUpdateProfileRequest(request *requests.UpdateProfile, practitionerID string) *requests.PractitionerFhir {
+func BuildFhirPractitionerUpdateProfileRequest(request *requests.UpdateProfile, practitionerID string) *requests.Practitioner {
 	var extensions []requests.Extension
 	for _, education := range request.Educations {
 		extensions = append(extensions, requests.Extension{
@@ -107,7 +108,7 @@ func BuildFhirPractitionerUpdateProfileRequest(request *requests.UpdateProfile, 
 		})
 	}
 
-	return &requests.PractitionerFhir{
+	return &requests.Practitioner{
 		ResourceType: constvars.ResourcePractitioner,
 		ID:           practitionerID,
 		Active:       true,
@@ -142,16 +143,16 @@ func BuildFhirPractitionerUpdateProfileRequest(request *requests.UpdateProfile, 
 	}
 }
 
-func BuildFhirPractitionerDeactivateRequest(practitionerID string) *requests.PractitionerFhir {
-	return &requests.PractitionerFhir{
+func BuildFhirPractitionerDeactivateRequest(practitionerID string) *requests.Practitioner {
+	return &requests.Practitioner{
 		ResourceType: constvars.ResourcePractitioner,
 		ID:           practitionerID,
 		Active:       false,
 	}
 }
 
-func BuildFhirPatientDeactivateRequest(patientID string) *requests.PatientFhir {
-	return &requests.PatientFhir{
+func BuildFhirPatientDeactivateRequest(patientID string) *requests.Patient {
+	return &requests.Patient{
 		ResourceType: constvars.ResourcePatient,
 		ID:           patientID,
 		Active:       false,
@@ -163,16 +164,17 @@ func BuildPractitionerRolesBundleRequestByPractitionerID(practitionerID string, 
 
 	for i, orgID := range organizationIDs {
 		practitionerReference := requests.Reference{
-			Reference: "Practitioner/" + practitionerID,
+			Reference: fmt.Sprintf("%s/%s", constvars.ResourcePractitioner, practitionerID),
 		}
 		organizationReference := requests.Reference{
-			Reference: "Organization/" + orgID,
+			Reference: fmt.Sprintf("%s/%s", constvars.ResourceOrganization, orgID),
 		}
 
 		practitionerRoles[i] = requests.PractitionerRole{
-			ResourceType: "PractitionerRole",
+			ResourceType: constvars.ResourcePractitionerRole,
 			Practitioner: practitionerReference,
 			Organization: organizationReference,
+			Active:       true,
 		}
 	}
 
@@ -196,16 +198,16 @@ func BuildPractitionerRolesBundleRequestByPractitionerID(practitionerID string, 
 	return bundle
 }
 
-func BuildFhirPatientReactivateRequest(patientID string) *requests.PatientFhir {
-	return &requests.PatientFhir{
+func BuildFhirPatientReactivateRequest(patientID string) *requests.Patient {
+	return &requests.Patient{
 		ResourceType: constvars.ResourcePatient,
 		ID:           patientID,
 		Active:       true,
 	}
 }
 
-func BuildFhirPractitionerReactivateRequest(practitionerID string) *requests.PractitionerFhir {
-	return &requests.PractitionerFhir{
+func BuildFhirPractitionerReactivateRequest(practitionerID string) *requests.Practitioner {
+	return &requests.Practitioner{
 		ResourceType: constvars.ResourcePractitioner,
 		ID:           practitionerID,
 		Active:       true,

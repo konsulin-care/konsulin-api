@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"konsulin-service/internal/app/services/core/session"
 	"konsulin-service/internal/app/services/fhir_spark/appointments"
+	"konsulin-service/internal/app/services/fhir_spark/organizations"
 	practitionerRoles "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
 	"konsulin-service/internal/app/services/fhir_spark/schedules"
@@ -15,12 +16,14 @@ import (
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
+	"strings"
 	"time"
 )
 
 type clinicianUsecase struct {
 	PractitionerFhirClient     practitioners.PractitionerFhirClient
 	PractitionerRoleFhirClient practitionerRoles.PractitionerRoleFhirClient
+	OrganizationFhirClient     organizations.OrganizationFhirClient
 	ScheduleFhirClient         schedules.ScheduleFhirClient
 	SlotFhirClient             slots.SlotFhirClient
 	AppointmentFhirClient      appointments.AppointmentFhirClient
@@ -30,6 +33,7 @@ type clinicianUsecase struct {
 func NewClinicianUsecase(
 	practitionerFhirClient practitioners.PractitionerFhirClient,
 	practitionerRoleFhirClient practitionerRoles.PractitionerRoleFhirClient,
+	organizationFhirClient organizations.OrganizationFhirClient,
 	scheduleFhirClient schedules.ScheduleFhirClient,
 	slotFhirClient slots.SlotFhirClient,
 	appointmentFhirClient appointments.AppointmentFhirClient,
@@ -38,6 +42,7 @@ func NewClinicianUsecase(
 	return &clinicianUsecase{
 		PractitionerFhirClient:     practitionerFhirClient,
 		PractitionerRoleFhirClient: practitionerRoleFhirClient,
+		OrganizationFhirClient:     organizationFhirClient,
 		ScheduleFhirClient:         scheduleFhirClient,
 		SlotFhirClient:             slotFhirClient,
 		AppointmentFhirClient:      appointmentFhirClient,
@@ -187,12 +192,13 @@ func (uc *clinicianUsecase) CreateClinicsAvailability(ctx context.Context, sessi
 			if err != nil {
 				return err
 			}
-			hasConflict, err := uc.checkForTimeConflicts(practitionerRoles, availableTime)
+			hasConflict, err := uc.checkForTimeConflicts(ctx, practitionerRoles, availableTime)
 			if err != nil {
-				return fmt.Errorf("error checking time conflicts: %w", err)
+				return err
 			}
 			if hasConflict {
-				return fmt.Errorf("conflict detected for organization %s with available time %v", clinicID, availableTime)
+				customErr := fmt.Errorf("conflict detected for organization `%s` with available time %v", clinicID, availableTime)
+				return exceptions.ErrClientCustomMessage(customErr)
 			}
 		}
 
@@ -213,17 +219,17 @@ func (uc *clinicianUsecase) CreateClinicsAvailability(ctx context.Context, sessi
 			return err
 		}
 
-		scheduleFhirRequest := &requests.ScheduleFhir{
+		scheduleFhirRequest := &requests.Schedule{
 			ResourceType: constvars.ResourceSchedule,
 			Actor: []requests.Reference{
 				{
-					Reference: fmt.Sprintf("PractitionerRole/%s", practitionerRole.ID),
+					Reference: fmt.Sprintf("%s/%s", constvars.ResourcePractitionerRole, practitionerRole.ID),
 				},
 				{
-					Reference: fmt.Sprintf("Practitioner/%s", session.PractitionerID),
+					Reference: fmt.Sprintf("%s/%s", constvars.ResourcePractitioner, session.PractitionerID),
 				},
 			},
-			Comment: fmt.Sprintf("Schedule for Practitioner (%s) PractitionerRole (%s) ", session.PractitionerID, practitionerRole.ID),
+			Comment: fmt.Sprintf("%s for %s (%s) %s (%s) ", constvars.ResourceSchedule, constvars.ResourcePractitioner, session.PractitionerID, constvars.ResourcePractitionerRole, practitionerRole.ID),
 		}
 
 		_, err = uc.ScheduleFhirClient.CreateSchedule(ctx, scheduleFhirRequest)
@@ -236,7 +242,38 @@ func (uc *clinicianUsecase) CreateClinicsAvailability(ctx context.Context, sessi
 	return nil
 }
 
-func (u *clinicianUsecase) checkForTimeConflicts(existingRoles []responses.PractitionerRole, availableTime requests.AvailableTimeRequest) (bool, error) {
+func (uc *clinicianUsecase) FindClinicsByClinicianID(ctx context.Context, clinicianID string) ([]responses.ClinicianClinic, error) {
+	practitionerRoles, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerID(ctx, clinicianID)
+	if err != nil {
+		return nil, err
+	}
+
+	return uc.findAndBuildClinicianCinicsResponseByPractitionerRoles(ctx, practitionerRoles)
+}
+
+func (uc *clinicianUsecase) findAndBuildClinicianCinicsResponseByPractitionerRoles(ctx context.Context, practitionerRoles []responses.PractitionerRole) ([]responses.ClinicianClinic, error) {
+	response := make([]responses.ClinicianClinic, 0, len(practitionerRoles))
+
+	for _, practitionerRole := range practitionerRoles {
+		parts := strings.Split(practitionerRole.Organization.Reference, "/")
+		if len(parts) == 2 && parts[0] == "Organization" {
+			organization, err := uc.OrganizationFhirClient.FindOrganizationByID(ctx, parts[1])
+			if err != nil {
+				return nil, err
+			}
+
+			response = append(response, responses.ClinicianClinic{
+				ClinicID:   organization.ID,
+				ClinicName: organization.Name,
+			})
+		}
+	}
+
+	return response, nil
+}
+
+func (uc *clinicianUsecase) checkForTimeConflicts(ctx context.Context, existingRoles []responses.PractitionerRole, availableTime requests.AvailableTimeRequest) (bool, error) {
+	fmt.Println(existingRoles, availableTime)
 	for _, role := range existingRoles {
 		for _, existingTime := range role.AvailableTime {
 			for _, day := range availableTime.DaysOfWeek {

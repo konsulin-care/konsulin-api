@@ -11,7 +11,7 @@ type ScheduleUsecase interface{}
 type ScheduleRepository interface{}
 
 type ScheduleFhirClient interface {
-	CreateSchedule(ctx context.Context, request *requests.ScheduleFhir) (*responses.Schedule, error)
+	CreateSchedule(ctx context.Context, request *requests.Schedule) (*responses.Schedule, error)
 	FindScheduleByPractitionerID(ctx context.Context, practitionerID string) ([]responses.Schedule, error)
 	FindScheduleByPractitionerRoleID(ctx context.Context, practitionerRoleID string) ([]responses.Schedule, error)
 }

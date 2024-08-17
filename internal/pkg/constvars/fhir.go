@@ -1,5 +1,7 @@
 package constvars
 
+type ResourceType string
+
 const (
 	ResourcePatient            = "Patient"
 	ResourceClinician          = "Clinician"

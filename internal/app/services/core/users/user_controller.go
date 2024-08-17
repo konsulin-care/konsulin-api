@@ -95,7 +95,7 @@ func (ctrl *UserController) UpdateUserBySession(w http.ResponseWriter, r *http.R
 	sessionData := r.Context().Value("sessionData").(string)
 
 	// Create a new context with a timeout of 20 seconds for the update operation
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	defer cancel()
 
 	// Call the usecase to update the user profile based on the session data and request

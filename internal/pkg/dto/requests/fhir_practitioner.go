@@ -1,6 +1,6 @@
 package requests
 
-type PractitionerFhir struct {
+type Practitioner struct {
 	ResourceType string         `json:"resourceType"`
 	ID           string         `json:"id,omitempty"`
 	Active       bool           `json:"active,omitempty"`

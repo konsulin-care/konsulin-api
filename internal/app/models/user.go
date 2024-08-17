@@ -83,7 +83,7 @@ func (u *User) IsDeactivated() bool {
 	return u.DeletedAt != nil
 }
 
-func (u *User) ConvertToPatientFhirDeactivationRequest() *requests.PatientFhir {
+func (u *User) ConvertToPatientFhirDeactivationRequest() *requests.Patient {
 	var extensions []requests.Extension
 	for _, education := range u.Educations {
 		extensions = append(extensions, requests.Extension{
@@ -92,7 +92,7 @@ func (u *User) ConvertToPatientFhirDeactivationRequest() *requests.PatientFhir {
 		})
 	}
 
-	return &requests.PatientFhir{
+	return &requests.Patient{
 		ResourceType: constvars.ResourcePatient,
 		ID:           u.PatientID,
 		Active:       false,
@@ -127,7 +127,7 @@ func (u *User) ConvertToPatientFhirDeactivationRequest() *requests.PatientFhir {
 	}
 }
 
-func (u *User) ConvertToPractitionerFhirDeactivationRequest() *requests.PractitionerFhir {
+func (u *User) ConvertToPractitionerFhirDeactivationRequest() *requests.Practitioner {
 	var extensions []requests.Extension
 	for _, education := range u.Educations {
 		extensions = append(extensions, requests.Extension{
@@ -136,7 +136,7 @@ func (u *User) ConvertToPractitionerFhirDeactivationRequest() *requests.Practiti
 		})
 	}
 
-	return &requests.PractitionerFhir{
+	return &requests.Practitioner{
 		ResourceType: constvars.ResourcePatient,
 		ID:           u.PractitionerID,
 		Active:       false,

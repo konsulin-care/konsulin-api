@@ -8,7 +8,10 @@ type ClinicianSummary struct {
 	Specialties         []string            `json:"specialties,omitempty"`
 	ScheduleID          string              `json:"schedule_id,omitempty"`
 	PractitionerRoleID  string              `json:"practitioner_role_id,omitempty"`
-	// Availability        []AvailableTime     `json:"availability,omitempty"`
+}
+type ClinicianClinic struct {
+	ClinicID   string `json:"clinic_id,omitempty"`
+	ClinicName string `json:"clinic_name,omitempty"`
 }
 
 type PracticeInformation struct {

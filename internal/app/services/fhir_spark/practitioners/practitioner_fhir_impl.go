@@ -23,7 +23,7 @@ func NewPractitionerFhirClient(PractitionerFhirBaseUrl string) PractitionerFhirC
 	}
 }
 
-func (c *practitionerFhirClient) CreatePractitioner(ctx context.Context, request *requests.PractitionerFhir) (*responses.Practitioner, error) {
+func (c *practitionerFhirClient) CreatePractitioner(ctx context.Context, request *requests.Practitioner) (*responses.Practitioner, error) {
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
 		return nil, exceptions.ErrCannotMarshalJSON(err)
@@ -110,7 +110,7 @@ func (c *practitionerFhirClient) FindPractitionerByID(ctx context.Context, Pract
 	return practitionerFhir, nil
 }
 
-func (c *practitionerFhirClient) UpdatePractitioner(ctx context.Context, request *requests.PractitionerFhir) (*responses.Practitioner, error) {
+func (c *practitionerFhirClient) UpdatePractitioner(ctx context.Context, request *requests.Practitioner) (*responses.Practitioner, error) {
 	// Convert FHIR Practitioner to JSON
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
@@ -158,7 +158,7 @@ func (c *practitionerFhirClient) UpdatePractitioner(ctx context.Context, request
 	return practitionerFhir, nil
 }
 
-func (c *practitionerFhirClient) PatchPractitioner(ctx context.Context, request *requests.PractitionerFhir) (*responses.Practitioner, error) {
+func (c *practitionerFhirClient) PatchPractitioner(ctx context.Context, request *requests.Practitioner) (*responses.Practitioner, error) {
 	// Convert FHIR Practitioner to JSON
 	requestJSON, err := json.Marshal(request)
 	if err != nil {

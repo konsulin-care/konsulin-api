@@ -32,7 +32,7 @@ func BuildPractitionerProfileResponse(practitionerFhir *responses.Practitioner) 
 	email, whatsAppNumber := GetEmailAndWhatsapp(practitionerFhir.Telecom)
 	age := CalculateAge(practitionerFhir.BirthDate)
 	educations := GetEducationFromExtensions(practitionerFhir.Extension)
-	formattedAddress := GetHomeAddress(practitionerFhir.Address)
+	formattedAddress := GetWorkAddress(practitionerFhir.Address)
 	formattedBirthDate := FormatBirthDate(practitionerFhir.BirthDate)
 
 	return &responses.UserProfile{
