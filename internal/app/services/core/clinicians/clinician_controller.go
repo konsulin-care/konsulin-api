@@ -26,9 +26,9 @@ func NewClinicianController(logger *zap.Logger, clinicianUsecase ClinicianUsecas
 	}
 }
 
-func (ctrl *ClinicianController) CreateClinics(w http.ResponseWriter, r *http.Request) {
+func (ctrl *ClinicianController) CreatePracticeInformation(w http.ResponseWriter, r *http.Request) {
 	// Bind body to request
-	request := new(requests.ClinicianCreateClinics)
+	request := new(requests.CreatePracticeInformation)
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
@@ -41,7 +41,7 @@ func (ctrl *ClinicianController) CreateClinics(w http.ResponseWriter, r *http.Re
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	err = ctrl.ClinicianUsecase.CreateClinics(ctx, sessionData, request)
+	response, err := ctrl.ClinicianUsecase.CreatePracticeInformation(ctx, sessionData, request)
 	if err != nil {
 		if err == context.DeadlineExceeded {
 			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
@@ -51,7 +51,7 @@ func (ctrl *ClinicianController) CreateClinics(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.CreateClinicianClinicsSuccessMessage, nil)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.CreateClinicianClinicsSuccessMessage, response)
 }
 
 func (ctrl *ClinicianController) FindClinicsByClinicianID(w http.ResponseWriter, r *http.Request) {
@@ -73,9 +73,33 @@ func (ctrl *ClinicianController) FindClinicsByClinicianID(w http.ResponseWriter,
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.GetClinicsSuccessfully, result)
 }
 
-func (ctrl *ClinicianController) CreateClinicsAvailability(w http.ResponseWriter, r *http.Request) {
+func (ctrl *ClinicianController) FindAvailability(w http.ResponseWriter, r *http.Request) {
 	// Bind body to request
-	request := new(requests.CreateClinicsAvailability)
+	request := new(requests.FindAvailability)
+
+	request.Year = r.URL.Query().Get("year")
+	request.Month = r.URL.Query().Get("month")
+	request.PractitionerRoleID = r.URL.Query().Get("practitioner_role_id")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	result, err := ctrl.ClinicianUsecase.FindAvailability(ctx, request)
+	if err != nil {
+		if err == context.DeadlineExceeded {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.GetClinicsSuccessfully, result)
+}
+
+func (ctrl *ClinicianController) CreatePracticeAvailability(w http.ResponseWriter, r *http.Request) {
+	// Bind body to request
+	request := new(requests.CreatePracticeAvailability)
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
@@ -88,7 +112,7 @@ func (ctrl *ClinicianController) CreateClinicsAvailability(w http.ResponseWriter
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	err = ctrl.ClinicianUsecase.CreateClinicsAvailability(ctx, sessionData, request)
+	response, err := ctrl.ClinicianUsecase.CreatePracticeAvailability(ctx, sessionData, request)
 	if err != nil {
 		if err == context.DeadlineExceeded {
 			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
@@ -98,7 +122,7 @@ func (ctrl *ClinicianController) CreateClinicsAvailability(w http.ResponseWriter
 		return
 	}
 
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.CreateClinicianClinicsSuccessMessage, nil)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.CreateClinicianPracticeAvailabilitySuccessMessage, response)
 }
 
 func (ctrl *ClinicianController) DeleteClinicByID(w http.ResponseWriter, r *http.Request) {

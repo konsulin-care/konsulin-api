@@ -17,6 +17,8 @@ type LoginUserData struct {
 	UserID         string   `json:"user_id"`
 	RoleID         string   `json:"role_id"`
 	RoleName       string   `json:"role_name"`
+	PatientID      string   `json:"patient_id,omitempty"`
+	PractitionerID string   `json:"practitioner_id,omitempty"`
 	ProfilePicture string   `json:"profile_picture,omitempty"`
 	ClinicIDs      []string `json:"clinic_ids,omitempty"`
 }

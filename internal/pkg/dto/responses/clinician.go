@@ -15,7 +15,27 @@ type ClinicianClinic struct {
 }
 
 type PracticeInformation struct {
+	ClinicID    string `json:"clinic_id,omitempty"`
+	ClinicName  string `json:"clinic_name,omitempty"`
 	Affiliation string `json:"affiliation,omitempty"`
 	Experience  string `json:"experience,omitempty"`
 	Fee         string `json:"fee,omitempty"`
+}
+
+type PracticeAvailability struct {
+	OrganizationID string                  `json:"organization_id"`
+	AvailableTimes []AvailableTimeResponse `json:"available_time"`
+}
+
+type MonthlyAvailabilityResponse struct {
+	Year  int               `json:"year"`
+	Month int               `json:"month"`
+	Days  []DayAvailability `json:"days"`
+}
+
+// DayAvailability represents the availability for a single day
+type DayAvailability struct {
+	Date             string   `json:"date"`
+	AvailableTimes   []string `json:"available_times"`
+	UnavailableTimes []string `json:"unavailable_times"`
 }

@@ -16,6 +16,7 @@ import (
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -148,40 +149,80 @@ func (uc *clinicianUsecase) CreateAppointment(ctx context.Context, sessionData s
 	return nil
 }
 
-func (uc *clinicianUsecase) CreateClinics(ctx context.Context, sessionData string, request *requests.ClinicianCreateClinics) error {
+func (uc *clinicianUsecase) CreatePracticeInformation(ctx context.Context, sessionData string, request *requests.CreatePracticeInformation) ([]responses.PracticeInformation, error) {
 	// Parse session data
 	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if session.IsNotPractitioner() {
-		return exceptions.ErrNotMatchRoleType(nil)
+		return nil, exceptions.ErrNotMatchRoleType(nil)
 	}
 
-	// Build the bundle PractitionerRoles resources
-	practitionerRoleBundleRequests := utils.BuildPractitionerRolesBundleRequestByPractitionerID(session.PractitionerID, request.ClinicIDs)
+	result := make([]responses.PracticeInformation, 0, len(request.PracticeInformation))
 
-	// Bulk create the PractitionerRoles for the clinician
-	err = uc.PractitionerRoleFhirClient.CreatePractitionerRoles(ctx, practitionerRoleBundleRequests)
-	if err != nil {
-		return err
+	for _, practiceInformation := range request.PracticeInformation {
+		practitionerRoles, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerIDAndOrganizationID(ctx, session.PractitionerID, practiceInformation.ClinicID)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(practitionerRoles) > 1 {
+			return nil, exceptions.ErrResultFetchedNotUniqueFhirResource(nil, constvars.ResourcePractitionerRole)
+		}
+
+		practitionerRoleFhirRequest := utils.BuildPractitionerRoleRequestFromPracticeInformation(session.PractitionerID, practiceInformation, practitionerRoles)
+
+		if practitionerRoleFhirRequest.ID == "" {
+			response, err := uc.PractitionerRoleFhirClient.CreatePractitionerRole(ctx, practitionerRoleFhirRequest)
+			if err != nil {
+				return nil, err
+			}
+			organization, err := uc.OrganizationFhirClient.FindOrganizationByID(ctx, practiceInformation.ClinicID)
+			if err != nil {
+				return nil, err
+			}
+
+			result = append(result, responses.PracticeInformation{
+				ClinicID:   organization.ID,
+				ClinicName: organization.Name,
+				Fee:        fmt.Sprintf("%s%2.f/session", constvars.FhirCurrencyPrefixIndonesia, response.Extension[0].ValueMoney.Value),
+			})
+		} else if practitionerRoleFhirRequest.ID != "" {
+			response, err := uc.PractitionerRoleFhirClient.UpdatePractitionerRole(ctx, practitionerRoleFhirRequest)
+			if err != nil {
+				return nil, err
+			}
+			organization, err := uc.OrganizationFhirClient.FindOrganizationByID(ctx, practiceInformation.ClinicID)
+			if err != nil {
+				return nil, err
+			}
+
+			result = append(result, responses.PracticeInformation{
+				ClinicID:   organization.ID,
+				ClinicName: organization.Name,
+				Fee:        fmt.Sprintf("%s%2.f/session", constvars.FhirCurrencyPrefixIndonesia, response.Extension[0].ValueMoney.Value),
+			})
+		}
+
 	}
 
-	return nil
+	return result, nil
 }
 
-func (uc *clinicianUsecase) CreateClinicsAvailability(ctx context.Context, sessionData string, request *requests.CreateClinicsAvailability) error {
+func (uc *clinicianUsecase) CreatePracticeAvailability(ctx context.Context, sessionData string, request *requests.CreatePracticeAvailability) ([]responses.PracticeAvailability, error) {
 	// Parse session data
 	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if session.IsNotPractitioner() {
-		return exceptions.ErrNotMatchRoleType(nil)
+		return nil, exceptions.ErrNotMatchRoleType(nil)
 	}
 
+	response := make([]responses.PracticeAvailability, 0, len(request.ClinicIDs))
 	// Iterate over the organization_ids and create a PractitionerRole for each
 	for _, clinicID := range request.ClinicIDs {
 		availableTimes := request.AvailableTimes[clinicID]
@@ -190,15 +231,15 @@ func (uc *clinicianUsecase) CreateClinicsAvailability(ctx context.Context, sessi
 		for _, availableTime := range availableTimes {
 			practitionerRoles, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerID(ctx, session.PractitionerID)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			hasConflict, err := uc.checkForTimeConflicts(ctx, practitionerRoles, availableTime)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			if hasConflict {
 				customErr := fmt.Errorf("conflict detected for organization `%s` with available time %v", clinicID, availableTime)
-				return exceptions.ErrClientCustomMessage(customErr)
+				return nil, exceptions.ErrClientCustomMessage(customErr)
 			}
 		}
 
@@ -216,7 +257,7 @@ func (uc *clinicianUsecase) CreateClinicsAvailability(ctx context.Context, sessi
 		// Create the PractitionerRole
 		practitionerRole, err := uc.PractitionerRoleFhirClient.CreatePractitionerRole(ctx, practitionerRoleFhirRequest)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		scheduleFhirRequest := &requests.Schedule{
@@ -234,12 +275,16 @@ func (uc *clinicianUsecase) CreateClinicsAvailability(ctx context.Context, sessi
 
 		_, err = uc.ScheduleFhirClient.CreateSchedule(ctx, scheduleFhirRequest)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
+		response = append(response, responses.PracticeAvailability{
+			OrganizationID: clinicID,
+			AvailableTimes: utils.ConvertToAvailableTimesResponse(practitionerRole.AvailableTime),
+		})
 	}
 
-	return nil
+	return response, nil
 }
 
 func (uc *clinicianUsecase) FindClinicsByClinicianID(ctx context.Context, clinicianID string) ([]responses.ClinicianClinic, error) {
@@ -249,6 +294,113 @@ func (uc *clinicianUsecase) FindClinicsByClinicianID(ctx context.Context, clinic
 	}
 
 	return uc.findAndBuildClinicianCinicsResponseByPractitionerRoles(ctx, practitionerRoles)
+}
+
+func (uc *clinicianUsecase) FindAvailability(ctx context.Context, request *requests.FindAvailability) (*responses.MonthlyAvailabilityResponse, error) {
+	yearInt, err := strconv.Atoi(request.Year)
+	if err != nil {
+		return nil, exceptions.ErrInvalidFormat(err, "year")
+	}
+
+	monthInt, err := strconv.Atoi(request.Month)
+	if err != nil || monthInt < 1 || monthInt > 12 {
+		return nil, exceptions.ErrInvalidFormat(err, "month")
+	}
+
+	startDate := time.Date(yearInt, time.Month(monthInt), 1, 0, 0, 0, 0, time.UTC)
+	endDate := startDate.AddDate(0, 1, -1)
+
+	practitionerRole, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByID(ctx, request.PractitionerRoleID)
+	if err != nil {
+		return nil, err
+	}
+
+	availableTimes := uc.findAvailableTimesForPractitionerRole(ctx, practitionerRole, startDate, endDate)
+
+	schedule, err := uc.ScheduleFhirClient.FindScheduleByPractitionerRoleID(ctx, practitionerRole.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(schedule) > 1 {
+		return nil, exceptions.ErrResultFetchedNotUniqueFhirResource(nil, constvars.ResourceSchedule)
+	}
+
+	if len(schedule) == 0 {
+		return nil, exceptions.ErrNoDataFHIRResource(nil, constvars.ResourceSchedule)
+	}
+
+	slots, err := uc.SlotFhirClient.FindSlotByScheduleIDAndStatus(ctx, schedule[0].ID, constvars.FhirSlotStatusBusy)
+	if err != nil {
+		return nil, err
+	}
+
+	busySlots := uc.findBusySlots(ctx, slots)
+
+	days := uc.generateDayAvailability(ctx, startDate, endDate, availableTimes, busySlots)
+
+	return &responses.MonthlyAvailabilityResponse{
+		Year:  yearInt,
+		Month: monthInt,
+		Days:  days,
+	}, nil
+
+}
+
+func (uc *clinicianUsecase) generateDayAvailability(ctx context.Context, startDate, endDate time.Time, availableTimes, busySlots map[string][]string) []responses.DayAvailability {
+	var days []responses.DayAvailability
+
+	for date := startDate; date.Before(endDate) || date.Equal(endDate); date = date.AddDate(0, 0, 1) {
+		dateStr := date.Format("2006-01-02")
+		availableTimes := availableTimes[dateStr]
+		unavailableTimes := busySlots[dateStr]
+
+		// Remove unavailable times from available times
+		for _, time := range unavailableTimes {
+			utils.RemoveFromSlice(&availableTimes, time)
+		}
+
+		days = append(days, responses.DayAvailability{
+			Date:             dateStr,
+			AvailableTimes:   availableTimes,
+			UnavailableTimes: unavailableTimes,
+		})
+	}
+
+	return days
+}
+
+func (uc *clinicianUsecase) findBusySlots(ctx context.Context, slots []responses.Slot) map[string][]string {
+	// Initialize map to store busy slots
+	busySlotsMap := make(map[string][]string)
+
+	// Populate busy slots map
+	for _, slot := range slots {
+		dateStrFormatted := slot.Start.Format("02-01-2006 15:04:05")
+		dateStr := dateStrFormatted[:10]
+		timeStr := dateStrFormatted[11:16]
+		busySlotsMap[dateStr] = append(busySlotsMap[dateStr], timeStr)
+	}
+
+	return busySlotsMap
+}
+func (uc *clinicianUsecase) findAvailableTimesForPractitionerRole(ctx context.Context, practitionerRole *responses.PractitionerRole, start, end time.Time) map[string][]string {
+	// Initialize map to store available times
+	availableTimesMap := make(map[string][]string)
+
+	// Iterate over available times to populate the map
+	for _, availableTime := range practitionerRole.AvailableTime {
+		for date := start; date.Before(end) || date.Equal(end); date = date.AddDate(0, 0, 1) {
+			dayOfWeek := date.Weekday().String()
+			if utils.DaysContains(availableTime.DaysOfWeek, dayOfWeek) {
+				dateStr := date.Format("2006-01-02")
+				availableTimesMap[dateStr] = append(availableTimesMap[dateStr],
+					utils.GenerateTimeSlots(availableTime.AvailableStartTime, availableTime.AvailableEndTime)...)
+			}
+		}
+	}
+
+	return availableTimesMap
 }
 
 func (uc *clinicianUsecase) findAndBuildClinicianCinicsResponseByPractitionerRoles(ctx context.Context, practitionerRoles []responses.PractitionerRole) ([]responses.ClinicianClinic, error) {
@@ -273,11 +425,11 @@ func (uc *clinicianUsecase) findAndBuildClinicianCinicsResponseByPractitionerRol
 }
 
 func (uc *clinicianUsecase) checkForTimeConflicts(ctx context.Context, existingRoles []responses.PractitionerRole, availableTime requests.AvailableTimeRequest) (bool, error) {
-	fmt.Println(existingRoles, availableTime)
+	fmt.Println(existingRoles[0].AvailableTime, availableTime)
 	for _, role := range existingRoles {
 		for _, existingTime := range role.AvailableTime {
 			for _, day := range availableTime.DaysOfWeek {
-				if utils.Contains(existingTime.DaysOfWeek, day) {
+				if utils.DaysContains(existingTime.DaysOfWeek, day) {
 					existingStart, err := time.Parse(constvars.TimeFormatHoursMinutesSeconds, existingTime.AvailableStartTime)
 					if err != nil {
 						return false, exceptions.ErrCannotParseTime(err)

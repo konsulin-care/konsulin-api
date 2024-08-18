@@ -278,11 +278,12 @@ func (uc *authUsecase) LoginPatient(ctx context.Context, request *requests.Login
 	response := &responses.LoginUser{
 		Token: tokenString,
 		LoginUserData: responses.LoginUserData{
-			Name:     user.Fullname,
-			Email:    user.Email,
-			UserID:   user.ID,
-			RoleID:   userRole.ID,
-			RoleName: userRole.Name,
+			Name:      user.Fullname,
+			Email:     user.Email,
+			UserID:    user.ID,
+			RoleID:    userRole.ID,
+			RoleName:  userRole.Name,
+			PatientID: user.PatientID,
 		},
 	}
 	// Return the prepared response
@@ -378,12 +379,13 @@ func (uc *authUsecase) LoginClinician(ctx context.Context, request *requests.Log
 	response := &responses.LoginUser{
 		Token: tokenString,
 		LoginUserData: responses.LoginUserData{
-			Name:      user.Fullname,
-			Email:     user.Email,
-			UserID:    user.ID,
-			RoleID:    userRole.ID,
-			RoleName:  userRole.Name,
-			ClinicIDs: practitionerOrganizationIDs,
+			Name:           user.Fullname,
+			Email:          user.Email,
+			UserID:         user.ID,
+			RoleID:         userRole.ID,
+			RoleName:       userRole.Name,
+			PractitionerID: user.PractitionerID,
+			ClinicIDs:      practitionerOrganizationIDs,
 		},
 	}
 	// Return the prepared response

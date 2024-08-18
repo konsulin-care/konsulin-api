@@ -18,8 +18,10 @@ const (
 	GetClinicianSummarySuccessfully = "get clinician summary successfully"
 
 	// Clinician-related messages
-	CreateClinicianClinicsSuccessMessage = "clinics successfully created for clinician"
-	DeleteClinicianClinicSuccessMessage  = "clinic successfully deleted for clinician"
+	CreateClinicianClinicsSuccessMessage              = "clinics successfully created for clinician"
+	CreateClinicianPracticeAvailabilitySuccessMessage = "practice availability successfully updated for clinician"
+	CreateClinicianPracticeInformationSuccessMessage  = "practice information successfully updated for clinician"
+	DeleteClinicianClinicSuccessMessage               = "clinic successfully deleted for clinician"
 
 	// Patient-related messages
 	CreatePatientAppointmentSuccessMessage = "appoinment successfully created for patient"

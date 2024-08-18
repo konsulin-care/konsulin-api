@@ -7,4 +7,5 @@ type PractitionerRole struct {
 	Organization  Reference         `json:"organization"`
 	Specialty     []CodeableConcept `json:"specialty"`
 	AvailableTime []AvailableTime   `json:"availableTime"`
+	Extension     []Extension       `json:"extension"`
 }

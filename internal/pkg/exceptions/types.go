@@ -27,6 +27,9 @@ var (
 	ErrCannotParseDate = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevCannotParseMultipartForm)
 	}
+	ErrInvalidFormat = func(err error, source string) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevInvalidFormat, source))
+	}
 	ErrCannotMarshalJSON = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevCannotMarshalJSON)
 	}
@@ -157,12 +160,19 @@ var (
 	ErrGetFHIRResource = func(err error, resource string) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkGetFHIRResource, resource))
 	}
+	ErrNoDataFHIRResource = func(err error, resource string) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkNoDataFHIRResource, resource))
+	}
 	ErrGetFHIRResourceDuplicate = func(err error, resource string) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkGetFHIRResourceDuplicate, resource))
 	}
 	ErrUpdateFHIRResource = func(err error, resource string) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkUpdateFHIRResource, resource))
 	}
+	ErrResultFetchedNotUniqueFhirResource = func(err error, resource string) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkFetchedResultNotUniqueFHIRResource, resource))
+	}
+
 	ErrDecodeResponse = func(err error, resource string) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkDecodeFHIRResourceResponse, resource))
 	}
