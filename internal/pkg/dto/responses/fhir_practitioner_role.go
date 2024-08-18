@@ -9,3 +9,12 @@ type PractitionerRole struct {
 	AvailableTime []AvailableTime   `json:"availableTime"`
 	Extension     []Extension       `json:"extension"`
 }
+type PractitionerRoleResponse struct {
+	ResourceType  string            `json:"resourceType"`
+	ID            string            `json:"id"`
+	Practitioner  Reference         `json:"practitioner"`
+	Organization  Reference         `json:"organization"`
+	Specialty     []CodeableConcept `json:"specialty"`
+	AvailableTime []AvailableTime   `json:"availableTime"`
+	Extension     []Extension       `json:"extension"`
+}
