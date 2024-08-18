@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
+	"konsulin-service/internal/pkg/dto/responses"
 	"net/http"
 	"strconv"
 	"strings"
@@ -198,6 +199,40 @@ func BuildPractitionerRolesBundleRequestByPractitionerID(practitionerID string, 
 	return bundle
 }
 
+func BuildPractitionerRoleRequestFromPracticeInformation(practitionerID string, practiceInformation requests.PracticeInformation, practitionerRoles []responses.PractitionerRole) *requests.PractitionerRole {
+	practitionerReference := requests.Reference{
+		Reference: fmt.Sprintf("%s/%s", constvars.ResourcePractitioner, practitionerID),
+	}
+	organizationReference := requests.Reference{
+		Reference: fmt.Sprintf("%s/%s", constvars.ResourceOrganization, practiceInformation.ClinicID),
+	}
+
+	extension := requests.Extension{
+		Url: "http://hl7.org/fhir/StructureDefinition/Money",
+		ValueMoney: requests.Money{
+			Value:    practiceInformation.PricePerSession.Value,
+			Currency: practiceInformation.PricePerSession.Currency,
+		},
+	}
+
+	request := &requests.PractitionerRole{
+		ResourceType: constvars.ResourcePractitionerRole,
+		Practitioner: practitionerReference,
+		Organization: organizationReference,
+		Active:       true,
+		Extension: []requests.Extension{
+			extension,
+		},
+	}
+
+	if len(practitionerRoles) == 1 {
+		request.ID = practitionerRoles[0].ID
+	}
+
+	return request
+
+}
+
 func BuildFhirPatientReactivateRequest(patientID string) *requests.Patient {
 	return &requests.Patient{
 		ResourceType: constvars.ResourcePatient,
@@ -218,6 +253,17 @@ func ConvertToModelAvailableTimes(availableTimes []requests.AvailableTimeRequest
 	var result []requests.AvailableTime
 	for _, at := range availableTimes {
 		result = append(result, requests.AvailableTime{
+			DaysOfWeek:         at.DaysOfWeek,
+			AvailableStartTime: at.AvailableStartTime,
+			AvailableEndTime:   at.AvailableEndTime,
+		})
+	}
+	return result
+}
+func ConvertToAvailableTimesResponse(availableTimes []responses.AvailableTime) []responses.AvailableTimeResponse {
+	result := make([]responses.AvailableTimeResponse, 0, len(availableTimes))
+	for _, at := range availableTimes {
+		result = append(result, responses.AvailableTimeResponse{
 			DaysOfWeek:         at.DaysOfWeek,
 			AvailableStartTime: at.AvailableStartTime,
 			AvailableEndTime:   at.AvailableEndTime,

@@ -54,11 +54,17 @@ type ContactPoint struct {
 	Use    string `json:"use"`
 }
 
+type Money struct {
+	Value    float64 `json:"value,omitempty"`
+	Currency string  `json:"currency,omitempty"`
+}
+
 type Extension struct {
 	Url         string `json:"url"`
 	ValueString string `json:"valueString,omitempty"`
 	ValueCode   string `json:"valueCode,omitempty"`
 	ValueInt    int    `json:"valueInt,omitempty"`
+	ValueMoney  Money  `json:"valueMoney,omitempty"`
 }
 
 type Address struct {

@@ -49,3 +49,7 @@ const (
 	FhirParticipantStatusTentative   = "tentative"
 	FhirParticipantStatusNeedsAction = "needs-action"
 )
+
+const (
+	FhirCurrencyPrefixIndonesia = "Rp"
+)

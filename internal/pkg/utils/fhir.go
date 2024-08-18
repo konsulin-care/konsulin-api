@@ -201,6 +201,30 @@ func GetEmailAndWhatsapp(telecoms []responses.ContactPoint) (string, string) {
 	return email, whatsAppNumber
 }
 
+func DaysContains(slice []string, item string) bool {
+	for _, v := range slice {
+		switch v {
+		case "mon":
+			v = time.Monday.String()
+		case "tue":
+			v = time.Tuesday.String()
+		case "wed":
+			v = time.Wednesday.String()
+		case "thu":
+			v = time.Thursday.String()
+		case "fri":
+			v = time.Friday.String()
+		case "sat":
+			v = time.Saturday.String()
+		case "sun":
+			v = time.Sunday.String()
+		}
+		if v == item {
+			return true
+		}
+	}
+	return false
+}
 func Contains(slice []string, item string) bool {
 	for _, v := range slice {
 		if v == item {
@@ -208,4 +232,25 @@ func Contains(slice []string, item string) bool {
 		}
 	}
 	return false
+}
+
+func GenerateTimeSlots(start, end string) []string {
+	var times []string
+	startTime, _ := time.Parse("15:04:05", start)
+	endTime, _ := time.Parse("15:04:05", end)
+
+	for t := startTime; t.Before(endTime); t = t.Add(30 * time.Minute) {
+		times = append(times, t.Format("15:04"))
+	}
+
+	return times
+}
+
+func RemoveFromSlice(slice *[]string, item string) {
+	for i, v := range *slice {
+		if v == item {
+			*slice = append((*slice)[:i], (*slice)[i+1:]...)
+			break
+		}
+	}
 }

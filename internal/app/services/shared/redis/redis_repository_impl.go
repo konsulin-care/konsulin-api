@@ -44,7 +44,7 @@ func (r *redisRepository) Get(ctx context.Context, key string) (string, error) {
 	if err == redis.Nil {
 		return data, nil
 	} else if err != nil {
-		return data, exceptions.ErrRedisGet(err)
+		return data, exceptions.ErrRedisGetNoData(err, key)
 	}
 
 	return data, err

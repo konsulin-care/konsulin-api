@@ -9,10 +9,11 @@ import (
 type ClinicianUsecase interface {
 	CreateAvailibilityTime(ctx context.Context, sessionData string, request *requests.AvailableTime) error
 	CreateAppointment(ctx context.Context, sessionData string, request *requests.CreateAppointmentRequest) error
-	CreateClinics(ctx context.Context, sessionData string, request *requests.ClinicianCreateClinics) error
-	CreateClinicsAvailability(ctx context.Context, sessionData string, request *requests.CreateClinicsAvailability) error
+	CreatePracticeInformation(ctx context.Context, sessionData string, request *requests.CreatePracticeInformation) ([]responses.PracticeInformation, error)
+	CreatePracticeAvailability(ctx context.Context, sessionData string, request *requests.CreatePracticeAvailability) ([]responses.PracticeAvailability, error)
 	DeleteClinicByID(ctx context.Context, sessionData string, clinicID string) error
 	FindClinicsByClinicianID(ctx context.Context, clinicianID string) ([]responses.ClinicianClinic, error)
+	FindAvailability(ctx context.Context, request *requests.FindAvailability) (*responses.MonthlyAvailabilityResponse, error)
 }
 
 type ClinicianRepository interface{}

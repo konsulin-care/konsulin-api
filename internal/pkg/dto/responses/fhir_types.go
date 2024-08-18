@@ -138,10 +138,16 @@ type Extension struct {
 	ValueId        string    `json:"valueId,omitempty" bson:"valueId,omitempty"`
 	ValueDate      string    `json:"valueDate,omitempty" bson:"valueDate,omitempty"`
 	ValueDateTime  time.Time `json:"valueDateTime,omitempty" bson:"valueDateTime,omitempty"`
+	ValueMoney     Money     `json:"valueMoney,omitempty" bson:"valueMoney,omitempty"`
 	ValueTime      string    `json:"valueTime,omitempty" bson:"valueTime,omitempty"`
 	ValueCoding    Coding    `json:"valueCoding,omitempty" bson:"valueCoding,omitempty"`
 	ValueQuantity  Quantity  `json:"valueQuantity,omitempty" bson:"valueQuantity,omitempty"`
 	ValueReference Reference `json:"valueReference,omitempty" bson:"valueReference,omitempty"`
+}
+
+type Money struct {
+	Value    float64 `json:"value,omitempty"`
+	Currency string  `json:"currency,omitempty"`
 }
 
 type Qualification struct {
@@ -300,4 +306,9 @@ type AvailableTime struct {
 	DaysOfWeek         []string `json:"daysOfWeek"`
 	AvailableStartTime string   `json:"availableStartTime"`
 	AvailableEndTime   string   `json:"availableEndTime"`
+}
+type AvailableTimeResponse struct {
+	DaysOfWeek         []string `json:"days_of_Week"`
+	AvailableStartTime string   `json:"available_start_time"`
+	AvailableEndTime   string   `json:"available_end_time"`
 }
