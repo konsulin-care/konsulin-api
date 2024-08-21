@@ -10,8 +10,10 @@ type ClinicianSummary struct {
 	PractitionerRoleID  string              `json:"practitioner_role_id,omitempty"`
 }
 type ClinicianClinic struct {
-	ClinicID   string `json:"clinic_id,omitempty"`
-	ClinicName string `json:"clinic_name,omitempty"`
+	ClinicID        string          `json:"clinic_id,omitempty"`
+	ClinicName      string          `json:"clinic_name,omitempty"`
+	Specialties     []string        `json:"specialties,omitempty"`
+	PricePerSession PricePerSession `json:"price_per_session,omitempty"`
 }
 
 type PracticeInformation struct {
@@ -38,4 +40,9 @@ type DayAvailability struct {
 	Date             string   `json:"date"`
 	AvailableTimes   []string `json:"available_times"`
 	UnavailableTimes []string `json:"unavailable_times"`
+}
+
+type PricePerSession struct {
+	Value    float64 `json:"value"`
+	Currency string  `json:"currency"`
 }

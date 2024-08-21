@@ -15,9 +15,9 @@ type organizationFhirClient struct {
 	BaseUrl string
 }
 
-func NewOrganizationFhirClient(OrganizationFhirBaseUrl string) OrganizationFhirClient {
+func NewOrganizationFhirClient(baseUrl string) OrganizationFhirClient {
 	return &organizationFhirClient{
-		BaseUrl: OrganizationFhirBaseUrl,
+		BaseUrl: baseUrl + constvars.ResourceOrganization,
 	}
 }
 

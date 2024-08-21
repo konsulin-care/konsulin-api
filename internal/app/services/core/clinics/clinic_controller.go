@@ -100,12 +100,6 @@ func (ctrl *ClinicController) FindAllCliniciansByClinicID(w http.ResponseWriter,
 
 	clinicID := chi.URLParam(r, constvars.URLParamClinicID)
 
-	// err = utils.ValidateUrlParamID(clinicID)
-	// if err != nil {
-	// 	utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrURLParamIDValidation(err, constvars.URLParamClinicID))
-	// 	return
-	// }
-
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 

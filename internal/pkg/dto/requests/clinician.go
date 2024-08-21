@@ -1,5 +1,10 @@
 package requests
 
+type GetClinicianByClinicianID struct {
+	PractitionerID   string
+	OrganizationName string
+}
+
 type CreatePracticeInformation struct {
 	PracticeInformation []PracticeInformation `json:"practice_informations"`
 }
@@ -7,6 +12,7 @@ type CreatePracticeInformation struct {
 type PracticeInformation struct {
 	ClinicID        string          `json:"clinic_id"`
 	PricePerSession PricePerSession `json:"price_per_session"`
+	Specialties     []string        `json:"specialties"`
 }
 
 type PricePerSession struct {

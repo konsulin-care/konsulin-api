@@ -18,5 +18,6 @@ type PractitionerRoleFhirClient interface {
 	CreatePractitionerRoles(ctx context.Context, request interface{}) error
 	CreatePractitionerRole(ctx context.Context, request *requests.PractitionerRole) (*responses.PractitionerRole, error)
 	UpdatePractitionerRole(ctx context.Context, request *requests.PractitionerRole) (*responses.PractitionerRole, error)
+	FindPractitionerRoleByPractitionerIDAndName(ctx context.Context, request *requests.GetClinicianByClinicianID) ([]responses.PractitionerRole, error)
 	FindPractitionerRoleByID(ctx context.Context, practitionerRoleID string) (*responses.PractitionerRole, error)
 }
