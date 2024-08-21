@@ -219,10 +219,17 @@ func BuildPractitionerRoleRequestFromPracticeInformation(practitionerID string, 
 		ResourceType: constvars.ResourcePractitionerRole,
 		Practitioner: practitionerReference,
 		Organization: organizationReference,
-		Active:       true,
+		Active:       false,
 		Extension: []requests.Extension{
 			extension,
 		},
+		Specialty: []requests.CodeableConcept{},
+	}
+
+	for _, specialty := range practiceInformation.Specialties {
+		request.Specialty = append(request.Specialty, requests.CodeableConcept{
+			Text: specialty,
+		})
 	}
 
 	if len(practitionerRoles) == 1 {

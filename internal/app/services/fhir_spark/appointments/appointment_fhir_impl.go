@@ -17,9 +17,9 @@ type appointmentFhirClient struct {
 	BaseUrl string
 }
 
-func NewAppointmentFhirClient(appointmentFhirBaseUrl string) AppointmentFhirClient {
+func NewAppointmentFhirClient(baseUrl string) AppointmentFhirClient {
 	return &appointmentFhirClient{
-		BaseUrl: appointmentFhirBaseUrl,
+		BaseUrl: baseUrl + constvars.ResourceAppointment,
 	}
 }
 

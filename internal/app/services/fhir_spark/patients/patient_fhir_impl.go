@@ -17,9 +17,9 @@ type patientFhirClient struct {
 	BaseUrl string
 }
 
-func NewPatientFhirClient(patientFhirBaseUrl string) PatientFhirClient {
+func NewPatientFhirClient(baseUrl string) PatientFhirClient {
 	return &patientFhirClient{
-		BaseUrl: patientFhirBaseUrl,
+		BaseUrl: baseUrl + constvars.ResourcePatient,
 	}
 }
 

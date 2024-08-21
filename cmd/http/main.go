@@ -29,7 +29,6 @@ import (
 	"konsulin-service/internal/app/services/shared/mailer"
 	redisKonsulin "konsulin-service/internal/app/services/shared/redis"
 	storageKonsulin "konsulin-service/internal/app/services/shared/storage"
-	"konsulin-service/internal/pkg/constvars"
 	"log"
 	"net/http"
 	"os"
@@ -171,13 +170,13 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	sessionService := session.NewSessionService(redisRepository)
 
 	// Initialize FHIR clients
-	patientFhirClient := patientsFhir.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePatient)
-	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePractitioner)
-	organizationFhirClient := organizations.NewOrganizationFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourceOrganization)
-	practitionerRoleFhirClient := practitionerRoles.NewPractitionerRoleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.InternalConfig.FHIR.BaseUrl+constvars.ResourcePractitionerRole)
-	scheduleFhirClient := schedules.NewScheduleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourceSchedule)
-	slotFhirClient := slots.NewSlotFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourceSlot)
-	appointmentFhirClient := appointments.NewAppointmentFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourceAppointment)
+	patientFhirClient := patientsFhir.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
+	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
+	organizationFhirClient := organizations.NewOrganizationFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
+	practitionerRoleFhirClient := practitionerRoles.NewPractitionerRoleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
+	scheduleFhirClient := schedules.NewScheduleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
+	slotFhirClient := slots.NewSlotFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
+	appointmentFhirClient := appointments.NewAppointmentFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
 
 	// Initialize Users dependencies
 	userMongoRepository := users.NewUserMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)

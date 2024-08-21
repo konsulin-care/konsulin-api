@@ -287,8 +287,8 @@ func (uc *clinicianUsecase) CreatePracticeAvailability(ctx context.Context, sess
 	return response, nil
 }
 
-func (uc *clinicianUsecase) FindClinicsByClinicianID(ctx context.Context, clinicianID string) ([]responses.ClinicianClinic, error) {
-	practitionerRoles, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerID(ctx, clinicianID)
+func (uc *clinicianUsecase) FindClinicsByClinicianID(ctx context.Context, request *requests.GetClinicianByClinicianID) ([]responses.ClinicianClinic, error) {
+	practitionerRoles, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerIDAndName(ctx, request)
 	if err != nil {
 		return nil, err
 	}
@@ -409,14 +409,24 @@ func (uc *clinicianUsecase) findAndBuildClinicianCinicsResponseByPractitionerRol
 	for _, practitionerRole := range practitionerRoles {
 		parts := strings.Split(practitionerRole.Organization.Reference, "/")
 		if len(parts) == 2 && parts[0] == "Organization" {
+			var specialties []string
 			organization, err := uc.OrganizationFhirClient.FindOrganizationByID(ctx, parts[1])
 			if err != nil {
 				return nil, err
 			}
 
+			for _, specialty := range practitionerRole.Specialty {
+				specialties = append(specialties, specialty.Text)
+			}
+
 			response = append(response, responses.ClinicianClinic{
-				ClinicID:   organization.ID,
-				ClinicName: organization.Name,
+				ClinicID:    organization.ID,
+				ClinicName:  organization.Name,
+				Specialties: specialties,
+				PricePerSession: responses.PricePerSession{
+					Value:    practitionerRole.Extension[0].ValueMoney.Value,
+					Currency: practitionerRole.Extension[0].ValueMoney.Currency,
+				},
 			})
 		}
 	}

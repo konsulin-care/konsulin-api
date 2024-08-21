@@ -17,9 +17,9 @@ type slotFhirClient struct {
 	BaseUrl string
 }
 
-func NewSlotFhirClient(slotFhirBaseUrl string) SlotFhirClient {
+func NewSlotFhirClient(baseUrl string) SlotFhirClient {
 	return &slotFhirClient{
-		BaseUrl: slotFhirBaseUrl,
+		BaseUrl: baseUrl + constvars.ResourceSlot,
 	}
 }
 

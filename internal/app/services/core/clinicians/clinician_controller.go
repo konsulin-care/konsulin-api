@@ -55,12 +55,15 @@ func (ctrl *ClinicianController) CreatePracticeInformation(w http.ResponseWriter
 }
 
 func (ctrl *ClinicianController) FindClinicsByClinicianID(w http.ResponseWriter, r *http.Request) {
-	clinicianID := chi.URLParam(r, constvars.URLParamClinicianID)
+	request := &requests.GetClinicianByClinicianID{
+		PractitionerID:   chi.URLParam(r, constvars.URLParamClinicianID),
+		OrganizationName: r.URL.Query().Get("name"),
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	result, err := ctrl.ClinicianUsecase.FindClinicsByClinicianID(ctx, clinicianID)
+	result, err := ctrl.ClinicianUsecase.FindClinicsByClinicianID(ctx, request)
 	if err != nil {
 		if err == context.DeadlineExceeded {
 			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))

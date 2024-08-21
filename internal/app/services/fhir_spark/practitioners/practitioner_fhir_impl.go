@@ -17,9 +17,9 @@ type practitionerFhirClient struct {
 	BaseUrl string
 }
 
-func NewPractitionerFhirClient(PractitionerFhirBaseUrl string) PractitionerFhirClient {
+func NewPractitionerFhirClient(baseUrl string) PractitionerFhirClient {
 	return &practitionerFhirClient{
-		BaseUrl: PractitionerFhirBaseUrl,
+		BaseUrl: baseUrl + constvars.ResourcePractitioner,
 	}
 }
 

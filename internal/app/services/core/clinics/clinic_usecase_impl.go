@@ -73,7 +73,7 @@ func (uc *clinicUsecase) FindAllCliniciansByClinicID(ctx context.Context, nameFi
 func (uc *clinicUsecase) fetchAllCliniciansByPractitionerRoles(ctx context.Context, practitionerRoles []responses.PractitionerRole, nameFilter string, page, pageSize int) ([]responses.ClinicClinician, *responses.Pagination, error) {
 	var clinicians []responses.ClinicClinician
 	for _, practitionerRole := range practitionerRoles {
-		if practitionerRole.Practitioner.Reference != "" {
+		if practitionerRole.Practitioner.Reference != "" && practitionerRole.Active {
 			practitionerID := practitionerRole.Practitioner.Reference[len("Practitioner/"):]
 			practitioner, err := uc.PractitionerFhirClient.FindPractitionerByID(ctx, practitionerID)
 			if err != nil {

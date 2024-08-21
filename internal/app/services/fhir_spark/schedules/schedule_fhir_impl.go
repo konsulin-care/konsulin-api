@@ -17,9 +17,9 @@ type scheduleFhirClient struct {
 	BaseUrl string
 }
 
-func NewScheduleFhirClient(scheduleFhirBaseUrl string) ScheduleFhirClient {
+func NewScheduleFhirClient(baseUrl string) ScheduleFhirClient {
 	return &scheduleFhirClient{
-		BaseUrl: scheduleFhirBaseUrl,
+		BaseUrl: baseUrl + constvars.ResourceSchedule,
 	}
 }
 
