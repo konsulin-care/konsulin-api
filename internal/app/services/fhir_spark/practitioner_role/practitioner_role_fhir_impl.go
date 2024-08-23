@@ -223,7 +223,14 @@ func (c *practitionerRoleFhirClient) FindPractitionerRoleByPractitionerIDAndName
 }
 
 func (c *practitionerRoleFhirClient) FindPractitionerRoleByPractitionerIDAndOrganizationID(ctx context.Context, practitionerID, organizationID string) ([]responses.PractitionerRole, error) {
-	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, fmt.Sprintf("%s?practitioner=Practitioner/%s&organization=Organization/%s", c.BaseUrl, practitionerID, organizationID), nil)
+	url := fmt.Sprintf(
+		"%s?practitioner=Practitioner/%s&organization=Organization/%s",
+		c.BaseUrl,
+		practitionerID,
+		organizationID,
+	)
+
+	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, url, nil)
 	if err != nil {
 		return nil, exceptions.ErrCreateHTTPRequest(err)
 	}

@@ -185,9 +185,14 @@ func (uc *clinicianUsecase) CreatePracticeInformation(ctx context.Context, sessi
 			}
 
 			result = append(result, responses.PracticeInformation{
-				ClinicID:   organization.ID,
-				ClinicName: organization.Name,
-				Fee:        fmt.Sprintf("%s%2.f/session", constvars.FhirCurrencyPrefixIndonesia, response.Extension[0].ValueMoney.Value),
+				ClinicID:    organization.ID,
+				ClinicName:  organization.Name,
+				Affiliation: organization.Name,
+				Specialties: utils.ExtractSpecialties(response.Specialty),
+				PricePerSession: responses.PricePerSession{
+					Value:    response.Extension[0].ValueMoney.Value,
+					Currency: response.Extension[0].ValueMoney.Currency,
+				},
 			})
 		} else if practitionerRoleFhirRequest.ID != "" {
 			response, err := uc.PractitionerRoleFhirClient.UpdatePractitionerRole(ctx, practitionerRoleFhirRequest)
@@ -200,9 +205,14 @@ func (uc *clinicianUsecase) CreatePracticeInformation(ctx context.Context, sessi
 			}
 
 			result = append(result, responses.PracticeInformation{
-				ClinicID:   organization.ID,
-				ClinicName: organization.Name,
-				Fee:        fmt.Sprintf("%s%2.f/session", constvars.FhirCurrencyPrefixIndonesia, response.Extension[0].ValueMoney.Value),
+				ClinicID:    organization.ID,
+				ClinicName:  organization.Name,
+				Affiliation: organization.Name,
+				Specialties: utils.ExtractSpecialties(response.Specialty),
+				PricePerSession: responses.PricePerSession{
+					Value:    response.Extension[0].ValueMoney.Value,
+					Currency: response.Extension[0].ValueMoney.Currency,
+				},
 			})
 		}
 
@@ -279,7 +289,7 @@ func (uc *clinicianUsecase) CreatePracticeAvailability(ctx context.Context, sess
 		}
 
 		response = append(response, responses.PracticeAvailability{
-			OrganizationID: clinicID,
+			ClinicID:       clinicID,
 			AvailableTimes: utils.ConvertToAvailableTimesResponse(practitionerRole.AvailableTime),
 		})
 	}
@@ -315,7 +325,7 @@ func (uc *clinicianUsecase) FindAvailability(ctx context.Context, request *reque
 		return nil, err
 	}
 
-	availableTimes := uc.findAvailableTimesForPractitionerRole(ctx, practitionerRole, startDate, endDate)
+	availableTimes := uc.findAvailableTimesForPractitionerRole(practitionerRole, startDate, endDate)
 
 	schedule, err := uc.ScheduleFhirClient.FindScheduleByPractitionerRoleID(ctx, practitionerRole.ID)
 	if err != nil {
@@ -335,9 +345,9 @@ func (uc *clinicianUsecase) FindAvailability(ctx context.Context, request *reque
 		return nil, err
 	}
 
-	busySlots := uc.findBusySlots(ctx, slots)
+	busySlots := uc.findBusySlots(slots)
 
-	days := uc.generateDayAvailability(ctx, startDate, endDate, availableTimes, busySlots)
+	days := uc.generateDayAvailability(startDate, endDate, availableTimes, busySlots)
 
 	return &responses.MonthlyAvailabilityResponse{
 		Year:  yearInt,
@@ -347,7 +357,7 @@ func (uc *clinicianUsecase) FindAvailability(ctx context.Context, request *reque
 
 }
 
-func (uc *clinicianUsecase) generateDayAvailability(ctx context.Context, startDate, endDate time.Time, availableTimes, busySlots map[string][]string) []responses.DayAvailability {
+func (uc *clinicianUsecase) generateDayAvailability(startDate, endDate time.Time, availableTimes, busySlots map[string][]string) []responses.DayAvailability {
 	var days []responses.DayAvailability
 
 	for date := startDate; date.Before(endDate) || date.Equal(endDate); date = date.AddDate(0, 0, 1) {
@@ -370,7 +380,7 @@ func (uc *clinicianUsecase) generateDayAvailability(ctx context.Context, startDa
 	return days
 }
 
-func (uc *clinicianUsecase) findBusySlots(ctx context.Context, slots []responses.Slot) map[string][]string {
+func (uc *clinicianUsecase) findBusySlots(slots []responses.Slot) map[string][]string {
 	// Initialize map to store busy slots
 	busySlotsMap := make(map[string][]string)
 
@@ -384,7 +394,7 @@ func (uc *clinicianUsecase) findBusySlots(ctx context.Context, slots []responses
 
 	return busySlotsMap
 }
-func (uc *clinicianUsecase) findAvailableTimesForPractitionerRole(ctx context.Context, practitionerRole *responses.PractitionerRole, start, end time.Time) map[string][]string {
+func (uc *clinicianUsecase) findAvailableTimesForPractitionerRole(practitionerRole *responses.PractitionerRole, start, end time.Time) map[string][]string {
 	// Initialize map to store available times
 	availableTimesMap := make(map[string][]string)
 

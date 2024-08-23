@@ -26,8 +26,8 @@ const (
 )
 
 const (
-	FhirFetchResourceFilterName     = "%s?name=%s"
-	FhirFetchResourceWithPagination = "%s?_offset=%d&_count=%d"
+	FhirFetchResourceTypeAll   = "all"
+	FhirFetchResourceTypePaged = "paged"
 )
 
 const (

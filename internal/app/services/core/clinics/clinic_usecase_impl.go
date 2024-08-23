@@ -51,9 +51,12 @@ func (uc *clinicUsecase) FindAll(ctx context.Context, nameFilter, fetchType stri
 		response[i] = eachOrganization.ConvertToClinicResponse()
 	}
 
-	paginationData := utils.BuildPaginationResponse(totalData, page, pageSize, uc.InternalConfig.App.BaseUrl+constvars.ResourceClinics)
+	if fetchType == constvars.FhirFetchResourceTypePaged {
+		paginationData := utils.BuildPaginationResponse(totalData, page, pageSize, uc.InternalConfig.App.BaseUrl+constvars.ResourceClinics)
+		return response, paginationData, nil
+	}
 
-	return response, paginationData, nil
+	return response, nil, nil
 }
 
 func (uc *clinicUsecase) FindAllCliniciansByClinicID(ctx context.Context, nameFilter, clinicID string, page, pageSize int) ([]responses.ClinicClinician, *responses.Pagination, error) {
@@ -87,16 +90,6 @@ func (uc *clinicUsecase) fetchAllCliniciansByPractitionerRoles(ctx context.Conte
 		}
 	}
 	return clinicians, nil, nil
-
-	// // Build the response
-	// response := make([]responses.Clinic, len(organizationsFhir))
-	// for i, eachOrganization := range organizationsFhir {
-	// 	response[i] = eachOrganization.ConvertToClinicResponse()
-	// }
-
-	// paginationData := utils.BuildPaginationResponse(totalData, page, pageSize, uc.InternalConfig.App.BaseUrl+constvars.ResourceClinics)
-
-	// return response, paginationData, nil
 }
 
 func (uc *clinicUsecase) FindByID(ctx context.Context, clinicID string) (*responses.Clinic, error) {
@@ -121,6 +114,11 @@ func (uc *clinicUsecase) FindClinicianByClinicAndClinicianID(ctx context.Context
 		return nil, err
 	}
 
+	organization, err := uc.OrganizationFhirClient.FindOrganizationByID(ctx, clinicID)
+	if err != nil {
+		return nil, err
+	}
+
 	schedules, err := uc.ScheduleFhirClient.FindScheduleByPractitionerRoleID(ctx, practitionerRoles[0].ID)
 	if err != nil {
 		return nil, err
@@ -133,18 +131,19 @@ func (uc *clinicUsecase) FindClinicianByClinicAndClinicianID(ctx context.Context
 	}
 
 	practiceInformation := responses.PracticeInformation{
-		Affiliation: "Konsulin",
-		Experience:  "2 Years",
-		Fee:         "250.000/session",
+		Affiliation: organization.Name,
+		Specialties: utils.ExtractSpecialties(practitionerRoles[0].Specialty),
+		PricePerSession: responses.PricePerSession{
+			Value:    practitionerRoles[0].Extension[0].ValueMoney.Value,
+			Currency: practitionerRoles[0].Extension[0].ValueMoney.Currency,
+		},
 	}
 
 	response := &responses.ClinicianSummary{
-		PractitionerID:      practitioner.ID,
+		ClinicianID:         practitioner.ID,
 		PractitionerRoleID:  practitionerRoles[0].ID,
 		ScheduleID:          schedules[0].ID,
 		Name:                utils.GetFullName(practitioner.Name),
-		Affiliation:         "Konsulin",
-		Specialties:         specialties,
 		PracticeInformation: practiceInformation,
 		// Availability:        availableTimes,
 	}

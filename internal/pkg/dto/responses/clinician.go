@@ -1,11 +1,9 @@
 package responses
 
 type ClinicianSummary struct {
-	PractitionerID      string              `json:"practitioner_id,omitempty"`
+	ClinicianID         string              `json:"clinician_id,omitempty"`
 	Name                string              `json:"name,omitempty"`
-	Affiliation         string              `json:"affiliation,omitempty"`
 	PracticeInformation PracticeInformation `json:"practice_information,omitempty"`
-	Specialties         []string            `json:"specialties,omitempty"`
 	ScheduleID          string              `json:"schedule_id,omitempty"`
 	PractitionerRoleID  string              `json:"practitioner_role_id,omitempty"`
 }
@@ -17,15 +15,16 @@ type ClinicianClinic struct {
 }
 
 type PracticeInformation struct {
-	ClinicID    string `json:"clinic_id,omitempty"`
-	ClinicName  string `json:"clinic_name,omitempty"`
-	Affiliation string `json:"affiliation,omitempty"`
-	Experience  string `json:"experience,omitempty"`
-	Fee         string `json:"fee,omitempty"`
+	ClinicID        string          `json:"clinic_id,omitempty"`
+	ClinicName      string          `json:"clinic_name,omitempty"`
+	Affiliation     string          `json:"affiliation,omitempty"`
+	Experience      string          `json:"experience,omitempty"`
+	Specialties     []string        `json:"specialties,omitempty"`
+	PricePerSession PricePerSession `json:"price_per_session,omitempty"`
 }
 
 type PracticeAvailability struct {
-	OrganizationID string                  `json:"organization_id"`
+	ClinicID       string                  `json:"clinic_id"`
 	AvailableTimes []AvailableTimeResponse `json:"available_time"`
 }
 
