@@ -199,47 +199,6 @@ func BuildPractitionerRolesBundleRequestByPractitionerID(practitionerID string, 
 	return bundle
 }
 
-func BuildPractitionerRoleRequestFromPracticeInformation(practitionerID string, practiceInformation requests.PracticeInformation, practitionerRoles []responses.PractitionerRole) *requests.PractitionerRole {
-	practitionerReference := requests.Reference{
-		Reference: fmt.Sprintf("%s/%s", constvars.ResourcePractitioner, practitionerID),
-	}
-	organizationReference := requests.Reference{
-		Reference: fmt.Sprintf("%s/%s", constvars.ResourceOrganization, practiceInformation.ClinicID),
-	}
-
-	extension := requests.Extension{
-		Url: "http://hl7.org/fhir/StructureDefinition/Money",
-		ValueMoney: requests.Money{
-			Value:    practiceInformation.PricePerSession.Value,
-			Currency: practiceInformation.PricePerSession.Currency,
-		},
-	}
-
-	request := &requests.PractitionerRole{
-		ResourceType: constvars.ResourcePractitionerRole,
-		Practitioner: practitionerReference,
-		Organization: organizationReference,
-		Active:       false,
-		Extension: []requests.Extension{
-			extension,
-		},
-		Specialty: []requests.CodeableConcept{},
-	}
-
-	for _, specialty := range practiceInformation.Specialties {
-		request.Specialty = append(request.Specialty, requests.CodeableConcept{
-			Text: specialty,
-		})
-	}
-
-	if len(practitionerRoles) == 1 {
-		request.ID = practitionerRoles[0].ID
-	}
-
-	return request
-
-}
-
 func BuildFhirPatientReactivateRequest(patientID string) *requests.Patient {
 	return &requests.Patient{
 		ResourceType: constvars.ResourcePatient,
@@ -267,6 +226,7 @@ func ConvertToModelAvailableTimes(availableTimes []requests.AvailableTimeRequest
 	}
 	return result
 }
+
 func ConvertToAvailableTimesResponse(availableTimes []responses.AvailableTime) []responses.AvailableTimeResponse {
 	result := make([]responses.AvailableTimeResponse, 0, len(availableTimes))
 	for _, at := range availableTimes {

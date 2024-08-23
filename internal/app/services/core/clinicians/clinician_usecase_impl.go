@@ -172,7 +172,7 @@ func (uc *clinicianUsecase) CreatePracticeInformation(ctx context.Context, sessi
 			return nil, exceptions.ErrResultFetchedNotUniqueFhirResource(nil, constvars.ResourcePractitionerRole)
 		}
 
-		practitionerRoleFhirRequest := utils.BuildPractitionerRoleRequestFromPracticeInformation(session.PractitionerID, practiceInformation, practitionerRoles)
+		practitionerRoleFhirRequest := uc.buildPractitionerRoleRequestFromPracticeInformation(session.PractitionerID, practiceInformation, practitionerRoles)
 
 		if practitionerRoleFhirRequest.ID == "" {
 			response, err := uc.PractitionerRoleFhirClient.CreatePractitionerRole(ctx, practitionerRoleFhirRequest)
@@ -253,19 +253,20 @@ func (uc *clinicianUsecase) CreatePracticeAvailability(ctx context.Context, sess
 			}
 		}
 
+		practitionerRoles, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerIDAndOrganizationID(ctx, session.PractitionerID, clinicID)
+		if err != nil {
+			return nil, err
+		}
+
 		practitionerRoleFhirRequest := &requests.PractitionerRole{
-			ResourceType: constvars.ResourcePractitionerRole,
-			Practitioner: requests.Reference{
-				Reference: fmt.Sprintf("Practitioner/%s", session.PractitionerID),
-			},
-			Organization: requests.Reference{
-				Reference: fmt.Sprintf("Organization/%s", clinicID),
-			},
+			ResourceType:  constvars.ResourcePractitionerRole,
+			ID:            practitionerRoles[0].ID,
+			Active:        true,
 			AvailableTime: utils.ConvertToModelAvailableTimes(availableTimes),
 		}
 
 		// Create the PractitionerRole
-		practitionerRole, err := uc.PractitionerRoleFhirClient.CreatePractitionerRole(ctx, practitionerRoleFhirRequest)
+		practitionerRole, err := uc.PractitionerRoleFhirClient.UpdatePractitionerRole(ctx, practitionerRoleFhirRequest)
 		if err != nil {
 			return nil, err
 		}
@@ -357,6 +358,87 @@ func (uc *clinicianUsecase) FindAvailability(ctx context.Context, request *reque
 
 }
 
+func (uc *clinicianUsecase) buildPractitionerRoleRequestFromPracticeInformation(practitionerID string, practiceInformation requests.PracticeInformation, practitionerRoles []responses.PractitionerRole) *requests.PractitionerRole {
+	practitionerReference := requests.Reference{
+		Reference: fmt.Sprintf("%s/%s", constvars.ResourcePractitioner, practitionerID),
+	}
+	organizationReference := requests.Reference{
+		Reference: fmt.Sprintf("%s/%s", constvars.ResourceOrganization, practiceInformation.ClinicID),
+	}
+
+	extension := requests.Extension{
+		Url: "http://hl7.org/fhir/StructureDefinition/Money",
+		ValueMoney: requests.Money{
+			Value:    practiceInformation.PricePerSession.Value,
+			Currency: practiceInformation.PricePerSession.Currency,
+		},
+	}
+
+	request := &requests.PractitionerRole{
+		ResourceType: constvars.ResourcePractitionerRole,
+		Practitioner: practitionerReference,
+		Organization: organizationReference,
+		Active:       false,
+		Extension: []requests.Extension{
+			extension,
+		},
+		Specialty: []requests.CodeableConcept{},
+	}
+
+	for _, specialty := range practiceInformation.Specialties {
+		request.Specialty = append(request.Specialty, requests.CodeableConcept{
+			Text: specialty,
+		})
+	}
+
+	if len(practitionerRoles) == 1 {
+		request.ID = practitionerRoles[0].ID
+	}
+
+	return request
+
+}
+func (uc *clinicianUsecase) buildPractitionerRoleRequestForPracticeAvailability(practitionerID string, practiceInformation requests.PracticeInformation, practitionerRoles []responses.PractitionerRole) *requests.PractitionerRole {
+	practitionerReference := requests.Reference{
+		Reference: fmt.Sprintf("%s/%s", constvars.ResourcePractitioner, practitionerID),
+	}
+	organizationReference := requests.Reference{
+		Reference: fmt.Sprintf("%s/%s", constvars.ResourceOrganization, practiceInformation.ClinicID),
+	}
+
+	extension := requests.Extension{
+		Url: "http://hl7.org/fhir/StructureDefinition/Money",
+		ValueMoney: requests.Money{
+			Value:    practiceInformation.PricePerSession.Value,
+			Currency: practiceInformation.PricePerSession.Currency,
+		},
+	}
+
+	request := &requests.PractitionerRole{
+		ResourceType: constvars.ResourcePractitionerRole,
+		Practitioner: practitionerReference,
+		Organization: organizationReference,
+		Active:       false,
+		Extension: []requests.Extension{
+			extension,
+		},
+		Specialty: []requests.CodeableConcept{},
+	}
+
+	for _, specialty := range practiceInformation.Specialties {
+		request.Specialty = append(request.Specialty, requests.CodeableConcept{
+			Text: specialty,
+		})
+	}
+
+	if len(practitionerRoles) == 1 {
+		request.ID = practitionerRoles[0].ID
+	}
+
+	return request
+
+}
+
 func (uc *clinicianUsecase) generateDayAvailability(startDate, endDate time.Time, availableTimes, busySlots map[string][]string) []responses.DayAvailability {
 	var days []responses.DayAvailability
 
@@ -445,7 +527,6 @@ func (uc *clinicianUsecase) findAndBuildClinicianCinicsResponseByPractitionerRol
 }
 
 func (uc *clinicianUsecase) checkForTimeConflicts(ctx context.Context, existingRoles []responses.PractitionerRole, availableTime requests.AvailableTimeRequest) (bool, error) {
-	fmt.Println(existingRoles[0].AvailableTime, availableTime)
 	for _, role := range existingRoles {
 		for _, existingTime := range role.AvailableTime {
 			for _, day := range availableTime.DaysOfWeek {
