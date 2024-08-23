@@ -26,19 +26,30 @@ func NewClinicController(logger *zap.Logger, clinicUsecase ClinicUsecase) *Clini
 }
 
 func (ctrl *ClinicController) FindAll(w http.ResponseWriter, r *http.Request) {
-	pageStr := r.URL.Query().Get("page")
-	pageSizeStr := r.URL.Query().Get("page_size")
 	nameStr := r.URL.Query().Get("name")
 	fetchType := r.URL.Query().Get("type")
 
-	page, err := strconv.Atoi(pageStr)
-	if err != nil || page <= 0 {
-		page = 1
-	}
+	var (
+		page     int
+		pageSize int
+	)
 
-	pageSize, err := strconv.Atoi(pageSizeStr)
-	if err != nil || pageSize <= 0 {
-		pageSize = 10
+	if fetchType == constvars.FhirFetchResourceTypePaged {
+		pageStr := r.URL.Query().Get("page")
+		pageSizeStr := r.URL.Query().Get("page_size")
+
+		pageInt, err := strconv.Atoi(pageStr)
+		if err != nil || page <= 0 {
+			page = 1
+		}
+
+		pageSizeInt, err := strconv.Atoi(pageSizeStr)
+		if err != nil || pageSize <= 0 {
+			pageSize = 10
+		}
+
+		page = pageInt
+		pageSize = pageSizeInt
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
