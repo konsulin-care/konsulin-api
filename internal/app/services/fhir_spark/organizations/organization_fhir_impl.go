@@ -22,7 +22,11 @@ func NewOrganizationFhirClient(baseUrl string) OrganizationFhirClient {
 }
 
 func (c *organizationFhirClient) FindAll(ctx context.Context, nameFilter, fetchType string, page, pageSize int) ([]responses.Organization, int, error) {
-	url := fmt.Sprintf("%s?name:contains=%s", c.BaseUrl, nameFilter)
+	url := c.BaseUrl
+
+	if nameFilter != "" {
+		url += fmt.Sprintf("?name:contains=%s", nameFilter)
+	}
 
 	if fetchType == constvars.FhirFetchResourceTypePaged {
 		url += fmt.Sprintf("&?page=%d&?_count=%d", page, pageSize)
