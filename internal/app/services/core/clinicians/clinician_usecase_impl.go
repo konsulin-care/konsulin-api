@@ -258,12 +258,7 @@ func (uc *clinicianUsecase) CreatePracticeAvailability(ctx context.Context, sess
 			return nil, err
 		}
 
-		practitionerRoleFhirRequest := &requests.PractitionerRole{
-			ResourceType:  constvars.ResourcePractitionerRole,
-			ID:            practitionerRoles[0].ID,
-			Active:        true,
-			AvailableTime: utils.ConvertToModelAvailableTimes(availableTimes),
-		}
+		practitionerRoleFhirRequest := uc.buildPractitionerRoleRequestForPracticeAvailability(practitionerRoles, availableTimes)
 
 		// Create the PractitionerRole
 		practitionerRole, err := uc.PractitionerRoleFhirClient.UpdatePractitionerRole(ctx, practitionerRoleFhirRequest)
@@ -398,19 +393,23 @@ func (uc *clinicianUsecase) buildPractitionerRoleRequestFromPracticeInformation(
 	return request
 
 }
-func (uc *clinicianUsecase) buildPractitionerRoleRequestForPracticeAvailability(practitionerID string, practiceInformation requests.PracticeInformation, practitionerRoles []responses.PractitionerRole) *requests.PractitionerRole {
+
+func (uc *clinicianUsecase) buildPractitionerRoleRequestForPracticeAvailability(practitionerRoles []responses.PractitionerRole, availableTimes []requests.AvailableTimeRequest) *requests.PractitionerRole {
+	practitionerID := strings.Split(practitionerRoles[0].Practitioner.Reference, "/")[1]
+	organizationID := strings.Split(practitionerRoles[0].Organization.Reference, "/")[1]
+
 	practitionerReference := requests.Reference{
 		Reference: fmt.Sprintf("%s/%s", constvars.ResourcePractitioner, practitionerID),
 	}
 	organizationReference := requests.Reference{
-		Reference: fmt.Sprintf("%s/%s", constvars.ResourceOrganization, practiceInformation.ClinicID),
+		Reference: fmt.Sprintf("%s/%s", constvars.ResourceOrganization, organizationID),
 	}
 
 	extension := requests.Extension{
 		Url: "http://hl7.org/fhir/StructureDefinition/Money",
 		ValueMoney: requests.Money{
-			Value:    practiceInformation.PricePerSession.Value,
-			Currency: practiceInformation.PricePerSession.Currency,
+			Value:    practitionerRoles[0].Extension[0].ValueMoney.Value,
+			Currency: practitionerRoles[0].Extension[0].ValueMoney.Currency,
 		},
 	}
 
@@ -422,12 +421,13 @@ func (uc *clinicianUsecase) buildPractitionerRoleRequestForPracticeAvailability(
 		Extension: []requests.Extension{
 			extension,
 		},
-		Specialty: []requests.CodeableConcept{},
+		Specialty:     []requests.CodeableConcept{},
+		AvailableTime: utils.ConvertToModelAvailableTimes(availableTimes),
 	}
 
-	for _, specialty := range practiceInformation.Specialties {
+	for _, specialty := range practitionerRoles[0].Specialty {
 		request.Specialty = append(request.Specialty, requests.CodeableConcept{
-			Text: specialty,
+			Text: specialty.Text,
 		})
 	}
 
