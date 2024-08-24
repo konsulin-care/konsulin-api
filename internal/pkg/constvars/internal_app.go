@@ -14,6 +14,8 @@ const (
 )
 
 const (
-	URLParamClinicID    = "clinic_id"
-	URLParamClinicianID = "clinician_id"
+	URLParamClinicID                = "clinic_id"
+	URLParamClinicianID             = "clinician_id"
+	URLParamQuestionnaireID         = "questionnaire_id"
+	URLParamQuestionnaireResponseID = "questionnaire_response_id"
 )

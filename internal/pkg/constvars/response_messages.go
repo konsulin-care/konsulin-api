@@ -23,6 +23,18 @@ const (
 	CreateClinicianPracticeInformationSuccessMessage  = "practice information successfully updated for clinician"
 	DeleteClinicianClinicSuccessMessage               = "clinic successfully deleted for clinician"
 
+	// Questionnaire messages
+	CreateQuestionnaireSuccessMessage = "questionnaire successfully created"
+	FindQuestionnaireSuccessMessage   = "questionnaire successfully found"
+	UpdateQuestionnaireSuccessMessage = "questionnaire successfully updated"
+	DeleteQuestionnaireSuccessMessage = "questionnaire successfully deleted"
+
+	// Questionnaire Response messages
+	CreateQuestionnaireResponseSuccessMessage = "questionnaire response successfully created"
+	FindQuestionnaireResponseSuccessMessage   = "questionnaire response successfully found"
+	UpdateQuestionnaireResponseSuccessMessage = "questionnaire response successfully updated"
+	DeleteQuestionnaireResponseSuccessMessage = "questionnaire response successfully deleted"
+
 	// Patient-related messages
 	CreatePatientAppointmentSuccessMessage = "appoinment successfully created for patient"
 
