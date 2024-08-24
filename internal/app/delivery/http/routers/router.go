@@ -10,6 +10,8 @@ import (
 	educationLevels "konsulin-service/internal/app/services/core/education_levels"
 	"konsulin-service/internal/app/services/core/genders"
 	"konsulin-service/internal/app/services/core/patients"
+	questionnaireResponses "konsulin-service/internal/app/services/core/questionnaire_responses"
+	"konsulin-service/internal/app/services/core/questionnaires"
 	"konsulin-service/internal/app/services/core/users"
 	"time"
 
@@ -29,6 +31,8 @@ func SetupRoutes(
 	patientController *patients.PatientController,
 	educationLevelController *educationLevels.EducationLevelController,
 	genderController *genders.GenderController,
+	questionnaireController *questionnaires.QuestionnaireController,
+	questionnaireResponseController *questionnaireResponses.QuestionnaireResponseController,
 ) {
 
 	corsOptions := cors.Options{
@@ -76,6 +80,12 @@ func SetupRoutes(
 			})
 			r.Route("/patients", func(r chi.Router) {
 				attachPatientRouter(r, middlewares, patientController)
+			})
+			r.Route("/questionnaire-responses", func(r chi.Router) {
+				attachQuestionnaireResponseRouter(r, middlewares, questionnaireResponseController)
+			})
+			r.Route("/questionnaires", func(r chi.Router) {
+				attachQuestionnaireRouter(r, middlewares, questionnaireController)
 			})
 		})
 	})

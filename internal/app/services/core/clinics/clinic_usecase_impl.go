@@ -144,7 +144,6 @@ func (uc *clinicUsecase) FindClinicianByClinicAndClinicianID(ctx context.Context
 		PractitionerRoleID:  practitionerRoles[0].ID,
 		Name:                utils.GetFullName(practitioner.Name),
 		PracticeInformation: practiceInformation,
-		// Availability:        availableTimes,
 	}
 
 	if len(schedules) == 1 {
