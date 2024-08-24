@@ -80,13 +80,21 @@ func ExtractSpecialties(specialties []responses.CodeableConcept) []string {
 	return qualificationsResponse
 }
 
+func ExtractSpecialtiesText(specialties []responses.CodeableConcept) []string {
+	qualificationsResponse := []string{}
+	for _, specialty := range specialties {
+		qualificationsResponse = append(qualificationsResponse, specialty.Text)
+	}
+	return qualificationsResponse
+}
+
 func MapPractitionerToClinicClinician(practitioner *responses.Practitioner, specialty []responses.CodeableConcept, organizationName string) responses.ClinicClinician {
 	return responses.ClinicClinician{
 		PractitionerID: practitioner.ID,
 		Name:           GetFullName(practitioner.Name),
 		ClinicName:     organizationName,
 		Affiliation:    organizationName,
-		Specialties:    ExtractSpecialties(specialty),
+		Specialties:    ExtractSpecialtiesText(specialty),
 	}
 }
 

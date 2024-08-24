@@ -11,6 +11,9 @@ import (
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
 	"net/http"
+	"net/url"
+	"strings"
+	"time"
 )
 
 type practitionerRoleFhirClient struct {
@@ -114,6 +117,103 @@ func (c *practitionerRoleFhirClient) FindPractitionerRoleByOrganizationID(ctx co
 	return practitionerRoles, nil
 }
 
+func (c *practitionerRoleFhirClient) FindPractitionerRoleByCustomRequest(ctx context.Context, request *requests.FindAllCliniciansByClinicID) ([]responses.PractitionerRole, error) {
+	params := url.Values{}
+
+	params.Add("organization", fmt.Sprintf("Organization/%s", request.ClinicID))
+
+	if request.City != "" {
+		params.Add("organization.address-city", request.City)
+	}
+	if request.PractitionerName != "" {
+		params.Add("practitioner.name:contains", request.PractitionerName)
+	}
+
+	url := fmt.Sprintf("%s?%s", c.BaseUrl, params.Encode())
+
+	req, err := http.NewRequestWithContext(
+		ctx,
+		constvars.MethodGet,
+		url,
+		nil,
+	)
+	if err != nil {
+		return nil, exceptions.ErrCreateHTTPRequest(err)
+	}
+	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, exceptions.ErrSendHTTPRequest(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != constvars.StatusOK {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePractitionerRole)
+		}
+
+		var outcome responses.OperationOutcome
+		err = json.Unmarshal(bodyBytes, &outcome)
+		if err != nil {
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePractitionerRole)
+		}
+
+		if len(outcome.Issue) > 0 {
+			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourcePractitionerRole)
+		}
+	}
+
+	var result struct {
+		Total        int    `json:"total"`
+		ResourceType string `json:"resourceType"`
+		Entry        []struct {
+			FullUrl  string                     `json:"fullUrl"`
+			Resource responses.PractitionerRole `json:"resource"`
+		} `json:"entry"`
+	}
+
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	if err != nil {
+		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePractitionerRole)
+	}
+
+	desiredDays := strings.Split(request.Days, ",")
+	startTimeFilterParsed, _ := time.Parse(constvars.TimeFormatHoursMinutesSeconds, request.StartTime)
+	endTimeFilterParsed, _ := time.Parse(constvars.TimeFormatHoursMinutesSeconds, request.EndTime)
+	practitionerRoles := make([]responses.PractitionerRole, len(result.Entry))
+
+	for i, entry := range result.Entry {
+		matched := false
+		for _, availableTime := range entry.Resource.AvailableTime {
+			for _, availableDay := range availableTime.DaysOfWeek {
+				for _, desiredDay := range desiredDays {
+					if strings.ToLower(availableDay) == desiredDay {
+						startTime, _ := time.Parse(constvars.TimeFormatHoursMinutesSeconds, availableTime.AvailableStartTime)
+						endTime, _ := time.Parse(constvars.TimeFormatHoursMinutesSeconds, availableTime.AvailableEndTime)
+						if startTime.Hour() >= startTimeFilterParsed.Hour() && endTime.Hour() <= endTimeFilterParsed.Hour() {
+							matched = true
+							break
+						}
+					}
+				}
+				if matched {
+					break
+				}
+			}
+			if matched {
+				practitionerRoles[i] = entry.Resource
+				break
+			}
+		}
+	}
+
+	return practitionerRoles, nil
+}
+
 func (c *practitionerRoleFhirClient) FindPractitionerRoleByPractitionerID(ctx context.Context, practitionerID string) ([]responses.PractitionerRole, error) {
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, fmt.Sprintf("%s?practitioner=Practitioner/%s", c.BaseUrl, practitionerID), nil)
 	if err != nil {
@@ -168,7 +268,7 @@ func (c *practitionerRoleFhirClient) FindPractitionerRoleByPractitionerID(ctx co
 	return practitionerRoles, nil
 }
 
-func (c *practitionerRoleFhirClient) FindPractitionerRoleByPractitionerIDAndName(ctx context.Context, request *requests.GetClinicianByClinicianID) ([]responses.PractitionerRole, error) {
+func (c *practitionerRoleFhirClient) FindPractitionerRoleByPractitionerIDAndName(ctx context.Context, request *requests.FindClinicianByClinicianID) ([]responses.PractitionerRole, error) {
 	url := fmt.Sprintf("%s?practitioner=Practitioner/%s", c.BaseUrl, request.PractitionerID)
 
 	if request.OrganizationName != "" {

@@ -55,7 +55,7 @@ func (ctrl *ClinicianController) CreatePracticeInformation(w http.ResponseWriter
 }
 
 func (ctrl *ClinicianController) FindClinicsByClinicianID(w http.ResponseWriter, r *http.Request) {
-	request := &requests.GetClinicianByClinicianID{
+	request := &requests.FindClinicianByClinicianID{
 		PractitionerID:   chi.URLParam(r, constvars.URLParamClinicianID),
 		OrganizationName: r.URL.Query().Get("name"),
 	}
