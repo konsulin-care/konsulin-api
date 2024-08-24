@@ -54,6 +54,38 @@ type ContactPoint struct {
 	Use    string `json:"use"`
 }
 
+type Attachment struct {
+	ContentType string `json:"contentType,omitempty"`
+	Language    string `json:"language,omitempty"`
+	Data        string `json:"data,omitempty"`
+	Url         string `json:"url,omitempty"`
+	Size        int64  `json:"size,omitempty"`
+	Hash        string `json:"hash,omitempty"`
+	Title       string `json:"title,omitempty"`
+	Creation    string `json:"creation,omitempty"`
+}
+
+type Narrative struct {
+	Status string `json:"status,omitempty"`
+	Div    string `json:"div,omitempty"`
+}
+
+type ContactDetail struct {
+	Name    string         `json:"name,omitempty"`
+	Telecom []ContactPoint `json:"telecom,omitempty"`
+}
+
+type UsageContext struct {
+	Code  Coding      `json:"code,omitempty"`
+	Value interface{} `json:"value,omitempty"`
+}
+type Quantity struct {
+	Value      float64 `json:"value,omitempty"`
+	Comparator string  `json:"comparator,omitempty"`
+	Unit       string  `json:"unit,omitempty"`
+	System     string  `json:"system,omitempty"`
+	Code       string  `json:"code,omitempty"`
+}
 type Money struct {
 	Value    float64 `json:"value,omitempty"`
 	Currency string  `json:"currency,omitempty"`

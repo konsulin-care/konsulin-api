@@ -11,6 +11,7 @@ import (
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
+	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
 )
 
@@ -125,15 +126,13 @@ func (uc *clinicUsecase) FindClinicianByClinicAndClinicianID(ctx context.Context
 		return nil, err
 	}
 
-	var specialties []string
-
-	for _, practitionerRole := range practitionerRoles {
-		specialties = append(specialties, utils.ExtractSpecialties(practitionerRole.Specialty)...)
+	if len(schedules) > 1 {
+		return nil, exceptions.ErrGetFHIRResourceDuplicate(nil, constvars.ResourceSchedule)
 	}
 
 	practiceInformation := responses.PracticeInformation{
 		Affiliation: organization.Name,
-		Specialties: utils.ExtractSpecialties(practitionerRoles[0].Specialty),
+		Specialties: utils.ExtractSpecialtiesText(practitionerRoles[0].Specialty),
 		PricePerSession: responses.PricePerSession{
 			Value:    practitionerRoles[0].Extension[0].ValueMoney.Value,
 			Currency: practitionerRoles[0].Extension[0].ValueMoney.Currency,
@@ -143,10 +142,13 @@ func (uc *clinicUsecase) FindClinicianByClinicAndClinicianID(ctx context.Context
 	response := &responses.ClinicianSummary{
 		ClinicianID:         practitioner.ID,
 		PractitionerRoleID:  practitionerRoles[0].ID,
-		ScheduleID:          schedules[0].ID,
 		Name:                utils.GetFullName(practitioner.Name),
 		PracticeInformation: practiceInformation,
 		// Availability:        availableTimes,
+	}
+
+	if len(schedules) == 1 {
+		response.ScheduleID = schedules[0].ID
 	}
 
 	return response, nil
