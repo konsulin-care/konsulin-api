@@ -165,11 +165,6 @@ func (c *scheduleFhirClient) FindScheduleByPractitionerRoleID(ctx context.Contex
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourceSchedule)
 	}
 
-	if result.ResourceType != "Bundle" || len(result.Entry) == 0 {
-		fhirError := fmt.Errorf("%s not found", constvars.ResourceSchedule)
-		return nil, exceptions.ErrGetFHIRResource(fhirError, constvars.ResourceSchedule)
-	}
-
 	schedulesFhir := make([]responses.Schedule, len(result.Entry))
 	for i, entry := range result.Entry {
 		schedulesFhir[i] = entry.Resource
