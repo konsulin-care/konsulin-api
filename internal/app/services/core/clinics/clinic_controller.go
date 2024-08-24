@@ -3,6 +3,7 @@ package clinics
 import (
 	"context"
 	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
 	"net/http"
@@ -95,26 +96,34 @@ func (ctrl *ClinicController) FindClinicianByClinicAndClinicianID(w http.Respons
 }
 
 func (ctrl *ClinicController) FindAllCliniciansByClinicID(w http.ResponseWriter, r *http.Request) {
+	var err error
+
+	request := &requests.FindAllCliniciansByClinicID{
+		PractitionerName: r.URL.Query().Get("name"),
+		City:             r.URL.Query().Get("city"),
+		Days:             r.URL.Query().Get("days"),
+		StartTime:        r.URL.Query().Get("start_time"),
+		EndTime:          r.URL.Query().Get("end_time"),
+		ClinicID:         chi.URLParam(r, constvars.URLParamClinicID),
+	}
+
 	pageStr := r.URL.Query().Get("page")
 	pageSizeStr := r.URL.Query().Get("page_size")
-	nameStr := r.URL.Query().Get("name")
 
-	page, err := strconv.Atoi(pageStr)
-	if err != nil || page <= 0 {
-		page = 1
+	request.Page, err = strconv.Atoi(pageStr)
+	if err != nil || request.Page <= 0 {
+		request.Page = 1
 	}
 
-	pageSize, err := strconv.Atoi(pageSizeStr)
-	if err != nil || pageSize <= 0 {
-		pageSize = 10
+	request.Page, err = strconv.Atoi(pageSizeStr)
+	if err != nil || request.Page <= 0 {
+		request.Page = 10
 	}
-
-	clinicID := chi.URLParam(r, constvars.URLParamClinicID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	result, paginationData, err := ctrl.ClinicUsecase.FindAllCliniciansByClinicID(ctx, nameStr, clinicID, page, pageSize)
+	result, paginationData, err := ctrl.ClinicUsecase.FindAllCliniciansByClinicID(ctx, request)
 	if err != nil {
 		if err == context.DeadlineExceeded {
 			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))

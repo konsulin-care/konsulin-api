@@ -1,6 +1,6 @@
 package requests
 
-type GetClinicianByClinicianID struct {
+type FindClinicianByClinicianID struct {
 	PractitionerID   string
 	OrganizationName string
 }

@@ -9,6 +9,7 @@ import (
 	"konsulin-service/internal/app/services/fhir_spark/schedules"
 	"konsulin-service/internal/app/services/shared/redis"
 	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/utils"
 )
@@ -59,13 +60,13 @@ func (uc *clinicUsecase) FindAll(ctx context.Context, nameFilter, fetchType stri
 	return response, nil, nil
 }
 
-func (uc *clinicUsecase) FindAllCliniciansByClinicID(ctx context.Context, nameFilter, clinicID string, page, pageSize int) ([]responses.ClinicClinician, *responses.Pagination, error) {
-	practitionerRoles, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByOrganizationID(ctx, clinicID)
+func (uc *clinicUsecase) FindAllCliniciansByClinicID(ctx context.Context, request *requests.FindAllCliniciansByClinicID) ([]responses.ClinicClinician, *responses.Pagination, error) {
+	practitionerRoles, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByCustomRequest(ctx, request)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	clinicians, paginationData, err := uc.fetchAllCliniciansByPractitionerRoles(ctx, practitionerRoles, nameFilter, page, pageSize)
+	clinicians, paginationData, err := uc.fetchAllCliniciansByPractitionerRoles(ctx, practitionerRoles, request)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -73,7 +74,7 @@ func (uc *clinicUsecase) FindAllCliniciansByClinicID(ctx context.Context, nameFi
 	return clinicians, paginationData, nil
 }
 
-func (uc *clinicUsecase) fetchAllCliniciansByPractitionerRoles(ctx context.Context, practitionerRoles []responses.PractitionerRole, nameFilter string, page, pageSize int) ([]responses.ClinicClinician, *responses.Pagination, error) {
+func (uc *clinicUsecase) fetchAllCliniciansByPractitionerRoles(ctx context.Context, practitionerRoles []responses.PractitionerRole, request *requests.FindAllCliniciansByClinicID) ([]responses.ClinicClinician, *responses.Pagination, error) {
 	var clinicians []responses.ClinicClinician
 	for _, practitionerRole := range practitionerRoles {
 		if practitionerRole.Practitioner.Reference != "" && practitionerRole.Active {

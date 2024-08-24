@@ -293,7 +293,7 @@ func (uc *clinicianUsecase) CreatePracticeAvailability(ctx context.Context, sess
 	return response, nil
 }
 
-func (uc *clinicianUsecase) FindClinicsByClinicianID(ctx context.Context, request *requests.GetClinicianByClinicianID) ([]responses.ClinicianClinic, error) {
+func (uc *clinicianUsecase) FindClinicsByClinicianID(ctx context.Context, request *requests.FindClinicianByClinicianID) ([]responses.ClinicianClinic, error) {
 	practitionerRoles, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerIDAndName(ctx, request)
 	if err != nil {
 		return nil, err
@@ -417,7 +417,7 @@ func (uc *clinicianUsecase) buildPractitionerRoleRequestForPracticeAvailability(
 		ResourceType: constvars.ResourcePractitionerRole,
 		Practitioner: practitionerReference,
 		Organization: organizationReference,
-		Active:       false,
+		Active:       true,
 		Extension: []requests.Extension{
 			extension,
 		},
