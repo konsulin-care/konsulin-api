@@ -5,7 +5,9 @@ import (
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/app/services/core/session"
+	"konsulin-service/internal/app/services/fhir_spark/organizations"
 	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
+	practitionerRoles "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
 	"konsulin-service/internal/app/services/shared/redis"
 	"konsulin-service/internal/app/services/shared/storage"
@@ -14,36 +16,43 @@ import (
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
+	"strings"
 	"time"
 )
 
 type userUsecase struct {
-	UserRepository         UserRepository
-	PatientFhirClient      patientsFhir.PatientFhirClient
-	PractitionerFhirClient practitioners.PractitionerFhirClient
-	RedisRepository        redis.RedisRepository
-	SessionService         session.SessionService
-	MinioStorage           storage.Storage
-	InternalConfig         *config.InternalConfig
+	UserRepository             UserRepository
+	PatientFhirClient          patientsFhir.PatientFhirClient
+	PractitionerFhirClient     practitioners.PractitionerFhirClient
+	PractitionerRoleFhirClient practitionerRoles.PractitionerRoleFhirClient
+	OrganizationFhirClient     organizations.OrganizationFhirClient
+	RedisRepository            redis.RedisRepository
+	SessionService             session.SessionService
+	MinioStorage               storage.Storage
+	InternalConfig             *config.InternalConfig
 }
 
 func NewUserUsecase(
 	userMongoRepository UserRepository,
 	patientFhirClient patientsFhir.PatientFhirClient,
 	practitionerFhirClient practitioners.PractitionerFhirClient,
+	practitionerRoleFhirClient practitionerRoles.PractitionerRoleFhirClient,
+	organizationFhirClient organizations.OrganizationFhirClient,
 	redisRepository redis.RedisRepository,
 	sessionService session.SessionService,
 	minioStorage storage.Storage,
 	internalConfig *config.InternalConfig,
 ) UserUsecase {
 	return &userUsecase{
-		UserRepository:         userMongoRepository,
-		PatientFhirClient:      patientFhirClient,
-		PractitionerFhirClient: practitionerFhirClient,
-		RedisRepository:        redisRepository,
-		SessionService:         sessionService,
-		MinioStorage:           minioStorage,
-		InternalConfig:         internalConfig,
+		UserRepository:             userMongoRepository,
+		PatientFhirClient:          patientFhirClient,
+		PractitionerFhirClient:     practitionerFhirClient,
+		PractitionerRoleFhirClient: practitionerRoleFhirClient,
+		OrganizationFhirClient:     organizationFhirClient,
+		RedisRepository:            redisRepository,
+		SessionService:             sessionService,
+		MinioStorage:               minioStorage,
+		InternalConfig:             internalConfig,
 	}
 }
 
@@ -309,6 +318,42 @@ func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *mode
 
 	// Build patient profile response
 	response := utils.BuildPractitionerProfileResponse(practitionerFhir)
+
+	practitionerRoles, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerID(ctx, session.PractitionerID)
+	if err != nil {
+		return nil, err
+	}
+
+	practiceInformations := make([]responses.PracticeInformation, 0, len(practitionerRoles))
+	practiceAvailabilities := make([]responses.PracticeAvailability, 0, len(practitionerRoles))
+
+	for _, practitionerRole := range practitionerRoles {
+		organizationID := strings.Split(practitionerRole.Organization.Reference, "/")[1]
+		organization, err := uc.OrganizationFhirClient.FindOrganizationByID(ctx, organizationID)
+		if err != nil {
+			return nil, err
+		}
+		practiceInformations = append(practiceInformations, responses.PracticeInformation{
+			ClinicID:    organization.ID,
+			ClinicName:  organization.Name,
+			Affiliation: organization.Name,
+			Specialties: utils.ExtractSpecialties(practitionerRole.Specialty),
+			PricePerSession: responses.PricePerSession{
+				Value:    practitionerRole.Extension[0].ValueMoney.Value,
+				Currency: practitionerRole.Extension[0].ValueMoney.Currency,
+			},
+		})
+
+		if len(practitionerRole.AvailableTime) > 0 {
+			practiceAvailabilities = append(practiceAvailabilities, responses.PracticeAvailability{
+				ClinicID:       organization.ID,
+				AvailableTimes: utils.ConvertToAvailableTimesResponse(practitionerRole.AvailableTime),
+			})
+		}
+	}
+
+	response.PracticeInformations = practiceInformations
+	response.PracticeAvailabilities = practiceAvailabilities
 
 	// Return the response to Controller
 	return response, nil

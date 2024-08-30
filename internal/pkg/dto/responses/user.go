@@ -1,14 +1,16 @@
 package responses
 
 type UserProfile struct {
-	Fullname       string   `json:"fullname"`
-	Email          string   `json:"email"`
-	Age            int      `json:"age"`
-	Gender         string   `json:"gender"`
-	Educations     []string `json:"educations"`
-	WhatsAppNumber string   `json:"whatsapp_number"`
-	Address        string   `json:"address"`
-	BirthDate      string   `json:"birth_date"`
+	Fullname               string                 `json:"fullname,omitempty"`
+	Email                  string                 `json:"email,omitempty"`
+	Age                    int                    `json:"age,omitempty"`
+	Gender                 string                 `json:"gender,omitempty"`
+	Educations             []string               `json:"educations,omitempty"`
+	WhatsAppNumber         string                 `json:"whatsapp_number,omitempty"`
+	Address                string                 `json:"address,omitempty"`
+	BirthDate              string                 `json:"birth_date,omitempty"`
+	PracticeInformations   []PracticeInformation  `json:"practice_informations,omitempty"`
+	PracticeAvailabilities []PracticeAvailability `json:"practice_availabilities,omitempty"`
 }
 
 type UpdateUserProfile struct {

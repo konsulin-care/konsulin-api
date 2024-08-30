@@ -186,7 +186,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 
 	// Initialize Users dependencies
 	userMongoRepository := users.NewUserMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
-	userUseCase := users.NewUserUsecase(userMongoRepository, patientFhirClient, practitionerFhirClient, redisRepository, sessionService, minioStorage, bootstrap.InternalConfig)
+	userUseCase := users.NewUserUsecase(userMongoRepository, patientFhirClient, practitionerFhirClient, practitionerRoleFhirClient, organizationFhirClient, redisRepository, sessionService, minioStorage, bootstrap.InternalConfig)
 	userController := users.NewUserController(bootstrap.Logger, userUseCase, bootstrap.InternalConfig)
 
 	// Initialize Education Level dependencies
