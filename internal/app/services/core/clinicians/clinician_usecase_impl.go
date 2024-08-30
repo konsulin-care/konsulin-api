@@ -163,7 +163,11 @@ func (uc *clinicianUsecase) CreatePracticeInformation(ctx context.Context, sessi
 	result := make([]responses.PracticeInformation, 0, len(request.PracticeInformation))
 
 	for _, practiceInformation := range request.PracticeInformation {
-		practitionerRoles, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerIDAndOrganizationID(ctx, session.PractitionerID, practiceInformation.ClinicID)
+		practitionerRoles, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerIDAndOrganizationID(
+			ctx,
+			session.PractitionerID,
+			practiceInformation.ClinicID,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -172,7 +176,11 @@ func (uc *clinicianUsecase) CreatePracticeInformation(ctx context.Context, sessi
 			return nil, exceptions.ErrResultFetchedNotUniqueFhirResource(nil, constvars.ResourcePractitionerRole)
 		}
 
-		practitionerRoleFhirRequest := uc.buildPractitionerRoleRequestFromPracticeInformation(session.PractitionerID, practiceInformation, practitionerRoles)
+		practitionerRoleFhirRequest := uc.buildPractitionerRoleRequestFromPracticeInformation(
+			session.PractitionerID,
+			practiceInformation,
+			practitionerRoles,
+		)
 
 		if practitionerRoleFhirRequest.ID == "" {
 			response, err := uc.PractitionerRoleFhirClient.CreatePractitionerRole(ctx, practitionerRoleFhirRequest)
