@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/app/services/core/roles"
@@ -10,6 +12,7 @@ import (
 	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
 	practitionerRoles "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
+	questionnaireResponses "konsulin-service/internal/app/services/fhir_spark/questionnaires_responses"
 	"konsulin-service/internal/app/services/shared/mailer"
 	"konsulin-service/internal/app/services/shared/redis"
 	"konsulin-service/internal/pkg/constvars"
@@ -24,17 +27,18 @@ import (
 )
 
 type authUsecase struct {
-	UserRepository             users.UserRepository
-	RedisRepository            redis.RedisRepository
-	SessionService             session.SessionService
-	RoleRepository             roles.RoleRepository
-	PatientFhirClient          patientsFhir.PatientFhirClient
-	PractitionerFhirClient     practitioners.PractitionerFhirClient
-	PractitionerRoleFhirClient practitionerRoles.PractitionerRoleFhirClient
-	MailerService              mailer.MailerService
-	InternalConfig             *config.InternalConfig
-	Roles                      map[string]*models.Role
-	mu                         sync.RWMutex
+	UserRepository                  users.UserRepository
+	RedisRepository                 redis.RedisRepository
+	SessionService                  session.SessionService
+	RoleRepository                  roles.RoleRepository
+	PatientFhirClient               patientsFhir.PatientFhirClient
+	PractitionerFhirClient          practitioners.PractitionerFhirClient
+	PractitionerRoleFhirClient      practitionerRoles.PractitionerRoleFhirClient
+	QuestionnaireResponseFhirClient questionnaireResponses.QuestionnaireResponseFhirClient
+	MailerService                   mailer.MailerService
+	InternalConfig                  *config.InternalConfig
+	Roles                           map[string]*models.Role
+	mu                              sync.RWMutex
 }
 
 func NewAuthUsecase(
@@ -45,20 +49,22 @@ func NewAuthUsecase(
 	patientFhirClient patientsFhir.PatientFhirClient,
 	practitionerFhirClient practitioners.PractitionerFhirClient,
 	practitionerRoleFhirClient practitionerRoles.PractitionerRoleFhirClient,
+	questionnaireResponsesFhirClient questionnaireResponses.QuestionnaireResponseFhirClient,
 	mailerService mailer.MailerService,
 	internalConfig *config.InternalConfig,
 ) (AuthUsecase, error) {
 	authUsecase := &authUsecase{
-		UserRepository:             userMongoRepository,
-		RedisRepository:            redisRepository,
-		SessionService:             sessionService,
-		RoleRepository:             rolesRepository,
-		PatientFhirClient:          patientFhirClient,
-		PractitionerFhirClient:     practitionerFhirClient,
-		PractitionerRoleFhirClient: practitionerRoleFhirClient,
-		MailerService:              mailerService,
-		InternalConfig:             internalConfig,
-		Roles:                      make(map[string]*models.Role),
+		UserRepository:                  userMongoRepository,
+		RedisRepository:                 redisRepository,
+		SessionService:                  sessionService,
+		RoleRepository:                  rolesRepository,
+		PatientFhirClient:               patientFhirClient,
+		PractitionerFhirClient:          practitionerFhirClient,
+		PractitionerRoleFhirClient:      practitionerRoleFhirClient,
+		QuestionnaireResponseFhirClient: questionnaireResponsesFhirClient,
+		MailerService:                   mailerService,
+		InternalConfig:                  internalConfig,
+		Roles:                           make(map[string]*models.Role),
 	}
 
 	ctx := context.Background()
@@ -189,6 +195,11 @@ func (uc *authUsecase) RegisterPatient(ctx context.Context, request *requests.Re
 		return nil, err
 	}
 
+	err = uc.checkQuestionnaireResponseAndAttachWithPatientData(ctx, request.ResponseID, user)
+	if err != nil {
+		return nil, err
+	}
+
 	// Map the data into response output ready to be used by controller
 	response := &responses.RegisterUser{
 		UserID:    userID,
@@ -247,6 +258,11 @@ func (uc *authUsecase) LoginPatient(ctx context.Context, request *requests.Login
 		return nil, exceptions.ErrInvalidUsernameOrPassword(nil)
 	}
 
+	err = uc.checkQuestionnaireResponseAndAttachWithPatientData(ctx, request.ResponseID, user)
+	if err != nil {
+		return nil, err
+	}
+
 	// Generate a UUID for the session ID
 	sessionID := uuid.New().String()
 
@@ -261,14 +277,23 @@ func (uc *authUsecase) LoginPatient(ctx context.Context, request *requests.Login
 	}
 
 	// Store the session data in Redis with a 2-hour expirations
-	err = uc.RedisRepository.Set(ctx, sessionID, sessionModel, time.Hour*time.Duration(uc.InternalConfig.App.LoginSessionExpiredTimeInHours))
+	err = uc.RedisRepository.Set(
+		ctx,
+		sessionID,
+		sessionModel,
+		time.Hour*time.Duration(uc.InternalConfig.App.LoginSessionExpiredTimeInHours),
+	)
 	if err != nil {
 		// Return error if there is an issue storing the session data
 		return nil, err
 	}
 
 	// Generate a JWT token using the session ID and secret
-	tokenString, err := utils.GenerateSessionJWT(sessionID, uc.InternalConfig.JWT.Secret, uc.InternalConfig.App.LoginSessionExpiredTimeInHours)
+	tokenString, err := utils.GenerateSessionJWT(
+		sessionID,
+		uc.InternalConfig.JWT.Secret,
+		uc.InternalConfig.App.LoginSessionExpiredTimeInHours,
+	)
 	if err != nil {
 		// Return error if there is an issue generating the JWT token
 		return nil, exceptions.ErrTokenGenerate(err)
@@ -509,6 +534,34 @@ func (uc *authUsecase) ResetPassword(ctx context.Context, request *requests.Rese
 	return nil
 }
 
+func (uc *authUsecase) checkQuestionnaireResponseAndAttachWithPatientData(ctx context.Context, responseID string, user *models.User) error {
+	if responseID != "" {
+		questionnaireResponseID := new(string)
+		redisRawQuestionnaireResponseID, err := uc.RedisRepository.Get(
+			ctx,
+			responseID,
+		)
+		if err != nil {
+			return err
+		}
+
+		err = json.Unmarshal([]byte(redisRawQuestionnaireResponseID), questionnaireResponseID)
+		if err != nil {
+			return exceptions.ErrCannotParseJSON(err)
+		}
+
+		questionnaireResponseFhir, err := uc.QuestionnaireResponseFhirClient.FindQuestionnaireResponseByID(ctx, *questionnaireResponseID)
+		if err != nil {
+			return err
+		}
+		questionnaireResponseFhir.Subject.Reference = fmt.Sprintf("%s/%s", constvars.ResourcePatient, user.PatientID)
+		_, err = uc.QuestionnaireResponseFhirClient.UpdateQuestionnaireResponse(ctx, questionnaireResponseFhir)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
 func (uc *authUsecase) isRoleHasPermission(role *models.Role, resource, requiredAction string) bool {
 	for _, permission := range role.Permissions {
 		if permission.Resource == resource {

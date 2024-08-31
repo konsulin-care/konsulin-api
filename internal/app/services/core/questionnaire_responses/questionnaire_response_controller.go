@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"konsulin-service/internal/pkg/constvars"
 	fhir_dto "konsulin-service/internal/pkg/dto/fhir"
+	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
 	"net/http"
@@ -28,15 +29,14 @@ func NewQuestionnaireResponseController(logger *zap.Logger, questionnaireRespons
 
 func (ctrl *QuestionnaireResponseController) CreateQuestionnaireResponse(w http.ResponseWriter, r *http.Request) {
 	// Bind body to request
-	request := new(fhir_dto.QuestionnaireResponse)
+	request := new(requests.CreateQuestionnaireResponse)
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
 		return
 	}
 
-	request.ResourceType = constvars.ResourceQuestionnaireResponse
-
+	request.QuestionnaireResponse.ResourceType = constvars.ResourceQuestionnaireResponse
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
