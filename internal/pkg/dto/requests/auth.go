@@ -1,6 +1,7 @@
 package requests
 
 type RegisterUser struct {
+	ResponseID     string `json:"response_id"`
 	Email          string `json:"email" validate:"required,email"`
 	Username       string `json:"username" validate:"required,alphanum,min=8,max=15"`
 	Password       string `json:"password" validate:"password"`
@@ -8,8 +9,9 @@ type RegisterUser struct {
 }
 
 type LoginUser struct {
-	Username string `json:"username" validate:"required,alphanum,min=8"`
-	Password string `json:"password" validate:"required,min=8"`
+	ResponseID string `json:"response_id"`
+	Username   string `json:"username" validate:"required,alphanum,min=8"`
+	Password   string `json:"password" validate:"required,min=8"`
 }
 
 type AuthorizeUser struct {

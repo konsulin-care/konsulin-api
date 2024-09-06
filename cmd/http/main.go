@@ -225,7 +225,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	questionnaireController := questionnaires.NewQuestionnaireController(bootstrap.Logger, questionnaireUsecase)
 
 	// Initialize Questionnaire Response dependencies
-	questionnaireResponseUsecase := questionnaireResponses.NewQuestionnaireResponseUsecase(questionnaireResponseFhirClient)
+	questionnaireResponseUsecase := questionnaireResponses.NewQuestionnaireResponseUsecase(questionnaireResponseFhirClient, redisRepository, bootstrap.InternalConfig)
 	questionnaireResponseController := questionnaireResponses.NewQuestionnaireResponseController(bootstrap.Logger, questionnaireResponseUsecase)
 
 	// Initialize Auth usecase with dependencies
@@ -237,6 +237,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 		patientFhirClient,
 		practitionerFhirClient,
 		practitionerRoleFhirClient,
+		questionnaireResponseFhirClient,
 		mailerService,
 		bootstrap.InternalConfig,
 	)

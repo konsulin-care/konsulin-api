@@ -5,9 +5,9 @@ type QuestionnaireResponse struct {
 	ID            string                      `json:"id,omitempty"`
 	Status        string                      `json:"status"`
 	Questionnaire string                      `json:"questionnaire,omitempty"`
-	Subject       *Reference                  `json:"subject,omitempty"`
+	Subject       Reference                   `json:"subject,omitempty"`
 	Authored      string                      `json:"authored,omitempty"`
-	Author        *Reference                  `json:"author,omitempty"`
+	Author        Reference                   `json:"author,omitempty"`
 	Item          []QuestionnaireResponseItem `json:"item,omitempty"`
 }
 

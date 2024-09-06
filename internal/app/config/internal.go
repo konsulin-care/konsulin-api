@@ -11,21 +11,22 @@ type InternalConfig struct {
 }
 
 type App struct {
-	Env                                     string `mapstructure:"env"`
-	Port                                    string `mapstructure:"port"`
-	Version                                 string `mapstructure:"version"`
-	Address                                 string `mapstructure:"address"`
-	BaseUrl                                 string `mapstructure:"base_url"`
-	Timezone                                string `mapstructure:"timezone"`
-	EndpointPrefix                          string `mapstructure:"endpoint_prefix"`
-	ResetPasswordUrl                        string `mapstructure:"reset_password_url"`
-	MaxRequests                             int    `mapstructure:"max_requests"`
-	ShutdownTimeoutInSeconds                int    `mapstructure:"shutdown_timeout_in_seconds"`
-	MaxTimeRequestsPerSeconds               int    `mapstructure:"max_time_requests_per_seconds"`
-	RequestBodyLimitInMegabyte              int    `mapstructure:"request_body_limit_in_megabyte"`
-	AccountDeactivationAgeInDays            int    `mapstructure:"account_deactivation_age_in_days"`
-	LoginSessionExpiredTimeInHours          int    `mapstructure:"login_session_expired_time_in_hours"`
-	ForgotPasswordTokenExpiredTimeInMinutes int    `mapstructure:"forgot_password_token_expired_time_in_minutes"`
+	Env                                            string `mapstructure:"env"`
+	Port                                           string `mapstructure:"port"`
+	Version                                        string `mapstructure:"version"`
+	Address                                        string `mapstructure:"address"`
+	BaseUrl                                        string `mapstructure:"base_url"`
+	Timezone                                       string `mapstructure:"timezone"`
+	EndpointPrefix                                 string `mapstructure:"endpoint_prefix"`
+	ResetPasswordUrl                               string `mapstructure:"reset_password_url"`
+	MaxRequests                                    int    `mapstructure:"max_requests"`
+	ShutdownTimeoutInSeconds                       int    `mapstructure:"shutdown_timeout_in_seconds"`
+	MaxTimeRequestsPerSeconds                      int    `mapstructure:"max_time_requests_per_seconds"`
+	RequestBodyLimitInMegabyte                     int    `mapstructure:"request_body_limit_in_megabyte"`
+	AccountDeactivationAgeInDays                   int    `mapstructure:"account_deactivation_age_in_days"`
+	LoginSessionExpiredTimeInHours                 int    `mapstructure:"login_session_expired_time_in_hours"`
+	ForgotPasswordTokenExpiredTimeInMinutes        int    `mapstructure:"forgot_password_token_expired_time_in_minutes"`
+	QuestionnaireGuestResponseExpiredTimeInMinutes int    `mapstructure:"questionnaire_guest_response_expired_time_in_minutes"`
 }
 
 type AppFHIR struct {

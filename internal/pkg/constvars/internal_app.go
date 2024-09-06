@@ -10,6 +10,11 @@ const (
 )
 
 const (
+	RespondentTypeUser  = "user"
+	RespondentTypeGuest = "guest"
+)
+
+const (
 	AppPaginationUrlFormat = "%s?page=%d&page_size=%d"
 )
 

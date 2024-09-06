@@ -15,6 +15,8 @@ internal_config:
     account_deactivation_age_in_days: 30
     login_session_expired_time_in_hours: 2
     forgot_password_token_expired_time_in_minutes: 2
+    questionnaire_guest_response_response_expired_time_in_minutes: 10
+
 
   fhir:
     base_url: https://fhir.konsulin.care/fhir/
