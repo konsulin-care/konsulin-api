@@ -1,4 +1,4 @@
-package questionnaireResponses
+package assessmentResponses
 
 import (
 	"context"
@@ -14,31 +14,31 @@ import (
 	"github.com/google/uuid"
 )
 
-type questionnaireResponseUsecase struct {
+type assessmentResponseUsecase struct {
 	QuestionnaireResponseFhirClient questionnaireResponses.QuestionnaireResponseFhirClient
 	RedisRepository                 redis.RedisRepository
 	InternalConfig                  *config.InternalConfig
 }
 
-func NewQuestionnaireResponseUsecase(
+func NewAssessmentResponseUsecase(
 	questionnaireResponseFhirClient questionnaireResponses.QuestionnaireResponseFhirClient,
 	redisRepository redis.RedisRepository,
 	internalConfig *config.InternalConfig,
-) QuestionnaireResponseUsecase {
-	return &questionnaireResponseUsecase{
+) AssessmentResponseUsecase {
+	return &assessmentResponseUsecase{
 		QuestionnaireResponseFhirClient: questionnaireResponseFhirClient,
 		RedisRepository:                 redisRepository,
 		InternalConfig:                  internalConfig,
 	}
 }
 
-func (uc *questionnaireResponseUsecase) CreateQuestionnaireResponse(ctx context.Context, request *requests.CreateQuestionnaireResponse) (*responses.CreateQuestionnaireResponse, error) {
+func (uc *assessmentResponseUsecase) CreateAssessmentResponse(ctx context.Context, request *requests.CreateAssesmentResponse) (*responses.CreateAssessmentResponse, error) {
 	questionnaireResponse, err := uc.QuestionnaireResponseFhirClient.CreateQuestionnaireResponse(ctx, request.QuestionnaireResponse)
 	if err != nil {
 		return nil, err
 	}
 
-	response := &responses.CreateQuestionnaireResponse{
+	response := &responses.CreateAssessmentResponse{
 		QuestionnaireResponse: questionnaireResponse,
 	}
 	if request.RespondentType == constvars.RespondentTypeGuest {
@@ -53,7 +53,7 @@ func (uc *questionnaireResponseUsecase) CreateQuestionnaireResponse(ctx context.
 
 	return response, nil
 }
-func (uc *questionnaireResponseUsecase) UpdateQuestionnaireResponse(ctx context.Context, request *fhir_dto.QuestionnaireResponse) (*fhir_dto.QuestionnaireResponse, error) {
+func (uc *assessmentResponseUsecase) UpdateAssessmentResponse(ctx context.Context, request *fhir_dto.QuestionnaireResponse) (*fhir_dto.QuestionnaireResponse, error) {
 	questionnaireResponse, err := uc.QuestionnaireResponseFhirClient.UpdateQuestionnaireResponse(ctx, request)
 	if err != nil {
 		return nil, err
@@ -62,16 +62,16 @@ func (uc *questionnaireResponseUsecase) UpdateQuestionnaireResponse(ctx context.
 	return questionnaireResponse, nil
 }
 
-func (uc *questionnaireResponseUsecase) FindQuestionnaireResponseByID(ctx context.Context, questionnaireResponseID string) (*fhir_dto.QuestionnaireResponse, error) {
-	questionnaireResponse, err := uc.QuestionnaireResponseFhirClient.FindQuestionnaireResponseByID(ctx, questionnaireResponseID)
+func (uc *assessmentResponseUsecase) FindAssessmentResponseByID(ctx context.Context, assessmentResponseID string) (*fhir_dto.QuestionnaireResponse, error) {
+	questionnaireResponse, err := uc.QuestionnaireResponseFhirClient.FindQuestionnaireResponseByID(ctx, assessmentResponseID)
 	if err != nil {
 		return nil, err
 	}
 
 	return questionnaireResponse, nil
 }
-func (uc *questionnaireResponseUsecase) DeleteQuestionnaireResponseByID(ctx context.Context, questionnaireResponseID string) error {
-	err := uc.QuestionnaireResponseFhirClient.DeleteQuestionnaireResponseByID(ctx, questionnaireResponseID)
+func (uc *assessmentResponseUsecase) DeleteAssessmentResponseByID(ctx context.Context, assessmentResponseID string) error {
+	err := uc.QuestionnaireResponseFhirClient.DeleteQuestionnaireResponseByID(ctx, assessmentResponseID)
 	if err != nil {
 		return err
 	}

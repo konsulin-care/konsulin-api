@@ -1,0 +1,15 @@
+package assessments
+
+import (
+	"context"
+	fhir_dto "konsulin-service/internal/pkg/dto/fhir"
+)
+
+type AssessmentUsecase interface {
+	CreateAssessment(ctx context.Context, request *fhir_dto.Questionnaire) (*fhir_dto.Questionnaire, error)
+	UpdateAssessment(ctx context.Context, request *fhir_dto.Questionnaire) (*fhir_dto.Questionnaire, error)
+	FindAssessmentByID(ctx context.Context, questionnaireID string) (*fhir_dto.Questionnaire, error)
+	DeleteAssessmentByID(ctx context.Context, questionnaireID string) error
+}
+
+type AssessmentRepository interface{}

@@ -17,10 +17,3 @@ const (
 const (
 	AppPaginationUrlFormat = "%s?page=%d&page_size=%d"
 )
-
-const (
-	URLParamClinicID                = "clinic_id"
-	URLParamClinicianID             = "clinician_id"
-	URLParamQuestionnaireID         = "questionnaire_id"
-	URLParamQuestionnaireResponseID = "questionnaire_response_id"
-)
