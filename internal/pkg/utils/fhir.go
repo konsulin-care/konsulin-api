@@ -131,7 +131,7 @@ func GetEducationFromExtensions(extensions []responses.Extension) []string {
 func GetHomeAddress(addresses []responses.Address) string {
 	for _, address := range addresses {
 		if address.Use == "home" {
-			return strings.Join(address.Line, " ")
+			return strings.Join(address.Line, ", ")
 		}
 	}
 	return ""
