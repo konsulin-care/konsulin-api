@@ -110,6 +110,9 @@ var (
 	ErrMinioCreateObject = func(err error, bucketName string) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, fmt.Sprintf(constvars.ErrDevMinioFailedToCreateObject, bucketName))
 	}
+	ErrMinioFindObjectPresignedURL = func(err error, bucketName string) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, fmt.Sprintf(constvars.ErrDevMinioFailedToCreateObject, bucketName))
+	}
 
 	// Redis
 	ErrRedisGetNoData = func(err error, redisKey string) *CustomError {

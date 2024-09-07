@@ -58,9 +58,8 @@ func BuildFhirPatientUpdateProfileRequest(request *requests.UpdateProfile, patie
 		Active:       true,
 		Name: []requests.HumanName{
 			{
-				Use:    "official",
-				Family: request.Fullname,
-				Given:  []string{request.Fullname},
+				Use:   "official",
+				Given: []string{request.Fullname},
 			},
 		},
 		Telecom: []requests.ContactPoint{

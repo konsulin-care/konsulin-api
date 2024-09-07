@@ -54,6 +54,6 @@ func GenerateOTP(otpLength int) (string, error) {
 }
 
 func GenerateFileName(prefix, username, fileExtension string) string {
-	timestamp := time.Now().Format("20060102150405")
+	timestamp := time.Now().Format("20060102_150405.000000000")
 	return fmt.Sprintf("%s_%s_%s%s", prefix, username, timestamp, fileExtension)
 }

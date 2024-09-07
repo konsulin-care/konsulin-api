@@ -4,14 +4,14 @@ import (
 	"fmt"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/delivery/http/middlewares"
+	assessmentResponses "konsulin-service/internal/app/services/core/assessment_responses"
+	"konsulin-service/internal/app/services/core/assessments"
 	"konsulin-service/internal/app/services/core/auth"
 	"konsulin-service/internal/app/services/core/clinicians"
 	"konsulin-service/internal/app/services/core/clinics"
 	educationLevels "konsulin-service/internal/app/services/core/education_levels"
 	"konsulin-service/internal/app/services/core/genders"
 	"konsulin-service/internal/app/services/core/patients"
-	questionnaireResponses "konsulin-service/internal/app/services/core/questionnaire_responses"
-	"konsulin-service/internal/app/services/core/questionnaires"
 	"konsulin-service/internal/app/services/core/users"
 	"time"
 
@@ -31,8 +31,8 @@ func SetupRoutes(
 	patientController *patients.PatientController,
 	educationLevelController *educationLevels.EducationLevelController,
 	genderController *genders.GenderController,
-	questionnaireController *questionnaires.QuestionnaireController,
-	questionnaireResponseController *questionnaireResponses.QuestionnaireResponseController,
+	assessmentController *assessments.AssessmentController,
+	assessmentResponseController *assessmentResponses.AssessmentResponseController,
 ) {
 
 	corsOptions := cors.Options{
@@ -81,11 +81,11 @@ func SetupRoutes(
 			r.Route("/patients", func(r chi.Router) {
 				attachPatientRouter(r, middlewares, patientController)
 			})
-			r.Route("/questionnaire-responses", func(r chi.Router) {
-				attachQuestionnaireResponseRouter(r, middlewares, questionnaireResponseController)
+			r.Route("/assessment-responses", func(r chi.Router) {
+				attachQuestionnaireResponseRouter(r, middlewares, assessmentResponseController)
 			})
-			r.Route("/questionnaires", func(r chi.Router) {
-				attachQuestionnaireRouter(r, middlewares, questionnaireController)
+			r.Route("/assessments", func(r chi.Router) {
+				attachQuestionnaireRouter(r, middlewares, assessmentController)
 			})
 		})
 	})

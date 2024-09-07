@@ -10,14 +10,14 @@ import (
 	"konsulin-service/internal/app/drivers/logger"
 	"konsulin-service/internal/app/drivers/messaging"
 	"konsulin-service/internal/app/drivers/storage"
+	assessmentResponses "konsulin-service/internal/app/services/core/assessment_responses"
+	"konsulin-service/internal/app/services/core/assessments"
 	"konsulin-service/internal/app/services/core/auth"
 	"konsulin-service/internal/app/services/core/clinicians"
 	"konsulin-service/internal/app/services/core/clinics"
 	educationLevels "konsulin-service/internal/app/services/core/education_levels"
 	"konsulin-service/internal/app/services/core/genders"
 	"konsulin-service/internal/app/services/core/patients"
-	questionnaireResponses "konsulin-service/internal/app/services/core/questionnaire_responses"
-	"konsulin-service/internal/app/services/core/questionnaires"
 	"konsulin-service/internal/app/services/core/roles"
 	"konsulin-service/internal/app/services/core/session"
 	"konsulin-service/internal/app/services/core/users"
@@ -220,13 +220,13 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	patientUsecase := patients.NewPatientUsecase(practitionerFhirClient, practitionerRoleFhirClient, scheduleFhirClient, slotFhirClient, appointmentFhirClient, sessionService)
 	patientController := patients.NewPatientController(bootstrap.Logger, patientUsecase)
 
-	// Initialize Questionnaire dependencies
-	questionnaireUsecase := questionnaires.NewQuestionnaireUsecase(questionnaireFhirClient)
-	questionnaireController := questionnaires.NewQuestionnaireController(bootstrap.Logger, questionnaireUsecase)
+	// Initialize Assessment dependencies
+	assessmentUsecase := assessments.NewAssessmentUsecase(questionnaireFhirClient)
+	assessmentController := assessments.NewAssessmentController(bootstrap.Logger, assessmentUsecase)
 
-	// Initialize Questionnaire Response dependencies
-	questionnaireResponseUsecase := questionnaireResponses.NewQuestionnaireResponseUsecase(questionnaireResponseFhirClient, redisRepository, bootstrap.InternalConfig)
-	questionnaireResponseController := questionnaireResponses.NewQuestionnaireResponseController(bootstrap.Logger, questionnaireResponseUsecase)
+	// Initialize Assessment Response dependencies
+	assessmentResponseUsecase := assessmentResponses.NewAssessmentResponseUsecase(questionnaireResponseFhirClient, redisRepository, bootstrap.InternalConfig)
+	assessmentResponseController := assessmentResponses.NewAssessmentResponseController(bootstrap.Logger, assessmentResponseUsecase)
 
 	// Initialize Auth usecase with dependencies
 	authUseCase, err := auth.NewAuthUsecase(
@@ -261,8 +261,8 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 		patientController,
 		educationLevelController,
 		genderController,
-		questionnaireController,
-		questionnaireResponseController,
+		assessmentController,
+		assessmentResponseController,
 	)
 
 	return nil

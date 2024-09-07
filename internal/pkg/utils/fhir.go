@@ -131,13 +131,7 @@ func GetEducationFromExtensions(extensions []responses.Extension) []string {
 func GetHomeAddress(addresses []responses.Address) string {
 	for _, address := range addresses {
 		if address.Use == "home" {
-			return fmt.Sprintf("%s, %s, %s, %s, %s",
-				strings.Join(address.Line, " "),
-				address.City,
-				address.State,
-				address.PostalCode,
-				address.Country,
-			)
+			return strings.Join(address.Line, ", ")
 		}
 	}
 	return ""

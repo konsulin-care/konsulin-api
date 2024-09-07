@@ -1,4 +1,4 @@
-package questionnaires
+package assessments
 
 import (
 	"context"
@@ -6,19 +6,19 @@ import (
 	fhir_dto "konsulin-service/internal/pkg/dto/fhir"
 )
 
-type questionnaireUsecase struct {
+type assessmentUsecase struct {
 	QuestionnaireFhirClient questionnaires.QuestionnaireFhirClient
 }
 
-func NewQuestionnaireUsecase(
+func NewAssessmentUsecase(
 	questionnaireFhirClient questionnaires.QuestionnaireFhirClient,
-) QuestionnaireUsecase {
-	return &questionnaireUsecase{
+) AssessmentUsecase {
+	return &assessmentUsecase{
 		QuestionnaireFhirClient: questionnaireFhirClient,
 	}
 }
 
-func (uc *questionnaireUsecase) CreateQuestionnaire(ctx context.Context, request *fhir_dto.Questionnaire) (*fhir_dto.Questionnaire, error) {
+func (uc *assessmentUsecase) CreateAssessment(ctx context.Context, request *fhir_dto.Questionnaire) (*fhir_dto.Questionnaire, error) {
 	questionnaire, err := uc.QuestionnaireFhirClient.CreateQuestionnaire(ctx, request)
 	if err != nil {
 		return nil, err
@@ -26,7 +26,7 @@ func (uc *questionnaireUsecase) CreateQuestionnaire(ctx context.Context, request
 
 	return questionnaire, nil
 }
-func (uc *questionnaireUsecase) UpdateQuestionnaire(ctx context.Context, request *fhir_dto.Questionnaire) (*fhir_dto.Questionnaire, error) {
+func (uc *assessmentUsecase) UpdateAssessment(ctx context.Context, request *fhir_dto.Questionnaire) (*fhir_dto.Questionnaire, error) {
 	questionnaire, err := uc.QuestionnaireFhirClient.UpdateQuestionnaire(ctx, request)
 	if err != nil {
 		return nil, err
@@ -35,7 +35,7 @@ func (uc *questionnaireUsecase) UpdateQuestionnaire(ctx context.Context, request
 	return questionnaire, nil
 }
 
-func (uc *questionnaireUsecase) FindQuestionnaireByID(ctx context.Context, questionnaireID string) (*fhir_dto.Questionnaire, error) {
+func (uc *assessmentUsecase) FindAssessmentByID(ctx context.Context, questionnaireID string) (*fhir_dto.Questionnaire, error) {
 	questionnaire, err := uc.QuestionnaireFhirClient.FindQuestionnaireByID(ctx, questionnaireID)
 	if err != nil {
 		return nil, err
@@ -43,7 +43,7 @@ func (uc *questionnaireUsecase) FindQuestionnaireByID(ctx context.Context, quest
 
 	return questionnaire, nil
 }
-func (uc *questionnaireUsecase) DeleteQuestionnaireByID(ctx context.Context, questionnaireID string) error {
+func (uc *assessmentUsecase) DeleteAssessmentByID(ctx context.Context, questionnaireID string) error {
 	err := uc.QuestionnaireFhirClient.DeleteQuestionnaireByID(ctx, questionnaireID)
 	if err != nil {
 		return err

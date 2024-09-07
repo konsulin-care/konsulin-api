@@ -1,4 +1,4 @@
-package questionnaireResponses
+package assessmentResponses
 
 import (
 	"context"
@@ -15,21 +15,21 @@ import (
 	"go.uber.org/zap"
 )
 
-type QuestionnaireResponseController struct {
-	Log                          *zap.Logger
-	QuestionnaireResponseUsecase QuestionnaireResponseUsecase
+type AssessmentResponseController struct {
+	Log                       *zap.Logger
+	AssessmentResponseUsecase AssessmentResponseUsecase
 }
 
-func NewQuestionnaireResponseController(logger *zap.Logger, questionnaireResponseUsecase QuestionnaireResponseUsecase) *QuestionnaireResponseController {
-	return &QuestionnaireResponseController{
-		Log:                          logger,
-		QuestionnaireResponseUsecase: questionnaireResponseUsecase,
+func NewAssessmentResponseController(logger *zap.Logger, assessmentResponseUsecase AssessmentResponseUsecase) *AssessmentResponseController {
+	return &AssessmentResponseController{
+		Log:                       logger,
+		AssessmentResponseUsecase: assessmentResponseUsecase,
 	}
 }
 
-func (ctrl *QuestionnaireResponseController) CreateQuestionnaireResponse(w http.ResponseWriter, r *http.Request) {
+func (ctrl *AssessmentResponseController) CreateAssesmentResponse(w http.ResponseWriter, r *http.Request) {
 	// Bind body to request
-	request := new(requests.CreateQuestionnaireResponse)
+	request := new(requests.CreateAssesmentResponse)
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
@@ -40,7 +40,7 @@ func (ctrl *QuestionnaireResponseController) CreateQuestionnaireResponse(w http.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	response, err := ctrl.QuestionnaireResponseUsecase.CreateQuestionnaireResponse(ctx, request)
+	response, err := ctrl.AssessmentResponseUsecase.CreateAssessmentResponse(ctx, request)
 	if err != nil {
 		if err == context.DeadlineExceeded {
 			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
@@ -53,7 +53,7 @@ func (ctrl *QuestionnaireResponseController) CreateQuestionnaireResponse(w http.
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.CreateQuestionnaireResponseSuccessMessage, response)
 }
 
-func (ctrl *QuestionnaireResponseController) UpdateQuestionnaireResponse(w http.ResponseWriter, r *http.Request) {
+func (ctrl *AssessmentResponseController) UpdateAssessmentResponse(w http.ResponseWriter, r *http.Request) {
 	// Bind body to request
 	request := new(fhir_dto.QuestionnaireResponse)
 	err := json.NewDecoder(r.Body).Decode(&request)
@@ -63,12 +63,12 @@ func (ctrl *QuestionnaireResponseController) UpdateQuestionnaireResponse(w http.
 	}
 
 	request.ResourceType = constvars.ResourceQuestionnaireResponse
-	request.ID = chi.URLParam(r, constvars.URLParamQuestionnaireResponseID)
+	request.ID = chi.URLParam(r, constvars.URLParamAssessmentResponseID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	response, err := ctrl.QuestionnaireResponseUsecase.UpdateQuestionnaireResponse(ctx, request)
+	response, err := ctrl.AssessmentResponseUsecase.UpdateAssessmentResponse(ctx, request)
 	if err != nil {
 		if err == context.DeadlineExceeded {
 			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
@@ -81,13 +81,13 @@ func (ctrl *QuestionnaireResponseController) UpdateQuestionnaireResponse(w http.
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.UpdateQuestionnaireResponseSuccessMessage, response)
 }
 
-func (ctrl *QuestionnaireResponseController) FindQuestionnaireResponseByID(w http.ResponseWriter, r *http.Request) {
-	questionnaireResponseID := chi.URLParam(r, constvars.URLParamQuestionnaireResponseID)
+func (ctrl *AssessmentResponseController) FindQuestionnaireResponseByID(w http.ResponseWriter, r *http.Request) {
+	questionnaireResponseID := chi.URLParam(r, constvars.URLParamAssessmentResponseID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	response, err := ctrl.QuestionnaireResponseUsecase.FindQuestionnaireResponseByID(ctx, questionnaireResponseID)
+	response, err := ctrl.AssessmentResponseUsecase.FindAssessmentResponseByID(ctx, questionnaireResponseID)
 	if err != nil {
 		if err == context.DeadlineExceeded {
 			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
@@ -99,13 +99,13 @@ func (ctrl *QuestionnaireResponseController) FindQuestionnaireResponseByID(w htt
 
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.FindQuestionnaireResponseSuccessMessage, response)
 }
-func (ctrl *QuestionnaireResponseController) DeleteQuestionnaireResponseByID(w http.ResponseWriter, r *http.Request) {
-	questionnaireResponseID := chi.URLParam(r, constvars.URLParamQuestionnaireResponseID)
+func (ctrl *AssessmentResponseController) DeleteQuestionnaireResponseByID(w http.ResponseWriter, r *http.Request) {
+	questionnaireResponseID := chi.URLParam(r, constvars.URLParamAssessmentResponseID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	err := ctrl.QuestionnaireResponseUsecase.DeleteQuestionnaireResponseByID(ctx, questionnaireResponseID)
+	err := ctrl.AssessmentResponseUsecase.DeleteAssessmentResponseByID(ctx, questionnaireResponseID)
 	if err != nil {
 		if err == context.DeadlineExceeded {
 			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))

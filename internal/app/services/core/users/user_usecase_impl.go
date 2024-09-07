@@ -63,12 +63,30 @@ func (uc *userUsecase) GetUserProfileBySession(ctx context.Context, sessionData 
 		return nil, err
 	}
 
+	existingUser, err := uc.UserRepository.FindByID(ctx, session.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	if existingUser == nil {
+		return nil, exceptions.ErrUserNotExist(nil)
+	}
+
+	var preSignedUrl string
+	if existingUser.ProfilePictureName != "" {
+		objectUrlExpiryTime := time.Duration(uc.InternalConfig.App.MinioPreSignedUrlObjectExpiryTimeInHours) * time.Hour
+		preSignedUrl, err = uc.MinioStorage.GetObjectUrlWithExpiryTime(ctx, uc.InternalConfig.Minio.BucketName, existingUser.ProfilePictureName, objectUrlExpiryTime)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// Handle get user profile based on role
 	switch session.RoleName {
 	case constvars.RoleTypePractitioner:
-		return uc.getPractitionerProfile(ctx, session)
+		return uc.getPractitionerProfile(ctx, session, preSignedUrl)
 	case constvars.RoleTypePatient:
-		return uc.getPatientProfile(ctx, session)
+		return uc.getPatientProfile(ctx, session, preSignedUrl)
 	default:
 		return nil, exceptions.ErrInvalidRoleType(nil)
 	}
@@ -94,7 +112,7 @@ func (uc *userUsecase) UpdateUserProfileBySession(ctx context.Context, sessionDa
 	}
 
 	if request.ProfilePicture != "" {
-		request.ProfilePictureMinioUrl, err = uc.uploadProfilePicture(ctx, session.Username, request)
+		request.ProfilePictureObjectName, err = uc.uploadProfilePicture(ctx, session.Username, request)
 		if err != nil {
 			return nil, err
 		}
@@ -295,7 +313,7 @@ func (uc *userUsecase) updatePractitionerFhirProfile(ctx context.Context, user *
 	return response, nil
 }
 
-func (uc *userUsecase) getPatientProfile(ctx context.Context, session *models.Session) (*responses.UserProfile, error) {
+func (uc *userUsecase) getPatientProfile(ctx context.Context, session *models.Session, preSignedUrl string) (*responses.UserProfile, error) {
 	// Get patient data from FHIR Spark Patient Client
 	patientFhir, err := uc.PatientFhirClient.FindPatientByID(ctx, session.PatientID)
 	if err != nil {
@@ -304,12 +322,13 @@ func (uc *userUsecase) getPatientProfile(ctx context.Context, session *models.Se
 
 	// Build patient profile response
 	response := utils.BuildPatientProfileResponse(patientFhir)
+	response.ProfilePictureUrl = preSignedUrl
 
 	// Return the response to Controller
 	return response, nil
 }
 
-func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *models.Session) (*responses.UserProfile, error) {
+func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *models.Session, preSignedUrl string) (*responses.UserProfile, error) {
 	// Get practitioner data from FHIR Spark Practitioner Client
 	practitionerFhir, err := uc.PractitionerFhirClient.FindPractitionerByID(ctx, session.PractitionerID)
 	if err != nil {
@@ -318,6 +337,7 @@ func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *mode
 
 	// Build patient profile response
 	response := utils.BuildPractitionerProfileResponse(practitionerFhir)
+	response.ProfilePictureUrl = preSignedUrl
 
 	practitionerRoles, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerID(ctx, session.PractitionerID)
 	if err != nil {
