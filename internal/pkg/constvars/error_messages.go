@@ -136,7 +136,8 @@ const (
 	ErrDevDBStringNotObjectID        = "given ID is not valid object ID"
 
 	// Minio messages
-	ErrDevMinioFailedToCreateObject = "failed to create object into minio storage, with bucket name '%s'"
+	ErrDevMinioFailedToCreateObject          = "failed to create object into minio storage with bucket name '%s'"
+	ErrDevMinioFailedToGetObjectPresignedURL = "failed to get object URL from minio storage with bucket name '%s'"
 
 	// Redis messages
 	ErrDevRedisSetData         = "failed to SET data into redis"

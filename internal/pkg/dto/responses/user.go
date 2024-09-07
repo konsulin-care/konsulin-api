@@ -11,6 +11,7 @@ type UserProfile struct {
 	BirthDate              string                 `json:"birth_date,omitempty"`
 	PracticeInformations   []PracticeInformation  `json:"practice_informations,omitempty"`
 	PracticeAvailabilities []PracticeAvailability `json:"practice_availabilities,omitempty"`
+	ProfilePictureUrl      string                 `json:"profile_picture_url,omitempty"`
 }
 
 type UpdateUserProfile struct {

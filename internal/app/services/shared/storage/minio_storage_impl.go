@@ -7,7 +7,9 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"mime"
 	"mime/multipart"
+	"net/url"
 	"strings"
+	"time"
 
 	"github.com/minio/minio-go/v7"
 )
@@ -32,6 +34,16 @@ func (m *minioStorage) UploadFile(ctx context.Context, file io.Reader, fileHeade
 	}
 
 	return fileName, nil
+}
+
+func (m *minioStorage) GetObjectUrlWithExpiryTime(ctx context.Context, bucketName, objectName string, expiryTime time.Duration) (string, error) {
+	reqParams := make(url.Values)
+	preSignedUrl, err := m.MinioClient.PresignedGetObject(ctx, bucketName, objectName, expiryTime, reqParams)
+	if err != nil {
+		return "", exceptions.ErrMinioFindObjectPresignedURL(err, bucketName)
+	}
+
+	return preSignedUrl.String(), nil
 }
 
 func (m *minioStorage) UploadBase64Image(ctx context.Context, encodedImageData []byte, bucketName, fileName, fileExtension string) (string, error) {
