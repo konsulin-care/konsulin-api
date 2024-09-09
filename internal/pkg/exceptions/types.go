@@ -34,7 +34,7 @@ var (
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevCannotMarshalJSON)
 	}
 	ErrServerDeadlineExceeded = func(err error) *CustomError {
-		return BuildNewCustomError(err, constvars.StatusRequestTimeout, constvars.ErrClientServerLongRespond, constvars.ErrDevServerDeadlineExceeded)
+		return BuildNewCustomError(err, constvars.StatusGatewayTimeout, constvars.ErrClientServerLongRespond, constvars.ErrDevServerDeadlineExceeded)
 	}
 	ErrInvalidUsernameOrPassword = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusUnauthorized, constvars.ErrClientInvalidUsernameOrPassword, constvars.ErrDevInvalidCredentials)

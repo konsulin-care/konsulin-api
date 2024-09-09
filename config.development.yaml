@@ -63,8 +63,8 @@ driver_config:
     password: va12mFaswaCOzM90Ed7K
 
   minio:
-    port: "9001"
-    host: minio.konsulin.care
+    port: "9000"
+    host: 37.27.46.214
     username: minioUserKonsln
     password: QbSZRmX9rWebFehKFioA
     use_ssl: false
