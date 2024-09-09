@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"io"
 	"konsulin-service/internal/pkg/constvars"
-	fhir_dto "konsulin-service/internal/pkg/dto/fhir"
 	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/fhir_dto"
 	"net/http"
 )
 

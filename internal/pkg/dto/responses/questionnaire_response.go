@@ -1,6 +1,6 @@
 package responses
 
-import fhir_dto "konsulin-service/internal/pkg/dto/fhir"
+import "konsulin-service/internal/pkg/fhir_dto"
 
 type CreateAssessmentResponse struct {
 	ResponseID            string                          `json:"response_id,omitempty"`

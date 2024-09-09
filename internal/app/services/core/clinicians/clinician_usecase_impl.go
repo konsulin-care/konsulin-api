@@ -94,22 +94,6 @@ func (uc *clinicianUsecase) DeleteClinicByID(ctx context.Context, sessionData, c
 	return nil
 }
 
-func (uc *clinicianUsecase) CreateAvailibilityTime(ctx context.Context, sessionData string, request *requests.AvailableTime) error {
-	// Parse session data
-	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
-	if err != nil {
-		return err
-	}
-
-	if session.IsNotPractitioner() {
-		return exceptions.ErrNotMatchRoleType(nil)
-	}
-
-	// _, err = uc.PractitionerRoleFhirClient.F()
-
-	return nil
-}
-
 func (uc *clinicianUsecase) CreateAppointment(ctx context.Context, sessionData string, request *requests.CreateAppointmentRequest) error {
 	// // Parse session data
 	// session, err := uc.SessionService.ParseSessionData(ctx, sessionData)

@@ -1,6 +1,6 @@
 package requests
 
-import fhir_dto "konsulin-service/internal/pkg/dto/fhir"
+import "konsulin-service/internal/pkg/fhir_dto"
 
 type CreateAssesmentResponse struct {
 	RespondentType        string                          `json:"respondent_type" validate:"required,oneof=guest user"`

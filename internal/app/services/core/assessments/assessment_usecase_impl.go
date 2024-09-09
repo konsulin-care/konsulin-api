@@ -3,7 +3,7 @@ package assessments
 import (
 	"context"
 	"konsulin-service/internal/app/services/fhir_spark/questionnaires"
-	fhir_dto "konsulin-service/internal/pkg/dto/fhir"
+	"konsulin-service/internal/pkg/fhir_dto"
 )
 
 type assessmentUsecase struct {

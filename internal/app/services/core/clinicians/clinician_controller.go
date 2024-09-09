@@ -155,31 +155,3 @@ func (ctrl *ClinicianController) DeleteClinicByID(w http.ResponseWriter, r *http
 
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.DeleteClinicianClinicSuccessMessage, nil)
 }
-
-func (ctrl *ClinicianController) CreateAvailibilityTime(w http.ResponseWriter, r *http.Request) {
-	// Bind body to request
-	request := new(requests.AvailableTime)
-	err := json.NewDecoder(r.Body).Decode(&request)
-	if err != nil {
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
-		return
-	}
-
-	// Get session data from context
-	sessionData := r.Context().Value("sessionData").(string)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	err = ctrl.ClinicianUsecase.CreateAvailibilityTime(ctx, sessionData, request)
-	if err != nil {
-		if err == context.DeadlineExceeded {
-			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
-			return
-		}
-		utils.BuildErrorResponse(ctrl.Log, w, err)
-		return
-	}
-
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.DeleteUserSuccessMessage, nil)
-}
