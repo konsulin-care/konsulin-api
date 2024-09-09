@@ -9,6 +9,17 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 )
 
+// GenerateResponseID creates a unique transaction ID.
+//
+// The ID is generated using the current time in nanoseconds
+// since the Unix epoch, ensuring high precision and uniqueness
+// even in high-concurrency environments. The format of the ID
+// is "<unix nano timestamp>".
+func GenerateResponseID() int64 {
+	transID := time.Now().UnixNano()
+	return transID
+}
+
 func GenerateSessionJWT(sessionID, secret string, jwtExpiryTime int) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"session_id": sessionID,

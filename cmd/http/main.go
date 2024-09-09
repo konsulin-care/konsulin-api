@@ -107,9 +107,9 @@ func main() {
 
 	// Start the server in a separate goroutine
 	go func() {
-		log.Printf("Server is running on port: %s", internalConfig.App.Port)
 		log.Printf("Server Version: %s", Version)
 		log.Printf("Server Tag: %s", Tag)
+		log.Printf("Server is running on port: %s", internalConfig.App.Port)
 		err := server.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server failed to start: %v", err)
