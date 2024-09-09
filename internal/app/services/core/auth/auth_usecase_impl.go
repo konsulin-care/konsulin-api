@@ -210,7 +210,6 @@ func (uc *authUsecase) RegisterPatient(ctx context.Context, request *requests.Re
 }
 
 func (uc *authUsecase) LoginPatient(ctx context.Context, request *requests.LoginUser) (*responses.LoginUser, error) {
-	time.Sleep(10 * time.Second)
 	// Retrieve the user by username from the user repository
 	user, err := uc.UserRepository.FindByUsername(ctx, request.Username)
 	if err != nil {
