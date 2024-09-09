@@ -46,7 +46,7 @@ func NewZapLogger(driverConfig *config.DriverConfig, internalConfig *config.Inte
 		ErrorOutputPaths: []string{"stderr"},
 	}
 
-	if internalConfig.App.Env == "production" {
+	if internalConfig.App.Env == "production" || internalConfig.App.Env == "development" {
 		cfg.OutputPaths = []string{driverConfig.Logger.OutputFileName}
 		cfg.ErrorOutputPaths = []string{"stderr", driverConfig.Logger.OutputErrorFileName}
 		encoderConfig.EncodeLevel = zapcore.LowercaseLevelEncoder

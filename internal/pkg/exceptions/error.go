@@ -35,6 +35,7 @@ func BuildNewCustomError(err error, statusCode int, clientMessage, devMessage st
 	}
 	if err != nil {
 		if err == context.DeadlineExceeded {
+			customError.StatusCode = constvars.StatusGatewayTimeout
 			customError.ClientMessage = constvars.ErrClientServerLongRespond
 			devMessage = constvars.ErrDevServerDeadlineExceeded
 		}
