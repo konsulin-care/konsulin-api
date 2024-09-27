@@ -3,7 +3,7 @@ package fhir_dto
 type QuestionnaireResponse struct {
 	ResourceType  string                      `json:"resourceType"`
 	ID            string                      `json:"id,omitempty"`
-	Status        string                      `json:"status"`
+	Status        string                      `json:"status,omitempty"`
 	Questionnaire string                      `json:"questionnaire,omitempty"`
 	Subject       Reference                   `json:"subject,omitempty"`
 	Authored      string                      `json:"authored,omitempty"`

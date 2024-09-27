@@ -1,24 +1,13 @@
-package responses
+package utils
 
 import (
+	"konsulin-service/internal/pkg/dto/responses"
+	"konsulin-service/internal/pkg/fhir_dto"
 	"strings"
 )
 
-type Organization struct {
-	ResourceType string            `json:"resourceType,omitempty"`
-	ID           string            `json:"id,omitempty"`
-	Active       bool              `json:"active,omitempty"`
-	Identifier   []Identifier      `json:"identifier,omitempty"`
-	Type         []CodeableConcept `json:"type,omitempty"`
-	Name         string            `json:"name,omitempty"`
-	Alias        []string          `json:"alias,omitempty"`
-	Telecom      []ContactPoint    `json:"telecom,omitempty"`
-	Address      []Address         `json:"address,omitempty"`
-	PartOf       Reference         `json:"partOf,omitempty"`
-}
-
-func (org *Organization) ConvertToClinicDetailResponse() Clinic {
-	clinic := Clinic{
+func ConvertOrganizationToClinicDetailResponse(org fhir_dto.Organization) responses.Clinic {
+	clinic := responses.Clinic{
 		ID:          org.ID,
 		ClinicName:  org.Name,
 		Affiliation: org.PartOf.Display,
@@ -49,8 +38,8 @@ func (org *Organization) ConvertToClinicDetailResponse() Clinic {
 	return clinic
 }
 
-func (org *Organization) ConvertToClinicResponse() Clinic {
-	clinic := Clinic{
+func ConvertOrganizationToClinicResponse(org fhir_dto.Organization) responses.Clinic {
+	clinic := responses.Clinic{
 		ID:         org.ID,
 		ClinicName: org.Name,
 	}

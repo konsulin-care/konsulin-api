@@ -7,9 +7,8 @@ import (
 	"fmt"
 	"io"
 	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/dto/requests"
-	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/fhir_dto"
 	"net/http"
 )
 
@@ -23,7 +22,7 @@ func NewScheduleFhirClient(baseUrl string) ScheduleFhirClient {
 	}
 }
 
-func (c *scheduleFhirClient) CreateSchedule(ctx context.Context, request *requests.Schedule) (*responses.Schedule, error) {
+func (c *scheduleFhirClient) CreateSchedule(ctx context.Context, request *fhir_dto.Schedule) (*fhir_dto.Schedule, error) {
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
 		return nil, exceptions.ErrCannotMarshalJSON(err)
@@ -48,7 +47,7 @@ func (c *scheduleFhirClient) CreateSchedule(ctx context.Context, request *reques
 			return nil, exceptions.ErrCreateFHIRResource(err, constvars.ResourceSchedule)
 		}
 
-		var outcome responses.OperationOutcome
+		var outcome fhir_dto.OperationOutcome
 		err = json.Unmarshal(bodyBytes, &outcome)
 		if err != nil {
 			return nil, exceptions.ErrCreateFHIRResource(err, constvars.ResourceSchedule)
@@ -60,7 +59,7 @@ func (c *scheduleFhirClient) CreateSchedule(ctx context.Context, request *reques
 		}
 	}
 
-	scheduleFhir := new(responses.Schedule)
+	scheduleFhir := new(fhir_dto.Schedule)
 	err = json.NewDecoder(resp.Body).Decode(&scheduleFhir)
 	if err != nil {
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourceSchedule)
@@ -69,7 +68,7 @@ func (c *scheduleFhirClient) CreateSchedule(ctx context.Context, request *reques
 	return scheduleFhir, nil
 }
 
-func (c *scheduleFhirClient) FindScheduleByPractitionerID(ctx context.Context, practitionerID string) ([]responses.Schedule, error) {
+func (c *scheduleFhirClient) FindScheduleByPractitionerID(ctx context.Context, practitionerID string) ([]fhir_dto.Schedule, error) {
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, fmt.Sprintf("%s?actor=Practitioner/%s", c.BaseUrl, practitionerID), nil)
 	if err != nil {
 		return nil, exceptions.ErrCreateHTTPRequest(err)
@@ -89,7 +88,7 @@ func (c *scheduleFhirClient) FindScheduleByPractitionerID(ctx context.Context, p
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSchedule)
 		}
 
-		var outcome responses.OperationOutcome
+		var outcome fhir_dto.OperationOutcome
 		err = json.Unmarshal(bodyBytes, &outcome)
 		if err != nil {
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSchedule)
@@ -101,15 +100,15 @@ func (c *scheduleFhirClient) FindScheduleByPractitionerID(ctx context.Context, p
 		}
 	}
 
-	var result responses.FHIRBundle
+	var result fhir_dto.FHIRBundle
 	err = json.NewDecoder(resp.Body).Decode(&result)
 	if err != nil {
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourceOrganization)
 	}
 
-	schedulesFhir := make([]responses.Schedule, len(result.Entry))
+	schedulesFhir := make([]fhir_dto.Schedule, len(result.Entry))
 	for _, entry := range result.Entry {
-		var schedule responses.Schedule
+		var schedule fhir_dto.Schedule
 		err := json.Unmarshal(entry.Resource, &schedule)
 		if err != nil {
 			return nil, exceptions.ErrCannotParseJSON(err)
@@ -120,7 +119,7 @@ func (c *scheduleFhirClient) FindScheduleByPractitionerID(ctx context.Context, p
 	return schedulesFhir, nil
 }
 
-func (c *scheduleFhirClient) FindScheduleByPractitionerRoleID(ctx context.Context, practitionerRoleID string) ([]responses.Schedule, error) {
+func (c *scheduleFhirClient) FindScheduleByPractitionerRoleID(ctx context.Context, practitionerRoleID string) ([]fhir_dto.Schedule, error) {
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, fmt.Sprintf("%s?actor=PractitionerRole/%s", c.BaseUrl, practitionerRoleID), nil)
 	if err != nil {
 		return nil, exceptions.ErrCreateHTTPRequest(err)
@@ -140,7 +139,7 @@ func (c *scheduleFhirClient) FindScheduleByPractitionerRoleID(ctx context.Contex
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSchedule)
 		}
 
-		var outcome responses.OperationOutcome
+		var outcome fhir_dto.OperationOutcome
 		err = json.Unmarshal(bodyBytes, &outcome)
 		if err != nil {
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSchedule)
@@ -156,8 +155,8 @@ func (c *scheduleFhirClient) FindScheduleByPractitionerRoleID(ctx context.Contex
 		Total        int    `json:"total"`
 		ResourceType string `json:"resourceType"`
 		Entry        []struct {
-			FullUrl  string             `json:"fullUrl"`
-			Resource responses.Schedule `json:"resource"`
+			FullUrl  string            `json:"fullUrl"`
+			Resource fhir_dto.Schedule `json:"resource"`
 		} `json:"entry"`
 	}
 	err = json.NewDecoder(resp.Body).Decode(&result)
@@ -165,7 +164,7 @@ func (c *scheduleFhirClient) FindScheduleByPractitionerRoleID(ctx context.Contex
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourceSchedule)
 	}
 
-	schedulesFhir := make([]responses.Schedule, len(result.Entry))
+	schedulesFhir := make([]fhir_dto.Schedule, len(result.Entry))
 	for i, entry := range result.Entry {
 		schedulesFhir[i] = entry.Resource
 	}

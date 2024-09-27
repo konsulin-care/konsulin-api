@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"io"
 	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/fhir_dto"
 	"net/http"
 )
 
@@ -21,7 +21,7 @@ func NewOrganizationFhirClient(baseUrl string) OrganizationFhirClient {
 	}
 }
 
-func (c *organizationFhirClient) FindAll(ctx context.Context, nameFilter, fetchType string, page, pageSize int) ([]responses.Organization, int, error) {
+func (c *organizationFhirClient) FindAll(ctx context.Context, nameFilter, fetchType string, page, pageSize int) ([]fhir_dto.Organization, int, error) {
 	url := c.BaseUrl
 
 	if nameFilter != "" {
@@ -51,7 +51,7 @@ func (c *organizationFhirClient) FindAll(ctx context.Context, nameFilter, fetchT
 			return nil, 0, exceptions.ErrGetFHIRResource(err, constvars.ResourceOrganization)
 		}
 
-		var outcome responses.OperationOutcome
+		var outcome fhir_dto.OperationOutcome
 		err = json.Unmarshal(bodyBytes, &outcome)
 		if err != nil {
 			return nil, 0, exceptions.ErrGetFHIRResource(err, constvars.ResourceOrganization)
@@ -66,8 +66,8 @@ func (c *organizationFhirClient) FindAll(ctx context.Context, nameFilter, fetchT
 	var result struct {
 		Total int `json:"total"`
 		Entry []struct {
-			FullUrl  string                 `json:"fullUrl"`
-			Resource responses.Organization `json:"resource"`
+			FullUrl  string                `json:"fullUrl"`
+			Resource fhir_dto.Organization `json:"resource"`
 		} `json:"entry"`
 	}
 	err = json.NewDecoder(resp.Body).Decode(&result)
@@ -75,7 +75,7 @@ func (c *organizationFhirClient) FindAll(ctx context.Context, nameFilter, fetchT
 		return nil, 0, exceptions.ErrDecodeResponse(err, constvars.ResourceOrganization)
 	}
 
-	organizations := make([]responses.Organization, len(result.Entry))
+	organizations := make([]fhir_dto.Organization, len(result.Entry))
 	for i, entry := range result.Entry {
 		organizations[i] = entry.Resource
 	}
@@ -83,7 +83,7 @@ func (c *organizationFhirClient) FindAll(ctx context.Context, nameFilter, fetchT
 	return organizations, result.Total, nil
 }
 
-func (c *organizationFhirClient) FindOrganizationByID(ctx context.Context, organizationID string) (*responses.Organization, error) {
+func (c *organizationFhirClient) FindOrganizationByID(ctx context.Context, organizationID string) (*fhir_dto.Organization, error) {
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, fmt.Sprintf("%s/%s", c.BaseUrl, organizationID), nil)
 	if err != nil {
 		return nil, exceptions.ErrCreateHTTPRequest(err)
@@ -103,7 +103,7 @@ func (c *organizationFhirClient) FindOrganizationByID(ctx context.Context, organ
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceOrganization)
 		}
 
-		var outcome responses.OperationOutcome
+		var outcome fhir_dto.OperationOutcome
 		err = json.Unmarshal(bodyBytes, &outcome)
 		if err != nil {
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceOrganization)
@@ -115,7 +115,7 @@ func (c *organizationFhirClient) FindOrganizationByID(ctx context.Context, organ
 		}
 	}
 
-	organizationFhir := new(responses.Organization)
+	organizationFhir := new(fhir_dto.Organization)
 	err = json.NewDecoder(resp.Body).Decode(&organizationFhir)
 	if err != nil {
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourceOrganization)

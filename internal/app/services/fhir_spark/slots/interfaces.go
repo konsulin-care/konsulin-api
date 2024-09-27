@@ -2,8 +2,7 @@ package slots
 
 import (
 	"context"
-	"konsulin-service/internal/pkg/dto/requests"
-	"konsulin-service/internal/pkg/dto/responses"
+	"konsulin-service/internal/pkg/fhir_dto"
 )
 
 type SlotUsecase interface{}
@@ -11,7 +10,7 @@ type SlotUsecase interface{}
 type SlotRepository interface{}
 
 type SlotFhirClient interface {
-	FindSlotByScheduleID(ctx context.Context, scheduleID string) ([]responses.Slot, error)
-	FindSlotByScheduleIDAndStatus(ctx context.Context, scheduleID, status string) ([]responses.Slot, error)
-	CreateSlot(ctx context.Context, request *requests.Slot) (*responses.Slot, error)
+	FindSlotByScheduleID(ctx context.Context, scheduleID string) ([]fhir_dto.Slot, error)
+	FindSlotByScheduleIDAndStatus(ctx context.Context, scheduleID, status string) ([]fhir_dto.Slot, error)
+	CreateSlot(ctx context.Context, request *fhir_dto.Slot) (*fhir_dto.Slot, error)
 }

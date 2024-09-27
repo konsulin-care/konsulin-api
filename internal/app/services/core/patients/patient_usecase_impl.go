@@ -11,8 +11,8 @@ import (
 	"konsulin-service/internal/app/services/fhir_spark/slots"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
-	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/fhir_dto"
 	"time"
 )
 
@@ -43,7 +43,7 @@ func NewPatientUsecase(
 	}
 }
 
-func (uc *patientUsecase) CreateAppointment(ctx context.Context, sessionData string, request *requests.CreateAppointmentRequest) (*responses.Appointment, error) {
+func (uc *patientUsecase) CreateAppointment(ctx context.Context, sessionData string, request *requests.CreateAppointmentRequest) (*fhir_dto.Appointment, error) {
 	// Parse session data
 	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
 	if err != nil {
@@ -59,20 +59,20 @@ func (uc *patientUsecase) CreateAppointment(ctx context.Context, sessionData str
 		return nil, exceptions.ErrCannotParseTime(err)
 	}
 
-	var slotsToBook []requests.Reference
-	var lastSlotBooked *responses.Slot
+	var slotsToBook []fhir_dto.Reference
+	var lastSlotBooked *fhir_dto.Slot
 	for i := 0; i < request.NumberOfSessions; i++ {
 		startTime := appointmentStartTime.Add(time.Duration(i) * 30 * time.Minute)
 		endTime := startTime.Add(30 * time.Minute)
 
-		slotFhirRequest := &requests.Slot{
+		slotFhirRequest := &fhir_dto.Slot{
 			ResourceType: constvars.ResourceSlot,
-			Schedule: requests.Reference{
+			Schedule: fhir_dto.Reference{
 				Reference: fmt.Sprintf("Schedule/%s", request.ScheduleID),
 			},
 			Status: constvars.FhirSlotStatusBusy,
-			Start:  startTime.Format(time.RFC3339),
-			End:    endTime.Format(time.RFC3339),
+			Start:  startTime,
+			End:    endTime,
 		}
 
 		// Generate the slot on demand
@@ -81,7 +81,7 @@ func (uc *patientUsecase) CreateAppointment(ctx context.Context, sessionData str
 			return nil, err
 		}
 
-		slotsToBook = append(slotsToBook, requests.Reference{
+		slotsToBook = append(slotsToBook, fhir_dto.Reference{
 			Reference: fmt.Sprintf("Slot/%s", slot.ID),
 		})
 
@@ -90,22 +90,22 @@ func (uc *patientUsecase) CreateAppointment(ctx context.Context, sessionData str
 		}
 	}
 
-	appointmentFhirRequest := &requests.Appointment{
+	appointmentFhirRequest := &fhir_dto.Appointment{
 		ResourceType: constvars.ResourceAppointment,
 		Status:       constvars.FhirAppointmentStatusBooked,
 		Start:        appointmentStartTime,
 		End:          lastSlotBooked.End,
 		Slot:         slotsToBook,
 		Description:  request.ProblemBrief,
-		Participant: []requests.AppointmentParticipant{
+		Participant: []fhir_dto.AppointmentParticipant{
 			{
-				Actor: requests.Reference{
+				Actor: fhir_dto.Reference{
 					Reference: fmt.Sprintf("%s/%s", constvars.ResourcePatient, session.PatientID),
 				},
 				Status: constvars.FhirParticipantStatusAccepted,
 			},
 			{
-				Actor: requests.Reference{
+				Actor: fhir_dto.Reference{
 					Reference: fmt.Sprintf("%s/%s", constvars.ResourcePractitioner, request.ClinicianID),
 				},
 				Status: constvars.FhirParticipantStatusAccepted,

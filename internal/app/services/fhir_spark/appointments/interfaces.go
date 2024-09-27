@@ -2,8 +2,7 @@ package appointments
 
 import (
 	"context"
-	"konsulin-service/internal/pkg/dto/requests"
-	"konsulin-service/internal/pkg/dto/responses"
+	"konsulin-service/internal/pkg/fhir_dto"
 )
 
 type AppointmentUsecase interface{}
@@ -11,5 +10,5 @@ type AppointmentUsecase interface{}
 type AppointmentRepository interface{}
 
 type AppointmentFhirClient interface {
-	CreateAppointment(ctx context.Context, request *requests.Appointment) (*responses.Appointment, error)
+	CreateAppointment(ctx context.Context, request *fhir_dto.Appointment) (*fhir_dto.Appointment, error)
 }

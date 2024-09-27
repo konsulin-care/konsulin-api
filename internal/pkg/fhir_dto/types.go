@@ -35,9 +35,11 @@ type Period struct {
 }
 
 type HumanName struct {
-	Use    string   `json:"use"`
-	Family string   `json:"family"`
-	Given  []string `json:"given"`
+	Use    string   `json:"use,omitempty" bson:"use,omitempty"`
+	Text   string   `json:"text,omitempty" bson:"text,omitempty"`
+	Family string   `json:"family,omitempty" bson:"family,omitempty"`
+	Given  []string `json:"given,omitempty" bson:"given,omitempty"`
+	Prefix []string `json:"prefix,omitempty" bson:"prefix,omitempty"`
 }
 
 type Meta struct {
@@ -52,6 +54,13 @@ type ContactPoint struct {
 	System string `json:"system"`
 	Value  string `json:"value"`
 	Use    string `json:"use"`
+}
+
+type Qualification struct {
+	Identifier []Identifier    `json:"identifier,omitempty" bson:"identifier,omitempty"`
+	Code       CodeableConcept `json:"code" bson:"code"`
+	Period     Period          `json:"period,omitempty" bson:"period,omitempty"`
+	Issuer     Reference       `json:"issuer,omitempty" bson:"issuer,omitempty"`
 }
 
 type Attachment struct {

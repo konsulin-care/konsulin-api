@@ -7,9 +7,8 @@ import (
 	"fmt"
 	"io"
 	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/dto/requests"
-	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/fhir_dto"
 	"net/http"
 )
 
@@ -23,11 +22,13 @@ func NewPatientFhirClient(baseUrl string) PatientFhirClient {
 	}
 }
 
-func (c *patientFhirClient) CreatePatient(ctx context.Context, request *requests.Patient) (*responses.Patient, error) {
+func (c *patientFhirClient) CreatePatient(ctx context.Context, request *fhir_dto.Patient) (*fhir_dto.Patient, error) {
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
 		return nil, exceptions.ErrCannotMarshalJSON(err)
 	}
+
+	fmt.Println(requestJSON)
 
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodPost, c.BaseUrl, bytes.NewBuffer(requestJSON))
 	if err != nil {
@@ -42,13 +43,15 @@ func (c *patientFhirClient) CreatePatient(ctx context.Context, request *requests
 	}
 	defer resp.Body.Close()
 
+	fmt.Println(c.BaseUrl, resp.StatusCode)
+
 	if resp.StatusCode != constvars.StatusCreated {
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return nil, exceptions.ErrCreateFHIRResource(err, constvars.ResourcePatient)
 		}
 
-		var outcome responses.OperationOutcome
+		var outcome fhir_dto.OperationOutcome
 		err = json.Unmarshal(bodyBytes, &outcome)
 		if err != nil {
 			return nil, exceptions.ErrCreateFHIRResource(err, constvars.ResourcePatient)
@@ -60,7 +63,7 @@ func (c *patientFhirClient) CreatePatient(ctx context.Context, request *requests
 		}
 	}
 
-	patientFhir := new(responses.Patient)
+	patientFhir := new(fhir_dto.Patient)
 	err = json.NewDecoder(resp.Body).Decode(&patientFhir)
 	if err != nil {
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePatient)
@@ -69,7 +72,7 @@ func (c *patientFhirClient) CreatePatient(ctx context.Context, request *requests
 	return patientFhir, nil
 }
 
-func (c *patientFhirClient) FindPatientByID(ctx context.Context, patientID string) (*responses.Patient, error) {
+func (c *patientFhirClient) FindPatientByID(ctx context.Context, patientID string) (*fhir_dto.Patient, error) {
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, fmt.Sprintf("%s/%s", c.BaseUrl, patientID), nil)
 	if err != nil {
 		return nil, exceptions.ErrCreateHTTPRequest(err)
@@ -89,7 +92,7 @@ func (c *patientFhirClient) FindPatientByID(ctx context.Context, patientID strin
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePatient)
 		}
 
-		var outcome responses.OperationOutcome
+		var outcome fhir_dto.OperationOutcome
 		err = json.Unmarshal(bodyBytes, &outcome)
 		if err != nil {
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePatient)
@@ -101,7 +104,7 @@ func (c *patientFhirClient) FindPatientByID(ctx context.Context, patientID strin
 		}
 	}
 
-	patientFhir := new(responses.Patient)
+	patientFhir := new(fhir_dto.Patient)
 	err = json.NewDecoder(resp.Body).Decode(&patientFhir)
 	if err != nil {
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePatient)
@@ -110,7 +113,7 @@ func (c *patientFhirClient) FindPatientByID(ctx context.Context, patientID strin
 	return patientFhir, nil
 }
 
-func (c *patientFhirClient) UpdatePatient(ctx context.Context, request *requests.Patient) (*responses.Patient, error) {
+func (c *patientFhirClient) UpdatePatient(ctx context.Context, request *fhir_dto.Patient) (*fhir_dto.Patient, error) {
 	// Convert FHIR Patient to JSON
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
@@ -137,7 +140,7 @@ func (c *patientFhirClient) UpdatePatient(ctx context.Context, request *requests
 			return nil, exceptions.ErrUpdateFHIRResource(err, constvars.ResourcePatient)
 		}
 
-		var outcome responses.OperationOutcome
+		var outcome fhir_dto.OperationOutcome
 		err = json.Unmarshal(bodyBytes, &outcome)
 		if err != nil {
 			return nil, exceptions.ErrUpdateFHIRResource(err, constvars.ResourcePatient)
@@ -149,7 +152,7 @@ func (c *patientFhirClient) UpdatePatient(ctx context.Context, request *requests
 		}
 	}
 
-	patientFhir := new(responses.Patient)
+	patientFhir := new(fhir_dto.Patient)
 	err = json.NewDecoder(resp.Body).Decode(&patientFhir)
 	if err != nil {
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePatient)
@@ -158,7 +161,7 @@ func (c *patientFhirClient) UpdatePatient(ctx context.Context, request *requests
 	return patientFhir, nil
 }
 
-func (c *patientFhirClient) PatchPatient(ctx context.Context, request *requests.Patient) (*responses.Patient, error) {
+func (c *patientFhirClient) PatchPatient(ctx context.Context, request *fhir_dto.Patient) (*fhir_dto.Patient, error) {
 	// Convert FHIR Patient to JSON
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
@@ -185,7 +188,7 @@ func (c *patientFhirClient) PatchPatient(ctx context.Context, request *requests.
 			return nil, exceptions.ErrUpdateFHIRResource(err, constvars.ResourcePatient)
 		}
 
-		var outcome responses.OperationOutcome
+		var outcome fhir_dto.OperationOutcome
 		err = json.Unmarshal(bodyBytes, &outcome)
 		if err != nil {
 			return nil, exceptions.ErrUpdateFHIRResource(err, constvars.ResourcePatient)
@@ -197,7 +200,7 @@ func (c *patientFhirClient) PatchPatient(ctx context.Context, request *requests.
 		}
 	}
 
-	patientFhir := new(responses.Patient)
+	patientFhir := new(fhir_dto.Patient)
 	err = json.NewDecoder(resp.Body).Decode(&patientFhir)
 	if err != nil {
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePatient)

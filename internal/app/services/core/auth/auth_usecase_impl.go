@@ -158,6 +158,8 @@ func (uc *authUsecase) RegisterPatient(ctx context.Context, request *requests.Re
 	// Build FHIR patient request
 	fhirPatientRequest := utils.BuildFhirPatientRegistrationRequest(request.Username, request.Email)
 
+	fmt.Println(fhirPatientRequest)
+
 	// Create FHIR patient to Spark and get the response
 	fhirPatient, err := uc.PatientFhirClient.CreatePatient(ctx, fhirPatientRequest)
 	if err != nil {

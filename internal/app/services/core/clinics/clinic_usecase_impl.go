@@ -12,6 +12,7 @@ import (
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/utils"
 )
 
@@ -50,7 +51,7 @@ func (uc *clinicUsecase) FindAll(ctx context.Context, nameFilter, fetchType stri
 	// Build the response
 	response := make([]responses.Clinic, len(organizationsFhir))
 	for i, eachOrganization := range organizationsFhir {
-		response[i] = eachOrganization.ConvertToClinicResponse()
+		response[i] = utils.ConvertOrganizationToClinicResponse(eachOrganization)
 	}
 
 	if fetchType == constvars.FhirFetchResourceTypePaged {
@@ -67,7 +68,7 @@ func (uc *clinicUsecase) FindAllCliniciansByClinicID(ctx context.Context, reques
 		return nil, nil, err
 	}
 
-	clinicians, paginationData, err := uc.fetchAllCliniciansByPractitionerRoles(ctx, practitionerRoles, request)
+	clinicians, paginationData, err := uc.fetchAllCliniciansByPractitionerRoles(ctx, practitionerRoles)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -75,7 +76,7 @@ func (uc *clinicUsecase) FindAllCliniciansByClinicID(ctx context.Context, reques
 	return clinicians, paginationData, nil
 }
 
-func (uc *clinicUsecase) fetchAllCliniciansByPractitionerRoles(ctx context.Context, practitionerRoles []responses.PractitionerRole, request *requests.FindAllCliniciansByClinicID) ([]responses.ClinicClinician, *responses.Pagination, error) {
+func (uc *clinicUsecase) fetchAllCliniciansByPractitionerRoles(ctx context.Context, practitionerRoles []fhir_dto.PractitionerRole) ([]responses.ClinicClinician, *responses.Pagination, error) {
 	var clinicians []responses.ClinicClinician
 	for _, practitionerRole := range practitionerRoles {
 		if practitionerRole.Practitioner.Reference != "" && practitionerRole.Active {
@@ -100,7 +101,7 @@ func (uc *clinicUsecase) FindByID(ctx context.Context, clinicID string) (*respon
 		return nil, err
 	}
 	// Build the response
-	response := organization.ConvertToClinicDetailResponse()
+	response := utils.ConvertOrganizationToClinicDetailResponse(*organization)
 
 	return &response, nil
 }
