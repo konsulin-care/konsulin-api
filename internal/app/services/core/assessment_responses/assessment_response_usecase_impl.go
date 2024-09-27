@@ -6,9 +6,9 @@ import (
 	questionnaireResponses "konsulin-service/internal/app/services/fhir_spark/questionnaires_responses"
 	"konsulin-service/internal/app/services/shared/redis"
 	"konsulin-service/internal/pkg/constvars"
-	fhir_dto "konsulin-service/internal/pkg/dto/fhir"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
+	"konsulin-service/internal/pkg/fhir_dto"
 	"time"
 
 	"github.com/google/uuid"

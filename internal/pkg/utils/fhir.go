@@ -1,13 +1,13 @@
 package utils
 
 import (
-	"fmt"
 	"konsulin-service/internal/pkg/dto/responses"
+	"konsulin-service/internal/pkg/fhir_dto"
 	"strings"
 	"time"
 )
 
-func BuildPatientProfileResponse(patientFhir *responses.Patient) *responses.UserProfile {
+func BuildPatientProfileResponse(patientFhir *fhir_dto.Patient) *responses.UserProfile {
 	fullname := GetFullName(patientFhir.Name)
 	email, whatsAppNumber := GetEmailAndWhatsapp(patientFhir.Telecom)
 	age := CalculateAge(patientFhir.BirthDate)
@@ -27,7 +27,7 @@ func BuildPatientProfileResponse(patientFhir *responses.Patient) *responses.User
 	}
 }
 
-func BuildPractitionerProfileResponse(practitionerFhir *responses.Practitioner) *responses.UserProfile {
+func BuildPractitionerProfileResponse(practitionerFhir *fhir_dto.Practitioner) *responses.UserProfile {
 	fullname := GetFullName(practitionerFhir.Name)
 	email, whatsAppNumber := GetEmailAndWhatsapp(practitionerFhir.Telecom)
 	age := CalculateAge(practitionerFhir.BirthDate)
@@ -47,7 +47,7 @@ func BuildPractitionerProfileResponse(practitionerFhir *responses.Practitioner) 
 	}
 }
 
-func ExtractOrganizationIDsFromPractitionerRoles(practitionerRoles []responses.PractitionerRole) []string {
+func ExtractOrganizationIDsFromPractitionerRoles(practitionerRoles []fhir_dto.PractitionerRole) []string {
 	organizationIDs := make([]string, 0, len(practitionerRoles))
 
 	for _, role := range practitionerRoles {
@@ -60,7 +60,7 @@ func ExtractOrganizationIDsFromPractitionerRoles(practitionerRoles []responses.P
 	return organizationIDs
 }
 
-func ExtractQualifications(qualifications []responses.Qualification) []string {
+func ExtractQualifications(qualifications []fhir_dto.Qualification) []string {
 	qualificationsResponse := []string{}
 	for _, qualification := range qualifications {
 		for _, coding := range qualification.Code.Coding {
@@ -70,7 +70,7 @@ func ExtractQualifications(qualifications []responses.Qualification) []string {
 	return qualificationsResponse
 }
 
-func ExtractSpecialties(specialties []responses.CodeableConcept) []string {
+func ExtractSpecialties(specialties []fhir_dto.CodeableConcept) []string {
 	qualificationsResponse := []string{}
 	for _, specialty := range specialties {
 		for _, coding := range specialty.Coding {
@@ -80,7 +80,7 @@ func ExtractSpecialties(specialties []responses.CodeableConcept) []string {
 	return qualificationsResponse
 }
 
-func ExtractSpecialtiesText(specialties []responses.CodeableConcept) []string {
+func ExtractSpecialtiesText(specialties []fhir_dto.CodeableConcept) []string {
 	qualificationsResponse := []string{}
 	for _, specialty := range specialties {
 		qualificationsResponse = append(qualificationsResponse, specialty.Text)
@@ -88,7 +88,7 @@ func ExtractSpecialtiesText(specialties []responses.CodeableConcept) []string {
 	return qualificationsResponse
 }
 
-func MapPractitionerToClinicClinician(practitioner *responses.Practitioner, specialty []responses.CodeableConcept, organizationName string) responses.ClinicClinician {
+func MapPractitionerToClinicClinician(practitioner *fhir_dto.Practitioner, specialty []fhir_dto.CodeableConcept, organizationName string) responses.ClinicClinician {
 	return responses.ClinicClinician{
 		PractitionerID: practitioner.ID,
 		Name:           GetFullName(practitioner.Name),
@@ -118,7 +118,7 @@ func CalculateAge(birthDate string) int {
 	return age
 }
 
-func GetEducationFromExtensions(extensions []responses.Extension) []string {
+func GetEducationFromExtensions(extensions []fhir_dto.Extension) []string {
 	var educations []string
 	for _, ext := range extensions {
 		if ext.Url == "http://example.org/fhir/StructureDefinition/education" {
@@ -128,7 +128,7 @@ func GetEducationFromExtensions(extensions []responses.Extension) []string {
 	return educations
 }
 
-func GetHomeAddress(addresses []responses.Address) string {
+func GetHomeAddress(addresses []fhir_dto.Address) string {
 	for _, address := range addresses {
 		if address.Use == "home" {
 			return strings.Join(address.Line, ", ")
@@ -137,16 +137,10 @@ func GetHomeAddress(addresses []responses.Address) string {
 	return ""
 }
 
-func GetWorkAddress(addresses []responses.Address) string {
+func GetWorkAddress(addresses []fhir_dto.Address) string {
 	for _, address := range addresses {
 		if address.Use == "work" {
-			return fmt.Sprintf("%s, %s, %s, %s, %s",
-				strings.Join(address.Line, " "),
-				address.City,
-				address.State,
-				address.PostalCode,
-				address.Country,
-			)
+			return strings.Join(address.Line, ", ")
 		}
 	}
 	return ""
@@ -166,7 +160,7 @@ func FormatBirthDate(birthDate string) string {
 	return dob.Format("02 January 2006")
 }
 
-func GetFullName(names []responses.HumanName) string {
+func GetFullName(names []fhir_dto.HumanName) string {
 	if len(names) == 0 {
 		return ""
 	}
@@ -187,7 +181,7 @@ func GetFullName(names []responses.HumanName) string {
 	return fullname
 }
 
-func GetEmailAndWhatsapp(telecoms []responses.ContactPoint) (string, string) {
+func GetEmailAndWhatsapp(telecoms []fhir_dto.ContactPoint) (string, string) {
 	var (
 		email          string
 		whatsAppNumber string

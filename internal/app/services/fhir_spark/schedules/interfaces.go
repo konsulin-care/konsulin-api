@@ -2,8 +2,7 @@ package schedules
 
 import (
 	"context"
-	"konsulin-service/internal/pkg/dto/requests"
-	"konsulin-service/internal/pkg/dto/responses"
+	"konsulin-service/internal/pkg/fhir_dto"
 )
 
 type ScheduleUsecase interface{}
@@ -11,7 +10,7 @@ type ScheduleUsecase interface{}
 type ScheduleRepository interface{}
 
 type ScheduleFhirClient interface {
-	CreateSchedule(ctx context.Context, request *requests.Schedule) (*responses.Schedule, error)
-	FindScheduleByPractitionerID(ctx context.Context, practitionerID string) ([]responses.Schedule, error)
-	FindScheduleByPractitionerRoleID(ctx context.Context, practitionerRoleID string) ([]responses.Schedule, error)
+	CreateSchedule(ctx context.Context, request *fhir_dto.Schedule) (*fhir_dto.Schedule, error)
+	FindScheduleByPractitionerID(ctx context.Context, practitionerID string) ([]fhir_dto.Schedule, error)
+	FindScheduleByPractitionerRoleID(ctx context.Context, practitionerRoleID string) ([]fhir_dto.Schedule, error)
 }

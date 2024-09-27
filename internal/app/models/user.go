@@ -3,6 +3,7 @@ package models
 import (
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
+	"konsulin-service/internal/pkg/fhir_dto"
 	"strings"
 	"time"
 
@@ -84,27 +85,27 @@ func (u *User) IsDeactivated() bool {
 	return u.DeletedAt != nil
 }
 
-func (u *User) ConvertToPatientFhirDeactivationRequest() *requests.Patient {
-	var extensions []requests.Extension
+func (u *User) ConvertToPatientFhirDeactivationRequest() *fhir_dto.Patient {
+	var extensions []fhir_dto.Extension
 	for _, education := range u.Educations {
-		extensions = append(extensions, requests.Extension{
+		extensions = append(extensions, fhir_dto.Extension{
 			Url:         "http://example.org/fhir/StructureDefinition/education",
 			ValueString: education,
 		})
 	}
 
-	return &requests.Patient{
+	return &fhir_dto.Patient{
 		ResourceType: constvars.ResourcePatient,
 		ID:           u.PatientID,
 		Active:       false,
-		Name: []requests.HumanName{
+		Name: []fhir_dto.HumanName{
 			{
 				Use:    "official",
 				Family: u.Fullname,
 				Given:  []string{u.Fullname},
 			},
 		},
-		Telecom: []requests.ContactPoint{
+		Telecom: []fhir_dto.ContactPoint{
 			{
 				System: "email",
 				Value:  u.Email,
@@ -118,7 +119,7 @@ func (u *User) ConvertToPatientFhirDeactivationRequest() *requests.Patient {
 		},
 		Gender:    u.Gender,
 		BirthDate: u.BirthDate,
-		Address: []requests.Address{
+		Address: []fhir_dto.Address{
 			{
 				Use:  "home",
 				Line: strings.Split(u.Address, ", "),
@@ -128,27 +129,27 @@ func (u *User) ConvertToPatientFhirDeactivationRequest() *requests.Patient {
 	}
 }
 
-func (u *User) ConvertToPractitionerFhirDeactivationRequest() *requests.Practitioner {
-	var extensions []requests.Extension
+func (u *User) ConvertToPractitionerFhirDeactivationRequest() *fhir_dto.Practitioner {
+	var extensions []fhir_dto.Extension
 	for _, education := range u.Educations {
-		extensions = append(extensions, requests.Extension{
+		extensions = append(extensions, fhir_dto.Extension{
 			Url:         "http://example.org/fhir/StructureDefinition/education",
 			ValueString: education,
 		})
 	}
 
-	return &requests.Practitioner{
+	return &fhir_dto.Practitioner{
 		ResourceType: constvars.ResourcePatient,
 		ID:           u.PractitionerID,
 		Active:       false,
-		Name: []requests.HumanName{
+		Name: []fhir_dto.HumanName{
 			{
 				Use:    "official",
 				Family: u.Fullname,
 				Given:  []string{u.Fullname},
 			},
 		},
-		Telecom: []requests.ContactPoint{
+		Telecom: []fhir_dto.ContactPoint{
 			{
 				System: "email",
 				Value:  u.Email,
@@ -162,7 +163,7 @@ func (u *User) ConvertToPractitionerFhirDeactivationRequest() *requests.Practiti
 		},
 		Gender:    u.Gender,
 		BirthDate: u.BirthDate,
-		Address: []requests.Address{
+		Address: []fhir_dto.Address{
 			{
 				Use:  "home",
 				Line: strings.Split(u.Address, ", "),

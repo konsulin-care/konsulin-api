@@ -2,7 +2,7 @@ package questionnaires
 
 import (
 	"context"
-	fhir_dto "konsulin-service/internal/pkg/dto/fhir"
+	"konsulin-service/internal/pkg/fhir_dto"
 )
 
 type QuestionnaireUsecase interface{}

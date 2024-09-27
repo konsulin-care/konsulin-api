@@ -39,7 +39,7 @@ type QuestionnaireItem struct {
 	Code           []CodeableConcept               `json:"code,omitempty"`
 	Prefix         string                          `json:"prefix,omitempty"`
 	Text           string                          `json:"text,omitempty"`
-	Type           string                          `json:"type"`
+	Type           string                          `json:"type,omitempty"`
 	EnableWhen     []QuestionnaireItemEnableWhen   `json:"enableWhen,omitempty"`
 	EnableBehavior string                          `json:"enableBehavior,omitempty"`
 	Required       bool                            `json:"required,omitempty"`

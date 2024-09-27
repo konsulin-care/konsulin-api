@@ -45,3 +45,9 @@ type PricePerSession struct {
 	Value    float64 `json:"value"`
 	Currency string  `json:"currency"`
 }
+
+type AvailableTimeResponse struct {
+	DaysOfWeek         []string `json:"days_of_Week"`
+	AvailableStartTime string   `json:"available_start_time"`
+	AvailableEndTime   string   `json:"available_end_time"`
+}

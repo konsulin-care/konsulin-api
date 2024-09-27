@@ -1,4 +1,4 @@
-package requests
+package fhir_dto
 
 type Practitioner struct {
 	ResourceType string         `json:"resourceType"`

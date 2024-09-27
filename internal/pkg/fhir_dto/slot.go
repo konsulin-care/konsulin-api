@@ -1,4 +1,4 @@
-package responses
+package fhir_dto
 
 import "time"
 

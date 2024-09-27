@@ -15,6 +15,7 @@ import (
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/utils"
 	"strconv"
 	"strings"
@@ -94,22 +95,6 @@ func (uc *clinicianUsecase) DeleteClinicByID(ctx context.Context, sessionData, c
 	return nil
 }
 
-func (uc *clinicianUsecase) CreateAvailibilityTime(ctx context.Context, sessionData string, request *requests.AvailableTime) error {
-	// Parse session data
-	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
-	if err != nil {
-		return err
-	}
-
-	if session.IsNotPractitioner() {
-		return exceptions.ErrNotMatchRoleType(nil)
-	}
-
-	// _, err = uc.PractitionerRoleFhirClient.F()
-
-	return nil
-}
-
 func (uc *clinicianUsecase) CreateAppointment(ctx context.Context, sessionData string, request *requests.CreateAppointmentRequest) error {
 	// // Parse session data
 	// session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
@@ -123,7 +108,7 @@ func (uc *clinicianUsecase) CreateAppointment(ctx context.Context, sessionData s
 	// 	return exceptions.ErrCannotParseDate(err)
 	// }
 
-	// var appointmentsToBook []*requests.Appointment
+	// var appointmentsToBook []*fhir_dto.Appointment
 	// for i := 0; i < request.NumberOfSessions; i++ {
 	// 	startTime := appointmentStartTime.Add(time.Duration(i) * 30 * time.Minute)
 	// 	endTime := startTime.Add(30 * time.Minute)
@@ -251,7 +236,7 @@ func (uc *clinicianUsecase) CreatePracticeAvailability(ctx context.Context, sess
 			if err != nil {
 				return nil, err
 			}
-			hasConflict, err := uc.checkForTimeConflicts(ctx, practitionerRoles, availableTime)
+			hasConflict, err := uc.checkForTimeConflicts(practitionerRoles, availableTime)
 			if err != nil {
 				return nil, err
 			}
@@ -274,9 +259,9 @@ func (uc *clinicianUsecase) CreatePracticeAvailability(ctx context.Context, sess
 			return nil, err
 		}
 
-		scheduleFhirRequest := &requests.Schedule{
+		scheduleFhirRequest := &fhir_dto.Schedule{
 			ResourceType: constvars.ResourceSchedule,
-			Actor: []requests.Reference{
+			Actor: []fhir_dto.Reference{
 				{
 					Reference: fmt.Sprintf("%s/%s", constvars.ResourcePractitionerRole, practitionerRole.ID),
 				},
@@ -361,35 +346,35 @@ func (uc *clinicianUsecase) FindAvailability(ctx context.Context, request *reque
 
 }
 
-func (uc *clinicianUsecase) buildPractitionerRoleRequestFromPracticeInformation(practitionerID string, practiceInformation requests.PracticeInformation, practitionerRoles []responses.PractitionerRole) *requests.PractitionerRole {
-	practitionerReference := requests.Reference{
+func (uc *clinicianUsecase) buildPractitionerRoleRequestFromPracticeInformation(practitionerID string, practiceInformation requests.PracticeInformation, practitionerRoles []fhir_dto.PractitionerRole) *fhir_dto.PractitionerRole {
+	practitionerReference := fhir_dto.Reference{
 		Reference: fmt.Sprintf("%s/%s", constvars.ResourcePractitioner, practitionerID),
 	}
-	organizationReference := requests.Reference{
+	organizationReference := fhir_dto.Reference{
 		Reference: fmt.Sprintf("%s/%s", constvars.ResourceOrganization, practiceInformation.ClinicID),
 	}
 
-	extension := requests.Extension{
+	extension := fhir_dto.Extension{
 		Url: "http://hl7.org/fhir/StructureDefinition/Money",
-		ValueMoney: requests.Money{
+		ValueMoney: fhir_dto.Money{
 			Value:    practiceInformation.PricePerSession.Value,
 			Currency: practiceInformation.PricePerSession.Currency,
 		},
 	}
 
-	request := &requests.PractitionerRole{
+	request := &fhir_dto.PractitionerRole{
 		ResourceType: constvars.ResourcePractitionerRole,
 		Practitioner: practitionerReference,
 		Organization: organizationReference,
 		Active:       false,
-		Extension: []requests.Extension{
+		Extension: []fhir_dto.Extension{
 			extension,
 		},
-		Specialty: []requests.CodeableConcept{},
+		Specialty: []fhir_dto.CodeableConcept{},
 	}
 
 	for _, specialty := range practiceInformation.Specialties {
-		request.Specialty = append(request.Specialty, requests.CodeableConcept{
+		request.Specialty = append(request.Specialty, fhir_dto.CodeableConcept{
 			Text: specialty,
 		})
 	}
@@ -402,39 +387,39 @@ func (uc *clinicianUsecase) buildPractitionerRoleRequestFromPracticeInformation(
 
 }
 
-func (uc *clinicianUsecase) buildPractitionerRoleRequestForPracticeAvailability(practitionerRoles []responses.PractitionerRole, availableTimes []requests.AvailableTimeRequest) *requests.PractitionerRole {
+func (uc *clinicianUsecase) buildPractitionerRoleRequestForPracticeAvailability(practitionerRoles []fhir_dto.PractitionerRole, availableTimes []requests.AvailableTimeRequest) *fhir_dto.PractitionerRole {
 	practitionerID := strings.Split(practitionerRoles[0].Practitioner.Reference, "/")[1]
 	organizationID := strings.Split(practitionerRoles[0].Organization.Reference, "/")[1]
 
-	practitionerReference := requests.Reference{
+	practitionerReference := fhir_dto.Reference{
 		Reference: fmt.Sprintf("%s/%s", constvars.ResourcePractitioner, practitionerID),
 	}
-	organizationReference := requests.Reference{
+	organizationReference := fhir_dto.Reference{
 		Reference: fmt.Sprintf("%s/%s", constvars.ResourceOrganization, organizationID),
 	}
 
-	extension := requests.Extension{
+	extension := fhir_dto.Extension{
 		Url: "http://hl7.org/fhir/StructureDefinition/Money",
-		ValueMoney: requests.Money{
+		ValueMoney: fhir_dto.Money{
 			Value:    practitionerRoles[0].Extension[0].ValueMoney.Value,
 			Currency: practitionerRoles[0].Extension[0].ValueMoney.Currency,
 		},
 	}
 
-	request := &requests.PractitionerRole{
+	request := &fhir_dto.PractitionerRole{
 		ResourceType: constvars.ResourcePractitionerRole,
 		Practitioner: practitionerReference,
 		Organization: organizationReference,
 		Active:       true,
-		Extension: []requests.Extension{
+		Extension: []fhir_dto.Extension{
 			extension,
 		},
-		Specialty:     []requests.CodeableConcept{},
+		Specialty:     []fhir_dto.CodeableConcept{},
 		AvailableTime: utils.ConvertToModelAvailableTimes(availableTimes),
 	}
 
 	for _, specialty := range practitionerRoles[0].Specialty {
-		request.Specialty = append(request.Specialty, requests.CodeableConcept{
+		request.Specialty = append(request.Specialty, fhir_dto.CodeableConcept{
 			Text: specialty.Text,
 		})
 	}
@@ -470,7 +455,7 @@ func (uc *clinicianUsecase) generateDayAvailability(startDate, endDate time.Time
 	return days
 }
 
-func (uc *clinicianUsecase) findBusySlots(slots []responses.Slot) map[string][]string {
+func (uc *clinicianUsecase) findBusySlots(slots []fhir_dto.Slot) map[string][]string {
 	// Initialize map to store busy slots
 	busySlotsMap := make(map[string][]string)
 
@@ -484,7 +469,7 @@ func (uc *clinicianUsecase) findBusySlots(slots []responses.Slot) map[string][]s
 
 	return busySlotsMap
 }
-func (uc *clinicianUsecase) findAvailableTimesForPractitionerRole(practitionerRole *responses.PractitionerRole, start, end time.Time) map[string][]string {
+func (uc *clinicianUsecase) findAvailableTimesForPractitionerRole(practitionerRole *fhir_dto.PractitionerRole, start, end time.Time) map[string][]string {
 	// Initialize map to store available times
 	availableTimesMap := make(map[string][]string)
 
@@ -503,7 +488,7 @@ func (uc *clinicianUsecase) findAvailableTimesForPractitionerRole(practitionerRo
 	return availableTimesMap
 }
 
-func (uc *clinicianUsecase) findAndBuildClinicianCinicsResponseByPractitionerRoles(ctx context.Context, practitionerRoles []responses.PractitionerRole) ([]responses.ClinicianClinic, error) {
+func (uc *clinicianUsecase) findAndBuildClinicianCinicsResponseByPractitionerRoles(ctx context.Context, practitionerRoles []fhir_dto.PractitionerRole) ([]responses.ClinicianClinic, error) {
 	response := make([]responses.ClinicianClinic, 0, len(practitionerRoles))
 
 	for _, practitionerRole := range practitionerRoles {
@@ -534,7 +519,7 @@ func (uc *clinicianUsecase) findAndBuildClinicianCinicsResponseByPractitionerRol
 	return response, nil
 }
 
-func (uc *clinicianUsecase) checkForTimeConflicts(ctx context.Context, existingRoles []responses.PractitionerRole, availableTime requests.AvailableTimeRequest) (bool, error) {
+func (uc *clinicianUsecase) checkForTimeConflicts(existingRoles []fhir_dto.PractitionerRole, availableTime requests.AvailableTimeRequest) (bool, error) {
 	for _, role := range existingRoles {
 		for _, existingTime := range role.AvailableTime {
 			for _, day := range availableTime.DaysOfWeek {

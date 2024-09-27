@@ -7,9 +7,8 @@ import (
 	"fmt"
 	"io"
 	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/dto/requests"
-	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/fhir_dto"
 	"net/http"
 )
 
@@ -23,7 +22,7 @@ func NewSlotFhirClient(baseUrl string) SlotFhirClient {
 	}
 }
 
-func (c *slotFhirClient) FindSlotByScheduleID(ctx context.Context, scheduleID string) ([]responses.Slot, error) {
+func (c *slotFhirClient) FindSlotByScheduleID(ctx context.Context, scheduleID string) ([]fhir_dto.Slot, error) {
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, fmt.Sprintf("%s/schedule=Schedule/%s", c.BaseUrl, scheduleID), nil)
 	if err != nil {
 		return nil, exceptions.ErrCreateHTTPRequest(err)
@@ -43,7 +42,7 @@ func (c *slotFhirClient) FindSlotByScheduleID(ctx context.Context, scheduleID st
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
 		}
 
-		var outcome responses.OperationOutcome
+		var outcome fhir_dto.OperationOutcome
 		err = json.Unmarshal(bodyBytes, &outcome)
 		if err != nil {
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
@@ -59,8 +58,8 @@ func (c *slotFhirClient) FindSlotByScheduleID(ctx context.Context, scheduleID st
 		Total        int    `json:"total"`
 		ResourceType string `json:"resourceType"`
 		Entry        []struct {
-			FullUrl  string         `json:"fullUrl"`
-			Resource responses.Slot `json:"resource"`
+			FullUrl  string        `json:"fullUrl"`
+			Resource fhir_dto.Slot `json:"resource"`
 		} `json:"entry"`
 	}
 	err = json.NewDecoder(resp.Body).Decode(&result)
@@ -68,7 +67,7 @@ func (c *slotFhirClient) FindSlotByScheduleID(ctx context.Context, scheduleID st
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePractitionerRole)
 	}
 
-	slotsFhir := make([]responses.Slot, len(result.Entry))
+	slotsFhir := make([]fhir_dto.Slot, len(result.Entry))
 	for i, entry := range result.Entry {
 		slotsFhir[i] = entry.Resource
 	}
@@ -76,7 +75,7 @@ func (c *slotFhirClient) FindSlotByScheduleID(ctx context.Context, scheduleID st
 	return slotsFhir, nil
 }
 
-func (c *slotFhirClient) FindSlotByScheduleIDAndStatus(ctx context.Context, scheduleID, status string) ([]responses.Slot, error) {
+func (c *slotFhirClient) FindSlotByScheduleIDAndStatus(ctx context.Context, scheduleID, status string) ([]fhir_dto.Slot, error) {
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, fmt.Sprintf("%s?schedule=Schedule/%s&status=%s", c.BaseUrl, scheduleID, status), nil)
 	if err != nil {
 		return nil, exceptions.ErrCreateHTTPRequest(err)
@@ -96,7 +95,7 @@ func (c *slotFhirClient) FindSlotByScheduleIDAndStatus(ctx context.Context, sche
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
 		}
 
-		var outcome responses.OperationOutcome
+		var outcome fhir_dto.OperationOutcome
 		err = json.Unmarshal(bodyBytes, &outcome)
 		if err != nil {
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
@@ -112,8 +111,8 @@ func (c *slotFhirClient) FindSlotByScheduleIDAndStatus(ctx context.Context, sche
 		Total        int    `json:"total"`
 		ResourceType string `json:"resourceType"`
 		Entry        []struct {
-			FullUrl  string         `json:"fullUrl"`
-			Resource responses.Slot `json:"resource"`
+			FullUrl  string        `json:"fullUrl"`
+			Resource fhir_dto.Slot `json:"resource"`
 		} `json:"entry"`
 	}
 	err = json.NewDecoder(resp.Body).Decode(&result)
@@ -121,7 +120,7 @@ func (c *slotFhirClient) FindSlotByScheduleIDAndStatus(ctx context.Context, sche
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePractitionerRole)
 	}
 
-	slotsFhir := make([]responses.Slot, len(result.Entry))
+	slotsFhir := make([]fhir_dto.Slot, len(result.Entry))
 	for i, entry := range result.Entry {
 		slotsFhir[i] = entry.Resource
 	}
@@ -129,7 +128,7 @@ func (c *slotFhirClient) FindSlotByScheduleIDAndStatus(ctx context.Context, sche
 	return slotsFhir, nil
 }
 
-func (c *slotFhirClient) CreateSlot(ctx context.Context, request *requests.Slot) (*responses.Slot, error) {
+func (c *slotFhirClient) CreateSlot(ctx context.Context, request *fhir_dto.Slot) (*fhir_dto.Slot, error) {
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
 		return nil, exceptions.ErrCannotMarshalJSON(err)
@@ -154,7 +153,7 @@ func (c *slotFhirClient) CreateSlot(ctx context.Context, request *requests.Slot)
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
 		}
 
-		var outcome responses.OperationOutcome
+		var outcome fhir_dto.OperationOutcome
 		err = json.Unmarshal(bodyBytes, &outcome)
 		if err != nil {
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
@@ -166,7 +165,7 @@ func (c *slotFhirClient) CreateSlot(ctx context.Context, request *requests.Slot)
 		}
 	}
 
-	slotFhir := new(responses.Slot)
+	slotFhir := new(fhir_dto.Slot)
 	err = json.NewDecoder(resp.Body).Decode(&slotFhir)
 	if err != nil {
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourceSlot)

@@ -7,9 +7,8 @@ import (
 	"fmt"
 	"io"
 	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/dto/requests"
-	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/fhir_dto"
 	"net/http"
 )
 
@@ -23,7 +22,7 @@ func NewAppointmentFhirClient(baseUrl string) AppointmentFhirClient {
 	}
 }
 
-func (c *appointmentFhirClient) CreateAppointment(ctx context.Context, request *requests.Appointment) (*responses.Appointment, error) {
+func (c *appointmentFhirClient) CreateAppointment(ctx context.Context, request *fhir_dto.Appointment) (*fhir_dto.Appointment, error) {
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
 		return nil, exceptions.ErrCannotMarshalJSON(err)
@@ -48,7 +47,7 @@ func (c *appointmentFhirClient) CreateAppointment(ctx context.Context, request *
 			return nil, exceptions.ErrCreateFHIRResource(err, constvars.ResourceAppointment)
 		}
 
-		var outcome responses.OperationOutcome
+		var outcome fhir_dto.OperationOutcome
 		err = json.Unmarshal(bodyBytes, &outcome)
 		if err != nil {
 			return nil, exceptions.ErrCreateFHIRResource(err, constvars.ResourceAppointment)
@@ -60,7 +59,7 @@ func (c *appointmentFhirClient) CreateAppointment(ctx context.Context, request *
 		}
 	}
 
-	appointmentFhir := new(responses.Appointment)
+	appointmentFhir := new(fhir_dto.Appointment)
 	err = json.NewDecoder(resp.Body).Decode(&appointmentFhir)
 	if err != nil {
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourceAppointment)

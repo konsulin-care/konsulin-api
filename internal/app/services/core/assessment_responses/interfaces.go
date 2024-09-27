@@ -2,9 +2,9 @@ package assessmentResponses
 
 import (
 	"context"
-	fhir_dto "konsulin-service/internal/pkg/dto/fhir"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
+	"konsulin-service/internal/pkg/fhir_dto"
 )
 
 type AssessmentResponseUsecase interface {

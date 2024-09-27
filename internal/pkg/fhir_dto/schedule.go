@@ -1,4 +1,4 @@
-package requests
+package fhir_dto
 
 type Schedule struct {
 	ResourceType    string            `json:"resourceType"`
@@ -9,7 +9,7 @@ type Schedule struct {
 	ServiceCategory []CodeableConcept `json:"serviceCategory,omitempty"`
 	ServiceType     []CodeableConcept `json:"serviceType,omitempty"`
 	Specialty       []CodeableConcept `json:"specialty,omitempty"`
-	Actor           []Reference       `json:"actor"`
+	Actor           []Reference       `json:"actor,omitempty"`
 	PlanningHorizon Period            `json:"planningHorizon,omitempty"`
 	Comment         string            `json:"comment,omitempty"`
 }
