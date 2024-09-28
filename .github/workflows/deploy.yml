@@ -46,8 +46,6 @@ jobs:
         key: ${{ secrets.SSH_KEY }}
         port: ${{ secrets.SSH_PORT }}
         script: |
-          cd /home/${{ secrets.SSH_USERNAME }}/infrastructure/${{ inputs.ENVIRONMENT }}/konsulin-app/be-konsulin &&
-          git pull &&
           cd /home/${{ secrets.SSH_USERNAME }}/infrastructure/${{ inputs.ENVIRONMENT }}/konsulin-app &&
           docker login --username=${{ secrets.DOCKER_USERNAME }} --password=${{ secrets.DOCKER_PASSWORD }} repository.konsulin.care &&
           COMMIT_HASH=sha-${{ env.BRANCH }}-${{ env.SHORT_SHA }} docker compose -f docker-compose-cd.yml pull ${{ inputs.SERVICE_NAME }}
