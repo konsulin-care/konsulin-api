@@ -8,7 +8,7 @@ internal_config:
     timezone: Asia/Jakarta
     endpoint_prefix: api
     reset_password_url: "https://dev-app.konsulin.care/reset-password-form?token="
-    max_requests: 15
+    max_requests: 3
     shutdown_timeout_in_seconds: 3
     max_time_requests_per_seconds: 30
     request_body_limit_in_megabyte: 30
