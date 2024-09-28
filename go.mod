@@ -63,4 +63,5 @@ require (
 	github.com/redis/go-redis/v9 v9.5.3
 	go.mongodb.org/mongo-driver v1.15.1
 	golang.org/x/sys v0.21.0 // indirect
+	golang.org/x/time v0.6.0
 )

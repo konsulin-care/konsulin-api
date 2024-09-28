@@ -2,27 +2,14 @@ package middlewares
 
 import (
 	"context"
-	"konsulin-service/internal/app/config"
-	"konsulin-service/internal/app/services/core/auth"
-	"konsulin-service/internal/app/services/core/session"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
 	"net/http"
 	"strings"
 	"time"
-
-	"go.uber.org/zap"
 )
 
-func NewMiddlewares(logger *zap.Logger, sessionService session.SessionService, authUsecase auth.AuthUsecase, internalConfig *config.InternalConfig) *Middlewares {
-	return &Middlewares{
-		Log:            logger,
-		SessionService: sessionService,
-		AuthUsecase:    authUsecase,
-		InternalConfig: internalConfig,
-	}
-}
 func (m *Middlewares) Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
