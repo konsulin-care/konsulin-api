@@ -14,3 +14,12 @@ type Middlewares struct {
 	SessionService session.SessionService
 	InternalConfig *config.InternalConfig
 }
+
+func NewMiddlewares(logger *zap.Logger, sessionService session.SessionService, authUsecase auth.AuthUsecase, internalConfig *config.InternalConfig) *Middlewares {
+	return &Middlewares{
+		Log:            logger,
+		SessionService: sessionService,
+		AuthUsecase:    authUsecase,
+		InternalConfig: internalConfig,
+	}
+}
