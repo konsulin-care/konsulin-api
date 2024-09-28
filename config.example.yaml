@@ -68,4 +68,4 @@ driver_config:
     host: 37.27.46.214
     username: minioUserKonsln
     password: QbSZRmX9rWebFehKFioA
-    use_ssl: false
+    use_ssl: true

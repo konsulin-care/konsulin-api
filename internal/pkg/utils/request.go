@@ -117,7 +117,6 @@ func BuildFhirPractitionerUpdateProfileRequest(request *requests.UpdateProfile, 
 			{
 				Use:    "official",
 				Family: request.Fullname,
-				Given:  []string{request.Fullname},
 			},
 		},
 		Telecom: []fhir_dto.ContactPoint{
