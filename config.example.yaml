@@ -1,71 +1,71 @@
 internal_config:
   app:
-    env: development
-    port: "3000"
-    version: v1
-    address: localhost
-    base_url: https://dev-api.konsulin.care/
-    timezone: Asia/Jakarta
-    endpoint_prefix: api
-    reset_password_url: "https://dev-app.konsulin.care/reset-password-form?token="
-    max_requests: 3
-    shutdown_timeout_in_seconds: 3
-    max_time_requests_per_seconds: 30
-    request_body_limit_in_megabyte: 30
-    account_deactivation_age_in_days: 30
-    login_session_expired_time_in_hours: 2
-    forgot_password_token_expired_time_in_minutes: 2
-    minio_pre_signed_url_object_expiry_time_in_hours: 1
-    questionnaire_guest_response_response_expired_time_in_minutes: 10
+    env: 
+    port: 
+    version: 
+    address: 
+    base_url: 
+    timezone: 
+    endpoint_prefix: 
+    reset_password_url: 
+    max_requests: 
+    shutdown_timeout_in_seconds: 
+    max_time_requests_per_seconds: 
+    request_body_limit_in_megabyte: 
+    account_deactivation_age_in_days: 
+    login_session_expired_time_in_hours: 
+    forgot_password_token_expired_time_in_minutes: 
+    minio_pre_signed_url_object_expiry_time_in_hours: 
+    questionnaire_guest_response_response_expired_time_in_minutes: 
 
   fhir:
-    base_url: https://fhir.konsulin.care/fhir/
+    base_url: 
 
   jwt:
-    secret: 5r9OLzkYTaRzgP@DQtjG6ucp
-    exp_time_in_hour: 1
+    secret: 
+    exp_time_in_hour: 
 
   mailer:
-    email_sender: funlab.ardihikaru@gmail.com
+    email_sender: 
 
   minio:
-    profile_picture_max_upload_size_in_mb: 2
-    bucket_name: konsulin-dev
+    profile_picture_max_upload_size_in_mb: 
+    bucket_name: 
 
   rabbitmq:
-    mailer_queue: dev.email
-    whatsapp_queue: dev.whatsapp
+    mailer_queue: 
+    whatsapp_queue: 
 
   mongodb:
-    fhir_db_name: spark
-    konsulin_db_name: konsulin
+    fhir_db_name: 
+    konsulin_db_name: 
 
 driver_config:
   mongodb:
-    port: "17017"
-    host: 37.27.46.214
-    username: konsulin
-    password: QK5LypXa8XDHruiTQJBx
+    port: 
+    host: 
+    username: 
+    password: 
 
   redis:
-    host: localhost
-    port: "6379"
-    password: customredis77
+    host: 
+    port: 
+    password: 
 
   logger:
-    level: debug
-    output_file_name: logger.log
-    output_error_file_name: logger_error.log
+    level: 
+    output_file_name: 
+    output_error_file_name: 
 
   rabbitmq:
-    port: "5672"
-    host: 37.27.46.214
-    username: konsulin
-    password: va12mFaswaCOzM90Ed7K
+    port: 
+    host: 
+    username: 
+    password: 
 
   minio:
-    port: "9000"
-    host: 37.27.46.214
-    username: minioUserKonsln
-    password: QbSZRmX9rWebFehKFioA
-    use_ssl: true
+    port: 
+    host: 
+    username: 
+    password: 
+    use_ssl: 
