@@ -109,16 +109,16 @@ type Extension struct {
 }
 
 type Address struct {
-	Use        string   `json:"use"`
-	Line       []string `json:"line"`
-	City       string   `json:"city"`
-	State      string   `json:"state"`
-	PostalCode string   `json:"postalCode"`
-	Country    string   `json:"country"`
+	Use        string   `json:"use,omitempty"`
+	Line       []string `json:"line,omitempty"`
+	City       string   `json:"city,omitempty"`
+	State      string   `json:"state,omitempty"`
+	PostalCode string   `json:"postalCode,omitempty"`
+	Country    string   `json:"country,omitempty"`
 }
 
 type AvailableTime struct {
-	DaysOfWeek         []string `json:"daysOfWeek"`
-	AvailableStartTime string   `json:"availableStartTime"`
-	AvailableEndTime   string   `json:"availableEndTime"`
+	DaysOfWeek         []string `json:"daysOfWeek,omitempty"`
+	AvailableStartTime string   `json:"availableStartTime,omitempty"`
+	AvailableEndTime   string   `json:"availableEndTime,omitempty"`
 }

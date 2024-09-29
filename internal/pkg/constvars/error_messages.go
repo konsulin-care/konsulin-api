@@ -100,13 +100,13 @@ const (
 	ErrDevUserNotExists         = "user not exists in our system"
 
 	// Spark messages
-	ErrDevSparkCreateFHIRResource                 = "failed to create FHIR %s from firesly spark"
-	ErrDevSparkUpdateFHIRResource                 = "failed to update FHIR %s from firesly spark"
-	ErrDevSparkGetFHIRResource                    = "failed to get FHIR %s from firely spark"
+	ErrDevSparkCreateFHIRResource                 = "failed to create FHIR %s from `BLAZE` service"
+	ErrDevSparkUpdateFHIRResource                 = "failed to update FHIR %s from `BLAZE` service"
+	ErrDevSparkGetFHIRResource                    = "failed to get FHIR %s from `BLAZE` service"
 	ErrDevSparkNoDataFHIRResource                 = "no data found from FHIR %s"
 	ErrDevSparkFetchedResultNotUniqueFHIRResource = "result fetched for %s response contain more than 1 data (not unique)"
-	ErrDevSparkGetFHIRResourceDuplicate           = "got more than one document when get FHIR %s from firely spark, which should be unique and contain only one result"
-	ErrDevSparkDecodeFHIRResourceResponse         = "failed to decode FHIR %s response from firely spark"
+	ErrDevSparkGetFHIRResourceDuplicate           = "got more than one document when get FHIR %s from `BLAZE` service, which should be unique and contain only one result"
+	ErrDevSparkDecodeFHIRResourceResponse         = "failed to decode FHIR %s response from `BLAZE` service"
 
 	// Validation messages
 	ErrDevValidationFailed           = "validation failed"
