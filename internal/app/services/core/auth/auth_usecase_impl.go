@@ -472,7 +472,7 @@ func (uc *authUsecase) ForgotPassword(ctx context.Context, request *requests.For
 		return err
 	}
 	if user == nil {
-		return exceptions.ErrUserNotExist(nil)
+		return nil
 	}
 
 	uuid := uuid.New().String()
