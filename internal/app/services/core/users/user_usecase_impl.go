@@ -2,6 +2,7 @@ package users
 
 import (
 	"context"
+	"fmt"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/app/services/core/session"
@@ -80,6 +81,7 @@ func (uc *userUsecase) GetUserProfileBySession(ctx context.Context, sessionData 
 			return nil, err
 		}
 	}
+	fmt.Println(preSignedUrl)
 
 	// Handle get user profile based on role
 	switch session.RoleName {
@@ -322,7 +324,7 @@ func (uc *userUsecase) getPatientProfile(ctx context.Context, session *models.Se
 
 	// Build patient profile response
 	response := utils.BuildPatientProfileResponse(patientFhir)
-	response.ProfilePictureUrl = preSignedUrl
+	response.ProfilePicture = preSignedUrl
 
 	// Return the response to Controller
 	return response, nil
@@ -337,7 +339,7 @@ func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *mode
 
 	// Build patient profile response
 	response := utils.BuildPractitionerProfileResponse(practitionerFhir)
-	response.ProfilePictureUrl = preSignedUrl
+	response.ProfilePicture = preSignedUrl
 
 	practitionerRoles, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerID(ctx, session.PractitionerID)
 	if err != nil {
