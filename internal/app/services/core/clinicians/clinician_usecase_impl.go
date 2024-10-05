@@ -356,7 +356,7 @@ func (uc *clinicianUsecase) buildPractitionerRoleRequestFromPracticeInformation(
 
 	extension := fhir_dto.Extension{
 		Url: "http://hl7.org/fhir/StructureDefinition/Money",
-		ValueMoney: fhir_dto.Money{
+		ValueMoney: &fhir_dto.Money{
 			Value:    practiceInformation.PricePerSession.Value,
 			Currency: practiceInformation.PricePerSession.Currency,
 		},
@@ -400,7 +400,7 @@ func (uc *clinicianUsecase) buildPractitionerRoleRequestForPracticeAvailability(
 
 	extension := fhir_dto.Extension{
 		Url: "http://hl7.org/fhir/StructureDefinition/Money",
-		ValueMoney: fhir_dto.Money{
+		ValueMoney: &fhir_dto.Money{
 			Value:    practitionerRoles[0].Extension[0].ValueMoney.Value,
 			Currency: practitionerRoles[0].Extension[0].ValueMoney.Currency,
 		},
