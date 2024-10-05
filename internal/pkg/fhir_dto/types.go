@@ -101,11 +101,11 @@ type Money struct {
 }
 
 type Extension struct {
-	Url         string `json:"url"`
+	Url         string `json:"url,omitempty"`
 	ValueString string `json:"valueString,omitempty"`
 	ValueCode   string `json:"valueCode,omitempty"`
 	ValueInt    int    `json:"valueInt,omitempty"`
-	ValueMoney  Money  `json:"valueMoney,omitempty"`
+	ValueMoney  *Money `json:"valueMoney,omitempty"`
 }
 
 type Address struct {

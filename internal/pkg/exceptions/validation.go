@@ -1,7 +1,6 @@
 package exceptions
 
 import (
-	"fmt"
 	"konsulin-service/internal/pkg/constvars"
 	"strings"
 
@@ -46,8 +45,6 @@ func FormatFirstValidationError(err error) string {
 		if !ok {
 			customMessage = "is invalid"
 		}
-		fmt.Println(firstErr.Param())
-		fmt.Println(tag)
 		if constvars.TagsWithParams[tag] {
 			if tag == "oneof" {
 				customMessage = strings.Replace(customMessage, "%s", strings.Join(strings.Fields(firstErr.Param()), ", "), 1)
@@ -55,7 +52,6 @@ func FormatFirstValidationError(err error) string {
 				customMessage = strings.Replace(customMessage, "%s", firstErr.Param(), 1)
 			}
 		}
-		fmt.Println(customMessage)
 		return fieldName + " " + customMessage
 	}
 	return constvars.ErrDevInvalidInput

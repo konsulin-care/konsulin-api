@@ -47,7 +47,6 @@ func DecodeBase64Image(encodedImage string) ([]byte, string, error) {
 	if len(parts) != 2 {
 		return nil, "", errors.New("invalid base64 image")
 	}
-	fmt.Println(parts)
 
 	data, err := base64.StdEncoding.DecodeString(parts[1])
 	if err != nil {

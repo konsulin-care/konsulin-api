@@ -2,7 +2,6 @@ package users
 
 import (
 	"context"
-	"fmt"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/app/services/core/session"
@@ -81,7 +80,6 @@ func (uc *userUsecase) GetUserProfileBySession(ctx context.Context, sessionData 
 			return nil, err
 		}
 	}
-	fmt.Println(preSignedUrl)
 
 	// Handle get user profile based on role
 	switch session.RoleName {

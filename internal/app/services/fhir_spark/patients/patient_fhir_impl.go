@@ -28,8 +28,6 @@ func (c *patientFhirClient) CreatePatient(ctx context.Context, request *fhir_dto
 		return nil, exceptions.ErrCannotMarshalJSON(err)
 	}
 
-	fmt.Println(requestJSON)
-
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodPost, c.BaseUrl, bytes.NewBuffer(requestJSON))
 	if err != nil {
 		return nil, exceptions.ErrCreateHTTPRequest(err)
@@ -42,8 +40,6 @@ func (c *patientFhirClient) CreatePatient(ctx context.Context, request *fhir_dto
 		return nil, exceptions.ErrSendHTTPRequest(err)
 	}
 	defer resp.Body.Close()
-
-	fmt.Println(c.BaseUrl, resp.StatusCode)
 
 	if resp.StatusCode != constvars.StatusCreated {
 		bodyBytes, err := io.ReadAll(resp.Body)
