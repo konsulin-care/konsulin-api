@@ -1,7 +1,8 @@
-package auth
+package controllers
 
 import (
 	"context"
+	"konsulin-service/internal/app/services/core/auth"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/exceptions"
@@ -15,10 +16,10 @@ import (
 
 type AuthController struct {
 	Log         *zap.Logger
-	AuthUsecase AuthUsecase
+	AuthUsecase auth.AuthUsecase
 }
 
-func NewAuthController(logger *zap.Logger, authUsecase AuthUsecase) *AuthController {
+func NewAuthController(logger *zap.Logger, authUsecase auth.AuthUsecase) *AuthController {
 	return &AuthController{
 		Log:         logger,
 		AuthUsecase: authUsecase,

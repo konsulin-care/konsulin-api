@@ -186,6 +186,8 @@ func (c *practitionerRoleFhirClient) FindPractitionerRoleByCustomRequest(ctx con
 	endTimeFilterParsed, _ := time.Parse(constvars.TimeFormatHoursMinutesSeconds, request.EndTime)
 	practitionerRoles := make([]fhir_dto.PractitionerRole, len(result.Entry))
 
+	fmt.Println(startTimeFilterParsed, endTimeFilterParsed)
+
 	for i, entry := range result.Entry {
 		matched := false
 		for _, availableTime := range entry.Resource.AvailableTime {
@@ -194,6 +196,7 @@ func (c *practitionerRoleFhirClient) FindPractitionerRoleByCustomRequest(ctx con
 					if strings.ToLower(availableDay) == desiredDay {
 						startTime, _ := time.Parse(constvars.TimeFormatHoursMinutesSeconds, availableTime.AvailableStartTime)
 						endTime, _ := time.Parse(constvars.TimeFormatHoursMinutesSeconds, availableTime.AvailableEndTime)
+						fmt.Println(startTime, endTime, "GG")
 						if startTime.Hour() >= startTimeFilterParsed.Hour() && endTime.Hour() <= endTimeFilterParsed.Hour() {
 							matched = true
 							break

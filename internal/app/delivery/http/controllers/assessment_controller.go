@@ -1,8 +1,9 @@
-package assessments
+package controllers
 
 import (
 	"context"
 	"encoding/json"
+	"konsulin-service/internal/app/services/core/assessments"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
@@ -16,10 +17,10 @@ import (
 
 type AssessmentController struct {
 	Log               *zap.Logger
-	AssessmentUsecase AssessmentUsecase
+	AssessmentUsecase assessments.AssessmentUsecase
 }
 
-func NewAssessmentController(logger *zap.Logger, assessmentUsecase AssessmentUsecase) *AssessmentController {
+func NewAssessmentController(logger *zap.Logger, assessmentUsecase assessments.AssessmentUsecase) *AssessmentController {
 	return &AssessmentController{
 		Log:               logger,
 		AssessmentUsecase: assessmentUsecase,

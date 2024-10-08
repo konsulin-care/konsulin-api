@@ -1,8 +1,9 @@
-package clinicians
+package controllers
 
 import (
 	"context"
 	"encoding/json"
+	"konsulin-service/internal/app/services/core/clinicians"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/exceptions"
@@ -16,10 +17,10 @@ import (
 
 type ClinicianController struct {
 	Log              *zap.Logger
-	ClinicianUsecase ClinicianUsecase
+	ClinicianUsecase clinicians.ClinicianUsecase
 }
 
-func NewClinicianController(logger *zap.Logger, clinicianUsecase ClinicianUsecase) *ClinicianController {
+func NewClinicianController(logger *zap.Logger, clinicianUsecase clinicians.ClinicianUsecase) *ClinicianController {
 	return &ClinicianController{
 		Log:              logger,
 		ClinicianUsecase: clinicianUsecase,

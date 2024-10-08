@@ -55,3 +55,10 @@ const (
 const (
 	FhirCurrencyPrefixIndonesia = "Rp"
 )
+
+const (
+	DEFAULT_CLINICIAN_PRACTICE_START_TIME_PARAMS = "00:00:00"
+	DEFAULT_CLINICIAN_PRACTICE_END_TIME_PARAMS   = "23:59:59"
+
+	DEFAULT_CLINICIAN_DESIRED_DAYS_PARAMS = "sun,mon,tue,wed,thu,fri,sat"
+)

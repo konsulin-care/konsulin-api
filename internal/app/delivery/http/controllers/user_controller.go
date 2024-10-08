@@ -1,9 +1,10 @@
-package users
+package controllers
 
 import (
 	"context"
 	"encoding/json"
 	"konsulin-service/internal/app/config"
+	"konsulin-service/internal/app/services/core/users"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/exceptions"
@@ -16,11 +17,11 @@ import (
 
 type UserController struct {
 	Log            *zap.Logger
-	UserUsecase    UserUsecase
+	UserUsecase    users.UserUsecase
 	InternalConfig *config.InternalConfig
 }
 
-func NewUserController(logger *zap.Logger, userUsecase UserUsecase, internalConfig *config.InternalConfig) *UserController {
+func NewUserController(logger *zap.Logger, userUsecase users.UserUsecase, internalConfig *config.InternalConfig) *UserController {
 	return &UserController{
 		Log:            logger,
 		UserUsecase:    userUsecase,
