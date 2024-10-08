@@ -16,3 +16,4 @@ resources/http-client.env.json
 .vscode/settings.json
 
 *.local.yaml
+*.development.yaml

@@ -1,7 +1,8 @@
-package clinics
+package controllers
 
 import (
 	"context"
+	"konsulin-service/internal/app/services/core/clinics"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/exceptions"
@@ -16,10 +17,10 @@ import (
 
 type ClinicController struct {
 	Log           *zap.Logger
-	ClinicUsecase ClinicUsecase
+	ClinicUsecase clinics.ClinicUsecase
 }
 
-func NewClinicController(logger *zap.Logger, clinicUsecase ClinicUsecase) *ClinicController {
+func NewClinicController(logger *zap.Logger, clinicUsecase clinics.ClinicUsecase) *ClinicController {
 	return &ClinicController{
 		Log:           logger,
 		ClinicUsecase: clinicUsecase,
@@ -99,6 +100,16 @@ func (ctrl *ClinicController) FindAllCliniciansByClinicID(w http.ResponseWriter,
 		StartTime:        r.URL.Query().Get("start_time"),
 		EndTime:          r.URL.Query().Get("end_time"),
 		ClinicID:         chi.URLParam(r, constvars.URLParamClinicID),
+	}
+
+	if request.StartTime == "" {
+		request.StartTime = constvars.DEFAULT_CLINICIAN_PRACTICE_START_TIME_PARAMS
+	}
+	if request.EndTime == "" {
+		request.EndTime = constvars.DEFAULT_CLINICIAN_PRACTICE_END_TIME_PARAMS
+	}
+	if request.Days == "" {
+		request.Days = constvars.DEFAULT_CLINICIAN_DESIRED_DAYS_PARAMS
 	}
 
 	pageStr := r.URL.Query().Get("page")

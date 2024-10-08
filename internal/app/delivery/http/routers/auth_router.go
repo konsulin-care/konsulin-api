@@ -1,13 +1,13 @@
 package routers
 
 import (
+	"konsulin-service/internal/app/delivery/http/controllers"
 	"konsulin-service/internal/app/delivery/http/middlewares"
-	"konsulin-service/internal/app/services/core/auth"
 
 	"github.com/go-chi/chi/v5"
 )
 
-func attachAuthRoutes(router chi.Router, middlewares *middlewares.Middlewares, authController *auth.AuthController) {
+func attachAuthRoutes(router chi.Router, middlewares *middlewares.Middlewares, authController *controllers.AuthController) {
 	router.Post("/register/patient", authController.RegisterPatient)
 	router.Post("/register/clinician", authController.RegisterClinician)
 	router.Post("/login/patient", authController.LoginPatient)

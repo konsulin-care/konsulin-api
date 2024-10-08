@@ -3,16 +3,8 @@ package routers
 import (
 	"fmt"
 	"konsulin-service/internal/app/config"
+	"konsulin-service/internal/app/delivery/http/controllers"
 	"konsulin-service/internal/app/delivery/http/middlewares"
-	assessmentResponses "konsulin-service/internal/app/services/core/assessment_responses"
-	"konsulin-service/internal/app/services/core/assessments"
-	"konsulin-service/internal/app/services/core/auth"
-	"konsulin-service/internal/app/services/core/clinicians"
-	"konsulin-service/internal/app/services/core/clinics"
-	educationLevels "konsulin-service/internal/app/services/core/education_levels"
-	"konsulin-service/internal/app/services/core/genders"
-	"konsulin-service/internal/app/services/core/patients"
-	"konsulin-service/internal/app/services/core/users"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -24,15 +16,15 @@ func SetupRoutes(
 	router *chi.Mux,
 	internalConfig *config.InternalConfig,
 	middlewares *middlewares.Middlewares,
-	userController *users.UserController,
-	authController *auth.AuthController,
-	clinicController *clinics.ClinicController,
-	clinicianController *clinicians.ClinicianController,
-	patientController *patients.PatientController,
-	educationLevelController *educationLevels.EducationLevelController,
-	genderController *genders.GenderController,
-	assessmentController *assessments.AssessmentController,
-	assessmentResponseController *assessmentResponses.AssessmentResponseController,
+	userController *controllers.UserController,
+	authController *controllers.AuthController,
+	clinicController *controllers.ClinicController,
+	clinicianController *controllers.ClinicianController,
+	patientController *controllers.PatientController,
+	educationLevelController *controllers.EducationLevelController,
+	genderController *controllers.GenderController,
+	assessmentController *controllers.AssessmentController,
+	assessmentResponseController *controllers.AssessmentResponseController,
 ) {
 
 	corsOptions := cors.Options{
