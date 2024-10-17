@@ -9,4 +9,5 @@ const (
 	URLParamClinicianID          = "clinician_id"
 	URLParamAssessmentID         = "assessment_id"
 	URLParamAssessmentResponseID = "assessment_response_id"
+	URLParamPractitionerID       = "practitioner_id"
 )
