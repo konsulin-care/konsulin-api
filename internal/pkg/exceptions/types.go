@@ -48,6 +48,9 @@ var (
 	ErrEmailAlreadyExist = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientEmailAlreadyExists, constvars.ErrDevEmailAlreadyExists)
 	}
+	ErrPhoneNumberAlreadyRegistered = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientPhoneNumberAlreadyRegistered, constvars.ErrDevPhoneNumberAlreadyRegistered)
+	}
 	ErrUsernameAlreadyExist = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusNotFound, constvars.ErrClientUsernameAlreadyExists, constvars.ErrDevUsernameAlreadyExists)
 	}
@@ -64,7 +67,13 @@ var (
 		return BuildNewCustomError(err, constvars.StatusUnauthorized, constvars.ErrClientNotLoggedIn, constvars.ErrDevAuthTokenInvalidOrExpired)
 	}
 	ErrTokenResetPasswordExpired = func(err error) *CustomError {
-		return BuildNewCustomError(err, constvars.StatusUnauthorized, constvars.ErrClientResetPasswordToken, constvars.ErrDevAuthTokenExpired)
+		return BuildNewCustomError(err, constvars.StatusGone, constvars.ErrClientResetPasswordTokenExpired, constvars.ErrDevAuthTokenExpired)
+	}
+	ErrWhatsAppOTPExpired = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusGone, constvars.ErrClientWhatsAppOTPExpired, constvars.ErrDevAuthWhatsAppOTPExpired)
+	}
+	ErrWhatsAppOTPInvalid = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientWhatsAppOTPInvalid, constvars.ErrDevAuthWhatsAppOTPInvalid)
 	}
 	ErrInvalidRoleType = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevInvalidRoleType)
@@ -140,6 +149,11 @@ var (
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevRedisSAdd)
 	}
 	ErrRedisGetSetMembers = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevRedisSMembers)
+	}
+
+	// RabbitMQ
+	ErrRabbitMQPublishMessage = func(err error, queueName string) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevRedisSMembers)
 	}
 

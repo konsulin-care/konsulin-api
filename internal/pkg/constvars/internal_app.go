@@ -17,3 +17,7 @@ const (
 const (
 	AppPaginationUrlFormat = "%s?page=%d&page_size=%d"
 )
+
+const (
+	WHATSAPP_OTP_LENGTH = 6
+)

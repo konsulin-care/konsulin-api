@@ -17,6 +17,15 @@ func sanitizeStringArray(input []string) []string {
 	return sanitizedArray
 }
 
+func SanitizeLoginViaWhatsAppRequest(input *requests.LoginViaWhatsApp) {
+	input.To = sanitizeString(input.To)
+}
+func SanitizeVerifyWhatsAppOTP(input *requests.VerivyWhatsAppOTP) {
+	input.To = sanitizeString(input.To)
+	input.OTP = sanitizeString(input.OTP)
+	input.Role = sanitizeString(input.Role)
+}
+
 func SanitizeRegisterUserRequest(input *requests.RegisterUser) {
 	input.Email = sanitizeString(input.Email)
 	input.Username = sanitizeString(input.Username)

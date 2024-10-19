@@ -34,6 +34,7 @@ import (
 	"konsulin-service/internal/app/services/shared/mailer"
 	redisKonsulin "konsulin-service/internal/app/services/shared/redis"
 	storageKonsulin "konsulin-service/internal/app/services/shared/storage"
+	"konsulin-service/internal/app/services/shared/whatsapp"
 	"log"
 	"net/http"
 	"os"
@@ -168,6 +169,12 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 		return err
 	}
 
+	// Initialize the whatsApp service with RabbitMQ
+	whatsAppService, err := whatsapp.NewWhatsAppService(bootstrap.RabbitMQ, bootstrap.InternalConfig.RabbitMQ.WhatsAppQueue)
+	if err != nil {
+		return err
+	}
+
 	// Initialize Minio storage
 	minioStorage := storageKonsulin.NewMinioStorage(bootstrap.Minio)
 
@@ -240,6 +247,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 		practitionerRoleFhirClient,
 		questionnaireResponseFhirClient,
 		mailerService,
+		whatsAppService,
 		bootstrap.InternalConfig,
 	)
 	if err != nil {

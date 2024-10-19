@@ -6,5 +6,5 @@ import (
 )
 
 type WhatsAppService interface {
-	SendMessage(ctx context.Context, request *requests.WhatsAppMessage) error
+	SendWhatsAppMessage(ctx context.Context, request *requests.WhatsAppMessage) error
 }

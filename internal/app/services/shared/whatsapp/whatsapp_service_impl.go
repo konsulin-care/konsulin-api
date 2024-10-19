@@ -3,8 +3,9 @@ package whatsapp
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
+	"konsulin-service/internal/pkg/exceptions"
 
 	"github.com/rabbitmq/amqp091-go"
 )
@@ -25,23 +26,28 @@ func NewWhatsAppService(rabbitMQConnection *amqp091.Connection, queue string) (W
 		Queue:   queue,
 	}, nil
 }
-func (svc *whatsAppService) SendMessage(ctx context.Context, request *requests.WhatsAppMessage) error {
+func (s *whatsAppService) SendWhatsAppMessage(ctx context.Context, request *requests.WhatsAppMessage) error {
 	body, err := json.Marshal(request)
 	if err != nil {
 		return err
 	}
 
-	err = svc.Channel.PublishWithContext(ctx,
-		"",
-		svc.Queue,
-		false,
-		false,
-		amqp091.Publishing{
-			ContentType: "application/json",
-			Body:        body,
-		})
+	headers := amqp091.Table{
+		"message_type":     "JSON",
+		"requeue_strategy": "DROP",
+	}
+
+	message := amqp091.Publishing{
+		ContentType:  constvars.MIMEApplicationJSON,
+		Body:         body,
+		DeliveryMode: amqp091.Persistent,
+		Priority:     0,
+		Headers:      headers,
+	}
+
+	err = s.Channel.PublishWithContext(ctx, "", s.Queue, false, false, message)
 	if err != nil {
-		return fmt.Errorf("failed to publish message: %w", err)
+		return exceptions.ErrRabbitMQPublishMessage(err, s.Queue)
 	}
 
 	return nil
