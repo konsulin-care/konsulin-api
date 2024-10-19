@@ -46,6 +46,18 @@ func (r *UserMongoRepository) FindByEmail(ctx context.Context, email string) (*m
 	return &user, nil
 }
 
+func (r *UserMongoRepository) FindByWhatsAppNumber(ctx context.Context, whatsAppNumber string) (*models.User, error) {
+	var user models.User
+	err := r.Collection.FindOne(ctx, bson.M{"whatsAppNumber": whatsAppNumber}).Decode(&user)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, nil
+		}
+		return nil, exceptions.ErrMongoDBFindDocument(err)
+	}
+	return &user, nil
+}
+
 func (r *UserMongoRepository) FindByUsername(ctx context.Context, username string) (*models.User, error) {
 	var user models.User
 	err := r.Collection.FindOne(ctx, bson.M{"username": username}).Decode(&user)

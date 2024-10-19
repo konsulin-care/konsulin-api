@@ -13,6 +13,7 @@ func init() {
 	validate = validator.New()
 	validate.RegisterValidation("password", validatePassword)
 	validate.RegisterValidation("user_type", validateUserType)
+	validate.RegisterValidation("phone_number", validatePhoneNumber)
 }
 
 func ValidateStruct(s interface{}) error {
@@ -30,4 +31,10 @@ func validatePassword(fl validator.FieldLevel) bool {
 func validateUserType(fl validator.FieldLevel) bool {
 	value := fl.Field().String()
 	return value == "practitioner" || value == "patient"
+}
+
+func validatePhoneNumber(fl validator.FieldLevel) bool {
+	phoneNumber := fl.Field().String()
+	re := regexp.MustCompile(`^\+[1-9]\d{9,14}$`)
+	return re.MatchString(phoneNumber)
 }

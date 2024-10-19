@@ -26,6 +26,78 @@ func NewAuthController(logger *zap.Logger, authUsecase auth.AuthUsecase) *AuthCo
 	}
 }
 
+func (ctrl *AuthController) LoginViaWhatsApp(w http.ResponseWriter, r *http.Request) {
+	// Bind body to request
+	request := new(requests.LoginViaWhatsApp)
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+		return
+	}
+	// Sanitize request
+	utils.SanitizeLoginViaWhatsAppRequest(request)
+
+	// Validate request
+	err = utils.ValidateStruct(request)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Send it to be processed by usecase
+	err = ctrl.AuthUsecase.LoginViaWhatsApp(ctx, request)
+	if err != nil {
+		if err == context.DeadlineExceeded {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	// Send response
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.LoginSuccessMessage, nil)
+}
+
+func (ctrl *AuthController) VerifyWhatsAppOTP(w http.ResponseWriter, r *http.Request) {
+	// Bind body to request
+	request := new(requests.VerivyWhatsAppOTP)
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+		return
+	}
+	// Sanitize request
+	utils.SanitizeVerifyWhatsAppOTP(request)
+
+	// Validate request
+	err = utils.ValidateStruct(request)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Send it to be processed by usecase
+	response, err := ctrl.AuthUsecase.VerifyWhatsAppOTP(ctx, request)
+	if err != nil {
+		if err == context.DeadlineExceeded {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	// Send response
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.LoginSuccessMessage, response)
+}
+
 func (ctrl *AuthController) RegisterClinician(w http.ResponseWriter, r *http.Request) {
 	// Bind body to request
 	request := new(requests.RegisterUser)

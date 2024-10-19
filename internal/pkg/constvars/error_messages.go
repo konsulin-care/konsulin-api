@@ -9,7 +9,7 @@ var CustomValidationErrorMessages = map[string]string{
 	"max":                  "maximum at %s characters long",
 	"eqfield":              "must match %s",
 	"password":             "must be at least 8 characters long, contain at least one special character, and one uppercase letter",
-	"numeric":              "must be a number",
+	"numeric":              "must be in numbers",
 	"len":                  "must be %s characters long",
 	"oneof":                "must be one of [%s]",
 	"gt":                   "must be greater than %s",
@@ -30,6 +30,7 @@ var CustomValidationErrorMessages = map[string]string{
 	"required_without":     "is required when %s is not present",
 	"required_without_all": "is required when none of [%s] are present",
 	"user_type":            "must be either 'practitioner' or 'patient'",
+	"phone_number":         "phone number given is not valid",
 }
 
 // Tags that require parameter substitution
@@ -58,6 +59,7 @@ var TagsWithParams = map[string]bool{
 const (
 	ErrClientPasswordsDoNotMatch           = "passwords do not match"
 	ErrClientEmailAlreadyExists            = "email already used"
+	ErrClientPhoneNumberAlreadyRegistered  = "phone number already registered"
 	ErrClientUsernameAlreadyExists         = "username already used"
 	ErrClientCannotProcessRequest          = "failed to process your request"
 	ErrClientInvalidUsernameOrPassword     = "invalid username or password"
@@ -66,7 +68,9 @@ const (
 	ErrClientServerLongRespond             = "the app taking too long to respond"
 	ErrClientNotAuthorized                 = "you can't access this feature"
 	ErrClientNotLoggedIn                   = "your session ended, please login again"
-	ErrClientResetPasswordToken            = "your reset password request already expired"
+	ErrClientResetPasswordTokenExpired     = "your reset password request already expired"
+	ErrClientWhatsAppOTPExpired            = "your whatsapp otp already expired"
+	ErrClientWhatsAppOTPInvalid            = "your whatsapp otp is invalid"
 )
 
 // Error messages for developers
@@ -94,10 +98,11 @@ const (
 	ErrDevSMTPSendEmail = "failed to send email via SMTP client hostname %s"
 
 	// Usecase messages
-	ErrDevPasswordsDoNotMatch   = "passwords do not match"
-	ErrDevEmailAlreadyExists    = "email already exists"
-	ErrDevUsernameAlreadyExists = "username already exists"
-	ErrDevUserNotExists         = "user not exists in our system"
+	ErrDevPasswordsDoNotMatch          = "passwords do not match with the password in database"
+	ErrDevEmailAlreadyExists           = "email already exists in database"
+	ErrDevPhoneNumberAlreadyRegistered = "phone number already registered in database"
+	ErrDevUsernameAlreadyExists        = "username already exists in database"
+	ErrDevUserNotExists                = "user not exists in our system"
 
 	// Spark messages
 	ErrDevSparkCreateFHIRResource                 = "failed to create FHIR %s from `BLAZE` service"
@@ -118,12 +123,14 @@ const (
 	// Authentication messages
 	ErrDevAuthSigningMethod         = "unexpected signing method"
 	ErrDevAuthTokenInvalidOrExpired = "invalid or expired token"
-	ErrDevAuthTokenExpired          = "token expired"
+	ErrDevAuthTokenExpired          = "token lifetime already exceed our internal app config"
 	ErrDevAuthTokenMissing          = "token missing"
 	ErrDevAuthInvalidSession        = "invalid session"
 	ErrDevAuthPermissionDenied      = "permission denied"
 	ErrDevAuthGenerateToken         = "failed to generate token"
 	ErrDevAuthRoleNotExists         = "role doesn't exist on the system"
+	ErrDevAuthWhatsAppOTPExpired    = "whatsapp otp lifetime already exceed our internal app config"
+	ErrDevAuthWhatsAppOTPInvalid    = "whatsapp otp given by user doesn't match with otp in database"
 
 	// Database messages
 	ErrDevDBFailedToInsertDocument   = "failed to insert document into database"
@@ -150,8 +157,11 @@ const (
 	ErrDevRedisSAdd            = "failed to SAdd data into set in redis"
 	ErrDevRedisSMembers        = "failed to SMembers data from set in redis"
 
+	// RabbitMQ messages
+	ErrDevRabbitMQPublishMessage = "failed to publish message to %s queue"
+
 	// Server messages
-	ErrDevServerProcess          = "server failed to process something related to machine system"
+	ErrDevServerProcess          = "server failed to process the request"
 	ErrDevServerInternalError    = "internal server error"
 	ErrDevServerNotImplemented   = "feature not implemented"
 	ErrDevServerBadRequest       = "bad request"

@@ -22,12 +22,14 @@ type User struct {
 	BirthDate          string `bson:"birthDate,omitempty"`
 	PatientID          string `bson:"patientId,omitempty"`
 	ResetToken         string `bson:"resetToken,omitempty"`
+	WhatsAppOTP        string `bson:"whatsAppOtp,omitempty"`
 	WhatsAppNumber     string `bson:"whatsAppNumber,omitempty"`
 	PractitionerID     string `bson:"practitionerId,omitempty"`
 	ProfilePictureName string `bson:"profilePictureName,omitempty"`
 
-	Educations       []string   `bson:"educations,omitempty"`
-	ResetTokenExpiry *time.Time `bson:"resetTokenExpiry,omitempty"`
+	Educations        []string   `bson:"educations,omitempty"`
+	ResetTokenExpiry  *time.Time `bson:"resetTokenExpiry,omitempty"`
+	WhatsAppOTPExpiry *time.Time `bson:"whatsAppOtpExpiry,omitempty"`
 
 	Role      *Role `bson:"user_role,omitempty"`
 	TimeModel `bson:",inline"`
@@ -45,11 +47,13 @@ func (u *User) ConvertToBsonM() bson.M {
 		"birthDate":          u.BirthDate,
 		"patientId":          u.PatientID,
 		"resetToken":         u.ResetToken,
+		"whatsAppOtp":        u.WhatsAppOTP,
 		"whatsAppNumber":     u.WhatsAppNumber,
 		"practitionerId":     u.PractitionerID,
 		"profilePictureName": u.ProfilePictureName,
 		"educations":         u.Educations,
 		"resetTokenExpiry":   u.ResetTokenExpiry,
+		"whatsAppOtpExpiry":  u.WhatsAppOTPExpiry,
 		"user_role":          u.Role,
 		"createdAt":          u.TimeModel.CreatedAt,
 		"updatedAt":          u.TimeModel.UpdatedAt,
@@ -78,6 +82,12 @@ func (u *User) SetDataForUpdateResetPassword(request *requests.ResetPassword) {
 func (u *User) SetResetTokenExpiryTime(durationInMinutes int) {
 	resetTokenExpiryTime := time.Now().Add(time.Duration(durationInMinutes) * time.Minute)
 	u.ResetTokenExpiry = &resetTokenExpiryTime
+	u.SetUpdatedAt()
+}
+
+func (u *User) SetWhatsAppOTPExpiryTime(durationInMinutes int) {
+	whatsAppOTPExpiryTime := time.Now().Add(time.Duration(durationInMinutes) * time.Minute)
+	u.WhatsAppOTPExpiry = &whatsAppOTPExpiryTime
 	u.SetUpdatedAt()
 }
 

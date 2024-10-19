@@ -20,6 +20,7 @@ type UserRepository interface {
 	FindByEmail(ctx context.Context, email string) (*models.User, error)
 	FindByUsername(ctx context.Context, username string) (*models.User, error)
 	FindByEmailOrUsername(ctx context.Context, email, username string) (*models.User, error)
+	FindByWhatsAppNumber(ctx context.Context, whatsAppNumber string) (*models.User, error)
 	FindByResetToken(ctx context.Context, token string) (*models.User, error)
 	FindByID(ctx context.Context, userID string) (*models.User, error)
 	UpdateUser(ctx context.Context, userModel *models.User) error

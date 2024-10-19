@@ -3,9 +3,9 @@ package mailer
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
+	"konsulin-service/internal/pkg/exceptions"
 	"regexp"
 
 	"github.com/rabbitmq/amqp091-go"
@@ -30,7 +30,7 @@ func NewMailerService(rabbitMQConnection *amqp091.Connection, queue string) (Mai
 func (s *mailerService) SendEmail(ctx context.Context, request *requests.EmailPayload) error {
 	body, err := json.Marshal(request)
 	if err != nil {
-		return err
+		return exceptions.ErrCannotMarshalJSON(err)
 	}
 
 	headers := amqp091.Table{
@@ -48,7 +48,7 @@ func (s *mailerService) SendEmail(ctx context.Context, request *requests.EmailPa
 
 	err = s.Channel.PublishWithContext(ctx, "", s.Queue, false, false, message)
 	if err != nil {
-		return fmt.Errorf("failed to publish message: %w", err)
+		return exceptions.ErrRabbitMQPublishMessage(err, s.Queue)
 	}
 
 	return nil

@@ -16,6 +16,7 @@ const (
 	GetClinicsSuccessfully          = "get clinics successfully"
 	GetCliniciansSuccessfully       = "get clinicians successfully"
 	GetClinicianSummarySuccessfully = "get clinician summary successfully"
+	VerifyWhatsAppOTPSuccessMessage = "whatsapp otp successfully verified"
 
 	// Clinician-related messages
 	CreateClinicianClinicsSuccessMessage              = "clinics successfully created for clinician"

@@ -44,6 +44,19 @@ func BuildFhirPatientRegistrationRequest(username, email string) *fhir_dto.Patie
 	}
 }
 
+func BuildFhirPatientWhatsAppRegistrationRequest(phoneNumber string) *fhir_dto.Patient {
+	return &fhir_dto.Patient{
+		ResourceType: constvars.ResourcePatient,
+		Telecom: []fhir_dto.ContactPoint{
+			{
+				System: "phone",
+				Value:  phoneNumber,
+				Use:    "mobile",
+			},
+		},
+	}
+}
+
 func BuildFhirPatientUpdateProfileRequest(request *requests.UpdateProfile, patientID string) *fhir_dto.Patient {
 	var extensions []fhir_dto.Extension
 	for _, education := range request.Educations {
@@ -95,6 +108,19 @@ func BuildFhirPractitionerRegistrationRequest(username, email string) *fhir_dto.
 				System: "email",
 				Value:  email,
 				Use:    "work",
+			},
+		},
+	}
+}
+
+func BuildFhirPractitionerWhatsAppRegistrationRequest(phoneNumber string) *fhir_dto.Practitioner {
+	return &fhir_dto.Practitioner{
+		ResourceType: constvars.ResourcePractitioner,
+		Telecom: []fhir_dto.ContactPoint{
+			{
+				System: "phone",
+				Value:  phoneNumber,
+				Use:    "mobile",
 			},
 		},
 	}
