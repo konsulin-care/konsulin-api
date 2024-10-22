@@ -7,8 +7,10 @@ import (
 )
 
 type AuthUsecase interface {
+	RegisterViaWhatsApp(ctx context.Context, request *requests.RegisterViaWhatsApp) error
+	VerifyRegisterWhatsAppOTP(ctx context.Context, request *requests.VerivyRegisterWhatsAppOTP) (*responses.RegisterUserWhatsApp, error)
 	LoginViaWhatsApp(ctx context.Context, request *requests.LoginViaWhatsApp) error
-	VerifyWhatsAppOTP(ctx context.Context, request *requests.VerivyWhatsAppOTP) (*responses.LoginUser, error)
+	VerifyLoginWhatsAppOTP(ctx context.Context, request *requests.VerivyLoginWhatsAppOTP) (*responses.LoginUser, error)
 	RegisterPatient(ctx context.Context, request *requests.RegisterUser) (*responses.RegisterUser, error)
 	RegisterClinician(ctx context.Context, request *requests.RegisterUser) (*responses.RegisterUser, error)
 	LoginPatient(ctx context.Context, request *requests.LoginUser) (*responses.LoginUser, error)

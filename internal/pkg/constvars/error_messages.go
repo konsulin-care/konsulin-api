@@ -61,6 +61,7 @@ const (
 	ErrClientEmailAlreadyExists            = "email already used"
 	ErrClientPhoneNumberAlreadyRegistered  = "phone number already registered"
 	ErrClientUsernameAlreadyExists         = "username already used"
+	ErrWhatsAppNumberAlreadyExists         = "whatsapp number already used"
 	ErrClientCannotProcessRequest          = "failed to process your request"
 	ErrClientInvalidUsernameOrPassword     = "invalid username or password"
 	ErrClientInvalidImageFormat            = "the image you uploaded does not meet the specified standards"
@@ -102,6 +103,7 @@ const (
 	ErrDevEmailAlreadyExists           = "email already exists in database"
 	ErrDevPhoneNumberAlreadyRegistered = "phone number already registered in database"
 	ErrDevUsernameAlreadyExists        = "username already exists in database"
+	ErrDevWhatsAppNumberAlreadyExists  = "whatsapp number already exists in database"
 	ErrDevUserNotExists                = "user not exists in our system"
 
 	// Spark messages

@@ -52,10 +52,10 @@ var (
 		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientPhoneNumberAlreadyRegistered, constvars.ErrDevPhoneNumberAlreadyRegistered)
 	}
 	ErrUsernameAlreadyExist = func(err error) *CustomError {
-		return BuildNewCustomError(err, constvars.StatusNotFound, constvars.ErrClientUsernameAlreadyExists, constvars.ErrDevUsernameAlreadyExists)
+		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientUsernameAlreadyExists, constvars.ErrDevUsernameAlreadyExists)
 	}
 	ErrUserNotExist = func(err error) *CustomError {
-		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevUserNotExists)
+		return BuildNewCustomError(err, constvars.StatusNotFound, constvars.ErrClientCannotProcessRequest, constvars.ErrDevUserNotExists)
 	}
 	ErrTokenMissing = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusUnauthorized, constvars.ErrClientNotAuthorized, constvars.ErrDevAuthTokenMissing)

@@ -80,7 +80,7 @@ func NewAuthUsecase(
 	return authUsecase, nil
 }
 
-func (uc *authUsecase) LoginViaWhatsApp(ctx context.Context, request *requests.LoginViaWhatsApp) error {
+func (uc *authUsecase) RegisterViaWhatsApp(ctx context.Context, request *requests.RegisterViaWhatsApp) error {
 	whatsAppOTP, err := utils.GenerateOTP(constvars.WHATSAPP_OTP_LENGTH)
 	if err != nil {
 		return exceptions.ErrClientCustomMessage(err)
@@ -92,15 +92,7 @@ func (uc *authUsecase) LoginViaWhatsApp(ctx context.Context, request *requests.L
 	}
 
 	if existingUser != nil {
-		existingUser.WhatsAppOTP = whatsAppOTP
-		existingUser.WhatsAppNumber = request.To
-		existingUser.SetWhatsAppOTPExpiryTime(uc.InternalConfig.App.WhatsAppOTPExpiredTimeInMinutes)
-		existingUser.SetCreatedAtUpdatedAt()
-		err = uc.UserRepository.UpdateUser(ctx, existingUser)
-		if err != nil {
-			return err
-		}
-		return nil
+		return exceptions.ErrPhoneNumberAlreadyRegistered(nil)
 	}
 
 	user := new(models.User)
@@ -128,13 +120,49 @@ func (uc *authUsecase) LoginViaWhatsApp(ctx context.Context, request *requests.L
 	return nil
 }
 
-func (uc *authUsecase) VerifyWhatsAppOTP(ctx context.Context, request *requests.VerivyWhatsAppOTP) (*responses.LoginUser, error) {
+func (uc *authUsecase) LoginViaWhatsApp(ctx context.Context, request *requests.LoginViaWhatsApp) error {
+	whatsAppOTP, err := utils.GenerateOTP(constvars.WHATSAPP_OTP_LENGTH)
+	if err != nil {
+		return exceptions.ErrClientCustomMessage(err)
+	}
+
+	existingUser, err := uc.UserRepository.FindByWhatsAppNumber(ctx, request.To)
+	if err != nil {
+		return err
+	}
+
+	if existingUser == nil {
+		return exceptions.ErrUserNotExist(nil)
+	}
+
+	existingUser.WhatsAppOTP = whatsAppOTP
+	existingUser.WhatsAppNumber = request.To
+	existingUser.SetWhatsAppOTPExpiryTime(uc.InternalConfig.App.WhatsAppOTPExpiredTimeInMinutes)
+	existingUser.SetCreatedAtUpdatedAt()
+	err = uc.UserRepository.UpdateUser(ctx, existingUser)
+	if err != nil {
+		return err
+	}
+
+	whatsAppMessage := &requests.WhatsAppMessage{
+		To:        request.To,
+		Message:   whatsAppOTP,
+		WithImage: false,
+	}
+
+	err = uc.WhatsAppService.SendWhatsAppMessage(ctx, whatsAppMessage)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (uc *authUsecase) VerifyRegisterWhatsAppOTP(ctx context.Context, request *requests.VerivyRegisterWhatsAppOTP) (*responses.RegisterUserWhatsApp, error) {
 	existingUser, err := uc.UserRepository.FindByWhatsAppNumber(ctx, request.To)
 	if err != nil {
 		return nil, err
 	}
-
-	response := new(responses.LoginUser)
 
 	if existingUser == nil {
 		return nil, exceptions.ErrUserNotExist(nil)
@@ -173,52 +201,13 @@ func (uc *authUsecase) VerifyWhatsAppOTP(ctx context.Context, request *requests.
 			return nil, err
 		}
 
-		// Generate a UUID for the session ID
-		sessionID := uuid.New().String()
-
-		// Create session data with user, role, and session details
-		sessionModel := models.Session{
-			UserID:    existingUser.ID,
-			PatientID: fhirPatient.ID,
-			RoleID:    role.ID,
-			RoleName:  role.Name,
-			SessionID: sessionID,
-		}
-
-		// Store the session data in Redis with a 2-hour expirations
-		err = uc.RedisRepository.Set(
-			ctx,
-			sessionID,
-			sessionModel,
-			time.Hour*time.Duration(uc.InternalConfig.App.LoginSessionExpiredTimeInHours),
-		)
-		if err != nil {
-			// Return error if there is an issue storing the session data
-			return nil, err
-		}
-
-		// Generate a JWT token using the session ID and secret
-		tokenString, err := utils.GenerateSessionJWT(
-			sessionID,
-			uc.InternalConfig.JWT.Secret,
-			uc.InternalConfig.App.LoginSessionExpiredTimeInHours,
-		)
-		if err != nil {
-			// Return error if there is an issue generating the JWT token
-			return nil, exceptions.ErrTokenGenerate(err)
-		}
-
 		// Prepare the response with the generated token and user details
-		response = &responses.LoginUser{
-			Token: tokenString,
-			LoginUserData: responses.LoginUserData{
-				Name:      existingUser.Fullname,
-				UserID:    existingUser.ID,
-				RoleID:    role.ID,
-				RoleName:  role.Name,
-				PatientID: fhirPatient.ID,
-			},
+		response := &responses.RegisterUserWhatsApp{
+			UserID:    existingUser.ID,
+			PatientID: existingUser.PatientID,
 		}
+
+		return response, nil
 
 	} else if request.Role == constvars.ResourcePractitioner {
 		// Build FHIR practitioner request
@@ -244,19 +233,54 @@ func (uc *authUsecase) VerifyWhatsAppOTP(ctx context.Context, request *requests.
 			return nil, err
 		}
 
-		// Generate a UUID for the session ID
-		sessionID := uuid.New().String()
-
-		// Create session data with user, role, and session details
-		sessionModel := models.Session{
+		// Prepare the response with the generated token and user details
+		response := &responses.RegisterUserWhatsApp{
 			UserID:         existingUser.ID,
-			PractitionerID: fhirPractitioner.ID,
-			RoleID:         role.ID,
-			RoleName:       role.Name,
-			SessionID:      sessionID,
+			PractitionerID: existingUser.PractitionerID,
 		}
 
-		// Store the session data in Redis with a 2-hour expirations
+		return response, nil
+	}
+
+	// Return the prepared response
+	return nil, exceptions.ErrAuthInvalidRole(nil)
+}
+
+func (uc *authUsecase) VerifyLoginWhatsAppOTP(ctx context.Context, request *requests.VerivyLoginWhatsAppOTP) (*responses.LoginUser, error) {
+	existingUser, err := uc.UserRepository.FindByWhatsAppNumber(ctx, request.To)
+	if err != nil {
+		return nil, err
+	}
+
+	if existingUser == nil {
+		return nil, exceptions.ErrUserNotExist(nil)
+	}
+
+	// Check if the whatsapp otp is expired
+	if time.Now().After(*existingUser.WhatsAppOTPExpiry) {
+		return nil, exceptions.ErrWhatsAppOTPExpired(nil)
+	}
+
+	if existingUser.WhatsAppOTP != request.OTP {
+		return nil, exceptions.ErrWhatsAppOTPInvalid(nil)
+	}
+
+	existingUser.Role, err = uc.RoleRepository.FindRoleByID(ctx, existingUser.RoleID)
+	if err != nil {
+		return nil, err
+	}
+
+	if existingUser.Role.Name == constvars.ResourcePatient {
+		sessionID := uuid.New().String()
+
+		sessionModel := models.Session{
+			UserID:    existingUser.ID,
+			PatientID: existingUser.PatientID,
+			RoleID:    existingUser.Role.ID,
+			RoleName:  existingUser.Role.Name,
+			SessionID: sessionID,
+		}
+
 		err = uc.RedisRepository.Set(
 			ctx,
 			sessionID,
@@ -264,36 +288,75 @@ func (uc *authUsecase) VerifyWhatsAppOTP(ctx context.Context, request *requests.
 			time.Hour*time.Duration(uc.InternalConfig.App.LoginSessionExpiredTimeInHours),
 		)
 		if err != nil {
-			// Return error if there is an issue storing the session data
 			return nil, err
 		}
 
-		// Generate a JWT token using the session ID and secret
 		tokenString, err := utils.GenerateSessionJWT(
 			sessionID,
 			uc.InternalConfig.JWT.Secret,
 			uc.InternalConfig.App.LoginSessionExpiredTimeInHours,
 		)
 		if err != nil {
-			// Return error if there is an issue generating the JWT token
 			return nil, exceptions.ErrTokenGenerate(err)
 		}
 
-		// Prepare the response with the generated token and user details
-		response = &responses.LoginUser{
+		response := &responses.LoginUser{
+			Token: tokenString,
+			LoginUserData: responses.LoginUserData{
+				Name:      existingUser.Fullname,
+				UserID:    existingUser.ID,
+				RoleID:    existingUser.Role.ID,
+				RoleName:  existingUser.Role.Name,
+				PatientID: existingUser.PatientID,
+			},
+		}
+
+		return response, nil
+	} else if existingUser.Role.Name == constvars.ResourcePractitioner {
+		sessionID := uuid.New().String()
+
+		sessionModel := models.Session{
+			UserID:         existingUser.ID,
+			PractitionerID: existingUser.PractitionerID,
+			RoleID:         existingUser.Role.ID,
+			RoleName:       existingUser.Role.Name,
+			SessionID:      sessionID,
+		}
+
+		err = uc.RedisRepository.Set(
+			ctx,
+			sessionID,
+			sessionModel,
+			time.Hour*time.Duration(uc.InternalConfig.App.LoginSessionExpiredTimeInHours),
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		tokenString, err := utils.GenerateSessionJWT(
+			sessionID,
+			uc.InternalConfig.JWT.Secret,
+			uc.InternalConfig.App.LoginSessionExpiredTimeInHours,
+		)
+		if err != nil {
+			return nil, exceptions.ErrTokenGenerate(err)
+		}
+
+		response := &responses.LoginUser{
 			Token: tokenString,
 			LoginUserData: responses.LoginUserData{
 				Name:           existingUser.Fullname,
 				UserID:         existingUser.ID,
-				RoleID:         role.ID,
-				RoleName:       role.Name,
-				PractitionerID: fhirPractitioner.ID,
+				RoleID:         existingUser.Role.ID,
+				RoleName:       existingUser.Role.Name,
+				PractitionerID: existingUser.PractitionerID,
 			},
 		}
+
+		return response, nil
 	}
 
-	// Return the prepared response
-	return response, nil
+	return nil, exceptions.ErrAuthInvalidRole(nil)
 }
 
 func (uc *authUsecase) RegisterClinician(ctx context.Context, request *requests.RegisterUser) (*responses.RegisterUser, error) {

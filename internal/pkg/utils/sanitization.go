@@ -3,13 +3,10 @@ package utils
 import (
 	"konsulin-service/internal/pkg/dto/requests"
 	"strings"
+	"unicode"
 )
 
-func sanitizeString(s string) string {
-	return strings.TrimSpace(s)
-}
-
-func sanitizeStringArray(input []string) []string {
+func cleanWhiteSpaceFromEachStringOfAnArray(input []string) []string {
 	sanitizedArray := make([]string, len(input))
 	for i, v := range input {
 		sanitizedArray[i] = strings.TrimSpace(v)
@@ -17,29 +14,40 @@ func sanitizeStringArray(input []string) []string {
 	return sanitizedArray
 }
 
-func SanitizeLoginViaWhatsAppRequest(input *requests.LoginViaWhatsApp) {
-	input.To = sanitizeString(input.To)
+func capitalizeFirstLetter(s string) string {
+	if len(s) == 0 {
+		return s
+	}
+
+	first := string(unicode.ToUpper(rune(s[0])))
+
+	return first + s[1:]
 }
-func SanitizeVerifyWhatsAppOTP(input *requests.VerivyWhatsAppOTP) {
-	input.To = sanitizeString(input.To)
-	input.OTP = sanitizeString(input.OTP)
-	input.Role = sanitizeString(input.Role)
+
+func SanitizeRegisterViaWhatsAppRequest(input *requests.RegisterViaWhatsApp) {
+	input.To = strings.TrimSpace(input.To)
+}
+func SanitizeVerifyRegisterWhatsAppOTP(input *requests.VerivyRegisterWhatsAppOTP) {
+	input.To = strings.TrimSpace(input.To)
+	input.OTP = strings.TrimSpace(input.OTP)
+	input.Role = strings.TrimSpace(input.Role)
+	input.Role = capitalizeFirstLetter(input.Role)
 }
 
 func SanitizeRegisterUserRequest(input *requests.RegisterUser) {
-	input.Email = sanitizeString(input.Email)
-	input.Username = sanitizeString(input.Username)
-	input.Password = sanitizeString(input.Password)
-	input.RetypePassword = sanitizeString(input.RetypePassword)
+	input.Email = strings.TrimSpace(input.Email)
+	input.Username = strings.TrimSpace(input.Username)
+	input.Password = strings.TrimSpace(input.Password)
+	input.RetypePassword = strings.TrimSpace(input.RetypePassword)
 }
 
 func SanitizeUpdateProfileRequest(input *requests.UpdateProfile) {
-	input.Email = sanitizeString(input.Email)
-	input.Gender = sanitizeString(input.Gender)
-	input.Address = sanitizeString(input.Address)
-	input.Fullname = sanitizeString(input.Fullname)
-	input.BirthDate = sanitizeString(input.BirthDate)
-	input.WhatsAppNumber = sanitizeString(input.WhatsAppNumber)
+	input.Email = strings.TrimSpace(input.Email)
+	input.Gender = strings.TrimSpace(input.Gender)
+	input.Address = strings.TrimSpace(input.Address)
+	input.Fullname = strings.TrimSpace(input.Fullname)
+	input.BirthDate = strings.TrimSpace(input.BirthDate)
+	input.WhatsAppNumber = strings.TrimSpace(input.WhatsAppNumber)
 
-	input.Educations = sanitizeStringArray(input.Educations)
+	input.Educations = cleanWhiteSpaceFromEachStringOfAnArray(input.Educations)
 }
