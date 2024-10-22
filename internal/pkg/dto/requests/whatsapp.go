@@ -1,12 +1,19 @@
 package requests
 
-type LoginViaWhatsApp struct {
+type RegisterViaWhatsApp struct {
 	To string `json:"to" validate:"required,phone_number"`
 }
-type VerivyWhatsAppOTP struct {
+type VerivyRegisterWhatsAppOTP struct {
 	To   string `json:"to" validate:"required,phone_number"`
 	OTP  string `json:"otp" validate:"required,len=6,numeric"`
 	Role string `json:"role" validate:"required,oneof=Patient Practitioner"`
+}
+type LoginViaWhatsApp struct {
+	To string `json:"to" validate:"required,phone_number"`
+}
+type VerivyLoginWhatsAppOTP struct {
+	To  string `json:"to" validate:"required,phone_number"`
+	OTP string `json:"otp" validate:"required,len=6,numeric"`
 }
 
 type WhatsAppMessage struct {

@@ -26,6 +26,42 @@ func NewAuthController(logger *zap.Logger, authUsecase auth.AuthUsecase) *AuthCo
 	}
 }
 
+func (ctrl *AuthController) RegisterViaWhatsApp(w http.ResponseWriter, r *http.Request) {
+	// Bind body to request
+	request := new(requests.RegisterViaWhatsApp)
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+		return
+	}
+	// Sanitize request
+	utils.SanitizeRegisterViaWhatsAppRequest(request)
+
+	// Validate request
+	err = utils.ValidateStruct(request)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Send it to be processed by usecase
+	err = ctrl.AuthUsecase.RegisterViaWhatsApp(ctx, request)
+	if err != nil {
+		if err == context.DeadlineExceeded {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	// Send response
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.WhatsAppOTPSuccessMessage, nil)
+}
+
 func (ctrl *AuthController) LoginViaWhatsApp(w http.ResponseWriter, r *http.Request) {
 	// Bind body to request
 	request := new(requests.LoginViaWhatsApp)
@@ -59,19 +95,19 @@ func (ctrl *AuthController) LoginViaWhatsApp(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Send response
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.LoginSuccessMessage, nil)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.WhatsAppOTPSuccessMessage, nil)
 }
 
-func (ctrl *AuthController) VerifyWhatsAppOTP(w http.ResponseWriter, r *http.Request) {
+func (ctrl *AuthController) VerifyRegisterWhatsAppOTP(w http.ResponseWriter, r *http.Request) {
 	// Bind body to request
-	request := new(requests.VerivyWhatsAppOTP)
+	request := new(requests.VerivyRegisterWhatsAppOTP)
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
 		return
 	}
 	// Sanitize request
-	utils.SanitizeVerifyWhatsAppOTP(request)
+	utils.SanitizeVerifyRegisterWhatsAppOTP(request)
 
 	// Validate request
 	err = utils.ValidateStruct(request)
@@ -84,7 +120,43 @@ func (ctrl *AuthController) VerifyWhatsAppOTP(w http.ResponseWriter, r *http.Req
 	defer cancel()
 
 	// Send it to be processed by usecase
-	response, err := ctrl.AuthUsecase.VerifyWhatsAppOTP(ctx, request)
+	response, err := ctrl.AuthUsecase.VerifyRegisterWhatsAppOTP(ctx, request)
+	if err != nil {
+		if err == context.DeadlineExceeded {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	// Send response
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.LoginSuccessMessage, response)
+}
+
+func (ctrl *AuthController) VerifyLoginWhatsAppOTP(w http.ResponseWriter, r *http.Request) {
+	// Bind body to request
+	request := new(requests.VerivyLoginWhatsAppOTP)
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+		return
+	}
+	// Sanitize request
+	utils.SanitizeVerifyLoginWhatsAppOTP(request)
+
+	// Validate request
+	err = utils.ValidateStruct(request)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Send it to be processed by usecase
+	response, err := ctrl.AuthUsecase.VerifyLoginWhatsAppOTP(ctx, request)
 	if err != nil {
 		if err == context.DeadlineExceeded {
 			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
