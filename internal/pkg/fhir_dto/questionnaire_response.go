@@ -17,9 +17,17 @@ type QuestionnaireResponseItem struct {
 	Answer []QuestionnaireResponseItemAnswer `json:"answer,omitempty"`
 	Item   []QuestionnaireResponseItem       `json:"item,omitempty"`
 }
-
 type QuestionnaireResponseItemAnswer struct {
-	ValueString  *string `json:"valueString,omitempty"`
-	ValueCoding  *Coding `json:"valueCoding,omitempty"`
-	ValueBoolean *bool   `json:"valueBoolean,omitempty"`
+	ValueBoolean    *bool       `json:"valueBoolean,omitempty"`
+	ValueDecimal    *float64    `json:"valueDecimal,omitempty"`
+	ValueInteger    *int        `json:"valueInteger,omitempty"`
+	ValueDate       *string     `json:"valueDate,omitempty"`
+	ValueDateTime   *string     `json:"valueDateTime,omitempty"`
+	ValueTime       *string     `json:"valueTime,omitempty"`
+	ValueString     *string     `json:"valueString,omitempty"`
+	ValueUri        *string     `json:"valueUri,omitempty"`
+	ValueAttachment *Attachment `json:"valueAttachment,omitempty"`
+	ValueCoding     *Coding     `json:"valueCoding,omitempty"`
+	ValueQuantity   *Quantity   `json:"valueQuantity,omitempty"`
+	ValueReference  *Reference  `json:"valueReference,omitempty"`
 }

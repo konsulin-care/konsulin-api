@@ -2,7 +2,9 @@ package assessments
 
 import (
 	"context"
+	"fmt"
 	"konsulin-service/internal/app/services/fhir_spark/questionnaires"
+	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/fhir_dto"
 )
 
@@ -18,6 +20,30 @@ func NewAssessmentUsecase(
 	}
 }
 
+func (uc *assessmentUsecase) FindAll(ctx context.Context) ([]responses.Assessment, error) {
+	questionnaires, err := uc.QuestionnaireFhirClient.FindQuestionnaires(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	assessments := uc.mapFHIRQuestionnaireToAssessment(questionnaires)
+	return assessments, nil
+}
+
+func (uc *assessmentUsecase) mapFHIRQuestionnaireToAssessment(questionnaires []fhir_dto.Questionnaire) []responses.Assessment {
+	fmt.Println(len(questionnaires))
+	assessments := make([]responses.Assessment, 0, len(questionnaires))
+	for _, eachQuestionnaire := range questionnaires {
+		assessment := responses.Assessment{
+			AssessmentID: eachQuestionnaire.ID,
+			Title:        eachQuestionnaire.Title,
+		}
+		assessments = append(assessments, assessment)
+	}
+
+	return assessments
+}
+
 func (uc *assessmentUsecase) CreateAssessment(ctx context.Context, request *fhir_dto.Questionnaire) (*fhir_dto.Questionnaire, error) {
 	questionnaire, err := uc.QuestionnaireFhirClient.CreateQuestionnaire(ctx, request)
 	if err != nil {
@@ -26,6 +52,7 @@ func (uc *assessmentUsecase) CreateAssessment(ctx context.Context, request *fhir
 
 	return questionnaire, nil
 }
+
 func (uc *assessmentUsecase) UpdateAssessment(ctx context.Context, request *fhir_dto.Questionnaire) (*fhir_dto.Questionnaire, error) {
 	questionnaire, err := uc.QuestionnaireFhirClient.UpdateQuestionnaire(ctx, request)
 	if err != nil {

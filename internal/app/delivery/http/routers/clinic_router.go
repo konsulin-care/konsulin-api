@@ -8,8 +8,8 @@ import (
 )
 
 func attachClinicRoutes(router chi.Router, middlewares *middlewares.Middlewares, clinicController *controllers.ClinicController) {
-	router.With(middlewares.Authenticate).Get("/", clinicController.FindAll)
-	router.With(middlewares.Authenticate).Get("/{clinic_id}", clinicController.FindByID)
-	router.With(middlewares.Authenticate).Get("/{clinic_id}/clinicians", clinicController.FindAllCliniciansByClinicID)
-	router.With(middlewares.Authenticate).Get("/{clinic_id}/clinicians/{clinician_id}", clinicController.FindClinicianByClinicAndClinicianID)
+	router.Get("/", clinicController.FindAll)
+	router.Get("/{clinic_id}", clinicController.FindByID)
+	router.Get("/{clinic_id}/clinicians", clinicController.FindAllCliniciansByClinicID)
+	router.Get("/{clinic_id}/clinicians/{clinician_id}", clinicController.FindClinicianByClinicAndClinicianID)
 }

@@ -1,11 +1,20 @@
 package utils
 
 import (
+	"fmt"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"strings"
 	"time"
 )
+
+func ParseIDFromReference(subject fhir_dto.Reference) (string, error) {
+	parts := strings.Split(subject.Reference, "/")
+	if len(parts) == 2 {
+		return parts[1], nil
+	}
+	return "", fmt.Errorf("invalid reference format: %s", subject.Reference)
+}
 
 func BuildPatientProfileResponse(patientFhir *fhir_dto.Patient) *responses.UserProfile {
 	fullname := GetFullName(patientFhir.Name)

@@ -10,7 +10,7 @@ import (
 type AssessmentResponseUsecase interface {
 	CreateAssessmentResponse(ctx context.Context, request *requests.CreateAssesmentResponse) (*responses.CreateAssessmentResponse, error)
 	UpdateAssessmentResponse(ctx context.Context, request *fhir_dto.QuestionnaireResponse) (*fhir_dto.QuestionnaireResponse, error)
-	FindAssessmentResponseByID(ctx context.Context, questionnaireResponseID string) (*fhir_dto.QuestionnaireResponse, error)
+	FindAssessmentResponseByID(ctx context.Context, questionnaireResponseID string) (*responses.AssessmentResponse, error)
 	DeleteAssessmentResponseByID(ctx context.Context, questionnaireResponseID string) error
 }
 

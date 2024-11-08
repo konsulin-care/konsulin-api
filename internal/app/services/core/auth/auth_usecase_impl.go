@@ -15,6 +15,7 @@ import (
 	questionnaireResponses "konsulin-service/internal/app/services/fhir_spark/questionnaires_responses"
 	"konsulin-service/internal/app/services/shared/mailer"
 	"konsulin-service/internal/app/services/shared/redis"
+	"konsulin-service/internal/app/services/shared/storage"
 	"konsulin-service/internal/app/services/shared/whatsapp"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
@@ -38,6 +39,7 @@ type authUsecase struct {
 	QuestionnaireResponseFhirClient questionnaireResponses.QuestionnaireResponseFhirClient
 	MailerService                   mailer.MailerService
 	WhatsAppService                 whatsapp.WhatsAppService
+	MinioStorage                    storage.Storage
 	InternalConfig                  *config.InternalConfig
 	Roles                           map[string]*models.Role
 	mu                              sync.RWMutex
@@ -54,6 +56,7 @@ func NewAuthUsecase(
 	questionnaireResponsesFhirClient questionnaireResponses.QuestionnaireResponseFhirClient,
 	mailerService mailer.MailerService,
 	whatsAppService whatsapp.WhatsAppService,
+	minioStorage storage.Storage,
 	internalConfig *config.InternalConfig,
 ) (AuthUsecase, error) {
 	authUsecase := &authUsecase{
@@ -66,6 +69,7 @@ func NewAuthUsecase(
 		PractitionerRoleFhirClient:      practitionerRoleFhirClient,
 		QuestionnaireResponseFhirClient: questionnaireResponsesFhirClient,
 		MailerService:                   mailerService,
+		MinioStorage:                    minioStorage,
 		WhatsAppService:                 whatsAppService,
 		InternalConfig:                  internalConfig,
 		Roles:                           make(map[string]*models.Role),
@@ -86,33 +90,17 @@ func (uc *authUsecase) RegisterViaWhatsApp(ctx context.Context, request *request
 		return exceptions.ErrClientCustomMessage(err)
 	}
 
-	existingUser, err := uc.UserRepository.FindByWhatsAppNumber(ctx, request.To)
+	err = uc.checkExistingUserByWhatsAppNumber(ctx, request.To)
 	if err != nil {
 		return err
 	}
 
-	if existingUser != nil {
-		return exceptions.ErrPhoneNumberAlreadyRegistered(nil)
-	}
-
-	user := new(models.User)
-	user.WhatsAppOTP = whatsAppOTP
-	user.WhatsAppNumber = request.To
-	user.SetWhatsAppOTPExpiryTime(uc.InternalConfig.App.WhatsAppOTPExpiredTimeInMinutes)
-	user.SetCreatedAtUpdatedAt()
-
-	_, err = uc.UserRepository.CreateUser(ctx, user)
+	err = uc.createWhatsAppUser(ctx, request.To, whatsAppOTP)
 	if err != nil {
 		return err
 	}
 
-	whatsAppMessage := &requests.WhatsAppMessage{
-		To:        request.To,
-		Message:   whatsAppOTP,
-		WithImage: false,
-	}
-
-	err = uc.WhatsAppService.SendWhatsAppMessage(ctx, whatsAppMessage)
+	err = uc.sendWhatsAppOTP(ctx, request.To, whatsAppOTP)
 	if err != nil {
 		return err
 	}
@@ -138,7 +126,7 @@ func (uc *authUsecase) LoginViaWhatsApp(ctx context.Context, request *requests.L
 	existingUser.WhatsAppOTP = whatsAppOTP
 	existingUser.WhatsAppNumber = request.To
 	existingUser.SetWhatsAppOTPExpiryTime(uc.InternalConfig.App.WhatsAppOTPExpiredTimeInMinutes)
-	existingUser.SetCreatedAtUpdatedAt()
+	existingUser.SetUpdatedAt()
 	err = uc.UserRepository.UpdateUser(ctx, existingUser)
 	if err != nil {
 		return err
@@ -303,7 +291,7 @@ func (uc *authUsecase) VerifyLoginWhatsAppOTP(ctx context.Context, request *requ
 		response := &responses.LoginUser{
 			Token: tokenString,
 			LoginUserData: responses.LoginUserData{
-				Name:      existingUser.Fullname,
+				Fullname:  existingUser.Fullname,
 				UserID:    existingUser.ID,
 				RoleID:    existingUser.Role.ID,
 				RoleName:  existingUser.Role.Name,
@@ -345,7 +333,7 @@ func (uc *authUsecase) VerifyLoginWhatsAppOTP(ctx context.Context, request *requ
 		response := &responses.LoginUser{
 			Token: tokenString,
 			LoginUserData: responses.LoginUserData{
-				Name:           existingUser.Fullname,
+				Fullname:       existingUser.Fullname,
 				UserID:         existingUser.ID,
 				RoleID:         existingUser.Role.ID,
 				RoleName:       existingUser.Role.Name,
@@ -505,8 +493,7 @@ func (uc *authUsecase) LoginPatient(ctx context.Context, request *requests.Login
 	}
 
 	if user.IsDeactivated() {
-		deactivationDeadline := user.DeletedAt.AddDate(0, 0, uc.InternalConfig.App.AccountDeactivationAgeInDays)
-		if time.Now().After(deactivationDeadline) {
+		if user.IsDeactivationDeadlineExpired(uc.InternalConfig.App.AccountDeactivationAgeInDays) {
 			return nil, exceptions.ErrAccountDeactivationAgeExpired(nil)
 		}
 
@@ -582,16 +569,22 @@ func (uc *authUsecase) LoginPatient(ctx context.Context, request *requests.Login
 		return nil, exceptions.ErrTokenGenerate(err)
 	}
 
+	preSignedProfilePictureUrl, err := uc.getPresignedUrl(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+
 	// Prepare the response with the generated token and user details
 	response := &responses.LoginUser{
 		Token: tokenString,
 		LoginUserData: responses.LoginUserData{
-			Name:      user.Fullname,
-			Email:     user.Email,
-			UserID:    user.ID,
-			RoleID:    userRole.ID,
-			RoleName:  userRole.Name,
-			PatientID: user.PatientID,
+			Fullname:       user.Fullname,
+			Email:          user.Email,
+			UserID:         user.ID,
+			RoleID:         userRole.ID,
+			RoleName:       userRole.Name,
+			PatientID:      user.PatientID,
+			ProfilePicture: preSignedProfilePictureUrl,
 		},
 	}
 	// Return the prepared response
@@ -610,8 +603,7 @@ func (uc *authUsecase) LoginClinician(ctx context.Context, request *requests.Log
 	}
 
 	if user.IsDeactivated() {
-		deactivationDeadline := user.DeletedAt.AddDate(0, 0, uc.InternalConfig.App.AccountDeactivationAgeInDays)
-		if time.Now().After(deactivationDeadline) {
+		if user.IsDeactivationDeadlineExpired(uc.InternalConfig.App.AccountDeactivationAgeInDays) {
 			return nil, exceptions.ErrAccountDeactivationAgeExpired(nil)
 		}
 
@@ -683,17 +675,23 @@ func (uc *authUsecase) LoginClinician(ctx context.Context, request *requests.Log
 		return nil, exceptions.ErrTokenGenerate(err)
 	}
 
+	preSignedProfilePictureUrl, err := uc.getPresignedUrl(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+
 	// Prepare the response with the generated token and user details
 	response := &responses.LoginUser{
 		Token: tokenString,
 		LoginUserData: responses.LoginUserData{
-			Name:           user.Fullname,
+			Fullname:       user.Fullname,
 			Email:          user.Email,
 			UserID:         user.ID,
 			RoleID:         userRole.ID,
 			RoleName:       userRole.Name,
 			PractitionerID: user.PractitionerID,
 			ClinicIDs:      practitionerOrganizationIDs,
+			ProfilePicture: preSignedProfilePictureUrl,
 		},
 	}
 	// Return the prepared response
@@ -873,4 +871,80 @@ func (uc *authUsecase) loadRoles(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// 'checkExistingUserByWhatsAppNumber' usage flow is:
+//
+// 1. find user from UserRepository by phoneNumber
+//
+// 2. check whether the user is exist or not
+func (uc *authUsecase) checkExistingUserByWhatsAppNumber(ctx context.Context, phoneNumber string) error {
+	// find user from UserRepository by phoneNumber
+	existingUser, err := uc.UserRepository.FindByWhatsAppNumber(ctx, phoneNumber)
+	if err != nil {
+		return err
+	}
+
+	// check whether the user is exist or not
+	if existingUser != nil {
+		return exceptions.ErrPhoneNumberAlreadyRegistered(nil)
+	}
+	return nil
+}
+
+// 'createWhatsAppUser' flow usage is:
+//
+// 1. initiate new user entity
+//
+// 2. set required user attributes the user entity
+//
+// 3. send the entity to UserRepository to be created
+func (uc *authUsecase) createWhatsAppUser(ctx context.Context, phoneNumber string, whatsAppOTP string) error {
+	// initiate new user entity
+	user := new(models.User)
+
+	// set required user attributes the user entity
+	user.WhatsAppOTP = whatsAppOTP
+	user.WhatsAppNumber = phoneNumber
+	user.SetWhatsAppOTPExpiryTime(uc.InternalConfig.App.WhatsAppOTPExpiredTimeInMinutes)
+	user.SetCreatedAtUpdatedAt()
+
+	// send the entity to userRepository to be created
+	_, err := uc.UserRepository.CreateUser(ctx, user)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// 'sendWhatsAppOTP' flow usage is:
+//
+// 1. create a new WhatsAppMessage DTO request
+//
+// 2. send the request DTO to WhatsAppService to be sent
+func (uc *authUsecase) sendWhatsAppOTP(ctx context.Context, phoneNumber string, whatsAppOTP string) error {
+	// create a new WhatsAppMessage DTO request
+	whatsAppMessage := &requests.WhatsAppMessage{
+		To:        phoneNumber,
+		Message:   whatsAppOTP,
+		WithImage: false,
+	}
+
+	// send the request DTO to WhatsAppService to be sent
+	err := uc.WhatsAppService.SendWhatsAppMessage(ctx, whatsAppMessage)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (uc *authUsecase) getPresignedUrl(ctx context.Context, user *models.User) (preSignedUrl string, err error) {
+	if user.ProfilePictureName != "" {
+		objectUrlExpiryTime := time.Duration(uc.InternalConfig.App.MinioPreSignedUrlObjectExpiryTimeInHours) * time.Hour
+		preSignedUrl, err = uc.MinioStorage.GetObjectUrlWithExpiryTime(ctx, uc.InternalConfig.Minio.BucketName, user.ProfilePictureName, objectUrlExpiryTime)
+		if err != nil {
+			return "", err
+		}
+	}
+	return preSignedUrl, err
 }

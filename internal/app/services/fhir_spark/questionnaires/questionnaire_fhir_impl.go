@@ -22,6 +22,60 @@ func NewQuestionnaireFhirClient(baseUrl string) QuestionnaireFhirClient {
 	}
 }
 
+func (c *questionnaireFhirClient) FindQuestionnaires(ctx context.Context) ([]fhir_dto.Questionnaire, error) {
+	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, c.BaseUrl, nil)
+	if err != nil {
+		return nil, exceptions.ErrCreateHTTPRequest(err)
+	}
+	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, exceptions.ErrSendHTTPRequest(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != constvars.StatusOK {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceQuestionnaire)
+		}
+
+		var outcome fhir_dto.OperationOutcome
+		err = json.Unmarshal(bodyBytes, &outcome)
+		if err != nil {
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceQuestionnaire)
+		}
+
+		if len(outcome.Issue) > 0 {
+			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourceQuestionnaire)
+		}
+	}
+
+	var result struct {
+		Total        int    `json:"total"`
+		ResourceType string `json:"resourceType"`
+		Entry        []struct {
+			FullUrl  string                 `json:"fullUrl"`
+			Resource fhir_dto.Questionnaire `json:"resource"`
+		} `json:"entry"`
+	}
+
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	if err != nil {
+		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourceQuestionnaire)
+	}
+
+	questionnaires := make([]fhir_dto.Questionnaire, len(result.Entry))
+	for i, entry := range result.Entry {
+		questionnaires[i] = entry.Resource
+	}
+
+	return questionnaires, nil
+}
+
 func (c *questionnaireFhirClient) CreateQuestionnaire(ctx context.Context, request *fhir_dto.Questionnaire) (*fhir_dto.Questionnaire, error) {
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
