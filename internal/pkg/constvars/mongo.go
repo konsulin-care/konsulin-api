@@ -6,4 +6,5 @@ const (
 	MongoCollectionEducationLevels = "education_levels"
 	MongoCollectionGenders         = "genders"
 	MongoCollectionResources       = "resources"
+	MongoCollectionCities          = "cities"
 )

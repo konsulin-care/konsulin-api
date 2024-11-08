@@ -12,6 +12,7 @@ const (
 	DeleteUserSuccessMessage        = "user deleted successfully"
 	GetProfileSuccessMessage        = "get profile successfully"
 	GetEducationLevelSuccessMessage = "get education levels successfully"
+	GetCitySuccessMessage           = "get cities successfully"
 	GetGenderSuccessMessage         = "get genders successfully"
 	GetClinicsSuccessfully          = "get clinics successfully"
 	GetCliniciansSuccessfully       = "get clinicians successfully"
@@ -24,17 +25,18 @@ const (
 	CreateClinicianPracticeInformationSuccessMessage  = "practice information successfully updated for clinician"
 	DeleteClinicianClinicSuccessMessage               = "clinic successfully deleted for clinician"
 
-	// Questionnaire messages
-	CreateQuestionnaireSuccessMessage = "questionnaire successfully created"
-	FindQuestionnaireSuccessMessage   = "questionnaire successfully found"
-	UpdateQuestionnaireSuccessMessage = "questionnaire successfully updated"
-	DeleteQuestionnaireSuccessMessage = "questionnaire successfully deleted"
+	// Assessment messages
+	GetAssessmentsSuccessMessage   = "get assessments successfully"
+	CreateAssessmentSuccessMessage = "assessment successfully created"
+	FindAssessmentSuccessMessage   = "assessment successfully found"
+	UpdateAssessmentSuccessMessage = "assessment successfully updated"
+	DeleteAssessmentSuccessMessage = "assessment successfully deleted"
 
-	// Questionnaire Response messages
-	CreateQuestionnaireResponseSuccessMessage = "questionnaire response successfully created"
-	FindQuestionnaireResponseSuccessMessage   = "questionnaire response successfully found"
-	UpdateQuestionnaireResponseSuccessMessage = "questionnaire response successfully updated"
-	DeleteQuestionnaireResponseSuccessMessage = "questionnaire response successfully deleted"
+	// Assessment Response messages
+	CreateAssessmentResponseSuccessMessage = "assessment response successfully created"
+	FindAssessmentResponseSuccessMessage   = "assessment response successfully found"
+	UpdateAssessmentResponseSuccessMessage = "assessment response successfully updated"
+	DeleteAssessmentResponseSuccessMessage = "assessment response successfully deleted"
 
 	// Patient-related messages
 	CreatePatientAppointmentSuccessMessage = "appoinment successfully created for patient"

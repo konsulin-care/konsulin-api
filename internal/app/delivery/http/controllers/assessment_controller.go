@@ -27,6 +27,23 @@ func NewAssessmentController(logger *zap.Logger, assessmentUsecase assessments.A
 	}
 }
 
+func (ctrl *AssessmentController) FindAll(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	response, err := ctrl.AssessmentUsecase.FindAll(ctx)
+	if err != nil {
+		if err == context.DeadlineExceeded {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.GetAssessmentsSuccessMessage, response)
+}
+
 func (ctrl *AssessmentController) CreateAssessment(w http.ResponseWriter, r *http.Request) {
 	// Bind body to request
 	request := new(fhir_dto.Questionnaire)
@@ -51,7 +68,7 @@ func (ctrl *AssessmentController) CreateAssessment(w http.ResponseWriter, r *htt
 		return
 	}
 
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.CreateQuestionnaireSuccessMessage, response)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.CreateAssessmentSuccessMessage, response)
 }
 
 func (ctrl *AssessmentController) UpdateAssessment(w http.ResponseWriter, r *http.Request) {
@@ -79,7 +96,7 @@ func (ctrl *AssessmentController) UpdateAssessment(w http.ResponseWriter, r *htt
 		return
 	}
 
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.UpdateQuestionnaireSuccessMessage, response)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.UpdateAssessmentSuccessMessage, response)
 }
 
 func (ctrl *AssessmentController) FindAssessmentByID(w http.ResponseWriter, r *http.Request) {
@@ -98,8 +115,9 @@ func (ctrl *AssessmentController) FindAssessmentByID(w http.ResponseWriter, r *h
 		return
 	}
 
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.FindQuestionnaireSuccessMessage, response)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.FindAssessmentSuccessMessage, response)
 }
+
 func (ctrl *AssessmentController) DeleteAssessmentByID(w http.ResponseWriter, r *http.Request) {
 	questionnaireID := chi.URLParam(r, constvars.URLParamAssessmentID)
 
@@ -116,5 +134,5 @@ func (ctrl *AssessmentController) DeleteAssessmentByID(w http.ResponseWriter, r 
 		return
 	}
 
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.DeleteQuestionnaireSuccessMessage, nil)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.DeleteAssessmentSuccessMessage, nil)
 }

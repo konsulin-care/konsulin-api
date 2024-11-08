@@ -73,6 +73,11 @@ func (u *User) SetDataForUpdateProfile(request *requests.UpdateProfile) {
 	u.SetUpdatedAt()
 }
 
+func (u *User) IsDeactivationDeadlineExpired(deactivationAgeInDays int) bool {
+	deactivationDeadline := u.DeletedAt.AddDate(0, 0, deactivationAgeInDays)
+	return time.Now().After(deactivationDeadline)
+}
+
 func (u *User) SetDataForUpdateResetPassword(request *requests.ResetPassword) {
 	u.Password = request.HashedNewPassword
 	u.ResetToken = ""

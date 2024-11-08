@@ -14,6 +14,7 @@ import (
 	assessmentResponses "konsulin-service/internal/app/services/core/assessment_responses"
 	"konsulin-service/internal/app/services/core/assessments"
 	"konsulin-service/internal/app/services/core/auth"
+	"konsulin-service/internal/app/services/core/cities"
 	"konsulin-service/internal/app/services/core/clinicians"
 	"konsulin-service/internal/app/services/core/clinics"
 	educationLevels "konsulin-service/internal/app/services/core/education_levels"
@@ -205,6 +206,14 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	}
 	educationLevelController := controllers.NewEducationLevelController(bootstrap.Logger, educationLevelUseCase)
 
+	// Initialize Education Level dependencies
+	cityMongoRepository := cities.NewCityMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
+	cityUseCase, err := cities.NewCityUsecase(cityMongoRepository, redisRepository)
+	if err != nil {
+		return err
+	}
+	cityController := controllers.NewCityController(bootstrap.Logger, cityUseCase)
+
 	// Initialize Gender dependencies
 	genderMongoRepository := genders.NewGenderMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
 	genderUseCase, err := genders.NewGenderUsecase(genderMongoRepository, redisRepository)
@@ -233,7 +242,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	assessmentController := controllers.NewAssessmentController(bootstrap.Logger, assessmentUsecase)
 
 	// Initialize Assessment Response dependencies
-	assessmentResponseUsecase := assessmentResponses.NewAssessmentResponseUsecase(questionnaireResponseFhirClient, redisRepository, bootstrap.InternalConfig)
+	assessmentResponseUsecase := assessmentResponses.NewAssessmentResponseUsecase(questionnaireResponseFhirClient, patientFhirClient, redisRepository, bootstrap.InternalConfig)
 	assessmentResponseController := controllers.NewAssessmentResponseController(bootstrap.Logger, assessmentResponseUsecase)
 
 	// Initialize Auth usecase with dependencies
@@ -248,6 +257,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 		questionnaireResponseFhirClient,
 		mailerService,
 		whatsAppService,
+		minioStorage,
 		bootstrap.InternalConfig,
 	)
 	if err != nil {
@@ -269,6 +279,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 		clinicianController,
 		patientController,
 		educationLevelController,
+		cityController,
 		genderController,
 		assessmentController,
 		assessmentResponseController,

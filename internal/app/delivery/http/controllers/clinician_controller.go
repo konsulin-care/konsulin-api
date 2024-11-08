@@ -132,12 +132,6 @@ func (ctrl *ClinicianController) CreatePracticeAvailability(w http.ResponseWrite
 func (ctrl *ClinicianController) DeleteClinicByID(w http.ResponseWriter, r *http.Request) {
 	clinicID := chi.URLParam(r, constvars.URLParamClinicID)
 
-	// err := utils.ValidateUrlParamID(clinicID)
-	// if err != nil {
-	// 	utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrURLParamIDValidation(err, constvars.URLParamPractitionerID))
-	// 	return
-	// }
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

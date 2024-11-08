@@ -17,7 +17,7 @@ type LoginUser struct {
 }
 
 type LoginUserData struct {
-	Name           string   `json:"name"`
+	Fullname       string   `json:"fullname"`
 	Email          string   `json:"email"`
 	UserID         string   `json:"user_id"`
 	RoleID         string   `json:"role_id"`

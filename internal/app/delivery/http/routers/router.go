@@ -22,6 +22,7 @@ func SetupRoutes(
 	clinicianController *controllers.ClinicianController,
 	patientController *controllers.PatientController,
 	educationLevelController *controllers.EducationLevelController,
+	cityController *controllers.CityController,
 	genderController *controllers.GenderController,
 	assessmentController *controllers.AssessmentController,
 	assessmentResponseController *controllers.AssessmentResponseController,
@@ -58,6 +59,10 @@ func SetupRoutes(
 
 			r.Route("/education-levels", func(r chi.Router) {
 				attachEducationLevelRoutes(r, middlewares, educationLevelController)
+			})
+
+			r.Route("/cities", func(r chi.Router) {
+				attachCityRoutes(r, middlewares, cityController)
 			})
 
 			r.Route("/genders", func(r chi.Router) {

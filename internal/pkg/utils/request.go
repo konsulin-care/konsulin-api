@@ -31,6 +31,14 @@ func BuildPaginationRequest(r *http.Request) *requests.Pagination {
 	}
 }
 
+func BuildQueryParamsRequest(r *http.Request) *requests.QueryParams {
+	searchStr := r.URL.Query().Get("search")
+
+	return &requests.QueryParams{
+		Search: searchStr,
+	}
+}
+
 func BuildFhirPatientRegistrationRequest(username, email string) *fhir_dto.Patient {
 	return &fhir_dto.Patient{
 		ResourceType: constvars.ResourcePatient,

@@ -51,7 +51,7 @@ func (ctrl *AssessmentResponseController) CreateAssesmentResponse(w http.Respons
 		return
 	}
 
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.CreateQuestionnaireResponseSuccessMessage, response)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.CreateAssessmentResponseSuccessMessage, response)
 }
 
 func (ctrl *AssessmentResponseController) UpdateAssessmentResponse(w http.ResponseWriter, r *http.Request) {
@@ -79,7 +79,7 @@ func (ctrl *AssessmentResponseController) UpdateAssessmentResponse(w http.Respon
 		return
 	}
 
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.UpdateQuestionnaireResponseSuccessMessage, response)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.UpdateAssessmentResponseSuccessMessage, response)
 }
 
 func (ctrl *AssessmentResponseController) FindQuestionnaireResponseByID(w http.ResponseWriter, r *http.Request) {
@@ -98,7 +98,7 @@ func (ctrl *AssessmentResponseController) FindQuestionnaireResponseByID(w http.R
 		return
 	}
 
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.FindQuestionnaireResponseSuccessMessage, response)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.FindAssessmentResponseSuccessMessage, response)
 }
 func (ctrl *AssessmentResponseController) DeleteQuestionnaireResponseByID(w http.ResponseWriter, r *http.Request) {
 	questionnaireResponseID := chi.URLParam(r, constvars.URLParamAssessmentResponseID)
@@ -116,5 +116,5 @@ func (ctrl *AssessmentResponseController) DeleteQuestionnaireResponseByID(w http
 		return
 	}
 
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.DeleteQuestionnaireResponseSuccessMessage, nil)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.DeleteAssessmentResponseSuccessMessage, nil)
 }
