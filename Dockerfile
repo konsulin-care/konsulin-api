@@ -22,7 +22,8 @@ RUN apt-get update && \
     dpkg-reconfigure -f noninteractive tzdata
 ENV TZ=$TZ_ARG
 
-FROM repository.konsulin.care/repository/private/be-konsulin:latest as gobuild
+#FROM repository.konsulin.care/repository/private/be-konsulin:latest as gobuild
+FROM konsulin/rest-backend-vendor:develop as gobuild
 LABEL stage=gobuild
 
 # captures argument
