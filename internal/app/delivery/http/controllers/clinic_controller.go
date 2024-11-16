@@ -91,8 +91,6 @@ func (ctrl *ClinicController) FindClinicianByClinicAndClinicianID(w http.Respons
 }
 
 func (ctrl *ClinicController) FindAllCliniciansByClinicID(w http.ResponseWriter, r *http.Request) {
-	var err error
-
 	request := &requests.FindAllCliniciansByClinicID{
 		PractitionerName: r.URL.Query().Get("name"),
 		City:             r.URL.Query().Get("city"),
@@ -100,6 +98,12 @@ func (ctrl *ClinicController) FindAllCliniciansByClinicID(w http.ResponseWriter,
 		StartTime:        r.URL.Query().Get("start_time"),
 		EndTime:          r.URL.Query().Get("end_time"),
 		ClinicID:         chi.URLParam(r, constvars.URLParamClinicID),
+	}
+
+	err := utils.ValidateUrlParamID(request.ClinicID)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrURLParamIDValidation(err, constvars.URLParamClinicID))
+		return
 	}
 
 	if request.StartTime == "" {

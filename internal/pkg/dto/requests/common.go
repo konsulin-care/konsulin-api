@@ -6,5 +6,8 @@ type Pagination struct {
 }
 
 type QueryParams struct {
-	Search string
+	Search         string
+	FetchType      string
+	PatientID      string
+	PractitionerID string
 }

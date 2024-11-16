@@ -25,3 +25,10 @@ func (s *Session) IsNotPatient() bool {
 func (s *Session) IsNotPractitioner() bool {
 	return s.RoleName != constvars.RoleTypePractitioner
 }
+
+func (s *Session) IsPatient() bool {
+	return s.RoleName == constvars.RoleTypePatient
+}
+func (s *Session) IsPractitioner() bool {
+	return s.RoleName == constvars.RoleTypePractitioner
+}

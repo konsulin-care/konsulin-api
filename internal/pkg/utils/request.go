@@ -32,10 +32,16 @@ func BuildPaginationRequest(r *http.Request) *requests.Pagination {
 }
 
 func BuildQueryParamsRequest(r *http.Request) *requests.QueryParams {
-	searchStr := r.URL.Query().Get("search")
+	searchStr := r.URL.Query().Get(constvars.URLQueryParamSearch)
+	fetchType := r.URL.Query().Get(constvars.URLQueryParamFetchType)
+
+	if fetchType != constvars.QueryParamFetchTypeUpcoming {
+		fetchType = ""
+	}
 
 	return &requests.QueryParams{
-		Search: searchStr,
+		Search:    searchStr,
+		FetchType: fetchType,
 	}
 }
 

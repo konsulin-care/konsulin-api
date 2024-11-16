@@ -2,7 +2,6 @@ package assessments
 
 import (
 	"context"
-	"fmt"
 	"konsulin-service/internal/app/services/fhir_spark/questionnaires"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/fhir_dto"
@@ -31,7 +30,6 @@ func (uc *assessmentUsecase) FindAll(ctx context.Context) ([]responses.Assessmen
 }
 
 func (uc *assessmentUsecase) mapFHIRQuestionnaireToAssessment(questionnaires []fhir_dto.Questionnaire) []responses.Assessment {
-	fmt.Println(len(questionnaires))
 	assessments := make([]responses.Assessment, 0, len(questionnaires))
 	for _, eachQuestionnaire := range questionnaires {
 		assessment := responses.Assessment{

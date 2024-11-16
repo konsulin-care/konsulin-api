@@ -17,3 +17,6 @@ resources/http-client.env.json
 
 *.local.yaml
 *.development.yaml
+
+.DS_STORE
+.DS_Store

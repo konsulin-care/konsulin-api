@@ -11,6 +11,7 @@ import (
 	"konsulin-service/internal/app/drivers/logger"
 	"konsulin-service/internal/app/drivers/messaging"
 	"konsulin-service/internal/app/drivers/storage"
+	"konsulin-service/internal/app/services/core/appointments"
 	assessmentResponses "konsulin-service/internal/app/services/core/assessment_responses"
 	"konsulin-service/internal/app/services/core/assessments"
 	"konsulin-service/internal/app/services/core/auth"
@@ -23,7 +24,7 @@ import (
 	"konsulin-service/internal/app/services/core/roles"
 	"konsulin-service/internal/app/services/core/session"
 	"konsulin-service/internal/app/services/core/users"
-	"konsulin-service/internal/app/services/fhir_spark/appointments"
+	fhir_appointments "konsulin-service/internal/app/services/fhir_spark/appointments"
 	"konsulin-service/internal/app/services/fhir_spark/organizations"
 	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
 	practitionerRoles "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
@@ -189,7 +190,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	practitionerRoleFhirClient := practitionerRoles.NewPractitionerRoleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
 	scheduleFhirClient := schedules.NewScheduleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
 	slotFhirClient := slots.NewSlotFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
-	appointmentFhirClient := appointments.NewAppointmentFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
+	appointmentFhirClient := fhir_appointments.NewAppointmentFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
 	questionnaireFhirClient := questionnairesFhir.NewQuestionnaireFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
 	questionnaireResponseFhirClient := questionnaireResponsesFhir.NewQuestionnaireResponseFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
 
@@ -245,6 +246,10 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	assessmentResponseUsecase := assessmentResponses.NewAssessmentResponseUsecase(questionnaireResponseFhirClient, patientFhirClient, redisRepository, bootstrap.InternalConfig)
 	assessmentResponseController := controllers.NewAssessmentResponseController(bootstrap.Logger, assessmentResponseUsecase)
 
+	// Initialize Assessment Response dependencies
+	appointmentUsecase := appointments.NewAppointmentUsecase(appointmentFhirClient, patientFhirClient, practitionerFhirClient, redisRepository, sessionService)
+	appointmentController := controllers.NewAppointmentController(bootstrap.Logger, appointmentUsecase)
+
 	// Initialize Auth usecase with dependencies
 	authUseCase, err := auth.NewAuthUsecase(
 		userMongoRepository,
@@ -283,6 +288,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 		genderController,
 		assessmentController,
 		assessmentResponseController,
+		appointmentController,
 	)
 
 	return nil
