@@ -243,7 +243,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	assessmentController := controllers.NewAssessmentController(bootstrap.Logger, assessmentUsecase)
 
 	// Initialize Assessment Response dependencies
-	assessmentResponseUsecase := assessmentResponses.NewAssessmentResponseUsecase(questionnaireResponseFhirClient, patientFhirClient, redisRepository, bootstrap.InternalConfig)
+	assessmentResponseUsecase := assessmentResponses.NewAssessmentResponseUsecase(questionnaireResponseFhirClient, questionnaireFhirClient, patientFhirClient, redisRepository, bootstrap.InternalConfig)
 	assessmentResponseController := controllers.NewAssessmentResponseController(bootstrap.Logger, assessmentResponseUsecase)
 
 	// Initialize Assessment Response dependencies

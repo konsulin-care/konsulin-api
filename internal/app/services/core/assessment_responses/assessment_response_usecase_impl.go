@@ -2,8 +2,10 @@ package assessmentResponses
 
 import (
 	"context"
+	"fmt"
 	"konsulin-service/internal/app/config"
 	patientFhir "konsulin-service/internal/app/services/fhir_spark/patients"
+	"konsulin-service/internal/app/services/fhir_spark/questionnaires"
 	questionnaireResponses "konsulin-service/internal/app/services/fhir_spark/questionnaires_responses"
 	"konsulin-service/internal/app/services/shared/redis"
 	"konsulin-service/internal/pkg/constvars"
@@ -12,6 +14,7 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/utils"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,6 +22,7 @@ import (
 
 type assessmentResponseUsecase struct {
 	QuestionnaireResponseFhirClient questionnaireResponses.QuestionnaireResponseFhirClient
+	QuestionnaireFhirClient         questionnaires.QuestionnaireFhirClient
 	PatientFhirClient               patientFhir.PatientFhirClient
 	RedisRepository                 redis.RedisRepository
 	InternalConfig                  *config.InternalConfig
@@ -26,12 +30,14 @@ type assessmentResponseUsecase struct {
 
 func NewAssessmentResponseUsecase(
 	questionnaireResponseFhirClient questionnaireResponses.QuestionnaireResponseFhirClient,
+	questionnaireFhirClient questionnaires.QuestionnaireFhirClient,
 	patientFhirClient patientFhir.PatientFhirClient,
 	redisRepository redis.RedisRepository,
 	internalConfig *config.InternalConfig,
 ) AssessmentResponseUsecase {
 	return &assessmentResponseUsecase{
 		QuestionnaireResponseFhirClient: questionnaireResponseFhirClient,
+		QuestionnaireFhirClient:         questionnaireFhirClient,
 		PatientFhirClient:               patientFhirClient,
 		RedisRepository:                 redisRepository,
 		InternalConfig:                  internalConfig,
@@ -84,7 +90,17 @@ func (uc *assessmentResponseUsecase) FindAssessmentResponseByID(ctx context.Cont
 		return nil, err
 	}
 
-	response := uc.mapFHIRQuestionnaireResponseToAssessment(questionnaireResponseFhir, patientResponseFhir)
+	questionnaireID, err := uc.getQuestionnaireIDFromQuestionnaireResponseDTO(questionnaireResponseFhir)
+	if err != nil {
+		return nil, err
+	}
+
+	questionnaireFhir, err := uc.QuestionnaireFhirClient.FindQuestionnaireByID(ctx, questionnaireID)
+	if err != nil {
+		return nil, err
+	}
+
+	response := uc.mapFHIRQuestionnaireResponseToAssessment(questionnaireResponseFhir, questionnaireFhir, patientResponseFhir)
 	return response, nil
 }
 
@@ -97,9 +113,9 @@ func (uc *assessmentResponseUsecase) DeleteAssessmentResponseByID(ctx context.Co
 	return nil
 }
 
-func (uc *assessmentResponseUsecase) mapFHIRQuestionnaireResponseToAssessment(questionnaireResponse *fhir_dto.QuestionnaireResponse, patientResponse *fhir_dto.Patient) *responses.AssessmentResponse {
+func (uc *assessmentResponseUsecase) mapFHIRQuestionnaireResponseToAssessment(questionnaireResponse *fhir_dto.QuestionnaireResponse, questionnaireFhir *fhir_dto.Questionnaire, patientResponse *fhir_dto.Patient) *responses.AssessmentResponse {
 	participantName := utils.GetFullName(patientResponse.Name)
-	assessmentTitle := "BIG 5 Personality Test (Hardcoded)"
+	assessmentTitle := questionnaireFhir.Title
 	resultBrief := "Result brief (Hardcoded)"
 
 	var resultTables []responses.VariableResult
@@ -128,9 +144,29 @@ func (uc *assessmentResponseUsecase) mapFHIRQuestionnaireResponseToAssessment(qu
 	// qrCodeURL := fmt.Sprintf("https://example.com/qr-code/%s", questionnaireResponse.ID)
 
 	return &responses.AssessmentResponse{
+		ID:              questionnaireResponse.ID,
 		ParticipantName: participantName,
 		AssessmentTitle: assessmentTitle,
 		ResultBrief:     resultBrief,
 		ResultTables:    resultTables,
 	}
+}
+
+func (uc *assessmentResponseUsecase) getQuestionnaireIDFromQuestionnaireResponseDTO(questionnaireResponse *fhir_dto.QuestionnaireResponse) (string, error) {
+	var errResponse error
+	parts := strings.Split(questionnaireResponse.Questionnaire, "/")
+
+	if len(parts) < 2 {
+		errResponse = fmt.Errorf("invalid URL format: %s", questionnaireResponse.Questionnaire)
+		return "", exceptions.ErrServerProcess(errResponse)
+	}
+
+	resourceType := parts[len(parts)-2]
+	if resourceType != constvars.ResourceQuestionnaire {
+		errResponse = fmt.Errorf("URL does not point to a Questionnaire resource: %s", questionnaireResponse.Questionnaire)
+		return "", exceptions.ErrServerProcess(errResponse)
+	}
+
+	questionnaireID := parts[len(parts)-1]
+	return questionnaireID, nil
 }
