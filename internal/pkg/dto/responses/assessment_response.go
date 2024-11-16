@@ -8,6 +8,7 @@ type CreateAssessmentResponse struct {
 }
 
 type AssessmentResponse struct {
+	ID              string           `json:"id"`
 	ParticipantName string           `json:"participant_name"`
 	AssessmentTitle string           `json:"assessment_title"`
 	ResultBrief     string           `json:"result_brief"`

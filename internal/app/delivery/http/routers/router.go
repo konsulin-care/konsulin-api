@@ -26,6 +26,7 @@ func SetupRoutes(
 	genderController *controllers.GenderController,
 	assessmentController *controllers.AssessmentController,
 	assessmentResponseController *controllers.AssessmentResponseController,
+	appointmentController *controllers.AppointmentController,
 ) {
 
 	corsOptions := cors.Options{
@@ -83,6 +84,9 @@ func SetupRoutes(
 			})
 			r.Route("/assessments", func(r chi.Router) {
 				attachQuestionnaireRouter(r, middlewares, assessmentController)
+			})
+			r.Route("/appointments", func(r chi.Router) {
+				attachAppointmentRoutes(r, middlewares, appointmentController)
 			})
 		})
 	})

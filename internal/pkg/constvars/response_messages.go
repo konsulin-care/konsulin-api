@@ -13,6 +13,7 @@ const (
 	GetProfileSuccessMessage        = "get profile successfully"
 	GetEducationLevelSuccessMessage = "get education levels successfully"
 	GetCitySuccessMessage           = "get cities successfully"
+	GetAppointmentSuccessMessage    = "get appointments successfully"
 	GetGenderSuccessMessage         = "get genders successfully"
 	GetClinicsSuccessfully          = "get clinics successfully"
 	GetCliniciansSuccessfully       = "get clinicians successfully"

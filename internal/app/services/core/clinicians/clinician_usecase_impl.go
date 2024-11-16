@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"konsulin-service/internal/app/services/core/session"
-	"konsulin-service/internal/app/services/fhir_spark/appointments"
+	fhir_appointments "konsulin-service/internal/app/services/fhir_spark/appointments"
 	"konsulin-service/internal/app/services/fhir_spark/organizations"
 	practitionerRoles "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
@@ -28,7 +28,7 @@ type clinicianUsecase struct {
 	OrganizationFhirClient     organizations.OrganizationFhirClient
 	ScheduleFhirClient         schedules.ScheduleFhirClient
 	SlotFhirClient             slots.SlotFhirClient
-	AppointmentFhirClient      appointments.AppointmentFhirClient
+	AppointmentFhirClient      fhir_appointments.AppointmentFhirClient
 	SessionService             session.SessionService
 }
 
@@ -38,7 +38,7 @@ func NewClinicianUsecase(
 	organizationFhirClient organizations.OrganizationFhirClient,
 	scheduleFhirClient schedules.ScheduleFhirClient,
 	slotFhirClient slots.SlotFhirClient,
-	appointmentFhirClient appointments.AppointmentFhirClient,
+	appointmentFhirClient fhir_appointments.AppointmentFhirClient,
 	sessionService session.SessionService,
 ) ClinicianUsecase {
 	return &clinicianUsecase{
