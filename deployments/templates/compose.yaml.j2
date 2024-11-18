@@ -1,0 +1,26 @@
+version: '3.7'
+
+networks:
+  proxy:
+    external: true
+    name: nginx-proxy
+
+services:
+  {{ service_name }}:
+    image: "{{ image_repository | default('repository.konsulin.care/repository/private/be-konsulin') }}:{{ commit_hash }}"
+    restart: always
+    logging:
+      driver: "{{ log_driver | default('json-file') }}"
+      options:
+        max-size: "{{ log_max_size | default('200k') }}"
+        max-file: "{{ log_max_file | default('10') }}"
+    volumes:
+      - ${ROOT_PROJECT_DIR}/be-konsulin/config.production.yaml:/app/config.production.yaml
+    environment:
+      APP_ENV: {{ app_env }}
+      VIRTUAL_HOST: {{ api_virtual_host }}
+      LETSENCRYPT_HOST: {{ api_letsencrypt_host }}
+      LETSENCRYPT_EMAIL: {{ api_letsencrypt_email }}
+      VIRTUAL_PORT: {{ api_virtual_port }}
+    networks:
+      - proxy

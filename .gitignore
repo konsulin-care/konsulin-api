@@ -20,3 +20,5 @@ resources/http-client.env.json
 
 .DS_STORE
 .DS_Store
+
+deployments/.vault
