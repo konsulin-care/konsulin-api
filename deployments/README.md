@@ -21,7 +21,7 @@ The `templates/config.yaml.j2` file is a template for generating a configuration
 
 ### Add New Configuration (Without Encryption)
 
-- Define new configuration key-val in `deploy-{env}.yml` file below the `vars.internal_config` or `vars.driver_config` section.
+- Define new configuration key-val in `playbook-{env}.yml` file below the `vars.internal_config` or `vars.driver_config` section.
 
 Example:
 
@@ -80,7 +80,7 @@ encrypted_value: !vault |
           3166
 ```
 
-- Define new configuration key-val in `deploy-{env}.yml` file below the `vars.internal_config` or `vars.driver_config` section.
+- Define new configuration key-val in `playbook-{env}.yml` file below the `vars.internal_config` or `vars.driver_config` section.
 
 Example:
 
