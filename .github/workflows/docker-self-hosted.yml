@@ -57,7 +57,7 @@ jobs:
       env:
         DOCKER_BUILDKIT: 1
       run: |
-        docker build -t konsulin/be-konsulin:${{ inputs.DOCKER_TAG }} -f Dockerfile . \
+        docker build -t konsulin/api-service:${{ inputs.DOCKER_TAG }} -f Dockerfile . \
           --build-arg TZ_ARG=${{ inputs.TZ_ARG }} \
           --build-arg VERSION=${{ inputs.VERSION }} \
           --build-arg GIT_COMMIT=${{ inputs.GIT_COMMIT }} \
