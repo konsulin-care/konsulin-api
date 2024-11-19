@@ -1,9 +1,8 @@
 name: Build and Release Production
+
 on:
-  workflow_dispatch:
-  push:
-    tags:
-    - '*'
+  release:
+    types: [created]
 
 jobs:
   docker:
@@ -25,7 +24,7 @@ jobs:
     needs: [docker]
     uses: ./.github/workflows/deploy-ansible.yml
     with:
-      DOCKER_TAG: $(git describe --tags --abbrev=0)
+      DOCKER_TAG: ${{ github.event.release.tag_name }}
       ANSIBLE_PLAYBOOK: playbook-prod.yml
       ANSIBLE_INVENTORY_HOSTS: "37.27.46.214,"
     secrets:
