@@ -27,7 +27,7 @@ jobs:
     uses: ./.github/workflows/deploy-ansible.yml
     with:
       DOCKER_TAG: ${{ github.ref_name }}-${{ github.sha }}
-      ANSIBLE_PLAYBOOK: ./playbook-dev.yml
+      ANSIBLE_PLAYBOOK: playbook-dev.yml
       ANSIBLE_INVENTORY_HOSTS: "37.27.46.214,"
     secrets:
       ANSIBLE_VAULT_PASSWORD: ${{ secrets.DEVELOP_ANSIBLE_VAULT_PASSWORD }}
