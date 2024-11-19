@@ -10,14 +10,13 @@ on:
       ANSIBLE_PLAYBOOK:
         type: string
         required: true
-      ANSIBLE_VAULT_PASSWORD:
-        type: string
-        required: true
       ANSIBLE_INVENTORY_HOSTS:
         type: string
         default: ""
+    secrets:
       SSH_KEY:
-        type: string
+        required: true
+      ANSIBLE_VAULT_PASSWORD:
         required: true
 
 jobs:
@@ -32,8 +31,8 @@ jobs:
         with:
           playbook: ${{ inputs.ANSIBLE_PLAYBOOK }}
           directory: ./deployments
-          key: ${{ inputs.SSH_KEY }}
-          vault_password: ${{ inputs.ANSIBLE_VAULT_PASSWORD }}
+          key: ${{ secrets.SSH_KEY }}
+          vault_password: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
           options: |
             --inventory "${{ inputs.ANSIBLE_INVENTORY_HOSTS }}"
             --extra-vars "image.tag='${{ inputs.DOCKER_TAG }}'"
