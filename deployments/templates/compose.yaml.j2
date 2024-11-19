@@ -6,7 +6,7 @@ networks:
     name: nginx-proxy
 
 services:
-  konsulin-api-{{ internal_config.app.env }}:
+  {{ docker_service_name }}:
     image: "{{ image_repository }}:{{ image_tag }}"
     restart: always
     ports:
