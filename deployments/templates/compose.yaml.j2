@@ -9,6 +9,8 @@ services:
   api-{{ deployment_env }}:
     image: "{{ image.repository }}:{{ image.tag }}"
     restart: always
+    ports:
+      - "{{ internal_config.app.port }}:{{ internal_config.app.port }}"
     logging:
       driver: "{{ logging.driver | default('json-file') }}"
       options:
