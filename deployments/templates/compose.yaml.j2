@@ -6,21 +6,21 @@ networks:
     name: nginx-proxy
 
 services:
-  {{ service_name }}:
-    image: "{{ image_repository | default('repository.konsulin.care/repository/private/be-konsulin') }}:{{ commit_hash }}"
+  api-{{ internal_config.app.env }}:
+    image: "{{ image.repository }}:{{ image.tag }}"
     restart: always
     logging:
-      driver: "{{ log_driver | default('json-file') }}"
+      driver: "{{ logging.driver | default('json-file') }}"
       options:
-        max-size: "{{ log_max_size | default('200k') }}"
-        max-file: "{{ log_max_file | default('10') }}"
+        max-size: "{{ logging.options.max-size | default('200k') }}"
+        max-file: "{{ logging.options.max-file | default('10') }}"
     volumes:
-      - ${ROOT_PROJECT_DIR}/be-konsulin/config.production.yaml:/app/config.production.yaml
+      - "{{ deployment_path }}/config.{{ internal_config.app.env }}.yaml:/app/config.{{ internal_config.app.env }}.yaml"
     environment:
-      APP_ENV: {{ app_env }}
-      VIRTUAL_HOST: {{ api_virtual_host }}
-      LETSENCRYPT_HOST: {{ api_letsencrypt_host }}
-      LETSENCRYPT_EMAIL: {{ api_letsencrypt_email }}
-      VIRTUAL_PORT: {{ api_virtual_port }}
+      APP_ENV: {{ internal_config.app.env }}
+      VIRTUAL_PORT: {{ internal_config.app.port }}
+      VIRTUAL_HOST: {{ domain.virtual_host }}
+      LETSENCRYPT_HOST: {{ domain.letsencrypt_host }}
+      LETSENCRYPT_EMAIL: {{ domain.letsencrypt_email }}
     networks:
       - proxy
