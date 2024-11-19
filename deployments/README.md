@@ -63,7 +63,7 @@ The `templates/.env.j2` file is a template for generating a `.env` file written 
 - `deployment_path`: The path to the deployment directory.
 - `config_file_name`: The name of the configuration file. It will be used to generate the app config yaml file.
 - `image_repository`: The repository of the Docker image.
-- `image_tag`: The tag of the Docker image. We left it null on the playbook file. Everytime we ran deployment, we pass extra variable to the playbook to set the image tag. See [Managing Ansible Variables](#managing-ansible-variables) section for more information.
+- `image_tag`: The tag of the Docker image. We left it null on the playbook file. Everytime we ran deployment, we pass extra variable to the playbook to set the image tag.
 - `logging.*`: The logging configuration for the Docker Compose service.
 - `domain.*`: The domain configuration for the Docker Compose service.
 - `internal_config.*`: The internal configuration for generating the app config yaml file.
@@ -154,3 +154,24 @@ Example:
                     3933636136666338650a313438653837343634373237336534326566303839663131386130626438
                     3166
 ```
+
+## Example of Final Generated Configuration File
+
+As you can see, all the `deployment_path` variable is set to this prefix path `/home/konsulin/be-konsulin/deployments/{env}`. The playbook will generate the configuration and manifest files in the `deployment_path` directory.
+
+The final generated configuration file structure is like this:
+
+```yaml
+be-konsulin/
+└── deployments
+    ├── develop
+    │   ├── config.development.yaml
+    │   ├── docker-compose.yaml
+    │   └── .env
+    └── production
+        ├── config.production.yaml
+        ├── docker-compose.yaml
+        └── .env
+```
+
+In the end of the Task, Ansible will run `docker-compose up -d` command to start the Docker Compose service.
