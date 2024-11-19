@@ -1,0 +1,39 @@
+---
+name: Ansible Deployment
+
+on:
+  workflow_call:
+    inputs:
+      DOCKER_TAG:
+        type: string
+        required: true
+      ANSIBLE_PLAYBOOK:
+        type: string
+        required: true
+      ANSIBLE_VAULT_PASSWORD:
+        type: string
+        required: true
+      ANSIBLE_INVENTORY_HOSTS:
+        type: string
+        default: ""
+      SSH_KEY:
+        type: string
+        required: true
+
+jobs:
+  AnsibleDeployment:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Run playbook
+        uses: dawidd6/action-ansible-playbook@v2
+        with:
+          playbook: ${{ inputs.ANSIBLE_PLAYBOOK }}
+          directory: ./deployments
+          key: ${{ inputs.SSH_KEY }}
+          vault_password: ${{ inputs.ANSIBLE_VAULT_PASSWORD }}
+          options: |
+            --inventory "${{ inputs.ANSIBLE_INVENTORY_HOSTS }}"
+            --extra-vars "image.tag='${{ inputs.DOCKER_TAG }}'"
