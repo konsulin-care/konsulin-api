@@ -13,10 +13,10 @@ jobs:
       AUTHOR: ${{ github.actor }}
       VERSION: production
       GIT_COMMIT: ${{ github.sha }}
-      RELEASE_TAG: $(git describe --tags --abbrev=0)
+      RELEASE_TAG: ${{ github.event.release.tag_name }}
       RUN_NUMBER: ${{ github.run_number }}
       BUILD_TIME: $(date '+%Y-%m-%d_%H:%M:%S_%z')
-      DOCKER_TAG: $(git describe --tags --abbrev=0)
+      DOCKER_TAG: ${{ github.event.release.tag_name }}
       DOCKER_VENDOR_TAG: production
 
   deploy:
