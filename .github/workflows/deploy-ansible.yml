@@ -35,4 +35,4 @@ jobs:
           vault_password: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
           options: |
             --inventory "${{ inputs.ANSIBLE_INVENTORY_HOSTS }}"
-            --extra-vars image.tag="${{ inputs.DOCKER_TAG }}"
+            --extra-vars image_tag="${{ inputs.DOCKER_TAG }}"
