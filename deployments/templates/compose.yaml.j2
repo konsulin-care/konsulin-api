@@ -6,16 +6,16 @@ networks:
     name: nginx-proxy
 
 services:
-  api-{{ internal_config.app.env }}:
+  api-{{ deployment_env }}:
     image: "{{ image.repository }}:{{ image.tag }}"
     restart: always
     logging:
       driver: "{{ logging.driver | default('json-file') }}"
       options:
-        max-size: "{{ logging.options.max-size | default('200k') }}"
-        max-file: "{{ logging.options.max-file | default('10') }}"
+        max-size: "{{ logging.options.maxSize | default('200k') }}"
+        max-file: "{{ logging.options.maxFile | default('10') }}"
     volumes:
-      - "{{ deployment_path }}/config.{{ internal_config.app.env }}.yaml:/app/config.{{ internal_config.app.env }}.yaml"
+      - "{{ deployment_path }}/{{ config_file_name }}:/app/{{ config_file_name }}"
     environment:
       APP_ENV: {{ internal_config.app.env }}
       VIRTUAL_PORT: {{ internal_config.app.port }}

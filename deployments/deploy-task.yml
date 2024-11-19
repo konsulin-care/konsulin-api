@@ -3,16 +3,20 @@
   ansible.builtin.file:
     path: "{{ deployment_path }}"
     state: directory
-    owner: "konsulin"
-    group: "konsulin"
     mode: "0755"
+    owner: "{{ ansible_user }}"
+  tags: prepare
 
-- name: Prepare application environment
+- name: Prepare application config
   ansible.builtin.template:
     src: "templates/config.yaml.j2"
-    dest: "{{ deployment_path }}/config.{{ internal_config.app.env }}.yaml"
+    dest: "{{ deployment_path }}/{{ config_file_name }}"
+    owner: "{{ ansible_user }}"
+  tags: prepare-config
 
-- name: Prepare application environment
+- name: Prepare application deployment manifest
   ansible.builtin.template:
     src: "templates/compose.yaml.j2"
     dest: "{{ deployment_path }}/docker-compose.yaml"
+    owner: "{{ ansible_user }}"
+  tags: prepare-deployment

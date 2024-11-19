@@ -7,7 +7,7 @@ internal_config:
     base_url: {{ internal_config.app.base_url | default('') }}
     timezone: {{ internal_config.app.timezone | default('') }}
     endpoint_prefix: {{ internal_config.app.endpoint_prefix | default('') }}
-    reset_password_url: {{ internal_config.app.reset_password_url | default('') }}
+    reset_password_url: "{{ internal_config.app.reset_password_url | default('') }}"
     max_requests: {{ internal_config.app.max_requests | default('') }}
     shutdown_timeout_in_seconds: {{ internal_config.app.shutdown_timeout_in_seconds | default('') }}
     max_time_requests_per_seconds: {{ internal_config.app.max_time_requests_per_seconds | default('') }}
@@ -40,32 +40,32 @@ internal_config:
     fhir_db_name: {{ internal_config.mongodb.fhir_db_name | default('') }}
     konsulin_db_name: {{ internal_config.mongodb.konsulin_db_name | default('') }}
 
-driver_config.:
+driver_config:
   mongodb:
-    port: {{ driver_config..mongodb.port | default('') }}
-    host: {{ driver_config..mongodb.host | default('') }}
-    username: {{ driver_config..mongodb.username | default('') }}
-    password: {{ driver_config..mongodb.password | default('') }}
+    port: {{ driver_config.mongodb.port | default('') }}
+    host: {{ driver_config.mongodb.host | default('') }}
+    username: {{ driver_config.mongodb.username | default('') }}
+    password: {{ driver_config.mongodb.password | default('') }}
 
   redis:
-    host: {{ driver_config..redis.host | default('') }}
-    port: {{ driver_config..redis.port | default('') }}
-    password: {{ driver_config..redis.password | default('') }}
+    host: {{ driver_config.redis.host | default('') }}
+    port: {{ driver_config.redis.port | default('') }}
+    password: {{ driver_config.redis.password | default('') }}
 
   logger:
-    level: {{ driver_config..logger.level | default('') }}
-    output_file_name: {{ driver_config..logger.output_file_name | default('') }}
-    output_error_file_name: {{ driver_config..logger.output_error_file_name | default('') }}
+    level: {{ driver_config.logger.level | default('') }}
+    output_file_name: {{ driver_config.logger.output_file_name | default('') }}
+    output_error_file_name: {{ driver_config.logger.output_error_file_name | default('') }}
 
   rabbitmq:
-    port: {{ driver_config..rabbitmq.port | default('') }}
-    host: {{ driver_config..rabbitmq.host | default('') }}
-    username: {{ driver_config..rabbitmq.username | default('') }}
-    password: {{ driver_config..rabbitmq.password | default('') }}
+    port: {{ driver_config.rabbitmq.port | default('') }}
+    host: {{ driver_config.rabbitmq.host | default('') }}
+    username: {{ driver_config.rabbitmq.username | default('') }}
+    password: {{ driver_config.rabbitmq.password | default('') }}
 
   minio:
-    port: {{ driver_config..minio.port | default('') }}
-    host: {{ driver_config..minio.host | default('') }}
-    username: {{ driver_config..minio.username | default('') }}
-    password: {{ driver_config..minio.password | default('') }}
-    use_ssl: {{ driver_config..minio.use_ssl | default('') }}
+    port: {{ driver_config.minio.port | default('') }}
+    host: {{ driver_config.minio.host | default('') }}
+    username: {{ driver_config.minio.username | default('') }}
+    password: {{ driver_config.minio.password | default('') }}
+    use_ssl: {{ driver_config.minio.use_ssl | default('') }}
