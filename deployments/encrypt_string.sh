@@ -40,7 +40,7 @@ fi
 if [ "$ENV" == "development" ]; then
     VAULT_PASSWORD_FILE=".vault/.dev"
 elif [ "$ENV" == "production" ]; then
-    VAULT_PASSWORD_FILE=".vault.production"
+    VAULT_PASSWORD_FILE=".vault/.production"
 else
     echo "Error: Unsupported environment '$ENV'. Use 'development' or 'production'."
     exit 1
