@@ -1,38 +1,33 @@
-name: Production
+name: Build and Release Production
 on:
   workflow_dispatch:
   push:
     tags:
     - '*'
+
 jobs:
   docker:
     name: Containerization
-    uses: ./.github/workflows/docker.yml
+    uses: ./.github/workflows/docker-self-hosted.yml
     with:
       TZ_ARG: Asia/Jakarta
       AUTHOR: ${{ github.actor }}
       VERSION: production
       GIT_COMMIT: ${{ github.sha }}
-      TAG: $(git describe --tags --abbrev=0)
+      RELEASE_TAG: $(git describe --tags --abbrev=0)
       RUN_NUMBER: ${{ github.run_number }}
       BUILD_TIME: $(date '+%Y-%m-%d_%H:%M:%S_%z')
-    secrets:
-      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+      DOCKER_TAG: $(git describe --tags --abbrev=0)
+      DOCKER_VENDOR_TAG: production
 
   deploy:
     name: Deployment
-    uses: ./.github/workflows/deploy.yml
-    needs:
-    - docker
+    needs: [docker]
+    uses: ./.github/workflows/deploy-ansible.yml
     with:
-      ENVIRONMENT: production
-      SERVICE_NAME: prod-api
+      DOCKER_TAG: $(git describe --tags --abbrev=0)
+      ANSIBLE_PLAYBOOK: playbook-dev.yml
+      ANSIBLE_INVENTORY_HOSTS: "37.27.46.214,"
     secrets:
-      SSH_HOST: ${{ secrets.SSH_HOST }}
-      SSH_USERNAME: ${{ secrets.SSH_USERNAME }}
+      ANSIBLE_VAULT_PASSWORD: ${{ secrets.DEVELOP_ANSIBLE_VAULT_PASSWORD }}
       SSH_KEY: ${{ secrets.SSH_KEY }}
-      SSH_PORT: ${{ secrets.SSH_PORT }}
-      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-
