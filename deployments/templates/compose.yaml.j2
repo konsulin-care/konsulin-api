@@ -9,8 +9,6 @@ services:
   {{ docker_service_name }}:
     image: "{{ image_repository }}:{{ image_tag }}"
     restart: always
-    ports:
-      - "{{ internal_config.app.port }}:{{ internal_config.app.port }}"
     logging:
       driver: "{{ logging.driver | default('json-file') }}"
       options:
