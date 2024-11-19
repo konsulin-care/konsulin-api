@@ -6,8 +6,8 @@ networks:
     name: nginx-proxy
 
 services:
-  api-{{ deployment_env }}:
-    image: "{{ image.repository }}:{{ image.tag }}"
+  konsulin-api-{{ internal_config.app.env }}:
+    image: "{{ image_repository }}:{{ image_tag }}"
     restart: always
     ports:
       - "{{ internal_config.app.port }}:{{ internal_config.app.port }}"
@@ -18,6 +18,7 @@ services:
         max-file: "{{ logging.options.maxFile | default('10') }}"
     volumes:
       - "{{ deployment_path }}/{{ config_file_name }}:/app/{{ config_file_name }}"
+      - "{{ deployment_path }}/.env:/app/.env"
     environment:
       APP_ENV: {{ internal_config.app.env }}
       VIRTUAL_PORT: {{ internal_config.app.port }}

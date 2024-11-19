@@ -5,15 +5,15 @@
   become: true
 
   vars:
+    app_env: development
     ansible_user: konsulin
     ansible_python_interpreter: /usr/bin/python3.12
     deployment_path: "/home/konsulin/be-konsulin/deployments/develop"
     deployment_env: "develop"
     config_file_name: "config.development.yaml"
 
-    image:
-      repository: konsulin/api-service
-      tag: ""
+    image_repository: konsulin/api-service
+    image_tag: ""
 
     logging:
       driver: "json-file"
@@ -28,7 +28,7 @@
 
     internal_config:
       app:
-        env: "local"
+        env: "development"
         port: 3001
         version: "v1"
         address: "0.0.0.0"

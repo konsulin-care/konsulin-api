@@ -14,6 +14,13 @@
     owner: "{{ ansible_user }}"
   tags: prepare-config
 
+- name: Prepare application config
+  ansible.builtin.template:
+    src: "templates/env.j2"
+    dest: "{{ deployment_path }}/.env"
+    owner: "{{ ansible_user }}"
+  tags: prepare-config
+
 - name: Prepare application deployment manifest
   ansible.builtin.template:
     src: "templates/compose.yaml.j2"
