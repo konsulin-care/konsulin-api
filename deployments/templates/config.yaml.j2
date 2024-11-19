@@ -1,0 +1,71 @@
+internal_config:
+  app:
+    env: {{ internal_config.app.env | default('') }}
+    port: {{ internal_config.app.port | default('') }}
+    version: {{ internal_config.app.version | default('') }}
+    address: {{ internal_config.app.address | default('') }}
+    base_url: {{ internal_config.app.base_url | default('') }}
+    timezone: {{ internal_config.app.timezone | default('') }}
+    endpoint_prefix: {{ internal_config.app.endpoint_prefix | default('') }}
+    reset_password_url: "{{ internal_config.app.reset_password_url | default('') }}"
+    max_requests: {{ internal_config.app.max_requests | default('') }}
+    shutdown_timeout_in_seconds: {{ internal_config.app.shutdown_timeout_in_seconds | default('') }}
+    max_time_requests_per_seconds: {{ internal_config.app.max_time_requests_per_seconds | default('') }}
+    request_body_limit_in_megabyte: {{ internal_config.app.request_body_limit_in_megabyte | default('') }}
+    account_deactivation_age_in_days: {{ internal_config.app.account_deactivation_age_in_days | default('') }}
+    login_session_expired_time_in_hours: {{ internal_config.app.login_session_expired_time_in_hours | default('') }}
+    forgot_password_token_expired_time_in_minutes: {{ internal_config.app.forgot_password_token_expired_time_in_minutes | default('') }}
+    minio_pre_signed_url_object_expiry_time_in_hours: {{ internal_config.app.minio_pre_signed_url_object_expiry_time_in_hours | default('') }}
+    questionnaire_guest_response_response_expired_time_in_minutes: {{ internal_config.app.questionnaire_guest_response_response_expired_time_in_minutes | default('') }}
+
+  fhir:
+    base_url: {{ internal_config.fhir.base_url | default('') }}
+
+  jwt:
+    secret: {{ internal_config.jwt.secret | default('') }}
+    exp_time_in_hour: {{ internal_config.jwt.exp_time_in_hour | default('') }}
+
+  mailer:
+    email_sender: {{ internal_config.mailer.email_sender | default('') }}
+
+  minio:
+    profile_picture_max_upload_size_in_mb: {{ internal_config.minio.profile_picture_max_upload_size_in_mb | default('') }}
+    bucket_name: {{ internal_config.minio.bucket_name | default('') }}
+
+  rabbitmq:
+    mailer_queue: {{ internal_config.rabbitmq.mailer_queue | default('') }}
+    whatsapp_queue: {{ internal_config.rabbitmq.whatsapp_queue | default('') }}
+
+  mongodb:
+    fhir_db_name: {{ internal_config.mongodb.fhir_db_name | default('') }}
+    konsulin_db_name: {{ internal_config.mongodb.konsulin_db_name | default('') }}
+
+driver_config:
+  mongodb:
+    port: {{ driver_config.mongodb.port | default('') }}
+    host: {{ driver_config.mongodb.host | default('') }}
+    username: {{ driver_config.mongodb.username | default('') }}
+    password: {{ driver_config.mongodb.password | default('') }}
+
+  redis:
+    host: {{ driver_config.redis.host | default('') }}
+    port: {{ driver_config.redis.port | default('') }}
+    password: {{ driver_config.redis.password | default('') }}
+
+  logger:
+    level: {{ driver_config.logger.level | default('') }}
+    output_file_name: {{ driver_config.logger.output_file_name | default('') }}
+    output_error_file_name: {{ driver_config.logger.output_error_file_name | default('') }}
+
+  rabbitmq:
+    port: {{ driver_config.rabbitmq.port | default('') }}
+    host: {{ driver_config.rabbitmq.host | default('') }}
+    username: {{ driver_config.rabbitmq.username | default('') }}
+    password: {{ driver_config.rabbitmq.password | default('') }}
+
+  minio:
+    port: {{ driver_config.minio.port | default('') }}
+    host: {{ driver_config.minio.host | default('') }}
+    username: {{ driver_config.minio.username | default('') }}
+    password: {{ driver_config.minio.password | default('') }}
+    use_ssl: {{ driver_config.minio.use_ssl | default('') }}
