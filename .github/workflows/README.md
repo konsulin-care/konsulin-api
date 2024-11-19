@@ -1,27 +1,41 @@
 # BE-KONSULIN DEPLOYMENT METHOD
 
-## Production Workflow
-
-The "Production" GitHub Actions workflow automates the process of building and deploying a project to the production environment. It is triggered by either a manual dispatch or a push to any tagged commit.
-
 ## Development Workflow
 
 The  GitHub Actions workflow automates the process of containerizing and deploying a project on the `develop` branch. It can be triggered manually or by a push to the `develop` branch.
+
+## Production Workflow
+
+The "Production" GitHub Actions workflow automates the process of building and deploying a project to the production environment. The step to deploy the production environment is by creating a release on the GitHub repository. This is the guide to create a release:
+
+1. Go to the GitHub repository.
+2. Click on the "Releases" tab.
+3. Click on the "Draft a new release" button.
+4. Enter the release tag name. Example: `v1.0.0`.
+5. Name the release. Example: `v1.0.0`.
+6. Optionally, you can generate a release note automatically by clicking on the "Generate release notes" button.
+7. Set the target branch to `develop` or trunk branch you want to deploy.
+8. Set the release as a `Set as the latest release` option.
+9. Click on the "Publish release" button.
+
+### Rules
+
+1. The allowed format for the release tag is `v1.0.0`.
+2. The allowed format for the release name is `v1.0.0`.
 
 ## WORKFLOW
 
 1. **Containerization (Docker) on Self-Hosted Runner**
    - **Uses**: `docker-self-hosted.yml` workflow.
    - **Parameters**:
-     - TZ_ARG, AUTHOR, VERSION, GIT_COMMIT, BUILD_TIME, RUN_NUMBER, RELEASE_TAG, DOCKER_TAG, DOCKER_VENDOR_TAG. See [Input Parameters](#input-parameters) for more details.
+     - `TZ_ARG`, `AUTHOR`, `VERSION`, `GIT_COMMIT`, `BUILD_TIME`, `RUN_NUMBER`, `RELEASE_TAG`, `DOCKER_TAG`, `DOCKER_VENDOR_TAG`.
    - **Purpose**: Builds a Docker image directly on the server.
 
 2. **Deployment**
-   - **Uses**: `deploy.yml` workflow.
-   - **Depends on**: Successful completion of the Docker job.
+   - **Uses**: `deploy-ansible.yml` workflow.
    - **Parameters**:
-     - Environment and service name (`dev-api`) or  (`prod-api`)
-   - **Secrets**: SSH and Docker credentials.
+     - `DOCKER_TAG`, `ANSIBLE_PLAYBOOK`, `ANSIBLE_INVENTORY_HOSTS`.
+   - **Secrets**: `SSH_KEY` to be used by Ansible, ANS
    - **Purpose**: Deploys the Docker container to a remote server.
 
 This workflow streamlines the process of building and deploying code changes to a development environment.
@@ -50,6 +64,28 @@ To re-use the workflow, these are parameters needs to be defined:
 2. **Build Vendor Image:** The workflow will build the vendor image using the `Dockerfile-vendor` file. It will take the input from DOCKER_VENDOR_TAG and build the image with the tag. The Vendor build image step enabling `DOCKER_BUILDKIT=1` to enhance cahcing and reduce the build time.
 3. **Update Dockerfile Base Image Tag:** The workflow will update the `Dockerfile` file with the built result from **Build Vendor Image** step. It will respectively update the base image with the built of Vendor image that tagged with the input from DOCKER_VENDOR_TAG.
 4. **Build Main Image:** The workflow will build the main application image using the `Dockerfile` file. It will take the input from DOCKER_TAG and build the image with the tag.
+
+## Deployment (Ansible)
+
+The "Deploy (Ansible)" GitHub Actions workflow automates the deployment of a service to a remote server using Ansible. The workflow is manifest file is `.github/workflows/deploy-ansible.yml`.
+
+### Input Parameters
+
+To re-use the workflow, these are parameters needs to be defined:
+
+- `DOCKER_TAG`: The Docker tag. This is the Docker image tag that will be used to tag built image inside the server.
+- `ANSIBLE_PLAYBOOK`: The Ansible playbook file.
+- `ANSIBLE_INVENTORY_HOSTS`: The Ansible inventory hosts.
+- `SSH_KEY`: The SSH key to be used by Ansible.
+
+### Workflow Steps
+
+1. **Prepare:** The workflow will prepare the environment by cloning the repository to the server.
+2. **Run playbook:** The workflow will run the Ansible playbook using the input from `ANSIBLE_PLAYBOOK` and `ANSIBLE_INVENTORY_HOSTS` to deploy the service.  On the playbook we define a variable with name `image_tag` with null value. The Ansible will replace the null value with the input from `DOCKER_TAG`. See Ansible official documentation for more details [Using Variables](https://docs.ansible.com/ansible/latest/user_guide/playbooks_variables.html#using-variables).
+
+### Managing Ansible Variables
+
+Refer to this [Deployment Scripts Documentation](https://github.com/konsulin-care/be-konsulin/blob/develop/deployments/README.md) file for more information on how to manage Ansible variables.
 
 ## Deprecated
 
