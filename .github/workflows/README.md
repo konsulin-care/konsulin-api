@@ -6,7 +6,11 @@ The  GitHub Actions workflow automates the process of containerizing and deployi
 
 ## Production Workflow
 
-The "Production" GitHub Actions workflow automates the process of building and deploying a project to the production environment. The step to deploy the production environment is by creating a release on the GitHub repository. This is the guide to create a release:
+### Step 1: Create Release
+
+This step is to create a release on the GitHub repository, when a new release is created, the `prod-build.yml` workflow will run a Docker build process to build and tag the release image directly on the server.
+
+Step to create a release:
 
 1. Go to the GitHub repository.
 2. Click on the "Releases" tab.
@@ -22,6 +26,30 @@ The "Production" GitHub Actions workflow automates the process of building and d
 
 1. The allowed format for the release tag is `v1.0.0`.
 2. The allowed format for the release name is `v1.0.0`.
+
+### Example of Correct Release Name
+
+- `v1.0.0`
+- `v1.0.0-beta.1`
+- `v1.0.0-beta.1+build.123`
+- `release-v1.0.0`
+
+### Example of Incorrect Release Name
+
+- `Release v1.0.0`
+- `v1.0.0 Release`
+
+### Step 2: Deploy a Release
+
+This step is to deploy a release on the server, when a new release is created, the `prod-release.yml` workflow will run a deployment process.
+
+Step to deploy a release:
+
+1. Go to the GitHub Actions page.
+2. Go to `Deploy Production` or `prod-release.yml` workflow.
+3. Click on the `Run workflow` button.
+4. Fill in the `RELEASE_NAME` input with the release name you want to deploy. See the example of correct release name above [here](#example-of-correct-release-name).
+5. Click on the `Run workflow` button.
 
 ## WORKFLOW
 

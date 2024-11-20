@@ -18,15 +18,3 @@ jobs:
       BUILD_TIME: $(date '+%Y-%m-%d_%H:%M:%S_%z')
       DOCKER_TAG: ${{ github.event.release.tag_name }}
       DOCKER_VENDOR_TAG: production
-
-  deploy:
-    name: Deployment
-    needs: [docker]
-    uses: ./.github/workflows/deploy-ansible.yml
-    with:
-      DOCKER_TAG: ${{ github.event.release.tag_name }}
-      ANSIBLE_PLAYBOOK: playbook-prod.yml
-      ANSIBLE_INVENTORY_HOSTS: "37.27.46.214,"
-    secrets:
-      ANSIBLE_VAULT_PASSWORD: ${{ secrets.PRODUCTION_ANSIBLE_VAULT_PASSWORD }}
-      SSH_KEY: ${{ secrets.SSH_KEY }}
