@@ -17,15 +17,17 @@ Step to create a release:
 3. Click on the "Draft a new release" button.
 4. Enter the release tag name. Example: `v1.0.0`.
 5. Name the release. Example: `v1.0.0`.
-6. Optionally, you can generate a release note automatically by clicking on the "Generate release notes" button.
-7. Set the target branch to `develop` or trunk branch you want to deploy.
-8. Set the release as a `Set as the latest release` option.
-9. Click on the "Publish release" button.
+6. Ensure the release tag and release name are same.
+7. Optionally, you can generate a release note automatically by clicking on the "Generate release notes" button.
+8. Set the target branch to `develop` or trunk branch you want to deploy.
+9. Set the release as a `Set as the latest release` option.
+10. Click on the "Publish release" button.
 
 ### Rules
 
 1. The allowed format for the release tag is `v1.0.0`.
 2. The allowed format for the release name is `v1.0.0`.
+3. Release name and release tag must be same.
 
 ### Example of Correct Release Name
 
