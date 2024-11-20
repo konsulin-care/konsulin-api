@@ -29,17 +29,18 @@ Step to create a release:
 2. The allowed format for the release name is `v1.0.0`.
 3. Release name and release tag must be same.
 
-### Example of Correct Release Name
+### Example of Accpetable Release Name
 
 - `v1.0.0`
-- `v1.0.0-beta.1`
-- `v1.0.0-beta.1+build.123`
+- `v1.0.0-beta-1`
 - `release-v1.0.0`
 
-### Example of Incorrect Release Name
+### Example of Not Acceptable Release Name
 
 - `Release v1.0.0`
 - `v1.0.0 Release`
+- `v1.0.0-beta.1+build.123`
+- `v1.0.0-beta.1`
 
 ### Step 2: Deploy a Release
 
