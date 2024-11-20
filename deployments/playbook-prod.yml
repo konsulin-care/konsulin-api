@@ -8,7 +8,7 @@
     ansible_user: konsulin
     ansible_python_interpreter: /usr/bin/python3.12
     docker_service_name: prod-api
-    deployment_path: "/home/konsulin/be-konsulin/deployments/production"
+    deployment_path: "/home/konsulin/infrastructure/production/konsulin-app"
     deployment_env: "production"
     config_file_name: "config.production.yaml"
 

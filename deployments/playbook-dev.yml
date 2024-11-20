@@ -9,7 +9,7 @@
     ansible_user: konsulin
     ansible_python_interpreter: /usr/bin/python3.12
     docker_service_name: dev-api
-    deployment_path: "/home/konsulin/be-konsulin/deployments/develop"
+    deployment_path: "/home/konsulin/infrastructure/development/konsulin-app"
     deployment_env: "develop"
     config_file_name: "config.development.yaml"
 

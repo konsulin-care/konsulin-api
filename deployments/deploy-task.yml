@@ -24,11 +24,11 @@
 - name: Prepare application deployment manifest
   ansible.builtin.template:
     src: "templates/compose.yaml.j2"
-    dest: "{{ deployment_path }}/docker-compose.yaml"
+    dest: "{{ deployment_path }}/docker-compose.api.yaml"
     owner: "{{ ansible_user }}"
   tags: prepare-deployment
 
 - name: Start containers
-  ansible.builtin.command: "docker compose -f {{ deployment_path }}/docker-compose.yaml up -d"
+  ansible.builtin.command: "docker compose -f {{ deployment_path }}/docker-compose.api.yaml up -d"
   changed_when: false
   tags: run-deployment
