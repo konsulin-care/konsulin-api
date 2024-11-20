@@ -49,7 +49,7 @@ This step is to deploy a release on the server, when a new release is created, t
 Step to deploy a release:
 
 1. Go to the GitHub Actions page.
-2. Go to `Deploy Production` or `prod-release.yml` workflow.
+2. Go to [Deploy Production](https://github.com/konsulin-care/be-konsulin/actions/workflows/prod-release.yml) workflow.
 3. Click on the `Run workflow` button.
 4. Fill in the `RELEASE_NAME` input with the release name you want to deploy. See the example of correct release name above [here](#example-of-correct-release-name).
 5. Click on the `Run workflow` button.
