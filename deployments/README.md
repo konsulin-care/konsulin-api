@@ -157,21 +157,12 @@ Example:
 
 ## Example of Final Generated Configuration File
 
-As you can see, all the `deployment_path` variable is set to this prefix path `/home/konsulin/be-konsulin/deployments/{env}`. The playbook will generate the configuration and manifest files in the `deployment_path` directory.
-
-The final generated configuration file structure is like this:
+Example of `development` environment generated configuration file structure is like this:
 
 ```yaml
-be-konsulin/
-└── deployments
-    ├── develop
-    │   ├── config.development.yaml
-    │   ├── docker-compose.yaml
-    │   └── .env
-    └── production
-        ├── config.production.yaml
-        ├── docker-compose.yaml
-        └── .env
+/home/konsulin/infrastructure/development/konsulin-app/
+├── config.development.yaml
+└── docker-compose.api.yaml
 ```
 
 In the end of the Task, Ansible will run `docker-compose up -d` command to start the Docker Compose service.
