@@ -1,13 +1,15 @@
 package config
 
 type InternalConfig struct {
-	App      App         `mapstructure:"app"`
-	FHIR     AppFHIR     `mapstructure:"fhir"`
-	JWT      AppJWT      `mapstructure:"jwt"`
-	Mailer   AppMailer   `mapstructure:"mailer"`
-	Minio    AppMinio    `mapstructure:"minio"`
-	RabbitMQ AppRabbitMQ `mapstructure:"rabbitmq"`
-	MongoDB  AppMongoDB  `mapstructure:"mongodb"`
+	App            App               `mapstructure:"app"`
+	FHIR           AppFHIR           `mapstructure:"fhir"`
+	JWT            AppJWT            `mapstructure:"jwt"`
+	Mailer         AppMailer         `mapstructure:"mailer"`
+	Minio          AppMinio          `mapstructure:"minio"`
+	RabbitMQ       AppRabbitMQ       `mapstructure:"rabbitmq"`
+	MongoDB        AppMongoDB        `mapstructure:"mongodb"`
+	Konsulin       AppKonsulin       `mapstructure:"konsulin"`
+	PaymentGateway AppPaymentGateway `mapstructure:"payment_gateway"`
 }
 
 type App struct {
@@ -57,4 +59,14 @@ type AppRabbitMQ struct {
 type AppMongoDB struct {
 	FhirDBName     string `mapstructure:"fhir_db_name"`
 	KonsulinDBName string `mapstructure:"konsulin_db_name"`
+}
+type AppKonsulin struct {
+	BankCode          string `mapstructure:"bank_code"`
+	BankAccountNumber string `mapstructure:"bank_account_number"`
+	FinanceEmail      string `mapstructure:"finance_email"`
+}
+type AppPaymentGateway struct {
+	Username string `mapstructure:"username"`
+	ApiKey   string `mapstructure:"api_key"`
+	BaseUrl  string `mapstructure:"base_url"`
 }

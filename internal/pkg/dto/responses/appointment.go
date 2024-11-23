@@ -13,3 +13,7 @@ type Appointment struct {
 	Description     string    `json:"description,omitempty"`
 	MinutesDuration uint      `json:"minutes_duration,omitempty"`
 }
+
+type CreateAppointment struct {
+	PaymentLink string `json:"payment_link,omitempty"`
+}

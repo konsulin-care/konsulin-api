@@ -3,14 +3,17 @@ package patients
 import (
 	"context"
 	"fmt"
+	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/services/core/session"
 	fhir_appointments "konsulin-service/internal/app/services/fhir_spark/appointments"
 	practitionerRoles "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
 	"konsulin-service/internal/app/services/fhir_spark/schedules"
 	"konsulin-service/internal/app/services/fhir_spark/slots"
+	"konsulin-service/internal/app/services/shared/payment_gateway"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
+	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"time"
@@ -23,6 +26,8 @@ type patientUsecase struct {
 	SlotFhirClient             slots.SlotFhirClient
 	AppointmentFhirClient      fhir_appointments.AppointmentFhirClient
 	SessionService             session.SessionService
+	OyService                  payment_gateway.PaymentGatewayService
+	InternalConfig             *config.InternalConfig
 }
 
 func NewPatientUsecase(
@@ -32,6 +37,8 @@ func NewPatientUsecase(
 	slotFhirClient slots.SlotFhirClient,
 	appointmentFhirClient fhir_appointments.AppointmentFhirClient,
 	sessionService session.SessionService,
+	oyService payment_gateway.PaymentGatewayService,
+	internalConfig *config.InternalConfig,
 ) PatientUsecase {
 	return &patientUsecase{
 		PractitionerFhirClient:     practitionerFhirClient,
@@ -40,10 +47,12 @@ func NewPatientUsecase(
 		SlotFhirClient:             slotFhirClient,
 		AppointmentFhirClient:      appointmentFhirClient,
 		SessionService:             sessionService,
+		OyService:                  oyService,
+		InternalConfig:             internalConfig,
 	}
 }
 
-func (uc *patientUsecase) CreateAppointment(ctx context.Context, sessionData string, request *requests.CreateAppointmentRequest) (*fhir_dto.Appointment, error) {
+func (uc *patientUsecase) CreateAppointment(ctx context.Context, sessionData string, request *requests.CreateAppointmentRequest) (*responses.CreateAppointment, error) {
 	// Parse session data
 	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
 	if err != nil {
@@ -118,5 +127,32 @@ func (uc *patientUsecase) CreateAppointment(ctx context.Context, sessionData str
 		return nil, err
 	}
 
-	return savedAppointment, nil
+	paymentRoutingRequest := &requests.PaymentRequest{
+		UseLinkedAccount:     false,
+		PartnerTransactionID: savedAppointment.ID,
+		NeedFrontend:         true,
+		SenderEmail:          uc.InternalConfig.Konsulin.FinanceEmail,
+		ListEnablePaymentMethod: []string{
+			requests.OY_PAYMENT_METHOD_BANK_TRANSFER,
+			requests.OY_PAYMENT_METHOD_EWALLET,
+			requests.OY_PAYMENT_METHOD_QRIS,
+		},
+		ListEnableSOF: []string{
+			requests.BANK_CODE_BCA,
+			requests.BANK_CODE_BNI,
+			requests.BANK_CODE_BRI,
+			requests.BANK_CODE_MANDIRI,
+			requests.EWALLET_CODE_DANA,
+			requests.EWALLET_CODE_LINKAJA,
+			requests.EWALLET_CODE_OVO,
+			requests.EWALLET_CODE_OVO,
+			requests.EWALLET_CODE_SHOPEEPAY,
+			requests.QRIS_CODE,
+		},
+		ReceiveAmount: 30000,
+	}
+
+	fmt.Println(paymentRoutingRequest)
+
+	return &responses.CreateAppointment{}, nil
 }

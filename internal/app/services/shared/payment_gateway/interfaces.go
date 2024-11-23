@@ -1,0 +1,11 @@
+package payment_gateway
+
+import (
+	"context"
+	"konsulin-service/internal/pkg/dto/requests"
+	"konsulin-service/internal/pkg/dto/responses"
+)
+
+type PaymentGatewayService interface {
+	CreatePaymentRouting(ctx context.Context, request *requests.PaymentRequest) (*responses.PaymentResponse, error)
+}
