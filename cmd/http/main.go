@@ -34,6 +34,7 @@ import (
 	"konsulin-service/internal/app/services/fhir_spark/schedules"
 	"konsulin-service/internal/app/services/fhir_spark/slots"
 	"konsulin-service/internal/app/services/shared/mailer"
+	"konsulin-service/internal/app/services/shared/payment_gateway"
 	redisKonsulin "konsulin-service/internal/app/services/shared/redis"
 	storageKonsulin "konsulin-service/internal/app/services/shared/storage"
 	"konsulin-service/internal/app/services/shared/whatsapp"
@@ -177,6 +178,12 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 		return err
 	}
 
+	// Initialize oy service
+	oyService, err := payment_gateway.NewOyService(bootstrap.InternalConfig)
+	if err != nil {
+		return err
+	}
+
 	// Initialize Minio storage
 	minioStorage := storageKonsulin.NewMinioStorage(bootstrap.Minio)
 
@@ -235,7 +242,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	clinicianController := controllers.NewClinicianController(bootstrap.Logger, clinicianUsecase)
 
 	// Initialize Clinic dependencies
-	patientUsecase := patients.NewPatientUsecase(practitionerFhirClient, practitionerRoleFhirClient, scheduleFhirClient, slotFhirClient, appointmentFhirClient, sessionService)
+	patientUsecase := patients.NewPatientUsecase(practitionerFhirClient, practitionerRoleFhirClient, scheduleFhirClient, slotFhirClient, appointmentFhirClient, sessionService, oyService, bootstrap.InternalConfig)
 	patientController := controllers.NewPatientController(bootstrap.Logger, patientUsecase)
 
 	// Initialize Assessment dependencies
