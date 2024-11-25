@@ -69,3 +69,10 @@ driver_config:
     username: {{ driver_config.minio.username | default('') }}
     password: {{ driver_config.minio.password | default('') }}
     use_ssl: {{ driver_config.minio.use_ssl | default('') }}
+
+  postgres:
+    host: {{ driver_config.postgres.host | default('') }}
+    port: {{ driver_config.postgres.port | default('') }}
+    username: {{ driver_config.postgres.username | default('') }}
+    password: {{ driver_config.postgres.password | default('') }}
+  
