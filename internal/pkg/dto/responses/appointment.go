@@ -15,5 +15,8 @@ type Appointment struct {
 }
 
 type CreateAppointment struct {
-	PaymentLink string `json:"payment_link,omitempty"`
+	Status               string `json:"status"`
+	PaymentLink          string `json:"payment_link,omitempty"`
+	TransactionID        string `json:"transaction_id"`
+	PartnerTransactionID string `json:"partner_transaction_id"`
 }

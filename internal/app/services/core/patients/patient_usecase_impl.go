@@ -16,6 +16,7 @@ import (
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
+	"konsulin-service/internal/pkg/utils"
 	"time"
 )
 
@@ -132,27 +133,39 @@ func (uc *patientUsecase) CreateAppointment(ctx context.Context, sessionData str
 		PartnerTransactionID: savedAppointment.ID,
 		NeedFrontend:         true,
 		SenderEmail:          uc.InternalConfig.Konsulin.FinanceEmail,
+		VADisplayName:        uc.InternalConfig.Konsulin.PaymentDisplayName,
+		ReceiveAmount:        30000,
 		ListEnablePaymentMethod: []string{
 			requests.OY_PAYMENT_METHOD_BANK_TRANSFER,
-			requests.OY_PAYMENT_METHOD_EWALLET,
-			requests.OY_PAYMENT_METHOD_QRIS,
 		},
 		ListEnableSOF: []string{
-			requests.BANK_CODE_BCA,
 			requests.BANK_CODE_BNI,
 			requests.BANK_CODE_BRI,
 			requests.BANK_CODE_MANDIRI,
-			requests.EWALLET_CODE_DANA,
-			requests.EWALLET_CODE_LINKAJA,
-			requests.EWALLET_CODE_OVO,
-			requests.EWALLET_CODE_OVO,
-			requests.EWALLET_CODE_SHOPEEPAY,
-			requests.QRIS_CODE,
+			requests.BANK_CODE_BTPN_JENIUS,
+			requests.BANK_CODE_SYARIAH_INDONESIA,
 		},
-		ReceiveAmount: 30000,
+		PaymentRouting: []requests.PaymentRouting{
+			{
+				RecipientBank:    uc.InternalConfig.Konsulin.BankCode,
+				RecipientAccount: uc.InternalConfig.Konsulin.BankAccountNumber,
+				RecipientEmail:   uc.InternalConfig.Konsulin.FinanceEmail,
+				RecipientAmount:  30000,
+			},
+		},
 	}
 
-	fmt.Println(paymentRoutingRequest)
+	paymentRequestDTO := utils.MapPaymentRequestToDTO(paymentRoutingRequest)
 
-	return &responses.CreateAppointment{}, nil
+	paymentResponse, err := uc.OyService.CreatePaymentRouting(ctx, paymentRequestDTO)
+	if err != nil {
+		return nil, err
+	}
+
+	return &responses.CreateAppointment{
+		Status:               paymentResponse.Status.Message,
+		TransactionID:        paymentResponse.TrxID,
+		PartnerTransactionID: paymentResponse.PartnerTrxID,
+		PaymentLink:          paymentResponse.PaymentInfo.PaymentCheckoutURL,
+	}, nil
 }

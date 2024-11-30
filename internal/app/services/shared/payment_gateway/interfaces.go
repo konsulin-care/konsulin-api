@@ -7,5 +7,5 @@ import (
 )
 
 type PaymentGatewayService interface {
-	CreatePaymentRouting(ctx context.Context, request *requests.PaymentRequest) (*responses.PaymentResponse, error)
+	CreatePaymentRouting(ctx context.Context, request *requests.PaymentRequestDTO) (*responses.PaymentResponse, error)
 }

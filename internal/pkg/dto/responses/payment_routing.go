@@ -5,15 +5,17 @@ type Status struct {
 	Message string `json:"message"`
 }
 
+// PaymentInfo represents the payment information in the JSON response.
 type PaymentInfo struct {
 	PaymentCheckoutURL string `json:"payment_checkout_url"`
 }
 
+// Response represents the overall JSON response.
 type PaymentResponse struct {
-	Status                    Status      `json:"status"`
-	TransactionID             string      `json:"trx_id"`
-	PartnerTransactionID      string      `json:"partner_trx_id"`
-	ReceiveAmount             int         `json:"receive_amount"`
-	TransactionExpirationTime string      `json:"trx_expiration_time"`
-	PaymentInfo               PaymentInfo `json:"payment_info"`
+	Status        Status `json:"status"`
+	TrxID         string `json:"trx_id"`
+	PartnerTrxID  string `json:"partner_trx_id"`
+	ReceiveAmount int    `json:"receive_amount"`
+	// TrxExpirationTime time.Time   `json:"trx_expiration_time"`
+	PaymentInfo PaymentInfo `json:"payment_info"`
 }

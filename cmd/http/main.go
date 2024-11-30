@@ -214,14 +214,6 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	}
 	educationLevelController := controllers.NewEducationLevelController(bootstrap.Logger, educationLevelUseCase)
 
-	// Initialize Education Level dependencies
-	cityMongoRepository := cities.NewCityMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
-	cityUseCase, err := cities.NewCityUsecase(cityMongoRepository, redisRepository)
-	if err != nil {
-		return err
-	}
-	cityController := controllers.NewCityController(bootstrap.Logger, cityUseCase)
-
 	// Initialize Gender dependencies
 	genderMongoRepository := genders.NewGenderMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
 	genderUseCase, err := genders.NewGenderUsecase(genderMongoRepository, redisRepository)
@@ -277,6 +269,16 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	}
 	authController := controllers.NewAuthController(bootstrap.Logger, authUseCase)
 
+	// Initialize Education Level dependencies
+	cityMongoRepository := cities.NewCityMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
+	cityUseCase, err := cities.NewCityUsecase(cityMongoRepository, redisRepository)
+	if err != nil {
+		return err
+	}
+	cityController := controllers.NewCityController(bootstrap.Logger, cityUseCase)
+
+	paymentController := controllers.NewPaymentController(bootstrap.Logger)
+
 	// Initialize middlewares with logger, session service, and auth usecase
 	middlewares := middlewares.NewMiddlewares(bootstrap.Logger, sessionService, authUseCase, bootstrap.InternalConfig)
 
@@ -296,6 +298,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 		assessmentController,
 		assessmentResponseController,
 		appointmentController,
+		paymentController,
 	)
 
 	return nil
