@@ -61,9 +61,10 @@ type AppMongoDB struct {
 	KonsulinDBName string `mapstructure:"konsulin_db_name"`
 }
 type AppKonsulin struct {
-	BankCode          string `mapstructure:"bank_code"`
-	BankAccountNumber string `mapstructure:"bank_account_number"`
-	FinanceEmail      string `mapstructure:"finance_email"`
+	BankCode           string `mapstructure:"bank_code"`
+	BankAccountNumber  string `mapstructure:"bank_account_number"`
+	FinanceEmail       string `mapstructure:"finance_email"`
+	PaymentDisplayName string `mapstructure:"payment_display_name"`
 }
 type AppPaymentGateway struct {
 	Username string `mapstructure:"username"`

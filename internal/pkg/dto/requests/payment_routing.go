@@ -32,3 +32,32 @@ type PaymentRouting struct {
 	RecipientAmount  int    `json:"recipient_amount" validate:"required"`
 	RecipientEmail   string `json:"recipient_email" validate:"required,email"`
 }
+
+type PaymentInfo struct {
+	AccountNumber string `json:"account_number"`
+	AccountName   string `json:"account_name"`
+	BankCode      string `json:"bank_code"`
+}
+
+type PaymentRoutingCallback struct {
+	RecipientBank        string  `json:"recipient_bank"`
+	RecipientAccount     string  `json:"recipient_account"`
+	RecipientAccountName string  `json:"recipient_account_name"`
+	RecipientAmount      float64 `json:"recipient_amount"`
+	DisbursementTrxID    string  `json:"disbursement_trx_id"`
+	TrxStatus            string  `json:"trx_status"`
+}
+
+// Transaction represents the overall structure of the JSON response.
+type Transaction struct {
+	TrxID          string                   `json:"trx_id"`
+	PartnerUserID  string                   `json:"partner_user_id"`
+	PartnerTrxID   string                   `json:"partner_trx_id"`
+	ReceiveAmount  int                      `json:"receive_amount"`
+	PaymentStatus  string                   `json:"payment_status"`
+	NeedFrontend   bool                     `json:"need_frontend"`
+	PaymentMethod  string                   `json:"payment_method"`
+	SenderBank     string                   `json:"sender_bank"`
+	PaymentInfo    PaymentInfo              `json:"payment_info"`
+	PaymentRouting []PaymentRoutingCallback `json:"payment_routing"`
+}

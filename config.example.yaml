@@ -40,6 +40,17 @@ internal_config:
     fhir_db_name: 
     konsulin_db_name: 
 
+  konsulin:
+    bank_code:
+    bank_account_number:
+    finance_email:
+    payment_display_name:
+  
+  payment_gateway:
+    username:
+    api_key:
+    base_url:
+
 driver_config:
   mongodb:
     port: 

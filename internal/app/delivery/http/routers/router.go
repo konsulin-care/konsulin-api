@@ -27,6 +27,7 @@ func SetupRoutes(
 	assessmentController *controllers.AssessmentController,
 	assessmentResponseController *controllers.AssessmentResponseController,
 	appointmentController *controllers.AppointmentController,
+	paymentController *controllers.PaymentController,
 ) {
 
 	corsOptions := cors.Options{
@@ -87,6 +88,9 @@ func SetupRoutes(
 			})
 			r.Route("/appointments", func(r chi.Router) {
 				attachAppointmentRoutes(r, middlewares, appointmentController)
+			})
+			r.Route("/payments", func(r chi.Router) {
+				attachPaymentRouter(r, middlewares, paymentController)
 			})
 		})
 	})
