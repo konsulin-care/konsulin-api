@@ -2,7 +2,7 @@ package config
 
 type DriverConfig struct {
 	MongoDB    MongoDB    `mapstructure:"mongodb"`
-	PostgresDB PostgresDB `mapstructure:"postgresdb"`
+	PostgresDB PostgresDB `mapstructure:"postgres"`
 	Redis      Redis      `mapstructure:"redis"`
 	Logger     Logger     `mapstructure:"logger"`
 	RabbitMQ   RabbitMQ   `mapstructure:"rabbitmq"`

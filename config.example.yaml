@@ -52,7 +52,7 @@ internal_config:
     base_url:
 
 driver_config:
-  postgresdb:
+  postgres:
     port: 
     host: 
     username: 
