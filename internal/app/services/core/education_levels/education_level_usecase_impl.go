@@ -3,24 +3,24 @@ package educationLevels
 import (
 	"context"
 	"encoding/json"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/models"
-	"konsulin-service/internal/app/services/shared/redis"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
 )
 
 type educationLevelUsecase struct {
-	EducationLevelRepository EducationLevelRepository
-	RedisRepository          redis.RedisRepository
+	EducationLevelRepository contracts.EducationLevelRepository
+	RedisRepository          contracts.RedisRepository
 }
 
 func NewEducationLevelUsecase(
-	educationLevelMongoRepository EducationLevelRepository,
-	redisRepository redis.RedisRepository,
-) (EducationLevelUsecase, error) {
+	educationLevelPostgresRepository contracts.EducationLevelRepository,
+	redisRepository contracts.RedisRepository,
+) (contracts.EducationLevelUsecase, error) {
 	educationLevelUsecase := &educationLevelUsecase{
-		EducationLevelRepository: educationLevelMongoRepository,
+		EducationLevelRepository: educationLevelPostgresRepository,
 		RedisRepository:          redisRepository,
 	}
 

@@ -2,6 +2,7 @@ package genders
 
 import (
 	"context"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
@@ -15,7 +16,7 @@ type GenderMongoRepository struct {
 	Collection *mongo.Collection
 }
 
-func NewGenderMongoRepository(db *mongo.Client, dbName string) GenderRepository {
+func NewGenderMongoRepository(db *mongo.Client, dbName string) contracts.GenderRepository {
 	return &GenderMongoRepository{
 		Collection: db.Database(dbName).Collection(constvars.MongoCollectionGenders),
 	}

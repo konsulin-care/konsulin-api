@@ -1,12 +1,12 @@
 package controllers
 
-import "konsulin-service/internal/app/services/core/roles"
+import "konsulin-service/internal/app/contracts"
 
 type RoleController struct {
-	RoleUsecase roles.RoleUsecase
+	RoleUsecase contracts.RoleUsecase
 }
 
-func NewRoleController(roleUsecase roles.RoleUsecase) *RoleController {
+func NewRoleController(roleUsecase contracts.RoleUsecase) *RoleController {
 	return &RoleController{
 		RoleUsecase: roleUsecase,
 	}

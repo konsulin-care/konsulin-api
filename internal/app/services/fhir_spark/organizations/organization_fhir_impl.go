@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
@@ -15,7 +16,7 @@ type organizationFhirClient struct {
 	BaseUrl string
 }
 
-func NewOrganizationFhirClient(baseUrl string) OrganizationFhirClient {
+func NewOrganizationFhirClient(baseUrl string) contracts.OrganizationFhirClient {
 	return &organizationFhirClient{
 		BaseUrl: baseUrl + constvars.ResourceOrganization,
 	}

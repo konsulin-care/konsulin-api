@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
@@ -16,7 +17,7 @@ type questionnaireFhirClient struct {
 	BaseUrl string
 }
 
-func NewQuestionnaireFhirClient(baseUrl string) QuestionnaireFhirClient {
+func NewQuestionnaireFhirClient(baseUrl string) contracts.QuestionnaireFhirClient {
 	return &questionnaireFhirClient{
 		BaseUrl: baseUrl + constvars.ResourceQuestionnaire,
 	}

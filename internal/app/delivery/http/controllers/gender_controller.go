@@ -2,7 +2,7 @@ package controllers
 
 import (
 	"context"
-	"konsulin-service/internal/app/services/core/genders"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
@@ -14,10 +14,10 @@ import (
 
 type GenderController struct {
 	Log           *zap.Logger
-	GenderUsecase genders.GenderUsecase
+	GenderUsecase contracts.GenderUsecase
 }
 
-func NewGenderController(logger *zap.Logger, genderUsecase genders.GenderUsecase) *GenderController {
+func NewGenderController(logger *zap.Logger, genderUsecase contracts.GenderUsecase) *GenderController {
 	return &GenderController{
 		Log:           logger,
 		GenderUsecase: genderUsecase,

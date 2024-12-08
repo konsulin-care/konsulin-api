@@ -2,7 +2,7 @@ package controllers
 
 import (
 	"context"
-	"konsulin-service/internal/app/services/core/appointments"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
@@ -14,10 +14,10 @@ import (
 
 type AppointmentController struct {
 	Log                *zap.Logger
-	AppointmentUsecase appointments.AppointmentUsecase
+	AppointmentUsecase contracts.AppointmentUsecase
 }
 
-func NewAppointmentController(logger *zap.Logger, appointmentUsecase appointments.AppointmentUsecase) *AppointmentController {
+func NewAppointmentController(logger *zap.Logger, appointmentUsecase contracts.AppointmentUsecase) *AppointmentController {
 	return &AppointmentController{
 		Log:                logger,
 		AppointmentUsecase: appointmentUsecase,

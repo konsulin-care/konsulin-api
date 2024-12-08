@@ -2,6 +2,7 @@ package users
 
 import (
 	"context"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
@@ -12,21 +13,21 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-type UserMongoRepository struct {
+type userMongoRepository struct {
 	Collection *mongo.Collection
 }
 
-func NewUserMongoRepository(db *mongo.Client, dbName string) UserRepository {
-	return &UserMongoRepository{
+func NewUserMongoRepository(db *mongo.Client, dbName string) contracts.UserRepository {
+	return &userMongoRepository{
 		Collection: db.Database(dbName).Collection(constvars.MongoCollectionUsers),
 	}
 }
 
-func (repo *UserMongoRepository) GetClient(ctx context.Context) interface{} {
+func (repo *userMongoRepository) GetClient(ctx context.Context) interface{} {
 	return repo.Collection.Database().Client()
 }
 
-func (repo *UserMongoRepository) CreateUser(ctx context.Context, userModel *models.User) (userID string, err error) {
+func (repo *userMongoRepository) CreateUser(ctx context.Context, userModel *models.User) (userID string, err error) {
 	result, err := repo.Collection.InsertOne(ctx, userModel)
 	if err != nil {
 		return "", exceptions.ErrMongoDBInsertDocument(err)
@@ -34,7 +35,7 @@ func (repo *UserMongoRepository) CreateUser(ctx context.Context, userModel *mode
 	return result.InsertedID.(primitive.ObjectID).Hex(), nil
 }
 
-func (r *UserMongoRepository) FindByEmail(ctx context.Context, email string) (*models.User, error) {
+func (r *userMongoRepository) FindByEmail(ctx context.Context, email string) (*models.User, error) {
 	var user models.User
 	err := r.Collection.FindOne(ctx, bson.M{"email": email}).Decode(&user)
 	if err != nil {
@@ -46,7 +47,7 @@ func (r *UserMongoRepository) FindByEmail(ctx context.Context, email string) (*m
 	return &user, nil
 }
 
-func (r *UserMongoRepository) FindByWhatsAppNumber(ctx context.Context, whatsAppNumber string) (*models.User, error) {
+func (r *userMongoRepository) FindByWhatsAppNumber(ctx context.Context, whatsAppNumber string) (*models.User, error) {
 	var user models.User
 	err := r.Collection.FindOne(ctx, bson.M{"whatsAppNumber": whatsAppNumber}).Decode(&user)
 	if err != nil {
@@ -58,7 +59,7 @@ func (r *UserMongoRepository) FindByWhatsAppNumber(ctx context.Context, whatsApp
 	return &user, nil
 }
 
-func (r *UserMongoRepository) FindByUsername(ctx context.Context, username string) (*models.User, error) {
+func (r *userMongoRepository) FindByUsername(ctx context.Context, username string) (*models.User, error) {
 	var user models.User
 	err := r.Collection.FindOne(ctx, bson.M{"username": username}).Decode(&user)
 	if err != nil {
@@ -70,7 +71,7 @@ func (r *UserMongoRepository) FindByUsername(ctx context.Context, username strin
 	return &user, nil
 }
 
-func (r *UserMongoRepository) FindByEmailOrUsername(ctx context.Context, email, username string) (*models.User, error) {
+func (r *userMongoRepository) FindByEmailOrUsername(ctx context.Context, email, username string) (*models.User, error) {
 	var user models.User
 	filter := bson.M{
 		"$or": []bson.M{
@@ -89,7 +90,7 @@ func (r *UserMongoRepository) FindByEmailOrUsername(ctx context.Context, email, 
 	return &user, nil
 }
 
-func (r *UserMongoRepository) FindByID(ctx context.Context, userID string) (*models.User, error) {
+func (r *userMongoRepository) FindByID(ctx context.Context, userID string) (*models.User, error) {
 	var user models.User
 	objectID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
@@ -105,7 +106,7 @@ func (r *UserMongoRepository) FindByID(ctx context.Context, userID string) (*mod
 	return &user, nil
 }
 
-func (r *UserMongoRepository) UpdateUser(ctx context.Context, user *models.User) error {
+func (r *userMongoRepository) UpdateUser(ctx context.Context, user *models.User) error {
 	objectID, err := primitive.ObjectIDFromHex(user.ID)
 	if err != nil {
 		return exceptions.ErrMongoDBNotObjectID(err)
@@ -120,7 +121,7 @@ func (r *UserMongoRepository) UpdateUser(ctx context.Context, user *models.User)
 	return nil
 }
 
-func (r *UserMongoRepository) FindByResetToken(ctx context.Context, token string) (*models.User, error) {
+func (r *userMongoRepository) FindByResetToken(ctx context.Context, token string) (*models.User, error) {
 	var user models.User
 	filter := bson.M{"resetToken": token}
 	err := r.Collection.FindOne(ctx, filter).Decode(&user)
@@ -133,7 +134,7 @@ func (r *UserMongoRepository) FindByResetToken(ctx context.Context, token string
 	return &user, nil
 }
 
-func (r *UserMongoRepository) DeleteByID(ctx context.Context, userID string) error {
+func (r *userMongoRepository) DeleteByID(ctx context.Context, userID string) error {
 	objectID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
 		return exceptions.ErrMongoDBNotObjectID(err)

@@ -3,6 +3,7 @@ package whatsapp
 import (
 	"context"
 	"encoding/json"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/exceptions"
@@ -15,7 +16,7 @@ type whatsAppService struct {
 	Queue   string
 }
 
-func NewWhatsAppService(rabbitMQConnection *amqp091.Connection, queue string) (WhatsAppService, error) {
+func NewWhatsAppService(rabbitMQConnection *amqp091.Connection, queue string) (contracts.WhatsAppService, error) {
 	channel, err := rabbitMQConnection.Channel()
 	if err != nil {
 		return nil, err

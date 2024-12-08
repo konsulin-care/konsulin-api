@@ -3,11 +3,7 @@ package appointments
 import (
 	"context"
 	"errors"
-	"konsulin-service/internal/app/services/core/session"
-	fhir_appointments "konsulin-service/internal/app/services/fhir_spark/appointments"
-	"konsulin-service/internal/app/services/fhir_spark/patients"
-	"konsulin-service/internal/app/services/fhir_spark/practitioners"
-	"konsulin-service/internal/app/services/shared/redis"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
@@ -17,20 +13,20 @@ import (
 )
 
 type appointmentUsecase struct {
-	AppointmentFhirClient  fhir_appointments.AppointmentFhirClient
-	PatientFhirClient      patients.PatientFhirClient
-	PractitionerFhirClient practitioners.PractitionerFhirClient
-	RedisRepository        redis.RedisRepository
-	SessionService         session.SessionService
+	AppointmentFhirClient  contracts.AppointmentFhirClient
+	PatientFhirClient      contracts.PatientFhirClient
+	PractitionerFhirClient contracts.PractitionerFhirClient
+	RedisRepository        contracts.RedisRepository
+	SessionService         contracts.SessionService
 }
 
 func NewAppointmentUsecase(
-	appointmentFhirClient fhir_appointments.AppointmentFhirClient,
-	patientFhirClient patients.PatientFhirClient,
-	practitionerFhirClient practitioners.PractitionerFhirClient,
-	redisRepository redis.RedisRepository,
-	sessionService session.SessionService,
-) AppointmentUsecase {
+	appointmentFhirClient contracts.AppointmentFhirClient,
+	patientFhirClient contracts.PatientFhirClient,
+	practitionerFhirClient contracts.PractitionerFhirClient,
+	redisRepository contracts.RedisRepository,
+	sessionService contracts.SessionService,
+) contracts.AppointmentUsecase {
 	return &appointmentUsecase{
 		AppointmentFhirClient: appointmentFhirClient,
 		PatientFhirClient:     patientFhirClient,

@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"database/sql"
 	"log"
 
 	"github.com/go-chi/chi/v5"
@@ -15,6 +16,7 @@ import (
 type Bootstrap struct {
 	Router         *chi.Mux
 	MongoDB        *mongo.Client
+	PostgresDB     *sql.DB
 	Redis          *redis.Client
 	Logger         *zap.Logger
 	RabbitMQ       *amqp091.Connection
@@ -29,6 +31,13 @@ func (b *Bootstrap) Shutdown(ctx context.Context) error {
 		return err
 	}
 	log.Println("Successfully disconnected with MongoDB")
+
+	// Shutdown PostgresDB
+	err = b.PostgresDB.Close()
+	if err != nil {
+		return err
+	}
+	log.Println("Successfully closing PostgresDB connection")
 
 	// Shutdown Redis
 	err = b.Redis.Close()

@@ -52,6 +52,13 @@ internal_config:
     base_url:
 
 driver_config:
+  postgresdb:
+    port: 
+    host: 
+    username: 
+    password: 
+    dbname: 
+
   mongodb:
     port: 
     host: 

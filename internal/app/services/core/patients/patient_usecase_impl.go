@@ -4,13 +4,7 @@ import (
 	"context"
 	"fmt"
 	"konsulin-service/internal/app/config"
-	"konsulin-service/internal/app/services/core/session"
-	fhir_appointments "konsulin-service/internal/app/services/fhir_spark/appointments"
-	practitionerRoles "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
-	"konsulin-service/internal/app/services/fhir_spark/practitioners"
-	"konsulin-service/internal/app/services/fhir_spark/schedules"
-	"konsulin-service/internal/app/services/fhir_spark/slots"
-	"konsulin-service/internal/app/services/shared/payment_gateway"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
@@ -21,26 +15,26 @@ import (
 )
 
 type patientUsecase struct {
-	PractitionerFhirClient     practitioners.PractitionerFhirClient
-	PractitionerRoleFhirClient practitionerRoles.PractitionerRoleFhirClient
-	ScheduleFhirClient         schedules.ScheduleFhirClient
-	SlotFhirClient             slots.SlotFhirClient
-	AppointmentFhirClient      fhir_appointments.AppointmentFhirClient
-	SessionService             session.SessionService
-	OyService                  payment_gateway.PaymentGatewayService
+	PractitionerFhirClient     contracts.PractitionerFhirClient
+	PractitionerRoleFhirClient contracts.PractitionerRoleFhirClient
+	ScheduleFhirClient         contracts.ScheduleFhirClient
+	SlotFhirClient             contracts.SlotFhirClient
+	AppointmentFhirClient      contracts.AppointmentFhirClient
+	SessionService             contracts.SessionService
+	OyService                  contracts.PaymentGatewayService
 	InternalConfig             *config.InternalConfig
 }
 
 func NewPatientUsecase(
-	practitionerFhirClient practitioners.PractitionerFhirClient,
-	practitionerRoleFhirClient practitionerRoles.PractitionerRoleFhirClient,
-	scheduleFhirClient schedules.ScheduleFhirClient,
-	slotFhirClient slots.SlotFhirClient,
-	appointmentFhirClient fhir_appointments.AppointmentFhirClient,
-	sessionService session.SessionService,
-	oyService payment_gateway.PaymentGatewayService,
+	practitionerFhirClient contracts.PractitionerFhirClient,
+	practitionerRoleFhirClient contracts.PractitionerRoleFhirClient,
+	scheduleFhirClient contracts.ScheduleFhirClient,
+	slotFhirClient contracts.SlotFhirClient,
+	appointmentFhirClient contracts.AppointmentFhirClient,
+	sessionService contracts.SessionService,
+	oyService contracts.PaymentGatewayService,
 	internalConfig *config.InternalConfig,
-) PatientUsecase {
+) contracts.PatientUsecase {
 	return &patientUsecase{
 		PractitionerFhirClient:     practitionerFhirClient,
 		PractitionerRoleFhirClient: practitionerRoleFhirClient,

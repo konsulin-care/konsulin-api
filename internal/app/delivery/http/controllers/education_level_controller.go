@@ -2,7 +2,7 @@ package controllers
 
 import (
 	"context"
-	educationLevels "konsulin-service/internal/app/services/core/education_levels"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
@@ -14,10 +14,10 @@ import (
 
 type EducationLevelController struct {
 	Log                   *zap.Logger
-	EducationLevelUsecase educationLevels.EducationLevelUsecase
+	EducationLevelUsecase contracts.EducationLevelUsecase
 }
 
-func NewEducationLevelController(logger *zap.Logger, educationLevelUsecase educationLevels.EducationLevelUsecase) *EducationLevelController {
+func NewEducationLevelController(logger *zap.Logger, educationLevelUsecase contracts.EducationLevelUsecase) *EducationLevelController {
 	return &EducationLevelController{
 		Log:                   logger,
 		EducationLevelUsecase: educationLevelUsecase,

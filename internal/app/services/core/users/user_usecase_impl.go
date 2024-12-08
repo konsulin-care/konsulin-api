@@ -3,14 +3,8 @@ package users
 import (
 	"context"
 	"konsulin-service/internal/app/config"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/models"
-	"konsulin-service/internal/app/services/core/session"
-	"konsulin-service/internal/app/services/fhir_spark/organizations"
-	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
-	practitionerRoles "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
-	"konsulin-service/internal/app/services/fhir_spark/practitioners"
-	"konsulin-service/internal/app/services/shared/redis"
-	"konsulin-service/internal/app/services/shared/storage"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
@@ -21,28 +15,28 @@ import (
 )
 
 type userUsecase struct {
-	UserRepository             UserRepository
-	PatientFhirClient          patientsFhir.PatientFhirClient
-	PractitionerFhirClient     practitioners.PractitionerFhirClient
-	PractitionerRoleFhirClient practitionerRoles.PractitionerRoleFhirClient
-	OrganizationFhirClient     organizations.OrganizationFhirClient
-	RedisRepository            redis.RedisRepository
-	SessionService             session.SessionService
-	MinioStorage               storage.Storage
+	UserRepository             contracts.UserRepository
+	PatientFhirClient          contracts.PatientFhirClient
+	PractitionerFhirClient     contracts.PractitionerFhirClient
+	PractitionerRoleFhirClient contracts.PractitionerRoleFhirClient
+	OrganizationFhirClient     contracts.OrganizationFhirClient
+	RedisRepository            contracts.RedisRepository
+	SessionService             contracts.SessionService
+	MinioStorage               contracts.Storage
 	InternalConfig             *config.InternalConfig
 }
 
 func NewUserUsecase(
-	userMongoRepository UserRepository,
-	patientFhirClient patientsFhir.PatientFhirClient,
-	practitionerFhirClient practitioners.PractitionerFhirClient,
-	practitionerRoleFhirClient practitionerRoles.PractitionerRoleFhirClient,
-	organizationFhirClient organizations.OrganizationFhirClient,
-	redisRepository redis.RedisRepository,
-	sessionService session.SessionService,
-	minioStorage storage.Storage,
+	userMongoRepository contracts.UserRepository,
+	patientFhirClient contracts.PatientFhirClient,
+	practitionerFhirClient contracts.PractitionerFhirClient,
+	practitionerRoleFhirClient contracts.PractitionerRoleFhirClient,
+	organizationFhirClient contracts.OrganizationFhirClient,
+	redisRepository contracts.RedisRepository,
+	sessionService contracts.SessionService,
+	minioStorage contracts.Storage,
 	internalConfig *config.InternalConfig,
-) UserUsecase {
+) contracts.UserUsecase {
 	return &userUsecase{
 		UserRepository:             userMongoRepository,
 		PatientFhirClient:          patientFhirClient,

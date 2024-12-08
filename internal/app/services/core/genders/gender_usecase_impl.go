@@ -3,24 +3,24 @@ package genders
 import (
 	"context"
 	"encoding/json"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/models"
-	"konsulin-service/internal/app/services/shared/redis"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
 )
 
 type genderUsecase struct {
-	GenderRepository GenderRepository
-	RedisRepository  redis.RedisRepository
+	GenderRepository contracts.GenderRepository
+	RedisRepository  contracts.RedisRepository
 }
 
 func NewGenderUsecase(
-	genderMongoRepository GenderRepository,
-	redisRepository redis.RedisRepository,
-) (GenderUsecase, error) {
+	genderPostgresRepository contracts.GenderRepository,
+	redisRepository contracts.RedisRepository,
+) (contracts.GenderUsecase, error) {
 	genderUsecase := &genderUsecase{
-		GenderRepository: genderMongoRepository,
+		GenderRepository: genderPostgresRepository,
 		RedisRepository:  redisRepository,
 	}
 

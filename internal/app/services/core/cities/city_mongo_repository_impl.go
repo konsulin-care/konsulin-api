@@ -2,6 +2,7 @@ package cities
 
 import (
 	"context"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
@@ -11,17 +12,17 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-type CityMongoRepository struct {
+type cityMongoRepository struct {
 	Collection *mongo.Collection
 }
 
-func NewCityMongoRepository(db *mongo.Client, dbName string) CityRepository {
-	return &CityMongoRepository{
+func NewCityMongoRepository(db *mongo.Client, dbName string) contracts.CityRepository {
+	return &cityMongoRepository{
 		Collection: db.Database(dbName).Collection(constvars.MongoCollectionCities),
 	}
 }
 
-func (repo *CityMongoRepository) FindAll(ctx context.Context) ([]models.City, error) {
+func (repo *cityMongoRepository) FindAll(ctx context.Context) ([]models.City, error) {
 	var levels []models.City
 	cursor, err := repo.Collection.Find(ctx, bson.M{})
 	if err != nil {
@@ -34,7 +35,7 @@ func (repo *CityMongoRepository) FindAll(ctx context.Context) ([]models.City, er
 	return levels, nil
 }
 
-func (repo *CityMongoRepository) FindByID(ctx context.Context, cityID string) (*models.City, error) {
+func (repo *cityMongoRepository) FindByID(ctx context.Context, cityID string) (*models.City, error) {
 	var city models.City
 	objectID, err := primitive.ObjectIDFromHex(cityID)
 	if err != nil {

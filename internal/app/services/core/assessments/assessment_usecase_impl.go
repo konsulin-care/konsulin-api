@@ -2,18 +2,18 @@ package assessments
 
 import (
 	"context"
-	"konsulin-service/internal/app/services/fhir_spark/questionnaires"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/fhir_dto"
 )
 
 type assessmentUsecase struct {
-	QuestionnaireFhirClient questionnaires.QuestionnaireFhirClient
+	QuestionnaireFhirClient contracts.QuestionnaireFhirClient
 }
 
 func NewAssessmentUsecase(
-	questionnaireFhirClient questionnaires.QuestionnaireFhirClient,
-) AssessmentUsecase {
+	questionnaireFhirClient contracts.QuestionnaireFhirClient,
+) contracts.AssessmentUsecase {
 	return &assessmentUsecase{
 		QuestionnaireFhirClient: questionnaireFhirClient,
 	}

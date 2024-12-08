@@ -97,10 +97,10 @@ var (
 
 	// Mongo DB
 	ErrMongoDBFindDocument = func(err error) *CustomError {
-		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevDBFailedToFindDocument)
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToFindDocument)
 	}
 	ErrMongoDBDeleteDocument = func(err error) *CustomError {
-		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevDBFailedToDeleteDocument)
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToDeleteDocument)
 	}
 	ErrMongoDBIterateDocuments = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToIterateDocuments)
@@ -113,6 +113,23 @@ var (
 	}
 	ErrMongoDBInsertDocument = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToInsertDocument)
+	}
+
+	// Postgres DB
+	ErrPostgresDBFindData = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToFindData)
+	}
+	ErrPostgresDBDeleteData = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToDeleteData)
+	}
+	ErrPostgresDBIterateDataset = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToIterateDataset)
+	}
+	ErrPostgresDBUpdateData = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToUpdateData)
+	}
+	ErrPostgresDBInsertData = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToInsertData)
 	}
 
 	// Minio

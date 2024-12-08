@@ -4,13 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"konsulin-service/internal/app/services/core/session"
-	fhir_appointments "konsulin-service/internal/app/services/fhir_spark/appointments"
-	"konsulin-service/internal/app/services/fhir_spark/organizations"
-	practitionerRoles "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
-	"konsulin-service/internal/app/services/fhir_spark/practitioners"
-	"konsulin-service/internal/app/services/fhir_spark/schedules"
-	"konsulin-service/internal/app/services/fhir_spark/slots"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
@@ -23,24 +17,24 @@ import (
 )
 
 type clinicianUsecase struct {
-	PractitionerFhirClient     practitioners.PractitionerFhirClient
-	PractitionerRoleFhirClient practitionerRoles.PractitionerRoleFhirClient
-	OrganizationFhirClient     organizations.OrganizationFhirClient
-	ScheduleFhirClient         schedules.ScheduleFhirClient
-	SlotFhirClient             slots.SlotFhirClient
-	AppointmentFhirClient      fhir_appointments.AppointmentFhirClient
-	SessionService             session.SessionService
+	PractitionerFhirClient     contracts.PractitionerFhirClient
+	PractitionerRoleFhirClient contracts.PractitionerRoleFhirClient
+	OrganizationFhirClient     contracts.OrganizationFhirClient
+	ScheduleFhirClient         contracts.ScheduleFhirClient
+	SlotFhirClient             contracts.SlotFhirClient
+	AppointmentFhirClient      contracts.AppointmentFhirClient
+	SessionService             contracts.SessionService
 }
 
 func NewClinicianUsecase(
-	practitionerFhirClient practitioners.PractitionerFhirClient,
-	practitionerRoleFhirClient practitionerRoles.PractitionerRoleFhirClient,
-	organizationFhirClient organizations.OrganizationFhirClient,
-	scheduleFhirClient schedules.ScheduleFhirClient,
-	slotFhirClient slots.SlotFhirClient,
-	appointmentFhirClient fhir_appointments.AppointmentFhirClient,
-	sessionService session.SessionService,
-) ClinicianUsecase {
+	practitionerFhirClient contracts.PractitionerFhirClient,
+	practitionerRoleFhirClient contracts.PractitionerRoleFhirClient,
+	organizationFhirClient contracts.OrganizationFhirClient,
+	scheduleFhirClient contracts.ScheduleFhirClient,
+	slotFhirClient contracts.SlotFhirClient,
+	appointmentFhirClient contracts.AppointmentFhirClient,
+	sessionService contracts.SessionService,
+) contracts.ClinicianUsecase {
 	return &clinicianUsecase{
 		PractitionerFhirClient:     practitionerFhirClient,
 		PractitionerRoleFhirClient: practitionerRoleFhirClient,
