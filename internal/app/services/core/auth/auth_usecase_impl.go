@@ -5,18 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"konsulin-service/internal/app/config"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/models"
-	"konsulin-service/internal/app/services/core/roles"
-	"konsulin-service/internal/app/services/core/session"
-	"konsulin-service/internal/app/services/core/users"
-	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
-	practitionerRoles "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
-	"konsulin-service/internal/app/services/fhir_spark/practitioners"
-	questionnaireResponses "konsulin-service/internal/app/services/fhir_spark/questionnaires_responses"
-	"konsulin-service/internal/app/services/shared/mailer"
-	"konsulin-service/internal/app/services/shared/redis"
-	"konsulin-service/internal/app/services/shared/storage"
-	"konsulin-service/internal/app/services/shared/whatsapp"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
@@ -29,38 +19,38 @@ import (
 )
 
 type authUsecase struct {
-	UserRepository                  users.UserRepository
-	RedisRepository                 redis.RedisRepository
-	SessionService                  session.SessionService
-	RoleRepository                  roles.RoleRepository
-	PatientFhirClient               patientsFhir.PatientFhirClient
-	PractitionerFhirClient          practitioners.PractitionerFhirClient
-	PractitionerRoleFhirClient      practitionerRoles.PractitionerRoleFhirClient
-	QuestionnaireResponseFhirClient questionnaireResponses.QuestionnaireResponseFhirClient
-	MailerService                   mailer.MailerService
-	WhatsAppService                 whatsapp.WhatsAppService
-	MinioStorage                    storage.Storage
+	UserRepository                  contracts.UserRepository
+	RedisRepository                 contracts.RedisRepository
+	SessionService                  contracts.SessionService
+	RoleRepository                  contracts.RoleRepository
+	PatientFhirClient               contracts.PatientFhirClient
+	PractitionerFhirClient          contracts.PractitionerFhirClient
+	PractitionerRoleFhirClient      contracts.PractitionerRoleFhirClient
+	QuestionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient
+	MailerService                   contracts.MailerService
+	WhatsAppService                 contracts.WhatsAppService
+	MinioStorage                    contracts.Storage
 	InternalConfig                  *config.InternalConfig
 	Roles                           map[string]*models.Role
 	mu                              sync.RWMutex
 }
 
 func NewAuthUsecase(
-	userMongoRepository users.UserRepository,
-	redisRepository redis.RedisRepository,
-	sessionService session.SessionService,
-	rolesRepository roles.RoleRepository,
-	patientFhirClient patientsFhir.PatientFhirClient,
-	practitionerFhirClient practitioners.PractitionerFhirClient,
-	practitionerRoleFhirClient practitionerRoles.PractitionerRoleFhirClient,
-	questionnaireResponsesFhirClient questionnaireResponses.QuestionnaireResponseFhirClient,
-	mailerService mailer.MailerService,
-	whatsAppService whatsapp.WhatsAppService,
-	minioStorage storage.Storage,
+	userRepository contracts.UserRepository,
+	redisRepository contracts.RedisRepository,
+	sessionService contracts.SessionService,
+	rolesRepository contracts.RoleRepository,
+	patientFhirClient contracts.PatientFhirClient,
+	practitionerFhirClient contracts.PractitionerFhirClient,
+	practitionerRoleFhirClient contracts.PractitionerRoleFhirClient,
+	questionnaireResponsesFhirClient contracts.QuestionnaireResponseFhirClient,
+	mailerService contracts.MailerService,
+	whatsAppService contracts.WhatsAppService,
+	minioStorage contracts.Storage,
 	internalConfig *config.InternalConfig,
-) (AuthUsecase, error) {
+) (contracts.AuthUsecase, error) {
 	authUsecase := &authUsecase{
-		UserRepository:                  userMongoRepository,
+		UserRepository:                  userRepository,
 		RedisRepository:                 redisRepository,
 		SessionService:                  sessionService,
 		RoleRepository:                  rolesRepository,

@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/exceptions"
 
 	"time"
@@ -14,7 +15,7 @@ type redisRepository struct {
 	client *redis.Client
 }
 
-func NewRedisRepository(client *redis.Client) RedisRepository {
+func NewRedisRepository(client *redis.Client) contracts.RedisRepository {
 	return &redisRepository{client: client}
 }
 

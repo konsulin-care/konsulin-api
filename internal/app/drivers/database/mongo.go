@@ -25,7 +25,7 @@ func NewMongoDB(driverConfig *config.DriverConfig) *mongo.Client {
 	}
 	err = client.Ping(context.TODO(), nil)
 	if err != nil {
-		log.Fatalf("Failed to connect to mongo database: %s", err.Error())
+		log.Fatalf("Failed to ping or test the connection to mongo database: %s", err.Error())
 	}
 	log.Println("Successfully connected to mongo database")
 	return client

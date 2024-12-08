@@ -2,6 +2,7 @@ package educationLevels
 
 import (
 	"context"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
@@ -11,17 +12,17 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-type EducationLevelMongoRepository struct {
+type educationLevelMongoRepository struct {
 	Collection *mongo.Collection
 }
 
-func NewEducationLevelMongoRepository(db *mongo.Client, dbName string) EducationLevelRepository {
-	return &EducationLevelMongoRepository{
+func NewEducationLevelMongoRepository(db *mongo.Client, dbName string) contracts.EducationLevelRepository {
+	return &educationLevelMongoRepository{
 		Collection: db.Database(dbName).Collection(constvars.MongoCollectionEducationLevels),
 	}
 }
 
-func (repo *EducationLevelMongoRepository) FindAll(ctx context.Context) ([]models.EducationLevel, error) {
+func (repo *educationLevelMongoRepository) FindAll(ctx context.Context) ([]models.EducationLevel, error) {
 	var levels []models.EducationLevel
 	cursor, err := repo.Collection.Find(ctx, bson.M{})
 	if err != nil {
@@ -34,7 +35,7 @@ func (repo *EducationLevelMongoRepository) FindAll(ctx context.Context) ([]model
 	return levels, nil
 }
 
-func (repo *EducationLevelMongoRepository) FindByID(ctx context.Context, educationLevelID string) (*models.EducationLevel, error) {
+func (repo *educationLevelMongoRepository) FindByID(ctx context.Context, educationLevelID string) (*models.EducationLevel, error) {
 	var educationLevel models.EducationLevel
 	objectID, err := primitive.ObjectIDFromHex(educationLevelID)
 	if err != nil {
@@ -50,7 +51,7 @@ func (repo *EducationLevelMongoRepository) FindByID(ctx context.Context, educati
 	return &educationLevel, nil
 }
 
-func (repo *EducationLevelMongoRepository) FindByCode(ctx context.Context, educationLevelCode string) (*models.EducationLevel, error) {
+func (repo *educationLevelMongoRepository) FindByCode(ctx context.Context, educationLevelCode string) (*models.EducationLevel, error) {
 	var educationLevel models.EducationLevel
 	err := repo.Collection.FindOne(ctx, bson.M{"code": educationLevelCode}).Decode(&educationLevel)
 	if err != nil {

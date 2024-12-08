@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
@@ -16,7 +17,7 @@ type scheduleFhirClient struct {
 	BaseUrl string
 }
 
-func NewScheduleFhirClient(baseUrl string) ScheduleFhirClient {
+func NewScheduleFhirClient(baseUrl string) contracts.ScheduleFhirClient {
 	return &scheduleFhirClient{
 		BaseUrl: baseUrl + constvars.ResourceSchedule,
 	}

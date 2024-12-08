@@ -3,16 +3,16 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/models"
-	konsulinRedis "konsulin-service/internal/app/services/shared/redis"
 	"konsulin-service/internal/pkg/exceptions"
 )
 
 type sessionService struct {
-	RedisRepository konsulinRedis.RedisRepository
+	RedisRepository contracts.RedisRepository
 }
 
-func NewSessionService(redisRepository konsulinRedis.RedisRepository) SessionService {
+func NewSessionService(redisRepository contracts.RedisRepository) contracts.SessionService {
 	return &sessionService{
 		RedisRepository: redisRepository,
 	}

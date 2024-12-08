@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
@@ -16,7 +17,7 @@ type slotFhirClient struct {
 	BaseUrl string
 }
 
-func NewSlotFhirClient(baseUrl string) SlotFhirClient {
+func NewSlotFhirClient(baseUrl string) contracts.SlotFhirClient {
 	return &slotFhirClient{
 		BaseUrl: baseUrl + constvars.ResourceSlot,
 	}

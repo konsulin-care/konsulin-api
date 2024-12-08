@@ -3,11 +3,7 @@ package clinics
 import (
 	"context"
 	"konsulin-service/internal/app/config"
-	"konsulin-service/internal/app/services/fhir_spark/organizations"
-	practitionerRoles "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
-	"konsulin-service/internal/app/services/fhir_spark/practitioners"
-	"konsulin-service/internal/app/services/fhir_spark/schedules"
-	"konsulin-service/internal/app/services/shared/redis"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
@@ -17,22 +13,22 @@ import (
 )
 
 type clinicUsecase struct {
-	OrganizationFhirClient     organizations.OrganizationFhirClient
-	PractitionerRoleFhirClient practitionerRoles.PractitionerRoleFhirClient
-	PractitionerFhirClient     practitioners.PractitionerFhirClient
-	ScheduleFhirClient         schedules.ScheduleFhirClient
-	RedisRepository            redis.RedisRepository
+	OrganizationFhirClient     contracts.OrganizationFhirClient
+	PractitionerRoleFhirClient contracts.PractitionerRoleFhirClient
+	PractitionerFhirClient     contracts.PractitionerFhirClient
+	ScheduleFhirClient         contracts.ScheduleFhirClient
+	RedisRepository            contracts.RedisRepository
 	InternalConfig             *config.InternalConfig
 }
 
 func NewClinicUsecase(
-	organizationFhirClient organizations.OrganizationFhirClient,
-	practitionerRoleFhirClient practitionerRoles.PractitionerRoleFhirClient,
-	practitionerFhirClient practitioners.PractitionerFhirClient,
-	scheduleFhirClient schedules.ScheduleFhirClient,
-	redisRepository redis.RedisRepository,
+	organizationFhirClient contracts.OrganizationFhirClient,
+	practitionerRoleFhirClient contracts.PractitionerRoleFhirClient,
+	practitionerFhirClient contracts.PractitionerFhirClient,
+	scheduleFhirClient contracts.ScheduleFhirClient,
+	redisRepository contracts.RedisRepository,
 	internalConfig *config.InternalConfig,
-) ClinicUsecase {
+) contracts.ClinicUsecase {
 	return &clinicUsecase{
 		OrganizationFhirClient:     organizationFhirClient,
 		PractitionerFhirClient:     practitionerFhirClient,

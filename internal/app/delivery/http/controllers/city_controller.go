@@ -2,7 +2,7 @@ package controllers
 
 import (
 	"context"
-	"konsulin-service/internal/app/services/core/cities"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
@@ -14,10 +14,10 @@ import (
 
 type CityController struct {
 	Log         *zap.Logger
-	CityUsecase cities.CityUsecase
+	CityUsecase contracts.CityUsecase
 }
 
-func NewCityController(logger *zap.Logger, cityUsecase cities.CityUsecase) *CityController {
+func NewCityController(logger *zap.Logger, cityUsecase contracts.CityUsecase) *CityController {
 	return &CityController{
 		Log:         logger,
 		CityUsecase: cityUsecase,

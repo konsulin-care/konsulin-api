@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/exceptions"
 	"mime"
 	"mime/multipart"
@@ -18,7 +19,7 @@ type minioStorage struct {
 	MinioClient *minio.Client
 }
 
-func NewMinioStorage(minioClient *minio.Client) Storage {
+func NewMinioStorage(minioClient *minio.Client) contracts.Storage {
 	return &minioStorage{
 		MinioClient: minioClient,
 	}

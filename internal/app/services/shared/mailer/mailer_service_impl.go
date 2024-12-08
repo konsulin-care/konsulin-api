@@ -3,6 +3,7 @@ package mailer
 import (
 	"context"
 	"encoding/json"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/exceptions"
@@ -16,7 +17,7 @@ type mailerService struct {
 	Queue   string
 }
 
-func NewMailerService(rabbitMQConnection *amqp091.Connection, queue string) (MailerService, error) {
+func NewMailerService(rabbitMQConnection *amqp091.Connection, queue string) (contracts.MailerService, error) {
 	channel, err := rabbitMQConnection.Channel()
 	if err != nil {
 		return nil, err

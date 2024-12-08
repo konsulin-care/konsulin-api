@@ -75,7 +75,8 @@ driver_config:
     port: {{ driver_config.postgres.port | default('') }}
     username: {{ driver_config.postgres.username | default('') }}
     password: {{ driver_config.postgres.password | default('') }}
-
+    dbname: {{ driver_config.postgres.dbname | default('') }}
+    
   kafka:
     host: {{ driver_config.kafka.host | default('') }}
     password: {{ driver_config.kafka.password | default('') }}

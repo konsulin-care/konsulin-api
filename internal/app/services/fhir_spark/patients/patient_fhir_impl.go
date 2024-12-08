@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
@@ -16,7 +17,7 @@ type patientFhirClient struct {
 	BaseUrl string
 }
 
-func NewPatientFhirClient(baseUrl string) PatientFhirClient {
+func NewPatientFhirClient(baseUrl string) contracts.PatientFhirClient {
 	return &patientFhirClient{
 		BaseUrl: baseUrl + constvars.ResourcePatient,
 	}

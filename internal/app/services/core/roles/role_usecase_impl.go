@@ -1,12 +1,14 @@
 package roles
 
+import "konsulin-service/internal/app/contracts"
+
 type roleUsecase struct {
-	RoleRepository RoleRepository
+	RoleRepository contracts.RoleRepository
 }
 
 func NewRoleUsecase(
-	roleMongoRepository RoleRepository,
-) RoleUsecase {
+	roleMongoRepository contracts.RoleRepository,
+) contracts.RoleUsecase {
 	return &roleUsecase{
 		RoleRepository: roleMongoRepository,
 	}

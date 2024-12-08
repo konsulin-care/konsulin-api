@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"konsulin-service/cmd/migration"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/delivery/http/controllers"
 	"konsulin-service/internal/app/delivery/http/middlewares"
@@ -75,6 +76,11 @@ func main() {
 	// Initialize MongoDB connection
 	mongoDB := database.NewMongoDB(driverConfig)
 
+	// Initialize MongoDB connection
+	postgresDB := database.NewPostgresDB(driverConfig)
+
+	migration.Run(postgresDB)
+
 	// Initialize Redis connection
 	redis := database.NewRedisClient(driverConfig)
 
@@ -91,6 +97,7 @@ func main() {
 	bootstrap := config.Bootstrap{
 		Router:         chiRouter,
 		MongoDB:        mongoDB,
+		PostgresDB:     postgresDB,
 		Redis:          redis,
 		Logger:         logger,
 		Minio:          minio,
@@ -202,28 +209,28 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	questionnaireResponseFhirClient := questionnaireResponsesFhir.NewQuestionnaireResponseFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
 
 	// Initialize Users dependencies
-	userMongoRepository := users.NewUserMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
-	userUseCase := users.NewUserUsecase(userMongoRepository, patientFhirClient, practitionerFhirClient, practitionerRoleFhirClient, organizationFhirClient, redisRepository, sessionService, minioStorage, bootstrap.InternalConfig)
+	userPostgresRepository := users.NewUserPostgresRepository(bootstrap.PostgresDB)
+	userUseCase := users.NewUserUsecase(userPostgresRepository, patientFhirClient, practitionerFhirClient, practitionerRoleFhirClient, organizationFhirClient, redisRepository, sessionService, minioStorage, bootstrap.InternalConfig)
 	userController := controllers.NewUserController(bootstrap.Logger, userUseCase, bootstrap.InternalConfig)
 
 	// Initialize Education Level dependencies
-	educationLevelMongoRepository := educationLevels.NewEducationLevelMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
-	educationLevelUseCase, err := educationLevels.NewEducationLevelUsecase(educationLevelMongoRepository, redisRepository)
+	educationLevelPostgresRepository := educationLevels.NewEducationLevelPostgresRepository(bootstrap.PostgresDB)
+	educationLevelUseCase, err := educationLevels.NewEducationLevelUsecase(educationLevelPostgresRepository, redisRepository)
 	if err != nil {
 		return err
 	}
 	educationLevelController := controllers.NewEducationLevelController(bootstrap.Logger, educationLevelUseCase)
 
 	// Initialize Gender dependencies
-	genderMongoRepository := genders.NewGenderMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
-	genderUseCase, err := genders.NewGenderUsecase(genderMongoRepository, redisRepository)
+	genderPostgresRepository := genders.NewGenderPostgresRepository(bootstrap.PostgresDB)
+	genderUseCase, err := genders.NewGenderUsecase(genderPostgresRepository, redisRepository)
 	if err != nil {
 		return err
 	}
 	genderController := controllers.NewGenderController(bootstrap.Logger, genderUseCase)
 
 	// Initialize Role repository with MongoDB
-	roleMongoRepository := roles.NewRoleMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
+	rolePostgresRepository := roles.NewRolePostgresRepository(bootstrap.PostgresDB)
 
 	// Initialize Clinic dependencies
 	clinicUsecase := clinics.NewClinicUsecase(organizationFhirClient, practitionerRoleFhirClient, practitionerFhirClient, scheduleFhirClient, redisRepository, bootstrap.InternalConfig)
@@ -251,10 +258,10 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 
 	// Initialize Auth usecase with dependencies
 	authUseCase, err := auth.NewAuthUsecase(
-		userMongoRepository,
+		userPostgresRepository,
 		redisRepository,
 		sessionService,
-		roleMongoRepository,
+		rolePostgresRepository,
 		patientFhirClient,
 		practitionerFhirClient,
 		practitionerRoleFhirClient,
@@ -270,8 +277,8 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	authController := controllers.NewAuthController(bootstrap.Logger, authUseCase)
 
 	// Initialize Education Level dependencies
-	cityMongoRepository := cities.NewCityMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
-	cityUseCase, err := cities.NewCityUsecase(cityMongoRepository, redisRepository)
+	cityPostgresRepository := cities.NewCityPostgresRepository(bootstrap.PostgresDB)
+	cityUseCase, err := cities.NewCityUsecase(cityPostgresRepository, redisRepository)
 	if err != nil {
 		return err
 	}

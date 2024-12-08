@@ -3,8 +3,8 @@ package cities
 import (
 	"context"
 	"encoding/json"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/models"
-	"konsulin-service/internal/app/services/shared/redis"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
@@ -13,16 +13,16 @@ import (
 )
 
 type cityUsecase struct {
-	CityRepository  CityRepository
-	RedisRepository redis.RedisRepository
+	CityRepository  contracts.CityRepository
+	RedisRepository contracts.RedisRepository
 }
 
 func NewCityUsecase(
-	cityMongoRepository CityRepository,
-	redisRepository redis.RedisRepository,
-) (CityUsecase, error) {
+	cityPostgresRepository contracts.CityRepository,
+	redisRepository contracts.RedisRepository,
+) (contracts.CityUsecase, error) {
 	cityUsecase := &cityUsecase{
-		CityRepository:  cityMongoRepository,
+		CityRepository:  cityPostgresRepository,
 		RedisRepository: redisRepository,
 	}
 

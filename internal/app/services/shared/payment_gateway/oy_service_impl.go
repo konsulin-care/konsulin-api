@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"konsulin-service/internal/app/config"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
@@ -19,7 +20,7 @@ type oyService struct {
 	ApiKey   string
 }
 
-func NewOyService(internalConfig *config.InternalConfig) (PaymentGatewayService, error) {
+func NewOyService(internalConfig *config.InternalConfig) (contracts.PaymentGatewayService, error) {
 	return &oyService{
 		BaseUrl:  internalConfig.PaymentGateway.BaseUrl,
 		Username: internalConfig.PaymentGateway.Username,

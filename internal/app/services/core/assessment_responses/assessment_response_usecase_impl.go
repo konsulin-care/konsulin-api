@@ -4,10 +4,7 @@ import (
 	"context"
 	"fmt"
 	"konsulin-service/internal/app/config"
-	patientFhir "konsulin-service/internal/app/services/fhir_spark/patients"
-	"konsulin-service/internal/app/services/fhir_spark/questionnaires"
-	questionnaireResponses "konsulin-service/internal/app/services/fhir_spark/questionnaires_responses"
-	"konsulin-service/internal/app/services/shared/redis"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
@@ -21,20 +18,20 @@ import (
 )
 
 type assessmentResponseUsecase struct {
-	QuestionnaireResponseFhirClient questionnaireResponses.QuestionnaireResponseFhirClient
-	QuestionnaireFhirClient         questionnaires.QuestionnaireFhirClient
-	PatientFhirClient               patientFhir.PatientFhirClient
-	RedisRepository                 redis.RedisRepository
+	QuestionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient
+	QuestionnaireFhirClient         contracts.QuestionnaireFhirClient
+	PatientFhirClient               contracts.PatientFhirClient
+	RedisRepository                 contracts.RedisRepository
 	InternalConfig                  *config.InternalConfig
 }
 
 func NewAssessmentResponseUsecase(
-	questionnaireResponseFhirClient questionnaireResponses.QuestionnaireResponseFhirClient,
-	questionnaireFhirClient questionnaires.QuestionnaireFhirClient,
-	patientFhirClient patientFhir.PatientFhirClient,
-	redisRepository redis.RedisRepository,
+	questionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient,
+	questionnaireFhirClient contracts.QuestionnaireFhirClient,
+	patientFhirClient contracts.PatientFhirClient,
+	redisRepository contracts.RedisRepository,
 	internalConfig *config.InternalConfig,
-) AssessmentResponseUsecase {
+) contracts.AssessmentResponseUsecase {
 	return &assessmentResponseUsecase{
 		QuestionnaireResponseFhirClient: questionnaireResponseFhirClient,
 		QuestionnaireFhirClient:         questionnaireFhirClient,

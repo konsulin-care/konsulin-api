@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/exceptions"
@@ -18,7 +19,7 @@ type appointmentFhirClient struct {
 	BaseUrl string
 }
 
-func NewAppointmentFhirClient(baseUrl string) AppointmentFhirClient {
+func NewAppointmentFhirClient(baseUrl string) contracts.AppointmentFhirClient {
 	return &appointmentFhirClient{
 		BaseUrl: baseUrl + constvars.ResourceAppointment,
 	}

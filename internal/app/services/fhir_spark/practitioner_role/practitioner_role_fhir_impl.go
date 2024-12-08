@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/exceptions"
@@ -21,7 +22,7 @@ type practitionerRoleFhirClient struct {
 	BaseUrl     string
 }
 
-func NewPractitionerRoleFhirClient(baseUrl string) PractitionerRoleFhirClient {
+func NewPractitionerRoleFhirClient(baseUrl string) contracts.PractitionerRoleFhirClient {
 	return &practitionerRoleFhirClient{
 		BaseFhirUrl: baseUrl,
 		BaseUrl:     baseUrl + constvars.ResourcePractitionerRole,

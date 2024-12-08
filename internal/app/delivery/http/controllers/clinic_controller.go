@@ -2,7 +2,7 @@ package controllers
 
 import (
 	"context"
-	"konsulin-service/internal/app/services/core/clinics"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/exceptions"
@@ -17,10 +17,10 @@ import (
 
 type ClinicController struct {
 	Log           *zap.Logger
-	ClinicUsecase clinics.ClinicUsecase
+	ClinicUsecase contracts.ClinicUsecase
 }
 
-func NewClinicController(logger *zap.Logger, clinicUsecase clinics.ClinicUsecase) *ClinicController {
+func NewClinicController(logger *zap.Logger, clinicUsecase contracts.ClinicUsecase) *ClinicController {
 	return &ClinicController{
 		Log:           logger,
 		ClinicUsecase: clinicUsecase,
