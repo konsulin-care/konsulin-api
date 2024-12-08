@@ -47,7 +47,7 @@
         questionnaire_guest_response_response_expired_time_in_minutes: 10
 
       fhir:
-        base_url: "https://blaze.konsulin.care"
+        base_url: "https://blaze.konsulin.care/fhir/"
 
       jwt:
         secret: !vault |
