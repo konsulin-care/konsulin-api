@@ -16,7 +16,7 @@ func Run(db *sql.DB) {
 	}
 
 	migrations := &migrate.FileMigrationSource{
-		Dir: filepath.Join(wd, "migration"),
+		Dir: filepath.Join(wd, "internal/migration"),
 	}
 
 	n, err := migrate.Exec(db, "postgres", migrations, migrate.Up)
