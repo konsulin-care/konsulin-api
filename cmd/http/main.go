@@ -74,9 +74,6 @@ func main() {
 	log.Printf("Successfully set time base to %s", internalConfig.App.Timezone)
 
 	// Initialize MongoDB connection
-	mongoDB := database.NewMongoDB(driverConfig)
-
-	// Initialize MongoDB connection
 	postgresDB := database.NewPostgresDB(driverConfig)
 
 	migration.Run(postgresDB)
@@ -96,7 +93,6 @@ func main() {
 	// Bundle all initialized components into a Bootstrap struct
 	bootstrap := config.Bootstrap{
 		Router:         chiRouter,
-		MongoDB:        mongoDB,
 		PostgresDB:     postgresDB,
 		Redis:          redis,
 		Logger:         logger,
