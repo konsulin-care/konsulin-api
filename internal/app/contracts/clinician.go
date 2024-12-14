@@ -7,7 +7,6 @@ import (
 )
 
 type ClinicianUsecase interface {
-	CreateAppointment(ctx context.Context, sessionData string, request *requests.CreateAppointmentRequest) error
 	CreatePracticeInformation(ctx context.Context, sessionData string, request *requests.CreatePracticeInformation) ([]responses.PracticeInformation, error)
 	CreatePracticeAvailability(ctx context.Context, sessionData string, request *requests.CreatePracticeAvailability) ([]responses.PracticeAvailability, error)
 	DeleteClinicByID(ctx context.Context, sessionData string, clinicID string) error

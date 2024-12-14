@@ -42,7 +42,7 @@ func FormatFirstValidationError(err error) string {
 		fieldName := strings.ToLower(firstErr.Field())
 		tag := firstErr.Tag()
 		customMessage, ok := constvars.CustomValidationErrorMessages[tag]
-		if tag == "phone_number" {
+		if tag == "phone_number" || tag == "not_past_date" || tag == "not_past_time" {
 			return customMessage
 		}
 		if !ok {

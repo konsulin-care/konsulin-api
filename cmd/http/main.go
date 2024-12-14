@@ -22,6 +22,7 @@ import (
 	educationLevels "konsulin-service/internal/app/services/core/education_levels"
 	"konsulin-service/internal/app/services/core/genders"
 	"konsulin-service/internal/app/services/core/patients"
+	"konsulin-service/internal/app/services/core/payments"
 	"konsulin-service/internal/app/services/core/roles"
 	"konsulin-service/internal/app/services/core/session"
 	"konsulin-service/internal/app/services/core/users"
@@ -249,7 +250,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	assessmentResponseController := controllers.NewAssessmentResponseController(bootstrap.Logger, assessmentResponseUsecase)
 
 	// Initialize Assessment Response dependencies
-	appointmentUsecase := appointments.NewAppointmentUsecase(appointmentFhirClient, patientFhirClient, practitionerFhirClient, redisRepository, sessionService)
+	appointmentUsecase := appointments.NewAppointmentUsecase(clinicianUsecase, appointmentFhirClient, patientFhirClient, practitionerFhirClient, slotFhirClient, redisRepository, sessionService, oyService, bootstrap.InternalConfig)
 	appointmentController := controllers.NewAppointmentController(bootstrap.Logger, appointmentUsecase)
 
 	// Initialize Auth usecase with dependencies
@@ -280,7 +281,8 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	}
 	cityController := controllers.NewCityController(bootstrap.Logger, cityUseCase)
 
-	paymentController := controllers.NewPaymentController(bootstrap.Logger)
+	paymentUsecase := payments.NewPaymentUsecase(appointmentFhirClient, bootstrap.InternalConfig)
+	paymentController := controllers.NewPaymentController(bootstrap.Logger, paymentUsecase)
 
 	// Initialize middlewares with logger, session service, and auth usecase
 	middlewares := middlewares.NewMiddlewares(bootstrap.Logger, sessionService, authUseCase, bootstrap.InternalConfig)

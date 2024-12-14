@@ -89,45 +89,6 @@ func (uc *clinicianUsecase) DeleteClinicByID(ctx context.Context, sessionData, c
 	return nil
 }
 
-func (uc *clinicianUsecase) CreateAppointment(ctx context.Context, sessionData string, request *requests.CreateAppointmentRequest) error {
-	// // Parse session data
-	// session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// // Parse the date and time
-	// appointmentStartTime, err := time.Parse("2006-01-02 15:04", fmt.Sprintf("%s %s", request.Date, request.Time))
-	// if err != nil {
-	// 	return exceptions.ErrCannotParseDate(err)
-	// }
-
-	// var appointmentsToBook []*fhir_dto.Appointment
-	// for i := 0; i < request.NumberOfSessions; i++ {
-	// 	startTime := appointmentStartTime.Add(time.Duration(i) * 30 * time.Minute)
-	// 	endTime := startTime.Add(30 * time.Minute)
-
-	// 	// Check if the appointment is available
-	// 	isAvailable, err := uc.practitionerRoleRepo.CheckClinicianAvailability(request.ClinicianId, startTime, endTime)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	if !isAvailable {
-	// 		return exceptions.ErrClientCustomMessage(fmt.Errorf("clinician is not available from %s to %s", startTime.Format("15:04"), endTime.Format("15:04")))
-	// 	}
-
-	// 	// Generate the appointment on demand
-	// 	appointment, err := uc.practitionerRoleRepo.GenerateAppointmentOnDemand(request.ClinicianId, startTime.Format("2006-01-02"), startTime.Format("15:04"), endTime)
-	// 	if err != nil {
-	// 		return exceptions.ErrClientCustomMessage(fmt.Errorf("error generating appointment: %w", err))
-	// 	}
-
-	// 	appointmentsToBook = append(appointmentsToBook, appointment)
-	// }
-
-	return nil
-}
-
 func (uc *clinicianUsecase) CreatePracticeInformation(ctx context.Context, sessionData string, request *requests.CreatePracticeInformation) ([]responses.PracticeInformation, error) {
 	// Parse session data
 	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)

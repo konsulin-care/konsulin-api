@@ -21,3 +21,7 @@ const (
 const (
 	WHATSAPP_OTP_LENGTH = 6
 )
+
+const (
+	TIME_DIFFERENCE_JAKARTA = 7
+)
