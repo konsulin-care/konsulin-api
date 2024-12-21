@@ -3,6 +3,7 @@ package constvars
 // Validation messages mapper
 var CustomValidationErrorMessages = map[string]string{
 	"required":             "is required",
+	"username":             "must only contain letters, numbers, underscores, or dots",
 	"email":                "must be a valid email",
 	"alphanum":             "must contain only alphanumeric characters",
 	"min":                  "must be at least %s characters long",

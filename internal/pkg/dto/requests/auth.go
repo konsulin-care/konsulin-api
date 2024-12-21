@@ -3,14 +3,14 @@ package requests
 type RegisterUser struct {
 	ResponseID     string `json:"response_id"`
 	Email          string `json:"email" validate:"required,email"`
-	Username       string `json:"username" validate:"required,alphanum,min=8,max=15"`
+	Username       string `json:"username" validate:"required,username,min=8,max=15"`
 	Password       string `json:"password" validate:"password"`
 	RetypePassword string `json:"retype_password"`
 }
 
 type LoginUser struct {
 	ResponseID string `json:"response_id"`
-	Username   string `json:"username" validate:"required,alphanum,min=8"`
+	Username   string `json:"username" validate:"required,username,min=8"`
 	Password   string `json:"password" validate:"required,min=8"`
 }
 
