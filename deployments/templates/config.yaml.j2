@@ -11,9 +11,12 @@ internal_config:
     max_requests: {{ internal_config.app.max_requests | default('') }}
     shutdown_timeout_in_seconds: {{ internal_config.app.shutdown_timeout_in_seconds | default('') }}
     max_time_requests_per_seconds: {{ internal_config.app.max_time_requests_per_seconds | default('') }}
+    session_multiplier_in_minutes: {{ internal_config.app.session_multiplier_in_minutes | default('') }}
     request_body_limit_in_megabyte: {{ internal_config.app.request_body_limit_in_megabyte | default('') }}
+    payment_expired_time_in_minutes: {{ internal_config.app.payment_expired_time_in_minutes | default('') }}
     account_deactivation_age_in_days: {{ internal_config.app.account_deactivation_age_in_days | default('') }}
     login_session_expired_time_in_hours: {{ internal_config.app.login_session_expired_time_in_hours | default('') }}
+    whatsapp_otp_expired_time_in_minutes: {{ internal_config.app.whatsapp_otp_expired_time_in_minutes | default('') }}
     forgot_password_token_expired_time_in_minutes: {{ internal_config.app.forgot_password_token_expired_time_in_minutes | default('') }}
     minio_pre_signed_url_object_expiry_time_in_hours: {{ internal_config.app.minio_pre_signed_url_object_expiry_time_in_hours | default('') }}
     questionnaire_guest_response_response_expired_time_in_minutes: {{ internal_config.app.questionnaire_guest_response_response_expired_time_in_minutes | default('') }}
@@ -46,6 +49,17 @@ driver_config:
     host: {{ driver_config.mongodb.host | default('') }}
     username: {{ driver_config.mongodb.username | default('') }}
     password: {{ driver_config.mongodb.password | default('') }}
+  
+  konsulin:
+    bank_code: {{ driver_config.konsulin.bank_code | default('') }}
+    bank_account_number: {{ driver_config.konsulin.bank_account_number | default('') }}
+    finance_email: {{ driver_config.konsulin.finance_email | default('') }}
+    payment_display_name: {{ driver_config.konsulin.payment_display_name | default('') }}
+  
+  payment_gateway:
+    username: {{ driver_config.konsulin.username | default('') }}
+    api_key: {{ driver_config.konsulin.api_key | default('') }}
+    base_url: {{ driver_config.konsulin.base_url | default('') }}
 
   redis:
     host: {{ driver_config.redis.host | default('') }}

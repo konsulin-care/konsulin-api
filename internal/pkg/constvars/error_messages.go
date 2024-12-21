@@ -31,6 +31,8 @@ var CustomValidationErrorMessages = map[string]string{
 	"required_without_all": "is required when none of [%s] are present",
 	"user_type":            "must be either 'practitioner' or 'patient'",
 	"phone_number":         "phone number given is not valid",
+	"not_past_date":        "the date must not be in the past",
+	"not_past_time":        "the time must not be in the past for today's date.",
 }
 
 // Tags that require parameter substitution

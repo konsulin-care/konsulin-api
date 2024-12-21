@@ -2,6 +2,54 @@ package fhir_dto
 
 import "time"
 
+type Range struct {
+	ID        string      `json:"id,omitempty"`
+	Extension []Extension `json:"extension,omitempty"`
+	Low       *Quantity   `json:"low,omitempty"`
+	High      *Quantity   `json:"high,omitempty"`
+}
+type Duration struct {
+	ID         string      `json:"id,omitempty"`
+	Extension  []Extension `json:"extension,omitempty"`
+	Value      *float64    `json:"value,omitempty"`
+	Comparator string      `json:"comparator,omitempty"`
+	Unit       string      `json:"unit,omitempty"`
+	System     string      `json:"system,omitempty"`
+	Code       string      `json:"code,omitempty"`
+}
+type Timing struct {
+	Event  []string         `json:"event,omitempty"`
+	Repeat *TimingRepeat    `json:"repeat,omitempty"`
+	Code   *CodeableConcept `json:"code,omitempty"`
+}
+
+type TimingRepeat struct {
+	BoundsDuration *Duration `json:"boundsDuration,omitempty"`
+	BoundsRange    *Range    `json:"boundsRange,omitempty"`
+	BoundsPeriod   *Period   `json:"boundsPeriod,omitempty"`
+	Count          *int      `json:"count,omitempty"`
+	CountMax       *int      `json:"countMax,omitempty"`
+	Duration       *float64  `json:"duration,omitempty"`
+	DurationMax    *float64  `json:"durationMax,omitempty"`
+	DurationUnit   string    `json:"durationUnit,omitempty"`
+	Frequency      *int      `json:"frequency,omitempty"`
+	FrequencyMax   *int      `json:"frequencyMax,omitempty"`
+	Period         *float64  `json:"period,omitempty"`
+	PeriodMax      *float64  `json:"periodMax,omitempty"`
+	PeriodUnit     string    `json:"periodUnit,omitempty"`
+	DayOfWeek      []string  `json:"dayOfWeek,omitempty"`
+	TimeOfDay      []string  `json:"timeOfDay,omitempty"`
+	When           []string  `json:"when,omitempty"`
+	Offset         *int      `json:"offset,omitempty"`
+}
+
+type Annotation struct {
+	AuthorReference *Reference `json:"authorReference,omitempty"`
+	AuthorString    string     `json:"authorString,omitempty"`
+	Time            string     `json:"time,omitempty"`
+	Text            string     `json:"text" validate:"required"`
+}
+
 type Reference struct {
 	Reference  string     `json:"reference,omitempty" bson:"reference,omitempty"`
 	Type       string     `json:"type,omitempty" bson:"type,omitempty"`

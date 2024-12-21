@@ -24,7 +24,9 @@ type App struct {
 	MaxRequests                                    int    `mapstructure:"max_requests"`
 	ShutdownTimeoutInSeconds                       int    `mapstructure:"shutdown_timeout_in_seconds"`
 	MaxTimeRequestsPerSeconds                      int    `mapstructure:"max_time_requests_per_seconds"`
+	SessionMultiplierInMinutes                     int    `mapstructure:"session_multiplier_in_minutes"`
 	RequestBodyLimitInMegabyte                     int    `mapstructure:"request_body_limit_in_megabyte"`
+	PaymentExpiredTimeInMinutes                    int    `mapstructure:"payment_expired_time_in_minutes"`
 	AccountDeactivationAgeInDays                   int    `mapstructure:"account_deactivation_age_in_days"`
 	LoginSessionExpiredTimeInHours                 int    `mapstructure:"login_session_expired_time_in_hours"`
 	WhatsAppOTPExpiredTimeInMinutes                int    `mapstructure:"whatsapp_otp_expired_time_in_minutes"`

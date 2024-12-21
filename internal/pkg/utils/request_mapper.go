@@ -10,6 +10,7 @@ func MapPaymentRequestToDTO(req *requests.PaymentRequest) *requests.PaymentReque
 		PartnerUserID:           req.PartnerUserID,
 		UseLinkedAccount:        req.UseLinkedAccount,
 		PartnerTransactionID:    req.PartnerTransactionID,
+		PaymentExpirationTime:   req.PaymentExpirationTime,
 		NeedFrontend:            req.NeedFrontend,
 		SenderEmail:             req.SenderEmail,
 		ReceiveAmount:           req.ReceiveAmount,

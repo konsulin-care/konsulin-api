@@ -12,6 +12,8 @@ type Appointment struct {
 	AppointmentTime time.Time `json:"appointment_time,omitempty"`
 	Description     string    `json:"description,omitempty"`
 	MinutesDuration uint      `json:"minutes_duration,omitempty"`
+	PaymentStatus   string    `json:"payment_status,omitempty"`
+	PaymentLink     string    `json:"payment_link"`
 }
 
 type CreateAppointment struct {

@@ -14,6 +14,7 @@ const (
 	ResourceImmunization          = "Immunization"
 	ResourceAppointment           = "Appointment"
 	ResourceCarePlan              = "CarePlan"
+	ResourceChargeItemDefinition  = "ChargeItemDefinition"
 	ResourceDiagnosticReport      = "DiagnosticReport"
 	ResourcePractitionerRole      = "PractitionerRole"
 	ResourcePractitioner          = "Practitioner"
@@ -37,6 +38,14 @@ const (
 )
 
 const (
+	FhirMonetaryComponentStatusBase          = "base"
+	FhirMonetaryComponentStatusSurcharge     = "surcharge"
+	FhirMonetaryComponentStatusDiscount      = "discount"
+	FhirMonetaryComponentStatusTax           = "tax"
+	FhirMonetaryComponentStatusInformational = "informational"
+)
+
+const (
 	FhirAppointmentStatusBooked    = "booked"
 	FhirAppointmentStatusProposed  = "proposed"
 	FhirAppointmentStatusPending   = "pending"
@@ -50,6 +59,13 @@ const (
 	FhirParticipantStatusDeclined    = "declined"
 	FhirParticipantStatusTentative   = "tentative"
 	FhirParticipantStatusNeedsAction = "needs-action"
+)
+
+const (
+	FhirChargeItemDefinitionStatusActive  = "active"
+	FhirChargeItemDefinitionStatusDraft   = "draft"
+	FhirChargeItemDefinitionStatusRetired = "retired"
+	FhirChargeItemDefinitionStatusUnknown = "unknown"
 )
 
 const (

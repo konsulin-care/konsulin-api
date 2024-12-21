@@ -92,6 +92,47 @@ func (c *appointmentFhirClient) FindAll(ctx context.Context, queryParamsRequest 
 	return appointments, nil
 }
 
+func (c *appointmentFhirClient) FindAppointmentByID(ctx context.Context, appointmentID string) (*fhir_dto.Appointment, error) {
+	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, fmt.Sprintf("%s/%s", c.BaseUrl, appointmentID), nil)
+	if err != nil {
+		return nil, exceptions.ErrCreateHTTPRequest(err)
+	}
+	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, exceptions.ErrSendHTTPRequest(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != constvars.StatusOK {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceAppointment)
+		}
+
+		var outcome fhir_dto.OperationOutcome
+		err = json.Unmarshal(bodyBytes, &outcome)
+		if err != nil {
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceAppointment)
+		}
+
+		if len(outcome.Issue) > 0 {
+			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourceAppointment)
+		}
+	}
+
+	appointmentFhir := new(fhir_dto.Appointment)
+	err = json.NewDecoder(resp.Body).Decode(&appointmentFhir)
+	if err != nil {
+		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourceAppointment)
+	}
+
+	return appointmentFhir, nil
+}
+
 func (c *appointmentFhirClient) CreateAppointment(ctx context.Context, request *fhir_dto.Appointment) (*fhir_dto.Appointment, error) {
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
@@ -126,6 +167,54 @@ func (c *appointmentFhirClient) CreateAppointment(ctx context.Context, request *
 		if len(outcome.Issue) > 0 {
 			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
 			return nil, exceptions.ErrCreateFHIRResource(fhirErrorIssue, constvars.ResourceAppointment)
+		}
+	}
+
+	appointmentFhir := new(fhir_dto.Appointment)
+	err = json.NewDecoder(resp.Body).Decode(&appointmentFhir)
+	if err != nil {
+		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourceAppointment)
+	}
+
+	return appointmentFhir, nil
+}
+
+func (c *appointmentFhirClient) UpdateAppointment(ctx context.Context, request *fhir_dto.Appointment) (*fhir_dto.Appointment, error) {
+	// Convert FHIR Patient to JSON
+	requestJSON, err := json.Marshal(request)
+	if err != nil {
+		return nil, exceptions.ErrCannotMarshalJSON(err)
+	}
+
+	// Send PUT request to FHIR server
+	req, err := http.NewRequestWithContext(ctx, constvars.MethodPut, fmt.Sprintf("%s/%s", c.BaseUrl, request.ID), bytes.NewBuffer(requestJSON))
+	if err != nil {
+		return nil, exceptions.ErrCreateHTTPRequest(err)
+	}
+	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, exceptions.ErrSendHTTPRequest(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, exceptions.ErrUpdateFHIRResource(err, constvars.ResourceAppointment)
+		}
+
+		var outcome fhir_dto.OperationOutcome
+		err = json.Unmarshal(bodyBytes, &outcome)
+		if err != nil {
+			return nil, exceptions.ErrUpdateFHIRResource(err, constvars.ResourceAppointment)
+		}
+
+		if len(outcome.Issue) > 0 {
+			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			return nil, exceptions.ErrUpdateFHIRResource(fhirErrorIssue, constvars.ResourceAppointment)
 		}
 	}
 
