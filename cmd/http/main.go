@@ -27,6 +27,7 @@ import (
 	"konsulin-service/internal/app/services/core/session"
 	"konsulin-service/internal/app/services/core/users"
 	fhir_appointments "konsulin-service/internal/app/services/fhir_spark/appointments"
+	"konsulin-service/internal/app/services/fhir_spark/charge_item_definitions"
 	"konsulin-service/internal/app/services/fhir_spark/organizations"
 	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
 	practitionerRoles "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
@@ -202,6 +203,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	scheduleFhirClient := schedules.NewScheduleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
 	slotFhirClient := slots.NewSlotFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
 	appointmentFhirClient := fhir_appointments.NewAppointmentFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
+	chargeItemDefinitionFhirClient := charge_item_definitions.NewChargeItemDefinitionFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
 	questionnaireFhirClient := questionnairesFhir.NewQuestionnaireFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
 	questionnaireResponseFhirClient := questionnaireResponsesFhir.NewQuestionnaireResponseFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
 
@@ -234,7 +236,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	clinicController := controllers.NewClinicController(bootstrap.Logger, clinicUsecase)
 
 	// Initialize Clinic dependencies
-	clinicianUsecase := clinicians.NewClinicianUsecase(practitionerFhirClient, practitionerRoleFhirClient, organizationFhirClient, scheduleFhirClient, slotFhirClient, appointmentFhirClient, sessionService)
+	clinicianUsecase := clinicians.NewClinicianUsecase(practitionerFhirClient, practitionerRoleFhirClient, organizationFhirClient, scheduleFhirClient, slotFhirClient, appointmentFhirClient, chargeItemDefinitionFhirClient, sessionService)
 	clinicianController := controllers.NewClinicianController(bootstrap.Logger, clinicianUsecase)
 
 	// Initialize Clinic dependencies

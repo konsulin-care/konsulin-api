@@ -17,13 +17,14 @@ import (
 )
 
 type clinicianUsecase struct {
-	PractitionerFhirClient     contracts.PractitionerFhirClient
-	PractitionerRoleFhirClient contracts.PractitionerRoleFhirClient
-	OrganizationFhirClient     contracts.OrganizationFhirClient
-	ScheduleFhirClient         contracts.ScheduleFhirClient
-	SlotFhirClient             contracts.SlotFhirClient
-	AppointmentFhirClient      contracts.AppointmentFhirClient
-	SessionService             contracts.SessionService
+	PractitionerFhirClient         contracts.PractitionerFhirClient
+	PractitionerRoleFhirClient     contracts.PractitionerRoleFhirClient
+	OrganizationFhirClient         contracts.OrganizationFhirClient
+	ScheduleFhirClient             contracts.ScheduleFhirClient
+	SlotFhirClient                 contracts.SlotFhirClient
+	AppointmentFhirClient          contracts.AppointmentFhirClient
+	ChargeItemDefinitionFhirClient contracts.ChargeItemDefinitionFhirClient
+	SessionService                 contracts.SessionService
 }
 
 func NewClinicianUsecase(
@@ -33,16 +34,18 @@ func NewClinicianUsecase(
 	scheduleFhirClient contracts.ScheduleFhirClient,
 	slotFhirClient contracts.SlotFhirClient,
 	appointmentFhirClient contracts.AppointmentFhirClient,
+	chargeItemDefinitionFhirClient contracts.ChargeItemDefinitionFhirClient,
 	sessionService contracts.SessionService,
 ) contracts.ClinicianUsecase {
 	return &clinicianUsecase{
-		PractitionerFhirClient:     practitionerFhirClient,
-		PractitionerRoleFhirClient: practitionerRoleFhirClient,
-		OrganizationFhirClient:     organizationFhirClient,
-		ScheduleFhirClient:         scheduleFhirClient,
-		SlotFhirClient:             slotFhirClient,
-		AppointmentFhirClient:      appointmentFhirClient,
-		SessionService:             sessionService,
+		PractitionerFhirClient:         practitionerFhirClient,
+		PractitionerRoleFhirClient:     practitionerRoleFhirClient,
+		OrganizationFhirClient:         organizationFhirClient,
+		ScheduleFhirClient:             scheduleFhirClient,
+		SlotFhirClient:                 slotFhirClient,
+		AppointmentFhirClient:          appointmentFhirClient,
+		ChargeItemDefinitionFhirClient: chargeItemDefinitionFhirClient,
+		SessionService:                 sessionService,
 	}
 }
 
@@ -123,11 +126,16 @@ func (uc *clinicianUsecase) CreatePracticeInformation(ctx context.Context, sessi
 		)
 
 		if practitionerRoleFhirRequest.ID == "" {
-			response, err := uc.PractitionerRoleFhirClient.CreatePractitionerRole(ctx, practitionerRoleFhirRequest)
+			practitionerRoleFhir, err := uc.PractitionerRoleFhirClient.CreatePractitionerRole(ctx, practitionerRoleFhirRequest)
 			if err != nil {
 				return nil, err
 			}
 			organization, err := uc.OrganizationFhirClient.FindOrganizationByID(ctx, practiceInformation.ClinicID)
+			if err != nil {
+				return nil, err
+			}
+			chargeItemDefinitionRequest := uc.buildChargeItemDefinition(practiceInformation, practitionerRoleFhir.ID, organization.ID, session.PractitionerID)
+			chargeItemDefinition, err := uc.ChargeItemDefinitionFhirClient.CreateChargeItemDefinition(ctx, chargeItemDefinitionRequest)
 			if err != nil {
 				return nil, err
 			}
@@ -136,18 +144,24 @@ func (uc *clinicianUsecase) CreatePracticeInformation(ctx context.Context, sessi
 				ClinicID:    organization.ID,
 				ClinicName:  organization.Name,
 				Affiliation: organization.Name,
-				Specialties: utils.ExtractSpecialties(response.Specialty),
+				Specialties: utils.ExtractSpecialties(practitionerRoleFhir.Specialty),
 				PricePerSession: responses.PricePerSession{
-					Value:    response.Extension[0].ValueMoney.Value,
-					Currency: response.Extension[0].ValueMoney.Currency,
+					Value:    chargeItemDefinition.PropertyGroup[0].PriceComponent[0].Amount.Value,
+					Currency: chargeItemDefinition.PropertyGroup[0].PriceComponent[0].Amount.Currency,
 				},
 			})
 		} else if practitionerRoleFhirRequest.ID != "" {
-			response, err := uc.PractitionerRoleFhirClient.UpdatePractitionerRole(ctx, practitionerRoleFhirRequest)
+			practitionerRoleFhir, err := uc.PractitionerRoleFhirClient.UpdatePractitionerRole(ctx, practitionerRoleFhirRequest)
 			if err != nil {
 				return nil, err
 			}
 			organization, err := uc.OrganizationFhirClient.FindOrganizationByID(ctx, practiceInformation.ClinicID)
+			if err != nil {
+				return nil, err
+			}
+			// chargeItemDefinition, err := uc.ChargeItemDefinitionFhirClient.FindChargeItemDefinitionByIn
+			chargeItemDefinitionRequest := uc.buildChargeItemDefinition(practiceInformation, practitionerRoleFhir.ID, organization.ID, session.PractitionerID)
+			chargeItemDefinition, err := uc.ChargeItemDefinitionFhirClient.UpdateChargeItemDefinition(ctx, chargeItemDefinitionRequest)
 			if err != nil {
 				return nil, err
 			}
@@ -156,10 +170,10 @@ func (uc *clinicianUsecase) CreatePracticeInformation(ctx context.Context, sessi
 				ClinicID:    organization.ID,
 				ClinicName:  organization.Name,
 				Affiliation: organization.Name,
-				Specialties: utils.ExtractSpecialties(response.Specialty),
+				Specialties: utils.ExtractSpecialties(practitionerRoleFhir.Specialty),
 				PricePerSession: responses.PricePerSession{
-					Value:    response.Extension[0].ValueMoney.Value,
-					Currency: response.Extension[0].ValueMoney.Currency,
+					Value:    chargeItemDefinition.PropertyGroup[0].PriceComponent[0].Amount.Value,
+					Currency: chargeItemDefinition.PropertyGroup[0].PriceComponent[0].Amount.Currency,
 				},
 			})
 		}
@@ -246,6 +260,11 @@ func (uc *clinicianUsecase) FindClinicsByClinicianID(ctx context.Context, reques
 	if err != nil {
 		return nil, err
 	}
+	// response := make([]responses.ClinicianClinic, 0, len(practitionerRoles))
+
+	// for _, practitionerRole := range practitionerRoles {
+	// 	chargeItemDefinition, err := uc.ChargeItemDefinitionFhirClient.FindChargeItemDefinitionByID(ctx)
+	// }
 
 	return uc.findAndBuildClinicianCinicsResponseByPractitionerRoles(ctx, practitionerRoles)
 }
@@ -309,23 +328,12 @@ func (uc *clinicianUsecase) buildPractitionerRoleRequestFromPracticeInformation(
 		Reference: fmt.Sprintf("%s/%s", constvars.ResourceOrganization, practiceInformation.ClinicID),
 	}
 
-	extension := fhir_dto.Extension{
-		Url: "http://hl7.org/fhir/StructureDefinition/Money",
-		ValueMoney: &fhir_dto.Money{
-			Value:    practiceInformation.PricePerSession.Value,
-			Currency: practiceInformation.PricePerSession.Currency,
-		},
-	}
-
 	request := &fhir_dto.PractitionerRole{
 		ResourceType: constvars.ResourcePractitionerRole,
 		Practitioner: practitionerReference,
 		Organization: organizationReference,
 		Active:       false,
-		Extension: []fhir_dto.Extension{
-			extension,
-		},
-		Specialty: []fhir_dto.CodeableConcept{},
+		Specialty:    []fhir_dto.CodeableConcept{},
 	}
 
 	for _, specialty := range practiceInformation.Specialties {
@@ -342,10 +350,35 @@ func (uc *clinicianUsecase) buildPractitionerRoleRequestFromPracticeInformation(
 
 }
 
+func (uc *clinicianUsecase) buildChargeItemDefinition(practiceInformation requests.PracticeInformation, practitionerRoleID, organizationID, practitionerID string) *fhir_dto.ChargeItemDefinition {
+	return &fhir_dto.ChargeItemDefinition{
+		ResourceType: constvars.ResourceChargeItemDefinition,
+		Status:       constvars.FhirChargeItemDefinitionStatusActive,
+		Instance: []fhir_dto.Reference{
+			{
+				Reference: fmt.Sprintf("%s/%s", constvars.ResourcePractitionerRole, practitionerRoleID),
+			},
+		},
+		PropertyGroup: []fhir_dto.ChargeItemPropertyGroup{
+			{
+				PriceComponent: []fhir_dto.ChargeItemPriceComponent{
+					{
+						Type: constvars.FhirMonetaryComponentStatusBase,
+						Amount: &fhir_dto.Money{
+							Value:    practiceInformation.PricePerSession.Value,
+							Currency: practiceInformation.PricePerSession.Currency,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
 func (uc *clinicianUsecase) buildPractitionerRoleRequestForPracticeAvailability(practitionerRoles []fhir_dto.PractitionerRole, availableTimes []requests.AvailableTimeRequest) *fhir_dto.PractitionerRole {
 	practitionerID := strings.Split(practitionerRoles[0].Practitioner.Reference, "/")[1]
 	organizationID := strings.Split(practitionerRoles[0].Organization.Reference, "/")[1]
-
+	fmt.Println(practitionerID, organizationID)
 	practitionerReference := fhir_dto.Reference{
 		Reference: fmt.Sprintf("%s/%s", constvars.ResourcePractitioner, practitionerID),
 	}
@@ -353,22 +386,11 @@ func (uc *clinicianUsecase) buildPractitionerRoleRequestForPracticeAvailability(
 		Reference: fmt.Sprintf("%s/%s", constvars.ResourceOrganization, organizationID),
 	}
 
-	extension := fhir_dto.Extension{
-		Url: "http://hl7.org/fhir/StructureDefinition/Money",
-		ValueMoney: &fhir_dto.Money{
-			Value:    practitionerRoles[0].Extension[0].ValueMoney.Value,
-			Currency: practitionerRoles[0].Extension[0].ValueMoney.Currency,
-		},
-	}
-
 	request := &fhir_dto.PractitionerRole{
-		ResourceType: constvars.ResourcePractitionerRole,
-		Practitioner: practitionerReference,
-		Organization: organizationReference,
-		Active:       true,
-		Extension: []fhir_dto.Extension{
-			extension,
-		},
+		ResourceType:  constvars.ResourcePractitionerRole,
+		Practitioner:  practitionerReference,
+		Organization:  organizationReference,
+		Active:        true,
 		Specialty:     []fhir_dto.CodeableConcept{},
 		AvailableTime: utils.ConvertToModelAvailableTimes(availableTimes),
 	}
