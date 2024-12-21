@@ -12,6 +12,7 @@ var validate *validator.Validate
 
 func init() {
 	validate = validator.New()
+	validate.RegisterValidation("username", validateUsername)
 	validate.RegisterValidation("password", validatePassword)
 	validate.RegisterValidation("user_type", validateUserType)
 	validate.RegisterValidation("phone_number", validatePhoneNumber)
@@ -21,6 +22,11 @@ func init() {
 
 func ValidateStruct(s interface{}) error {
 	return validate.Struct(s)
+}
+
+func validateUsername(fl validator.FieldLevel) bool {
+	re := regexp.MustCompile(`^[a-zA-Z0-9_.]+$`)
+	return re.MatchString(fl.Field().String())
 }
 
 func validatePassword(fl validator.FieldLevel) bool {
