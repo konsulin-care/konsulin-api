@@ -84,6 +84,9 @@ func (c *chargeItemDefinitionFhirClient) FindChargeItemDefinitionByID(ctx contex
 	defer resp.Body.Close()
 
 	if resp.StatusCode != constvars.StatusOK {
+		if resp.StatusCode == constvars.StatusNotFound {
+			return &fhir_dto.ChargeItemDefinition{}, nil
+		}
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceChargeItemDefinition)
