@@ -16,6 +16,39 @@ func ParseIDFromReference(subject fhir_dto.Reference) (string, error) {
 	return "", fmt.Errorf("invalid reference format: %s", subject.Reference)
 }
 
+func ParseSlashSeparatedToDashSeparated(input string) string {
+	parts := strings.Split(input, "/")
+	if len(parts) != 2 {
+		return input
+	}
+
+	processedType := strings.ToLower(
+		strings.ReplaceAll(
+			strings.ReplaceAll(parts[0], "Item", "-item"),
+			"Role", "-role",
+		),
+	)
+
+	// Concatenate the processed type and ID with a dash
+	return fmt.Sprintf("%s-%s", processedType, parts[1])
+}
+
+func ParseDashSeparatedToSlashSeparated(input string) string {
+	lastHyphenIndex := strings.LastIndex(input, "-")
+	if lastHyphenIndex == -1 {
+		return input // Return input as-is if no hyphen is found
+	}
+
+	typePart := input[:lastHyphenIndex]
+	idPart := input[lastHyphenIndex+1:]
+
+	typePart = strings.ReplaceAll(typePart, "-item", "Item")
+	typePart = strings.ReplaceAll(typePart, "-role", "Role")
+	typePart = strings.Title(strings.ReplaceAll(typePart, "-", ""))
+
+	return fmt.Sprintf("%s/%s", typePart, idPart)
+}
+
 func BuildPatientProfileResponse(patientFhir *fhir_dto.Patient) *responses.UserProfile {
 	fullname := GetFullName(patientFhir.Name)
 	email, whatsAppNumber := GetEmailAndWhatsapp(patientFhir.Telecom)

@@ -134,8 +134,9 @@ func (uc *clinicianUsecase) CreatePracticeInformation(ctx context.Context, sessi
 			if err != nil {
 				return nil, err
 			}
-			chargeItemDefinitionRequest := uc.buildChargeItemDefinition(practiceInformation, practitionerRoleFhir.ID, organization.ID, session.PractitionerID)
-			chargeItemDefinition, err := uc.ChargeItemDefinitionFhirClient.CreateChargeItemDefinition(ctx, chargeItemDefinitionRequest)
+			practiceInformation.PractitionerRoleFullResourceID = utils.ParseSlashSeparatedToDashSeparated(fmt.Sprintf("%s/%s", constvars.ResourcePractitionerRole, practitionerRoleFhir.ID))
+			chargeItemDefinitionRequest := uc.buildChargeItemDefinition(practiceInformation)
+			chargeItemDefinition, err := uc.ChargeItemDefinitionFhirClient.UpdateChargeItemDefinition(ctx, chargeItemDefinitionRequest)
 			if err != nil {
 				return nil, err
 			}
@@ -159,11 +160,25 @@ func (uc *clinicianUsecase) CreatePracticeInformation(ctx context.Context, sessi
 			if err != nil {
 				return nil, err
 			}
-			// chargeItemDefinition, err := uc.ChargeItemDefinitionFhirClient.FindChargeItemDefinitionByIn
-			chargeItemDefinitionRequest := uc.buildChargeItemDefinition(practiceInformation, practitionerRoleFhir.ID, organization.ID, session.PractitionerID)
-			chargeItemDefinition, err := uc.ChargeItemDefinitionFhirClient.UpdateChargeItemDefinition(ctx, chargeItemDefinitionRequest)
+
+			practiceInformation.PractitionerRoleFullResourceID = utils.ParseSlashSeparatedToDashSeparated(fmt.Sprintf("%s/%s", constvars.ResourcePractitionerRole, practitionerRoleFhir.ID))
+			chargeItemDefinition, err := uc.ChargeItemDefinitionFhirClient.FindChargeItemDefinitionByID(ctx, practiceInformation.PractitionerRoleFullResourceID)
 			if err != nil {
 				return nil, err
+			}
+
+			if chargeItemDefinition.ID == "" {
+				chargeItemDefinitionRequest := uc.buildChargeItemDefinition(practiceInformation)
+				chargeItemDefinition, err = uc.ChargeItemDefinitionFhirClient.UpdateChargeItemDefinition(ctx, chargeItemDefinitionRequest)
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				chargeItemDefinitionRequest := uc.updateChargeItemDefinition(practiceInformation, chargeItemDefinition)
+				chargeItemDefinition, err = uc.ChargeItemDefinitionFhirClient.UpdateChargeItemDefinition(ctx, chargeItemDefinitionRequest)
+				if err != nil {
+					return nil, err
+				}
 			}
 
 			result = append(result, responses.PracticeInformation{
@@ -260,11 +275,6 @@ func (uc *clinicianUsecase) FindClinicsByClinicianID(ctx context.Context, reques
 	if err != nil {
 		return nil, err
 	}
-	// response := make([]responses.ClinicianClinic, 0, len(practitionerRoles))
-
-	// for _, practitionerRole := range practitionerRoles {
-	// 	chargeItemDefinition, err := uc.ChargeItemDefinitionFhirClient.FindChargeItemDefinitionByID(ctx)
-	// }
 
 	return uc.findAndBuildClinicianCinicsResponseByPractitionerRoles(ctx, practitionerRoles)
 }
@@ -350,15 +360,11 @@ func (uc *clinicianUsecase) buildPractitionerRoleRequestFromPracticeInformation(
 
 }
 
-func (uc *clinicianUsecase) buildChargeItemDefinition(practiceInformation requests.PracticeInformation, practitionerRoleID, organizationID, practitionerID string) *fhir_dto.ChargeItemDefinition {
+func (uc *clinicianUsecase) buildChargeItemDefinition(practiceInformation requests.PracticeInformation) *fhir_dto.ChargeItemDefinition {
 	return &fhir_dto.ChargeItemDefinition{
+		ID:           practiceInformation.PractitionerRoleFullResourceID,
 		ResourceType: constvars.ResourceChargeItemDefinition,
 		Status:       constvars.FhirChargeItemDefinitionStatusActive,
-		Instance: []fhir_dto.Reference{
-			{
-				Reference: fmt.Sprintf("%s/%s", constvars.ResourcePractitionerRole, practitionerRoleID),
-			},
-		},
 		PropertyGroup: []fhir_dto.ChargeItemPropertyGroup{
 			{
 				PriceComponent: []fhir_dto.ChargeItemPriceComponent{
@@ -373,6 +379,23 @@ func (uc *clinicianUsecase) buildChargeItemDefinition(practiceInformation reques
 			},
 		},
 	}
+}
+
+func (uc *clinicianUsecase) updateChargeItemDefinition(practiceInformation requests.PracticeInformation, chargeItemDefinition *fhir_dto.ChargeItemDefinition) *fhir_dto.ChargeItemDefinition {
+	chargeItemDefinition.PropertyGroup = []fhir_dto.ChargeItemPropertyGroup{
+		{
+			PriceComponent: []fhir_dto.ChargeItemPriceComponent{
+				{
+					Type: constvars.FhirMonetaryComponentStatusBase,
+					Amount: &fhir_dto.Money{
+						Value:    practiceInformation.PricePerSession.Value,
+						Currency: practiceInformation.PricePerSession.Currency,
+					},
+				},
+			},
+		},
+	}
+	return chargeItemDefinition
 }
 
 func (uc *clinicianUsecase) buildPractitionerRoleRequestForPracticeAvailability(practitionerRoles []fhir_dto.PractitionerRole, availableTimes []requests.AvailableTimeRequest) *fhir_dto.PractitionerRole {
@@ -477,6 +500,12 @@ func (uc *clinicianUsecase) findAndBuildClinicianCinicsResponseByPractitionerRol
 				return nil, err
 			}
 
+			practitionerRoleChargeItemDefinitionID := utils.ParseSlashSeparatedToDashSeparated(fmt.Sprintf("%s/%s", constvars.ResourcePractitionerRole, practitionerRole.ID))
+			chargeItemDefinition, err := uc.ChargeItemDefinitionFhirClient.FindChargeItemDefinitionByID(ctx, practitionerRoleChargeItemDefinitionID)
+			if err != nil {
+				return nil, err
+			}
+
 			for _, specialty := range practitionerRole.Specialty {
 				specialties = append(specialties, specialty.Text)
 			}
@@ -486,8 +515,8 @@ func (uc *clinicianUsecase) findAndBuildClinicianCinicsResponseByPractitionerRol
 				ClinicName:  organization.Name,
 				Specialties: specialties,
 				PricePerSession: responses.PricePerSession{
-					Value:    practitionerRole.Extension[0].ValueMoney.Value,
-					Currency: practitionerRole.Extension[0].ValueMoney.Currency,
+					Value:    chargeItemDefinition.PropertyGroup[0].PriceComponent[0].Amount.Value,
+					Currency: chargeItemDefinition.PropertyGroup[0].PriceComponent[0].Amount.Currency,
 				},
 			})
 		}

@@ -10,9 +10,10 @@ type CreatePracticeInformation struct {
 }
 
 type PracticeInformation struct {
-	ClinicID        string          `json:"clinic_id"`
-	PricePerSession PricePerSession `json:"price_per_session"`
-	Specialties     []string        `json:"specialties"`
+	ClinicID                       string          `json:"clinic_id"`
+	PricePerSession                PricePerSession `json:"price_per_session"`
+	Specialties                    []string        `json:"specialties"`
+	PractitionerRoleFullResourceID string
 }
 
 type PricePerSession struct {
