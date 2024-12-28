@@ -22,3 +22,5 @@ resources/http-client.env.json
 .DS_Store
 
 deployments/.vault
+
+dbconfig.yml

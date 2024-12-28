@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
+	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
@@ -17,6 +18,7 @@ import (
 )
 
 type appointmentUsecase struct {
+	TransactionRepository  contracts.TransactionRepository
 	ClinicianService       contracts.ClinicianUsecase
 	AppointmentFhirClient  contracts.AppointmentFhirClient
 	PatientFhirClient      contracts.PatientFhirClient
@@ -29,6 +31,7 @@ type appointmentUsecase struct {
 }
 
 func NewAppointmentUsecase(
+	transactionRepository contracts.TransactionRepository,
 	clinicianService contracts.ClinicianUsecase,
 	appointmentFhirClient contracts.AppointmentFhirClient,
 	patientFhirClient contracts.PatientFhirClient,
@@ -40,6 +43,7 @@ func NewAppointmentUsecase(
 	internalConfig *config.InternalConfig,
 ) contracts.AppointmentUsecase {
 	return &appointmentUsecase{
+		TransactionRepository:  transactionRepository,
 		ClinicianService:       clinicianService,
 		AppointmentFhirClient:  appointmentFhirClient,
 		PatientFhirClient:      patientFhirClient,
@@ -78,10 +82,7 @@ func (uc *appointmentUsecase) FindAll(ctx context.Context, sessionData string, q
 				return nil, err
 			}
 
-			requestPaymentStatus := &requests.PaymentRoutingStatus{
-				PartnerTransactionID: eachAppointment.ID,
-			}
-			paymentStatusResponse, err := uc.OyService.CheckPaymentRoutingStatus(ctx, requestPaymentStatus)
+			transaction, err := uc.TransactionRepository.FindByID(ctx, eachAppointment.ID)
 			if err != nil {
 				return nil, err
 			}
@@ -94,8 +95,8 @@ func (uc *appointmentUsecase) FindAll(ctx context.Context, sessionData string, q
 				MinutesDuration: eachAppointment.MinutesDuration,
 				PatientID:       patientID,
 				PatientName:     utils.GetFullName(patient.Name),
-				PaymentStatus:   paymentStatusResponse.PaymentStatus,
-				PaymentLink:     paymentStatusResponse.PaymentInfo.PaymentCheckoutURL,
+				PaymentStatus:   string(transaction.StatusPayment),
+				PaymentLink:     transaction.PaymentLink,
 			})
 		}
 
@@ -122,10 +123,7 @@ func (uc *appointmentUsecase) FindAll(ctx context.Context, sessionData string, q
 			return nil, err
 		}
 
-		requestPaymentStatus := &requests.PaymentRoutingStatus{
-			PartnerTransactionID: eachAppointment.ID,
-		}
-		paymentStatusResponse, err := uc.OyService.CheckPaymentRoutingStatus(ctx, requestPaymentStatus)
+		transaction, err := uc.TransactionRepository.FindByID(ctx, eachAppointment.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -138,8 +136,8 @@ func (uc *appointmentUsecase) FindAll(ctx context.Context, sessionData string, q
 			MinutesDuration: eachAppointment.MinutesDuration,
 			ClinicianID:     practitionerID,
 			ClinicianName:   utils.GetFullName(practitioner.Name),
-			PaymentStatus:   paymentStatusResponse.PaymentStatus,
-			PaymentLink:     paymentStatusResponse.PaymentInfo.PaymentCheckoutURL,
+			PaymentStatus:   string(transaction.StatusPayment),
+			PaymentLink:     transaction.PaymentLink,
 		})
 	}
 
@@ -255,6 +253,24 @@ func (uc *appointmentUsecase) CreateAppointment(ctx context.Context, sessionData
 	paymentRequestDTO := utils.MapPaymentRequestToDTO(paymentRoutingRequest)
 
 	paymentResponse, err := uc.OyService.CreatePaymentRouting(ctx, paymentRequestDTO)
+	if err != nil {
+		return nil, err
+	}
+
+	transaction := &models.Transaction{
+		ID:                      paymentResponse.PartnerTrxID,
+		PatientID:               session.PatientID,
+		PractitionerID:          request.ClinicianID,
+		LengthMinutesPerSession: uc.InternalConfig.App.SessionMultiplierInMinutes,
+		SessionTotal:            request.NumberOfSessions,
+		Currency:                constvars.CurrencyIndonesianRupiah,
+		PaymentLink:             paymentResponse.PaymentInfo.PaymentCheckoutURL,
+		Amount:                  float64(totalPriceToBePaidByPatient),
+		StatusPayment:           models.Pending,
+		RefundStatus:            models.None,
+		SessionType:             models.TransactionSessionType(request.SessionType),
+	}
+	_, err = uc.TransactionRepository.CreateTransaction(ctx, transaction)
 	if err != nil {
 		return nil, err
 	}

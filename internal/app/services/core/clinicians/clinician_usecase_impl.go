@@ -401,7 +401,7 @@ func (uc *clinicianUsecase) updateChargeItemDefinition(practiceInformation reque
 func (uc *clinicianUsecase) buildPractitionerRoleRequestForPracticeAvailability(practitionerRoles []fhir_dto.PractitionerRole, availableTimes []requests.AvailableTimeRequest) *fhir_dto.PractitionerRole {
 	practitionerID := strings.Split(practitionerRoles[0].Practitioner.Reference, "/")[1]
 	organizationID := strings.Split(practitionerRoles[0].Organization.Reference, "/")[1]
-	fmt.Println(practitionerID, organizationID)
+
 	practitionerReference := fhir_dto.Reference{
 		Reference: fmt.Sprintf("%s/%s", constvars.ResourcePractitioner, practitionerID),
 	}

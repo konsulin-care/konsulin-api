@@ -25,6 +25,7 @@ import (
 	"konsulin-service/internal/app/services/core/payments"
 	"konsulin-service/internal/app/services/core/roles"
 	"konsulin-service/internal/app/services/core/session"
+	"konsulin-service/internal/app/services/core/transactions"
 	"konsulin-service/internal/app/services/core/users"
 	fhir_appointments "konsulin-service/internal/app/services/fhir_spark/appointments"
 	"konsulin-service/internal/app/services/fhir_spark/charge_item_definitions"
@@ -231,6 +232,9 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	// Initialize Role repository with MongoDB
 	rolePostgresRepository := roles.NewRolePostgresRepository(bootstrap.PostgresDB)
 
+	// Initialize Transaction repository with MongoDB
+	transactionPostgresRepository := transactions.NewTransactionPostgresRepository(bootstrap.PostgresDB)
+
 	// Initialize Clinic dependencies
 	clinicUsecase := clinics.NewClinicUsecase(organizationFhirClient, practitionerRoleFhirClient, practitionerFhirClient, scheduleFhirClient, redisRepository, bootstrap.InternalConfig)
 	clinicController := controllers.NewClinicController(bootstrap.Logger, clinicUsecase)
@@ -252,7 +256,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	assessmentResponseController := controllers.NewAssessmentResponseController(bootstrap.Logger, assessmentResponseUsecase)
 
 	// Initialize Assessment Response dependencies
-	appointmentUsecase := appointments.NewAppointmentUsecase(clinicianUsecase, appointmentFhirClient, patientFhirClient, practitionerFhirClient, slotFhirClient, redisRepository, sessionService, oyService, bootstrap.InternalConfig)
+	appointmentUsecase := appointments.NewAppointmentUsecase(transactionPostgresRepository, clinicianUsecase, appointmentFhirClient, patientFhirClient, practitionerFhirClient, slotFhirClient, redisRepository, sessionService, oyService, bootstrap.InternalConfig)
 	appointmentController := controllers.NewAppointmentController(bootstrap.Logger, appointmentUsecase)
 
 	// Initialize Auth usecase with dependencies
