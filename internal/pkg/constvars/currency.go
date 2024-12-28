@@ -1,0 +1,40 @@
+package constvars
+
+const (
+	CurrencyUnitedStatesDollar   = "USD"
+	CurrencyEuro                 = "EUR"
+	CurrencyJapaneseYen          = "JPY"
+	CurrencyBritishPoundSterling = "GBP"
+	CurrencyAustralianDollar     = "AUD"
+	CurrencyCanadianDollar       = "CAD"
+	CurrencySwissFranc           = "CHF"
+	CurrencyChineseYuanRenminbi  = "CNY"
+	CurrencySwedishKrona         = "SEK"
+	CurrencyNewZealandDollar     = "NZD"
+
+	CurrencyMexicanPeso      = "MXN"
+	CurrencySingaporeDollar  = "SGD"
+	CurrencyHongKongDollar   = "HKD"
+	CurrencyNorwegianKrone   = "NOK"
+	CurrencySouthKoreanWon   = "KRW"
+	CurrencyTurkishLira      = "TRY"
+	CurrencyIndianRupee      = "INR"
+	CurrencyRussianRuble     = "RUB"
+	CurrencyBrazilianReal    = "BRL"
+	CurrencySouthAfricanRand = "ZAR"
+
+	CurrencyDanishKrone              = "DKK"
+	CurrencyPolishZloty              = "PLN"
+	CurrencyIndonesianRupiah         = "IDR"
+	CurrencyHungarianForint          = "HUF"
+	CurrencyCzechKoruna              = "CZK"
+	CurrencyIsraeliNewShekel         = "ILS"
+	CurrencyChileanPeso              = "CLP"
+	CurrencyPhilippinePeso           = "PHP"
+	CurrencyUnitedArabEmiratesDirham = "AED"
+	CurrencyColombianPeso            = "COP"
+
+	CurrencySaudiRiyal       = "SAR"
+	CurrencyMalaysianRinggit = "MYR"
+	CurrencyThaiBaht         = "THB"
+)
