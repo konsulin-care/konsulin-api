@@ -10,4 +10,5 @@ import (
 func attachAppointmentRoutes(router chi.Router, middlewares *middlewares.Middlewares, appointmentController *controllers.AppointmentController) {
 	router.With(middlewares.Authenticate).Get("/", appointmentController.FindAll)
 	router.With(middlewares.Authenticate).Post("/", appointmentController.CreateAppointment)
+	router.With(middlewares.Authenticate).Post("/upcoming", appointmentController.UpcomingAppointment)
 }

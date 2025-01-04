@@ -10,11 +10,13 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
 	"github.com/go-chi/httprate"
+	"go.uber.org/zap"
 )
 
 func SetupRoutes(
 	router *chi.Mux,
 	internalConfig *config.InternalConfig,
+	logger *zap.Logger,
 	middlewares *middlewares.Middlewares,
 	userController *controllers.UserController,
 	authController *controllers.AuthController,
@@ -44,6 +46,7 @@ func SetupRoutes(
 	rateLimiter := httprate.LimitByIP(internalConfig.App.MaxRequests, time.Second)
 	router.Use(rateLimiter)
 
+	// router.Use(middlewares.Logging(logger))
 	router.Use(middlewares.ErrorHandler)
 
 	endpointPrefix := fmt.Sprintf("/%s", internalConfig.App.EndpointPrefix)

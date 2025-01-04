@@ -29,14 +29,13 @@ func ParseSlashSeparatedToDashSeparated(input string) string {
 		),
 	)
 
-	// Concatenate the processed type and ID with a dash
 	return fmt.Sprintf("%s-%s", processedType, parts[1])
 }
 
 func ParseDashSeparatedToSlashSeparated(input string) string {
 	lastHyphenIndex := strings.LastIndex(input, "-")
 	if lastHyphenIndex == -1 {
-		return input // Return input as-is if no hyphen is found
+		return input
 	}
 
 	typePart := input[:lastHyphenIndex]

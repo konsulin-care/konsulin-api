@@ -2,6 +2,7 @@ package clinics
 
 import (
 	"context"
+	"fmt"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
@@ -17,6 +18,7 @@ type clinicUsecase struct {
 	PractitionerRoleFhirClient contracts.PractitionerRoleFhirClient
 	PractitionerFhirClient     contracts.PractitionerFhirClient
 	ScheduleFhirClient         contracts.ScheduleFhirClient
+	ChargeItemDefinition       contracts.ChargeItemDefinitionFhirClient
 	RedisRepository            contracts.RedisRepository
 	InternalConfig             *config.InternalConfig
 }
@@ -26,6 +28,7 @@ func NewClinicUsecase(
 	practitionerRoleFhirClient contracts.PractitionerRoleFhirClient,
 	practitionerFhirClient contracts.PractitionerFhirClient,
 	scheduleFhirClient contracts.ScheduleFhirClient,
+	chargeItemDefinition contracts.ChargeItemDefinitionFhirClient,
 	redisRepository contracts.RedisRepository,
 	internalConfig *config.InternalConfig,
 ) contracts.ClinicUsecase {
@@ -34,6 +37,7 @@ func NewClinicUsecase(
 		PractitionerFhirClient:     practitionerFhirClient,
 		PractitionerRoleFhirClient: practitionerRoleFhirClient,
 		ScheduleFhirClient:         scheduleFhirClient,
+		ChargeItemDefinition:       chargeItemDefinition,
 		RedisRepository:            redisRepository,
 		InternalConfig:             internalConfig,
 	}
@@ -113,12 +117,23 @@ func (uc *clinicUsecase) FindClinicianByClinicAndClinicianID(ctx context.Context
 		return nil, err
 	}
 
+	if len(practitionerRoles) > 1 {
+		return nil, exceptions.ErrGetFHIRResourceDuplicate(nil, constvars.ResourcePractitionerRole)
+	}
+
 	organization, err := uc.OrganizationFhirClient.FindOrganizationByID(ctx, clinicID)
 	if err != nil {
 		return nil, err
 	}
 
 	schedules, err := uc.ScheduleFhirClient.FindScheduleByPractitionerRoleID(ctx, practitionerRoles[0].ID)
+	if err != nil {
+		return nil, err
+	}
+
+	practitionerRoleFullResourceID := utils.ParseSlashSeparatedToDashSeparated(fmt.Sprintf("%s/%s", constvars.ResourcePractitionerRole, practitionerRoles[0].ID))
+
+	chargeItemDefinition, err := uc.ChargeItemDefinition.FindChargeItemDefinitionByPractitionerRoleID(ctx, practitionerRoleFullResourceID)
 	if err != nil {
 		return nil, err
 	}
@@ -131,8 +146,8 @@ func (uc *clinicUsecase) FindClinicianByClinicAndClinicianID(ctx context.Context
 		Affiliation: organization.Name,
 		Specialties: utils.ExtractSpecialtiesText(practitionerRoles[0].Specialty),
 		PricePerSession: responses.PricePerSession{
-			Value:    practitionerRoles[0].Extension[0].ValueMoney.Value,
-			Currency: practitionerRoles[0].Extension[0].ValueMoney.Currency,
+			Value:    chargeItemDefinition.PropertyGroup[0].PriceComponent[0].Amount.Value,
+			Currency: chargeItemDefinition.PropertyGroup[0].PriceComponent[0].Amount.Currency,
 		},
 	}
 

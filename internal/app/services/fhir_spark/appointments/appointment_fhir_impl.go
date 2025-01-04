@@ -28,8 +28,12 @@ func NewAppointmentFhirClient(baseUrl string) contracts.AppointmentFhirClient {
 func (c *appointmentFhirClient) FindAll(ctx context.Context, queryParamsRequest *requests.QueryParams) ([]fhir_dto.Appointment, error) {
 	var queryParams string
 
+	if queryParamsRequest.AppointmentStatus == "" {
+		queryParamsRequest.AppointmentStatus = constvars.FhirAppointmentStatusBooked
+	}
+
 	if queryParamsRequest.FetchType == constvars.QueryParamFetchTypeUpcoming {
-		queryParams += fmt.Sprintf("_count=1&status=booked&date=ge%s", time.Now().Format(time.DateOnly))
+		queryParams += fmt.Sprintf("_count=1&status=%s&date=ge%s", queryParamsRequest.AppointmentStatus, time.Now().Format(time.DateOnly))
 	}
 
 	if queryParamsRequest.PatientID != "" {
