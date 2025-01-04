@@ -70,7 +70,6 @@ func BuildErrorResponse(log *zap.Logger, w http.ResponseWriter, err error) {
 				zap.Any("location", location),
 			)
 		}
-
 	} else {
 		log.Error(err.Error())
 	}

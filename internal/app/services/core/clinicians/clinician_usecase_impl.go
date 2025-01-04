@@ -243,22 +243,33 @@ func (uc *clinicianUsecase) CreatePracticeAvailability(ctx context.Context, sess
 			return nil, err
 		}
 
-		scheduleFhirRequest := &fhir_dto.Schedule{
-			ResourceType: constvars.ResourceSchedule,
-			Actor: []fhir_dto.Reference{
-				{
-					Reference: fmt.Sprintf("%s/%s", constvars.ResourcePractitionerRole, practitionerRole.ID),
-				},
-				{
-					Reference: fmt.Sprintf("%s/%s", constvars.ResourcePractitioner, session.PractitionerID),
-				},
-			},
-			Comment: fmt.Sprintf("%s for %s (%s) %s (%s) ", constvars.ResourceSchedule, constvars.ResourcePractitioner, session.PractitionerID, constvars.ResourcePractitionerRole, practitionerRole.ID),
-		}
-
-		_, err = uc.ScheduleFhirClient.CreateSchedule(ctx, scheduleFhirRequest)
+		schedules, err := uc.ScheduleFhirClient.FindScheduleByPractitionerRoleID(ctx, practitionerRole.ID)
 		if err != nil {
 			return nil, err
+		}
+
+		if len(schedules) > 1 {
+			return nil, exceptions.ErrGetFHIRResourceDuplicate(nil, constvars.ResourceSchedule)
+		}
+
+		if len(schedules) == 0 {
+			scheduleFhirRequest := &fhir_dto.Schedule{
+				ResourceType: constvars.ResourceSchedule,
+				Actor: []fhir_dto.Reference{
+					{
+						Reference: fmt.Sprintf("%s/%s", constvars.ResourcePractitionerRole, practitionerRole.ID),
+					},
+					{
+						Reference: fmt.Sprintf("%s/%s", constvars.ResourcePractitioner, session.PractitionerID),
+					},
+				},
+				Comment: fmt.Sprintf("%s for %s (%s) %s (%s) ", constvars.ResourceSchedule, constvars.ResourcePractitioner, session.PractitionerID, constvars.ResourcePractitionerRole, practitionerRole.ID),
+			}
+
+			_, err = uc.ScheduleFhirClient.CreateSchedule(ctx, scheduleFhirRequest)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		response = append(response, responses.PracticeAvailability{

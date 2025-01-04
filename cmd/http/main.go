@@ -236,7 +236,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	transactionPostgresRepository := transactions.NewTransactionPostgresRepository(bootstrap.PostgresDB)
 
 	// Initialize Clinic dependencies
-	clinicUsecase := clinics.NewClinicUsecase(organizationFhirClient, practitionerRoleFhirClient, practitionerFhirClient, scheduleFhirClient, redisRepository, bootstrap.InternalConfig)
+	clinicUsecase := clinics.NewClinicUsecase(organizationFhirClient, practitionerRoleFhirClient, practitionerFhirClient, scheduleFhirClient, chargeItemDefinitionFhirClient, redisRepository, bootstrap.InternalConfig)
 	clinicController := controllers.NewClinicController(bootstrap.Logger, clinicUsecase)
 
 	// Initialize Clinic dependencies
@@ -297,6 +297,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	routers.SetupRoutes(
 		bootstrap.Router,
 		bootstrap.InternalConfig,
+		bootstrap.Logger,
 		middlewares,
 		userController,
 		authController,
