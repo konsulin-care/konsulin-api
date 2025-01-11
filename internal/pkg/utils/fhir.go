@@ -1,8 +1,11 @@
 package utils
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"konsulin-service/internal/pkg/dto/responses"
+	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"strings"
 	"time"
@@ -290,4 +293,41 @@ func RemoveFromSlice(slice *[]string, item string) {
 			break
 		}
 	}
+}
+
+func FindPatientIDFromFhirAppointment(ctx context.Context, request fhir_dto.Appointment) (string, error) {
+	for _, participant := range request.Participant {
+		if strings.Contains(participant.Actor.Reference, "Patient/") {
+			parts := strings.Split(participant.Actor.Reference, "/")
+			if len(parts) > 1 {
+				return parts[1], nil
+			}
+		}
+	}
+	errResponse := errors.New("patient ID not found in appointment")
+	return "", exceptions.ErrServerProcess(errResponse)
+}
+
+func FindPractitionerIDFromFhirAppointment(ctx context.Context, request fhir_dto.Appointment) (string, error) {
+	for _, participant := range request.Participant {
+		if strings.Contains(participant.Actor.Reference, "Practitioner/") {
+			parts := strings.Split(participant.Actor.Reference, "/")
+			if len(parts) > 1 {
+				return parts[1], nil
+			}
+		}
+	}
+	errResponse := errors.New("practitioner ID not found in appointment")
+	return "", exceptions.ErrServerProcess(errResponse)
+}
+
+func AddAndGetTime(hoursToAdd, minutesToAdd, secondsToAdd int) string {
+	currentTime := time.Now().UTC()
+
+	newTime := currentTime.Add(
+		time.Duration(hoursToAdd)*time.Hour +
+			time.Duration(minutesToAdd)*time.Minute +
+			time.Duration(secondsToAdd)*time.Second)
+
+	return newTime.Format("2006-01-02 15:04:05")
 }

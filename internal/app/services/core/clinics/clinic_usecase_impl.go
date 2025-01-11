@@ -48,7 +48,7 @@ func (uc *clinicUsecase) FindAll(ctx context.Context, nameFilter, fetchType stri
 	if err != nil {
 		return nil, nil, err
 	}
-	// Build the response
+
 	response := make([]responses.Clinic, len(organizationsFhir))
 	for i, eachOrganization := range organizationsFhir {
 		response[i] = utils.ConvertOrganizationToClinicResponse(eachOrganization)
@@ -100,7 +100,7 @@ func (uc *clinicUsecase) FindByID(ctx context.Context, clinicID string) (*respon
 	if err != nil {
 		return nil, err
 	}
-	// Build the response
+
 	response := utils.ConvertOrganizationToClinicDetailResponse(*organization)
 
 	return &response, nil

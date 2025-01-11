@@ -1,5 +1,7 @@
 package requests
 
+import "time"
+
 type CreateAppointmentRequest struct {
 	ClinicianID      string `json:"clinician_id"`
 	ScheduleID       string `json:"schedule_id"`
@@ -9,4 +11,6 @@ type CreateAppointmentRequest struct {
 	NumberOfSessions int    `json:"number_of_sessions"`
 	PricePerSession  int    `json:"price_per_session"`
 	ProblemBrief     string `json:"problem_brief"`
+	StartTime        time.Time
+	PatientID        string
 }

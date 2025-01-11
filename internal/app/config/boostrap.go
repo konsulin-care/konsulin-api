@@ -25,35 +25,30 @@ type Bootstrap struct {
 }
 
 func (b *Bootstrap) Shutdown(ctx context.Context) error {
-	// Shutdown MongoDB
 	err := b.MongoDB.Disconnect(ctx)
 	if err != nil {
 		return err
 	}
 	log.Println("Successfully disconnected with MongoDB")
 
-	// Shutdown PostgresDB
 	err = b.PostgresDB.Close()
 	if err != nil {
 		return err
 	}
 	log.Println("Successfully closing PostgresDB connection")
 
-	// Shutdown Redis
 	err = b.Redis.Close()
 	if err != nil {
 		return err
 	}
 	log.Println("Successfully closing Redis")
 
-	// Close RabbitMQ
 	err = b.RabbitMQ.Close()
 	if err != nil {
 		return err
 	}
 	log.Println("Successfully closing RabbitMQ")
 
-	// Sync the logger
 	err = b.Logger.Sync()
 	if err != nil {
 		return err

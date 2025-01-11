@@ -14,6 +14,7 @@ type PracticeInformation struct {
 	PricePerSession                PricePerSession `json:"price_per_session"`
 	Specialties                    []string        `json:"specialties"`
 	PractitionerRoleFullResourceID string
+	ClinicName                     string
 }
 
 type PricePerSession struct {
