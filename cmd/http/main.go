@@ -287,7 +287,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	}
 	cityController := controllers.NewCityController(bootstrap.Logger, cityUseCase)
 
-	paymentUsecase := payments.NewPaymentUsecase(appointmentFhirClient, bootstrap.InternalConfig)
+	paymentUsecase := payments.NewPaymentUsecase(transactionPostgresRepository, appointmentFhirClient, bootstrap.InternalConfig)
 	paymentController := controllers.NewPaymentController(bootstrap.Logger, paymentUsecase)
 
 	// Initialize middlewares with logger, session service, and auth usecase

@@ -86,7 +86,7 @@ func (uc *clinicianUsecase) DeleteClinicByID(ctx context.Context, sessionData, c
 	}
 
 	if len(slots) > 0 {
-		customErrMessage := errors.New("you can't delete this clinic from your practice, you still have on-goind appointmnets")
+		customErrMessage := errors.New("you can't delete this clinic from your practice, you still have on-goind appointments")
 		return exceptions.ErrClientCustomMessage(customErrMessage)
 	}
 	return nil
@@ -119,6 +119,12 @@ func (uc *clinicianUsecase) CreatePracticeInformation(ctx context.Context, sessi
 			return nil, exceptions.ErrResultFetchedNotUniqueFhirResource(nil, constvars.ResourcePractitionerRole)
 		}
 
+		organization, err := uc.OrganizationFhirClient.FindOrganizationByID(ctx, practiceInformation.ClinicID)
+		if err != nil {
+			return nil, err
+		}
+		practiceInformation.ClinicName = organization.Name
+
 		practitionerRoleFhirRequest := uc.buildPractitionerRoleRequestFromPracticeInformation(
 			session.PractitionerID,
 			practiceInformation,
@@ -136,7 +142,7 @@ func (uc *clinicianUsecase) CreatePracticeInformation(ctx context.Context, sessi
 			}
 			practiceInformation.PractitionerRoleFullResourceID = utils.ParseSlashSeparatedToDashSeparated(fmt.Sprintf("%s/%s", constvars.ResourcePractitionerRole, practitionerRoleFhir.ID))
 			chargeItemDefinitionRequest := uc.buildChargeItemDefinition(practiceInformation)
-			chargeItemDefinition, err := uc.ChargeItemDefinitionFhirClient.UpdateChargeItemDefinition(ctx, chargeItemDefinitionRequest)
+			chargeItemDefinition, err := uc.ChargeItemDefinitionFhirClient.CreateChargeItemDefinition(ctx, chargeItemDefinitionRequest)
 			if err != nil {
 				return nil, err
 			}
@@ -169,7 +175,7 @@ func (uc *clinicianUsecase) CreatePracticeInformation(ctx context.Context, sessi
 
 			if chargeItemDefinition.ID == "" {
 				chargeItemDefinitionRequest := uc.buildChargeItemDefinition(practiceInformation)
-				chargeItemDefinition, err = uc.ChargeItemDefinitionFhirClient.UpdateChargeItemDefinition(ctx, chargeItemDefinitionRequest)
+				chargeItemDefinition, err = uc.ChargeItemDefinitionFhirClient.CreateChargeItemDefinition(ctx, chargeItemDefinitionRequest)
 				if err != nil {
 					return nil, err
 				}
@@ -347,6 +353,7 @@ func (uc *clinicianUsecase) buildPractitionerRoleRequestFromPracticeInformation(
 	}
 	organizationReference := fhir_dto.Reference{
 		Reference: fmt.Sprintf("%s/%s", constvars.ResourceOrganization, practiceInformation.ClinicID),
+		Display:   practiceInformation.ClinicName,
 	}
 
 	request := &fhir_dto.PractitionerRole{
@@ -355,6 +362,11 @@ func (uc *clinicianUsecase) buildPractitionerRoleRequestFromPracticeInformation(
 		Organization: organizationReference,
 		Active:       false,
 		Specialty:    []fhir_dto.CodeableConcept{},
+	}
+
+	if len(practitionerRoles[0].AvailableTime) > 0 {
+		request.Active = true
+		request.AvailableTime = practitionerRoles[0].AvailableTime
 	}
 
 	for _, specialty := range practiceInformation.Specialties {
@@ -418,6 +430,7 @@ func (uc *clinicianUsecase) buildPractitionerRoleRequestForPracticeAvailability(
 	}
 	organizationReference := fhir_dto.Reference{
 		Reference: fmt.Sprintf("%s/%s", constvars.ResourceOrganization, organizationID),
+		Display:   practitionerRoles[0].Organization.Display,
 	}
 
 	request := &fhir_dto.PractitionerRole{

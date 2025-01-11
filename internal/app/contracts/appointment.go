@@ -10,7 +10,7 @@ import (
 type AppointmentUsecase interface {
 	CreateAppointment(ctx context.Context, sessionData string, request *requests.CreateAppointmentRequest) (*responses.CreateAppointment, error)
 	FindAll(ctx context.Context, sessionData string, queryParamsRequest *requests.QueryParams) ([]responses.Appointment, error)
-	FindUpcomingAppointment(ctx context.Context, sessionData string, queryParamsRequest *requests.QueryParams) (*responses.Appointment, error)
+	FindUpcomingAppointment(ctx context.Context, sessionData string, queryParamsRequest *requests.QueryParams) (responses.Appointment, error)
 }
 
 type AppointmentFhirClient interface {

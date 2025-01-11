@@ -2,7 +2,6 @@ package appointments
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
@@ -13,7 +12,6 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/utils"
-	"strings"
 	"time"
 )
 
@@ -55,7 +53,6 @@ func NewAppointmentUsecase(
 		InternalConfig:         internalConfig,
 	}
 }
-
 func (uc *appointmentUsecase) FindAll(ctx context.Context, sessionData string, queryParamsRequest *requests.QueryParams) ([]responses.Appointment, error) {
 	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
 	if err != nil {
@@ -64,58 +61,9 @@ func (uc *appointmentUsecase) FindAll(ctx context.Context, sessionData string, q
 
 	if session.IsPatient() {
 		queryParamsRequest.PatientID = session.PatientID
-
-		appointments, err := uc.AppointmentFhirClient.FindAll(ctx, queryParamsRequest)
-		if err != nil {
-			return nil, err
-		}
-
-		response := make([]responses.Appointment, 0, len(appointments))
-		for _, eachAppointment := range appointments {
-			patientID, err := uc.FindPatientIDFromFhirAppointment(ctx, eachAppointment)
-			if err != nil {
-				return nil, err
-			}
-
-			patient, err := uc.PatientFhirClient.FindPatientByID(ctx, patientID)
-			if err != nil {
-				return nil, err
-			}
-
-			practitionerID, err := uc.FindPractitionerIDFromFhirAppointment(ctx, eachAppointment)
-			if err != nil {
-				return nil, err
-			}
-
-			practitioner, err := uc.PractitionerFhirClient.FindPractitionerByID(ctx, practitionerID)
-			if err != nil {
-				return nil, err
-			}
-
-			transaction, err := uc.TransactionRepository.FindByID(ctx, eachAppointment.ID)
-			if err != nil {
-				return nil, err
-			}
-
-			response = append(response, responses.Appointment{
-				ID:              eachAppointment.ID,
-				Status:          eachAppointment.Status,
-				AppointmentTime: eachAppointment.Start,
-				Description:     eachAppointment.Description,
-				MinutesDuration: eachAppointment.MinutesDuration,
-				PatientID:       patientID,
-				PatientName:     utils.GetFullName(patient.Name),
-				ClinicianID:     practitionerID,
-				ClinicianName:   utils.GetFullName(practitioner.Name),
-				PaymentStatus:   string(transaction.StatusPayment),
-				PaymentLink:     transaction.PaymentLink,
-			})
-		}
-
-		return response, nil
+	} else if session.IsPractitioner() {
+		queryParamsRequest.PractitionerID = session.PractitionerID
 	}
-
-	queryParamsRequest.PractitionerID = session.PractitionerID
 
 	appointments, err := uc.AppointmentFhirClient.FindAll(ctx, queryParamsRequest)
 	if err != nil {
@@ -123,160 +71,223 @@ func (uc *appointmentUsecase) FindAll(ctx context.Context, sessionData string, q
 	}
 
 	response := make([]responses.Appointment, 0, len(appointments))
-
 	for _, eachAppointment := range appointments {
-		patientID, err := uc.FindPatientIDFromFhirAppointment(ctx, eachAppointment)
+		appointmentResp, err := uc.buildAppointmentResponse(ctx, eachAppointment)
 		if err != nil {
 			return nil, err
 		}
-
-		patient, err := uc.PatientFhirClient.FindPatientByID(ctx, patientID)
-		if err != nil {
-			return nil, err
-		}
-
-		practitionerID, err := uc.FindPractitionerIDFromFhirAppointment(ctx, eachAppointment)
-		if err != nil {
-			return nil, err
-		}
-
-		practitioner, err := uc.PractitionerFhirClient.FindPractitionerByID(ctx, practitionerID)
-		if err != nil {
-			return nil, err
-		}
-
-		transaction, err := uc.TransactionRepository.FindByID(ctx, eachAppointment.ID)
-		if err != nil {
-			return nil, err
-		}
-
-		response = append(response, responses.Appointment{
-			ID:              eachAppointment.ID,
-			Status:          eachAppointment.Status,
-			AppointmentTime: eachAppointment.Start,
-			Description:     eachAppointment.Description,
-			MinutesDuration: eachAppointment.MinutesDuration,
-			PatientID:       patientID,
-			PatientName:     utils.GetFullName(patient.Name),
-			ClinicianID:     practitionerID,
-			ClinicianName:   utils.GetFullName(practitioner.Name),
-			PaymentStatus:   string(transaction.StatusPayment),
-			PaymentLink:     transaction.PaymentLink,
-		})
+		response = append(response, appointmentResp)
 	}
 
 	return response, nil
 }
 
-func (uc *appointmentUsecase) FindUpcomingAppointment(ctx context.Context, sessionData string, queryParamsRequest *requests.QueryParams) (*responses.Appointment, error) {
+func (uc *appointmentUsecase) buildAppointmentResponse(ctx context.Context, fhirAppointment fhir_dto.Appointment) (responses.Appointment, error) {
+	patientID, err := utils.FindPatientIDFromFhirAppointment(ctx, fhirAppointment)
+	if err != nil {
+		return responses.Appointment{}, err
+	}
+
+	practitionerID, err := utils.FindPractitionerIDFromFhirAppointment(ctx, fhirAppointment)
+	if err != nil {
+		return responses.Appointment{}, err
+	}
+
+	patient, err := uc.PatientFhirClient.FindPatientByID(ctx, patientID)
+	if err != nil {
+		return responses.Appointment{}, err
+	}
+
+	practitioner, err := uc.PractitionerFhirClient.FindPractitionerByID(ctx, practitionerID)
+	if err != nil {
+		return responses.Appointment{}, err
+	}
+
+	transaction, err := uc.TransactionRepository.FindByID(ctx, fhirAppointment.ID)
+	if err != nil {
+		return responses.Appointment{}, err
+	}
+
+	return responses.Appointment{
+		ID:              fhirAppointment.ID,
+		Status:          fhirAppointment.Status,
+		AppointmentTime: fhirAppointment.Start,
+		Description:     fhirAppointment.Description,
+		MinutesDuration: fhirAppointment.MinutesDuration,
+		PatientID:       patientID,
+		PatientName:     utils.GetFullName(patient.Name),
+		ClinicianID:     practitionerID,
+		ClinicianName:   utils.GetFullName(practitioner.Name),
+		PaymentStatus:   string(transaction.StatusPayment),
+		PaymentLink:     transaction.PaymentLink,
+	}, nil
+}
+
+func (uc *appointmentUsecase) FindUpcomingAppointment(ctx context.Context, sessionData string, queryParamsRequest *requests.QueryParams) (responses.Appointment, error) {
 	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
 	if err != nil {
-		return nil, err
+		return responses.Appointment{}, err
 	}
 
 	if session.IsPatient() {
 		queryParamsRequest.PatientID = session.PatientID
-
-		appointments, err := uc.AppointmentFhirClient.FindAll(ctx, queryParamsRequest)
-		if err != nil {
-			return nil, err
-		}
-
-		response := make([]responses.Appointment, 0, len(appointments))
-		for _, eachAppointment := range appointments {
-			patientID, err := uc.FindPatientIDFromFhirAppointment(ctx, eachAppointment)
-			if err != nil {
-				return nil, err
-			}
-
-			patient, err := uc.PatientFhirClient.FindPatientByID(ctx, patientID)
-			if err != nil {
-				return nil, err
-			}
-
-			transaction, err := uc.TransactionRepository.FindByID(ctx, eachAppointment.ID)
-			if err != nil {
-				return nil, err
-			}
-
-			response = append(response, responses.Appointment{
-				ID:              eachAppointment.ID,
-				Status:          eachAppointment.Status,
-				AppointmentTime: eachAppointment.Start,
-				Description:     eachAppointment.Description,
-				MinutesDuration: eachAppointment.MinutesDuration,
-				PatientID:       patientID,
-				PatientName:     utils.GetFullName(patient.Name),
-				PaymentStatus:   string(transaction.StatusPayment),
-				PaymentLink:     transaction.PaymentLink,
-			})
-		}
-
-		return &response[0], nil
+	} else if session.IsPractitioner() {
+		queryParamsRequest.PractitionerID = session.PractitionerID
 	}
-
-	queryParamsRequest.PractitionerID = session.PractitionerID
 
 	appointments, err := uc.AppointmentFhirClient.FindAll(ctx, queryParamsRequest)
 	if err != nil {
-		return nil, err
+		return responses.Appointment{}, err
 	}
 
-	response := make([]responses.Appointment, 0, len(appointments))
-
-	for _, eachAppointment := range appointments {
-		practitionerID, err := uc.FindPractitionerIDFromFhirAppointment(ctx, eachAppointment)
-		if err != nil {
-			return nil, err
-		}
-
-		practitioner, err := uc.PractitionerFhirClient.FindPractitionerByID(ctx, practitionerID)
-		if err != nil {
-			return nil, err
-		}
-
-		transaction, err := uc.TransactionRepository.FindByID(ctx, eachAppointment.ID)
-		if err != nil {
-			return nil, err
-		}
-
-		response = append(response, responses.Appointment{
-			ID:              eachAppointment.ID,
-			Status:          eachAppointment.Status,
-			AppointmentTime: eachAppointment.Start,
-			Description:     eachAppointment.Description,
-			MinutesDuration: eachAppointment.MinutesDuration,
-			ClinicianID:     practitionerID,
-			ClinicianName:   utils.GetFullName(practitioner.Name),
-			PaymentStatus:   string(transaction.StatusPayment),
-			PaymentLink:     transaction.PaymentLink,
-		})
+	if len(appointments) == 0 {
+		return responses.Appointment{}, nil
 	}
 
-	return &response[0], nil
+	var response []responses.Appointment
+	for _, appt := range appointments {
+		var apptResp responses.Appointment
+		if session.IsPatient() {
+			apptResp, err = uc.buildPatientAppointmentResponse(ctx, appt)
+		} else if session.IsPractitioner() {
+			apptResp, err = uc.buildPractitionerAppointmentResponse(ctx, appt)
+		}
+		if err != nil {
+			return responses.Appointment{}, err
+		}
+		response = append(response, apptResp)
+	}
+
+	return response[0], nil
+}
+
+func (uc *appointmentUsecase) buildPatientAppointmentResponse(ctx context.Context, fhirAppointment fhir_dto.Appointment) (responses.Appointment, error) {
+	patientID, err := utils.FindPatientIDFromFhirAppointment(ctx, fhirAppointment)
+	if err != nil {
+		return responses.Appointment{}, err
+	}
+
+	patient, err := uc.PatientFhirClient.FindPatientByID(ctx, patientID)
+	if err != nil {
+		return responses.Appointment{}, err
+	}
+
+	transaction, err := uc.TransactionRepository.FindByID(ctx, fhirAppointment.ID)
+	if err != nil {
+		return responses.Appointment{}, err
+	}
+
+	return responses.Appointment{
+		ID:              fhirAppointment.ID,
+		Status:          fhirAppointment.Status,
+		AppointmentTime: fhirAppointment.Start,
+		Description:     fhirAppointment.Description,
+		MinutesDuration: fhirAppointment.MinutesDuration,
+		PatientID:       patientID,
+		PatientName:     utils.GetFullName(patient.Name),
+		PaymentStatus:   string(transaction.StatusPayment),
+		PaymentLink:     transaction.PaymentLink,
+	}, nil
+}
+
+func (uc *appointmentUsecase) buildPractitionerAppointmentResponse(ctx context.Context, fhirAppointment fhir_dto.Appointment) (responses.Appointment, error) {
+	practitionerID, err := utils.FindPractitionerIDFromFhirAppointment(ctx, fhirAppointment)
+	if err != nil {
+		return responses.Appointment{}, err
+	}
+
+	practitioner, err := uc.PractitionerFhirClient.FindPractitionerByID(ctx, practitionerID)
+	if err != nil {
+		return responses.Appointment{}, err
+	}
+
+	transaction, err := uc.TransactionRepository.FindByID(ctx, fhirAppointment.ID)
+	if err != nil {
+		return responses.Appointment{}, err
+	}
+
+	return responses.Appointment{
+		ID:              fhirAppointment.ID,
+		Status:          fhirAppointment.Status,
+		AppointmentTime: fhirAppointment.Start,
+		Description:     fhirAppointment.Description,
+		MinutesDuration: fhirAppointment.MinutesDuration,
+		ClinicianID:     practitionerID,
+		ClinicianName:   utils.GetFullName(practitioner.Name),
+		PaymentStatus:   string(transaction.StatusPayment),
+		PaymentLink:     transaction.PaymentLink,
+	}, nil
 }
 
 func (uc *appointmentUsecase) CreateAppointment(ctx context.Context, sessionData string, request *requests.CreateAppointmentRequest) (*responses.CreateAppointment, error) {
-	// Parse session data
-	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
+	session, err := uc.parseAndValidatePatientSession(ctx, sessionData)
 	if err != nil {
 		return nil, err
 	}
+	request.PatientID = session.PatientID
 
-	if session.IsNotPatient() {
-		return nil, exceptions.ErrNotMatchRoleType(nil)
-	}
-
-	appointmentStartTime, err := time.Parse("2006-01-02 15:04", fmt.Sprintf("%s %s", request.Date, request.Time))
+	request.StartTime, err = parseAppointmentStartTime(request.Date, request.Time)
 	if err != nil {
 		return nil, exceptions.ErrCannotParseTime(err)
 	}
 
-	var slotsToBook []fhir_dto.Reference
-	var lastSlotBooked *fhir_dto.Slot
+	slotsToBook, lastSlot, err := uc.createSlots(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	savedAppointment, err := uc.createFhirAppointment(ctx, request, lastSlot.End, slotsToBook)
+	if err != nil {
+		return nil, err
+	}
+
+	totalPrice := request.NumberOfSessions * request.PricePerSession
+	paymentResponse, err := uc.createPayment(ctx, savedAppointment.ID, totalPrice)
+	if err != nil {
+		return nil, err
+	}
+
+	err = uc.saveTransaction(ctx, paymentResponse, request, totalPrice)
+	if err != nil {
+		return nil, err
+	}
+
+	return &responses.CreateAppointment{
+		Status:               paymentResponse.Status.Message,
+		TransactionID:        paymentResponse.TrxID,
+		PartnerTransactionID: paymentResponse.PartnerTrxID,
+		PaymentLink:          paymentResponse.PaymentInfo.PaymentCheckoutURL,
+	}, nil
+}
+
+func (uc *appointmentUsecase) parseAndValidatePatientSession(ctx context.Context, sessionData string) (*models.Session, error) {
+	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
+	if err != nil {
+		return nil, err
+	}
+	if session.IsNotPatient() {
+		return nil, exceptions.ErrNotMatchRoleType(nil)
+	}
+	return session, nil
+}
+
+func parseAppointmentStartTime(dateStr, timeStr string) (time.Time, error) {
+	return time.Parse("2006-01-02 15:04", fmt.Sprintf("%s %s", dateStr, timeStr))
+}
+
+func (uc *appointmentUsecase) createSlots(ctx context.Context, request *requests.CreateAppointmentRequest) ([]fhir_dto.Reference, *fhir_dto.Slot, error) {
+	var (
+		slotsToBook     []fhir_dto.Reference
+		lastSlotCreated *fhir_dto.Slot
+	)
+
 	for i := 0; i < request.NumberOfSessions; i++ {
-		startTime := appointmentStartTime.Add(time.Duration(i) * time.Duration(uc.InternalConfig.App.SessionMultiplierInMinutes) * time.Minute)
-		endTime := startTime.Add(time.Duration(uc.InternalConfig.App.SessionMultiplierInMinutes) * time.Minute)
+		slotStart := request.StartTime.Add(
+			time.Duration(i) * time.Duration(uc.InternalConfig.App.SessionMultiplierInMinutes) * time.Minute,
+		)
+		slotEnd := slotStart.Add(
+			time.Duration(uc.InternalConfig.App.SessionMultiplierInMinutes) * time.Minute,
+		)
 
 		slotFhirRequest := &fhir_dto.Slot{
 			ResourceType: constvars.ResourceSlot,
@@ -284,36 +295,37 @@ func (uc *appointmentUsecase) CreateAppointment(ctx context.Context, sessionData
 				Reference: fmt.Sprintf("%s/%s", constvars.ResourceSchedule, request.ScheduleID),
 			},
 			Status: constvars.FhirSlotStatusBusy,
-			Start:  startTime,
-			End:    endTime,
+			Start:  slotStart,
+			End:    slotEnd,
 		}
 
-		// Generate the slot on demand
-		slot, err := uc.SlotFhirClient.CreateSlot(ctx, slotFhirRequest)
+		createdSlot, err := uc.SlotFhirClient.CreateSlot(ctx, slotFhirRequest)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		slotsToBook = append(slotsToBook, fhir_dto.Reference{
-			Reference: fmt.Sprintf("%s/%s", constvars.ResourceSlot, slot.ID),
+			Reference: fmt.Sprintf("%s/%s", constvars.ResourceSlot, createdSlot.ID),
 		})
 
-		if i == (request.NumberOfSessions - 1) {
-			lastSlotBooked = slot
-		}
+		lastSlotCreated = createdSlot
 	}
 
+	return slotsToBook, lastSlotCreated, nil
+}
+
+func (uc *appointmentUsecase) createFhirAppointment(ctx context.Context, request *requests.CreateAppointmentRequest, end time.Time, slotsToBook []fhir_dto.Reference) (*fhir_dto.Appointment, error) {
 	appointmentFhirRequest := &fhir_dto.Appointment{
 		ResourceType: constvars.ResourceAppointment,
 		Status:       constvars.FhirAppointmentStatusProposed,
-		Start:        appointmentStartTime,
-		End:          lastSlotBooked.End,
+		Start:        request.StartTime,
+		End:          end,
 		Slot:         slotsToBook,
 		Description:  request.ProblemBrief,
 		Participant: []fhir_dto.AppointmentParticipant{
 			{
 				Actor: fhir_dto.Reference{
-					Reference: fmt.Sprintf("%s/%s", constvars.ResourcePatient, session.PatientID),
+					Reference: fmt.Sprintf("%s/%s", constvars.ResourcePatient, request.PatientID),
 				},
 				Status: constvars.FhirParticipantStatusAccepted,
 			},
@@ -326,21 +338,22 @@ func (uc *appointmentUsecase) CreateAppointment(ctx context.Context, sessionData
 		},
 	}
 
-	savedAppointment, err := uc.AppointmentFhirClient.CreateAppointment(ctx, appointmentFhirRequest)
-	if err != nil {
-		return nil, err
-	}
+	return uc.AppointmentFhirClient.CreateAppointment(ctx, appointmentFhirRequest)
+}
 
-	var totalPriceToBePaidByPatient int = request.NumberOfSessions * request.PricePerSession
-
+func (uc *appointmentUsecase) createPayment(ctx context.Context, partnerTransactionID string, totalPrice int) (*responses.PaymentResponse, error) {
 	paymentRoutingRequest := &requests.PaymentRequest{
-		UseLinkedAccount:      false,
-		PartnerTransactionID:  savedAppointment.ID,
-		NeedFrontend:          true,
-		SenderEmail:           uc.InternalConfig.Konsulin.FinanceEmail,
-		VADisplayName:         uc.InternalConfig.Konsulin.PaymentDisplayName,
-		PaymentExpirationTime: uc.addAndGetTime(constvars.TIME_DIFFERENCE_JAKARTA, uc.InternalConfig.App.PaymentExpiredTimeInMinutes, 10),
-		ReceiveAmount:         totalPriceToBePaidByPatient,
+		UseLinkedAccount:     false,
+		PartnerTransactionID: partnerTransactionID,
+		NeedFrontend:         true,
+		SenderEmail:          uc.InternalConfig.Konsulin.FinanceEmail,
+		VADisplayName:        uc.InternalConfig.Konsulin.PaymentDisplayName,
+		PaymentExpirationTime: utils.AddAndGetTime(
+			constvars.TIME_DIFFERENCE_JAKARTA,
+			uc.InternalConfig.App.PaymentExpiredTimeInMinutes,
+			10,
+		),
+		ReceiveAmount: totalPrice,
 		ListEnablePaymentMethod: []string{
 			requests.OY_PAYMENT_METHOD_BANK_TRANSFER,
 		},
@@ -356,77 +369,30 @@ func (uc *appointmentUsecase) CreateAppointment(ctx context.Context, sessionData
 				RecipientBank:    uc.InternalConfig.Konsulin.BankCode,
 				RecipientAccount: uc.InternalConfig.Konsulin.BankAccountNumber,
 				RecipientEmail:   uc.InternalConfig.Konsulin.FinanceEmail,
-				RecipientAmount:  totalPriceToBePaidByPatient,
+				RecipientAmount:  totalPrice,
 			},
 		},
 	}
 
 	paymentRequestDTO := utils.MapPaymentRequestToDTO(paymentRoutingRequest)
+	return uc.OyService.CreatePaymentRouting(ctx, paymentRequestDTO)
+}
 
-	paymentResponse, err := uc.OyService.CreatePaymentRouting(ctx, paymentRequestDTO)
-	if err != nil {
-		return nil, err
-	}
-
+func (uc *appointmentUsecase) saveTransaction(ctx context.Context, paymentResponse *responses.PaymentResponse, request *requests.CreateAppointmentRequest, totalPrice int) error {
 	transaction := &models.Transaction{
 		ID:                      paymentResponse.PartnerTrxID,
-		PatientID:               session.PatientID,
+		PatientID:               request.PatientID,
 		PractitionerID:          request.ClinicianID,
 		LengthMinutesPerSession: uc.InternalConfig.App.SessionMultiplierInMinutes,
 		SessionTotal:            request.NumberOfSessions,
 		Currency:                constvars.CurrencyIndonesianRupiah,
 		PaymentLink:             paymentResponse.PaymentInfo.PaymentCheckoutURL,
-		Amount:                  float64(totalPriceToBePaidByPatient),
+		Amount:                  float64(totalPrice),
 		StatusPayment:           models.Pending,
 		RefundStatus:            models.None,
 		SessionType:             models.TransactionSessionType(request.SessionType),
 	}
-	_, err = uc.TransactionRepository.CreateTransaction(ctx, transaction)
-	if err != nil {
-		return nil, err
-	}
 
-	return &responses.CreateAppointment{
-		Status:               paymentResponse.Status.Message,
-		TransactionID:        paymentResponse.TrxID,
-		PartnerTransactionID: paymentResponse.PartnerTrxID,
-		PaymentLink:          paymentResponse.PaymentInfo.PaymentCheckoutURL,
-	}, nil
-}
-
-func (uc *appointmentUsecase) FindPatientIDFromFhirAppointment(ctx context.Context, request fhir_dto.Appointment) (string, error) {
-	for _, participant := range request.Participant {
-		if strings.Contains(participant.Actor.Reference, "Patient/") {
-			parts := strings.Split(participant.Actor.Reference, "/")
-			if len(parts) > 1 {
-				return parts[1], nil
-			}
-		}
-	}
-	errResponse := errors.New("patient ID not found in appointment")
-	return "", exceptions.ErrServerProcess(errResponse)
-}
-
-func (uc *appointmentUsecase) FindPractitionerIDFromFhirAppointment(ctx context.Context, request fhir_dto.Appointment) (string, error) {
-	for _, participant := range request.Participant {
-		if strings.Contains(participant.Actor.Reference, "Practitioner/") {
-			parts := strings.Split(participant.Actor.Reference, "/")
-			if len(parts) > 1 {
-				return parts[1], nil
-			}
-		}
-	}
-	errResponse := errors.New("practitioner ID not found in appointment")
-	return "", exceptions.ErrServerProcess(errResponse)
-}
-
-func (uc *appointmentUsecase) addAndGetTime(hoursToAdd, minutesToAdd, secondsToAdd int) string {
-	currentTime := time.Now().UTC()
-
-	newTime := currentTime.Add(
-		time.Duration(hoursToAdd)*time.Hour +
-			time.Duration(minutesToAdd)*time.Minute +
-			time.Duration(secondsToAdd)*time.Second)
-
-	return newTime.Format("2006-01-02 15:04:05")
+	_, err := uc.TransactionRepository.CreateTransaction(ctx, transaction)
+	return err
 }
