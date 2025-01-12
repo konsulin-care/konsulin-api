@@ -90,3 +90,16 @@ func (r *redisRepository) GetSetMembers(ctx context.Context, key string) ([]stri
 	}
 	return setMembers, err
 }
+
+func (r *redisRepository) TrySetNX(ctx context.Context, key string, value interface{}, exp time.Duration) (bool, error) {
+	jsonValue, err := json.Marshal(value)
+	if err != nil {
+		return false, exceptions.ErrCannotMarshalJSON(err)
+	}
+
+	acquired, err := r.client.SetNX(ctx, key, jsonValue, exp).Result()
+	if err != nil {
+		return false, exceptions.ErrRedisSet(err)
+	}
+	return acquired, nil
+}

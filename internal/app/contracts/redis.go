@@ -14,4 +14,5 @@ type RedisRepository interface {
 	PopFromList(ctx context.Context, key string) error
 	AddToSet(ctx context.Context, key string, values ...interface{}) error
 	GetSetMembers(ctx context.Context, key string) ([]string, error)
+	TrySetNX(ctx context.Context, key string, value interface{}, exp time.Duration) (bool, error)
 }
