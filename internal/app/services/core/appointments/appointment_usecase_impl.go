@@ -26,6 +26,7 @@ type appointmentUsecase struct {
 	RedisRepository        contracts.RedisRepository
 	SessionService         contracts.SessionService
 	OyService              contracts.PaymentGatewayService
+	LockService            contracts.LockerService
 	InternalConfig         *config.InternalConfig
 }
 
@@ -39,6 +40,7 @@ func NewAppointmentUsecase(
 	redisRepository contracts.RedisRepository,
 	sessionService contracts.SessionService,
 	oyService contracts.PaymentGatewayService,
+	lockService contracts.LockerService,
 	internalConfig *config.InternalConfig,
 ) contracts.AppointmentUsecase {
 	return &appointmentUsecase{
@@ -51,6 +53,7 @@ func NewAppointmentUsecase(
 		RedisRepository:        redisRepository,
 		SessionService:         sessionService,
 		OyService:              oyService,
+		LockService:            lockService,
 		InternalConfig:         internalConfig,
 	}
 }
