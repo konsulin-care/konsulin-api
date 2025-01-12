@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"konsulin-service/internal/app/contracts"
+	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
@@ -92,116 +93,185 @@ func (uc *clinicianUsecase) DeleteClinicByID(ctx context.Context, sessionData, c
 	return nil
 }
 
-func (uc *clinicianUsecase) CreatePracticeInformation(ctx context.Context, sessionData string, request *requests.CreatePracticeInformation) ([]responses.PracticeInformation, error) {
-	// Parse session data
-	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
+func (uc *clinicianUsecase) CreatePracticeInformation(ctx context.Context, sessionData string, req *requests.CreatePracticeInformation) ([]responses.PracticeInformation, error) {
+	session, err := uc.parseAndValidatePractitionerSession(ctx, sessionData)
 	if err != nil {
 		return nil, err
 	}
 
-	if session.IsNotPractitioner() {
-		return nil, exceptions.ErrNotMatchRoleType(nil)
-	}
+	result := make([]responses.PracticeInformation, 0, len(req.PracticeInformation))
 
-	result := make([]responses.PracticeInformation, 0, len(request.PracticeInformation))
-
-	for _, practiceInformation := range request.PracticeInformation {
-		practitionerRoles, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerIDAndOrganizationID(
-			ctx,
-			session.PractitionerID,
-			practiceInformation.ClinicID,
-		)
+	for _, practiceInfo := range req.PracticeInformation {
+		practitionerRoles, err := uc.fetchPractitionerRoles(ctx, session.PractitionerID, practiceInfo.ClinicID)
 		if err != nil {
 			return nil, err
 		}
 
-		if len(practitionerRoles) > 1 {
-			return nil, exceptions.ErrResultFetchedNotUniqueFhirResource(nil, constvars.ResourcePractitionerRole)
-		}
-
-		organization, err := uc.OrganizationFhirClient.FindOrganizationByID(ctx, practiceInformation.ClinicID)
+		org, err := uc.OrganizationFhirClient.FindOrganizationByID(ctx, practiceInfo.ClinicID)
 		if err != nil {
 			return nil, err
 		}
-		practiceInformation.ClinicName = organization.Name
+		practiceInfo.ClinicName = org.Name
 
-		practitionerRoleFhirRequest := uc.buildPractitionerRoleRequestFromPracticeInformation(
-			session.PractitionerID,
-			practiceInformation,
-			practitionerRoles,
+		practitionerRoleRequest := uc.buildPractitionerRoleRequestFromPracticeInformation(session.PractitionerID, practiceInfo, practitionerRoles)
+		savedPractitionerRole, err := uc.createOrUpdatePractitionerRole(ctx, practitionerRoleRequest)
+		if err != nil {
+			return nil, err
+		}
+		practiceInfo.PractitionerRoleFullResourceID = utils.ParseSlashSeparatedToDashSeparated(
+			fmt.Sprintf("%s/%s", constvars.ResourcePractitionerRole, savedPractitionerRole.ID),
 		)
 
-		if practitionerRoleFhirRequest.ID == "" {
-			practitionerRoleFhir, err := uc.PractitionerRoleFhirClient.CreatePractitionerRole(ctx, practitionerRoleFhirRequest)
-			if err != nil {
-				return nil, err
-			}
-			organization, err := uc.OrganizationFhirClient.FindOrganizationByID(ctx, practiceInformation.ClinicID)
-			if err != nil {
-				return nil, err
-			}
-			practiceInformation.PractitionerRoleFullResourceID = utils.ParseSlashSeparatedToDashSeparated(fmt.Sprintf("%s/%s", constvars.ResourcePractitionerRole, practitionerRoleFhir.ID))
-			chargeItemDefinitionRequest := uc.buildChargeItemDefinition(practiceInformation)
-			chargeItemDefinition, err := uc.ChargeItemDefinitionFhirClient.CreateChargeItemDefinition(ctx, chargeItemDefinitionRequest)
-			if err != nil {
-				return nil, err
-			}
-
-			result = append(result, responses.PracticeInformation{
-				ClinicID:    organization.ID,
-				ClinicName:  organization.Name,
-				Affiliation: organization.Name,
-				Specialties: utils.ExtractSpecialties(practitionerRoleFhir.Specialty),
-				PricePerSession: responses.PricePerSession{
-					Value:    chargeItemDefinition.PropertyGroup[0].PriceComponent[0].Amount.Value,
-					Currency: chargeItemDefinition.PropertyGroup[0].PriceComponent[0].Amount.Currency,
-				},
-			})
-		} else if practitionerRoleFhirRequest.ID != "" {
-			practitionerRoleFhir, err := uc.PractitionerRoleFhirClient.UpdatePractitionerRole(ctx, practitionerRoleFhirRequest)
-			if err != nil {
-				return nil, err
-			}
-			organization, err := uc.OrganizationFhirClient.FindOrganizationByID(ctx, practiceInformation.ClinicID)
-			if err != nil {
-				return nil, err
-			}
-
-			practiceInformation.PractitionerRoleFullResourceID = utils.ParseSlashSeparatedToDashSeparated(fmt.Sprintf("%s/%s", constvars.ResourcePractitionerRole, practitionerRoleFhir.ID))
-			chargeItemDefinition, err := uc.ChargeItemDefinitionFhirClient.FindChargeItemDefinitionByID(ctx, practiceInformation.PractitionerRoleFullResourceID)
-			if err != nil {
-				return nil, err
-			}
-
-			if chargeItemDefinition.ID == "" {
-				chargeItemDefinitionRequest := uc.buildChargeItemDefinition(practiceInformation)
-				chargeItemDefinition, err = uc.ChargeItemDefinitionFhirClient.CreateChargeItemDefinition(ctx, chargeItemDefinitionRequest)
-				if err != nil {
-					return nil, err
-				}
-			} else {
-				chargeItemDefinitionRequest := uc.updateChargeItemDefinition(practiceInformation, chargeItemDefinition)
-				chargeItemDefinition, err = uc.ChargeItemDefinitionFhirClient.UpdateChargeItemDefinition(ctx, chargeItemDefinitionRequest)
-				if err != nil {
-					return nil, err
-				}
-			}
-
-			result = append(result, responses.PracticeInformation{
-				ClinicID:    organization.ID,
-				ClinicName:  organization.Name,
-				Affiliation: organization.Name,
-				Specialties: utils.ExtractSpecialties(practitionerRoleFhir.Specialty),
-				PricePerSession: responses.PricePerSession{
-					Value:    chargeItemDefinition.PropertyGroup[0].PriceComponent[0].Amount.Value,
-					Currency: chargeItemDefinition.PropertyGroup[0].PriceComponent[0].Amount.Currency,
-				},
-			})
+		savedChargeItemDef, err := uc.createOrUpdateChargeItemDefinition(ctx, practiceInfo)
+		if err != nil {
+			return nil, err
 		}
 
+		result = append(result, responses.PracticeInformation{
+			ClinicID:    org.ID,
+			ClinicName:  org.Name,
+			Affiliation: org.Name,
+			Specialties: utils.ExtractSpecialties(savedPractitionerRole.Specialty),
+			PricePerSession: responses.PricePerSession{
+				Value:    savedChargeItemDef.PropertyGroup[0].PriceComponent[0].Amount.Value,
+				Currency: savedChargeItemDef.PropertyGroup[0].PriceComponent[0].Amount.Currency,
+			},
+		})
 	}
 
 	return result, nil
+}
+
+func (uc *clinicianUsecase) parseAndValidatePractitionerSession(ctx context.Context, sessionData string) (*models.Session, error) {
+	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
+	if err != nil {
+		return nil, err
+	}
+	if session.IsNotPractitioner() {
+		return nil, exceptions.ErrNotMatchRoleType(nil)
+	}
+	return session, nil
+}
+
+func (uc *clinicianUsecase) fetchPractitionerRoles(ctx context.Context, practitionerID, clinicID string) ([]fhir_dto.PractitionerRole, error) {
+	roles, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerIDAndOrganizationID(
+		ctx,
+		practitionerID,
+		clinicID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(roles) > 1 {
+		return nil, exceptions.ErrResultFetchedNotUniqueFhirResource(nil, constvars.ResourcePractitionerRole)
+	}
+
+	return roles, nil
+}
+
+func (uc *clinicianUsecase) createOrUpdatePractitionerRole(ctx context.Context, practitionerRoleRequest *fhir_dto.PractitionerRole) (*fhir_dto.PractitionerRole, error) {
+	if practitionerRoleRequest.ID == "" {
+		newRole, err := uc.PractitionerRoleFhirClient.CreatePractitionerRole(ctx, practitionerRoleRequest)
+		if err != nil {
+			return nil, err
+		}
+		return newRole, nil
+	}
+
+	updatedRole, err := uc.PractitionerRoleFhirClient.UpdatePractitionerRole(ctx, practitionerRoleRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	return updatedRole, nil
+}
+
+func (uc *clinicianUsecase) createOrUpdateChargeItemDefinition(ctx context.Context, practiceInfo requests.PracticeInformation) (*fhir_dto.ChargeItemDefinition, error) {
+	foundCID, err := uc.ChargeItemDefinitionFhirClient.FindChargeItemDefinitionByID(ctx, practiceInfo.PractitionerRoleFullResourceID)
+	if err != nil {
+		return nil, err
+	}
+
+	if foundCID.ID == "" {
+		cidReq := uc.buildChargeItemDefinition(practiceInfo)
+		return uc.ChargeItemDefinitionFhirClient.CreateChargeItemDefinition(ctx, cidReq)
+	}
+
+	cidReq := uc.updateChargeItemDefinition(practiceInfo, foundCID)
+	return uc.ChargeItemDefinitionFhirClient.UpdateChargeItemDefinition(ctx, cidReq)
+}
+
+func (uc *clinicianUsecase) buildPractitionerRoleRequestFromPracticeInformation(practitionerID string, practiceInformation requests.PracticeInformation, practitionerRoles []fhir_dto.PractitionerRole) *fhir_dto.PractitionerRole {
+	practitionerRef := fhir_dto.Reference{
+		Reference: fmt.Sprintf("%s/%s", constvars.ResourcePractitioner, practitionerID),
+	}
+	organizationRef := fhir_dto.Reference{
+		Reference: fmt.Sprintf("%s/%s", constvars.ResourceOrganization, practiceInformation.ClinicID),
+		Display:   practiceInformation.ClinicName,
+	}
+
+	request := &fhir_dto.PractitionerRole{
+		ResourceType: constvars.ResourcePractitionerRole,
+		Practitioner: practitionerRef,
+		Organization: organizationRef,
+		Active:       false,
+		Specialty:    []fhir_dto.CodeableConcept{},
+	}
+
+	if len(practitionerRoles) == 1 && len(practitionerRoles[0].AvailableTime) > 0 {
+		request.Active = true
+		request.AvailableTime = practitionerRoles[0].AvailableTime
+	}
+
+	for _, specialty := range practiceInformation.Specialties {
+		request.Specialty = append(request.Specialty, fhir_dto.CodeableConcept{
+			Text: specialty,
+		})
+	}
+
+	if len(practitionerRoles) == 1 {
+		request.ID = practitionerRoles[0].ID
+	}
+	return request
+}
+
+func (uc *clinicianUsecase) buildChargeItemDefinition(practiceInfo requests.PracticeInformation) *fhir_dto.ChargeItemDefinition {
+	return &fhir_dto.ChargeItemDefinition{
+		ID:           practiceInfo.PractitionerRoleFullResourceID,
+		ResourceType: constvars.ResourceChargeItemDefinition,
+		Status:       constvars.FhirChargeItemDefinitionStatusActive,
+		PropertyGroup: []fhir_dto.ChargeItemPropertyGroup{
+			{
+				PriceComponent: []fhir_dto.ChargeItemPriceComponent{
+					{
+						Type: constvars.FhirMonetaryComponentStatusBase,
+						Amount: &fhir_dto.Money{
+							Value:    practiceInfo.PricePerSession.Value,
+							Currency: practiceInfo.PricePerSession.Currency,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func (uc *clinicianUsecase) updateChargeItemDefinition(practiceInfo requests.PracticeInformation, existingDef *fhir_dto.ChargeItemDefinition) *fhir_dto.ChargeItemDefinition {
+	existingDef.PropertyGroup = []fhir_dto.ChargeItemPropertyGroup{
+		{
+			PriceComponent: []fhir_dto.ChargeItemPriceComponent{
+				{
+					Type: constvars.FhirMonetaryComponentStatusBase,
+					Amount: &fhir_dto.Money{
+						Value:    practiceInfo.PricePerSession.Value,
+						Currency: practiceInfo.PricePerSession.Currency,
+					},
+				},
+			},
+		},
+	}
+	return existingDef
 }
 
 func (uc *clinicianUsecase) CreatePracticeAvailability(ctx context.Context, sessionData string, request *requests.CreatePracticeAvailability) ([]responses.PracticeAvailability, error) {
@@ -347,80 +417,6 @@ func (uc *clinicianUsecase) FindAvailability(ctx context.Context, request *reque
 
 }
 
-func (uc *clinicianUsecase) buildPractitionerRoleRequestFromPracticeInformation(practitionerID string, practiceInformation requests.PracticeInformation, practitionerRoles []fhir_dto.PractitionerRole) *fhir_dto.PractitionerRole {
-	practitionerReference := fhir_dto.Reference{
-		Reference: fmt.Sprintf("%s/%s", constvars.ResourcePractitioner, practitionerID),
-	}
-	organizationReference := fhir_dto.Reference{
-		Reference: fmt.Sprintf("%s/%s", constvars.ResourceOrganization, practiceInformation.ClinicID),
-		Display:   practiceInformation.ClinicName,
-	}
-
-	request := &fhir_dto.PractitionerRole{
-		ResourceType: constvars.ResourcePractitionerRole,
-		Practitioner: practitionerReference,
-		Organization: organizationReference,
-		Active:       false,
-		Specialty:    []fhir_dto.CodeableConcept{},
-	}
-
-	if len(practitionerRoles[0].AvailableTime) > 0 {
-		request.Active = true
-		request.AvailableTime = practitionerRoles[0].AvailableTime
-	}
-
-	for _, specialty := range practiceInformation.Specialties {
-		request.Specialty = append(request.Specialty, fhir_dto.CodeableConcept{
-			Text: specialty,
-		})
-	}
-
-	if len(practitionerRoles) == 1 {
-		request.ID = practitionerRoles[0].ID
-	}
-
-	return request
-
-}
-
-func (uc *clinicianUsecase) buildChargeItemDefinition(practiceInformation requests.PracticeInformation) *fhir_dto.ChargeItemDefinition {
-	return &fhir_dto.ChargeItemDefinition{
-		ID:           practiceInformation.PractitionerRoleFullResourceID,
-		ResourceType: constvars.ResourceChargeItemDefinition,
-		Status:       constvars.FhirChargeItemDefinitionStatusActive,
-		PropertyGroup: []fhir_dto.ChargeItemPropertyGroup{
-			{
-				PriceComponent: []fhir_dto.ChargeItemPriceComponent{
-					{
-						Type: constvars.FhirMonetaryComponentStatusBase,
-						Amount: &fhir_dto.Money{
-							Value:    practiceInformation.PricePerSession.Value,
-							Currency: practiceInformation.PricePerSession.Currency,
-						},
-					},
-				},
-			},
-		},
-	}
-}
-
-func (uc *clinicianUsecase) updateChargeItemDefinition(practiceInformation requests.PracticeInformation, chargeItemDefinition *fhir_dto.ChargeItemDefinition) *fhir_dto.ChargeItemDefinition {
-	chargeItemDefinition.PropertyGroup = []fhir_dto.ChargeItemPropertyGroup{
-		{
-			PriceComponent: []fhir_dto.ChargeItemPriceComponent{
-				{
-					Type: constvars.FhirMonetaryComponentStatusBase,
-					Amount: &fhir_dto.Money{
-						Value:    practiceInformation.PricePerSession.Value,
-						Currency: practiceInformation.PricePerSession.Currency,
-					},
-				},
-			},
-		},
-	}
-	return chargeItemDefinition
-}
-
 func (uc *clinicianUsecase) buildPractitionerRoleRequestForPracticeAvailability(practitionerRoles []fhir_dto.PractitionerRole, availableTimes []requests.AvailableTimeRequest) *fhir_dto.PractitionerRole {
 	practitionerID := strings.Split(practitionerRoles[0].Practitioner.Reference, "/")[1]
 	organizationID := strings.Split(practitionerRoles[0].Organization.Reference, "/")[1]
@@ -464,7 +460,6 @@ func (uc *clinicianUsecase) generateDayAvailability(startDate, endDate time.Time
 		availableTimes := availableTimes[dateStr]
 		unavailableTimes := busySlots[dateStr]
 
-		// Remove unavailable times from available times
 		for _, time := range unavailableTimes {
 			utils.RemoveFromSlice(&availableTimes, time)
 		}
@@ -480,12 +475,10 @@ func (uc *clinicianUsecase) generateDayAvailability(startDate, endDate time.Time
 }
 
 func (uc *clinicianUsecase) findBusySlots(slots []fhir_dto.Slot) map[string][]string {
-	// Initialize map to store busy slots
 	busySlotsMap := make(map[string][]string)
 
-	// Populate busy slots map
 	for _, slot := range slots {
-		dateStrFormatted := slot.Start.Format("02-01-2006 15:04:05")
+		dateStrFormatted := slot.Start.Format("2006-01-02 15:04:05")
 		dateStr := dateStrFormatted[:10]
 		timeStr := dateStrFormatted[11:16]
 		busySlotsMap[dateStr] = append(busySlotsMap[dateStr], timeStr)
@@ -494,10 +487,8 @@ func (uc *clinicianUsecase) findBusySlots(slots []fhir_dto.Slot) map[string][]st
 	return busySlotsMap
 }
 func (uc *clinicianUsecase) findAvailableTimesForPractitionerRole(practitionerRole *fhir_dto.PractitionerRole, start, end time.Time) map[string][]string {
-	// Initialize map to store available times
 	availableTimesMap := make(map[string][]string)
 
-	// Iterate over available times to populate the map
 	for _, availableTime := range practitionerRole.AvailableTime {
 		for date := start; date.Before(end) || date.Equal(end); date = date.AddDate(0, 0, 1) {
 			dayOfWeek := date.Weekday().String()
