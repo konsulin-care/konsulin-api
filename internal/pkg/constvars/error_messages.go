@@ -166,6 +166,7 @@ const (
 	ErrDevRedisLeftPopList     = "failed to LPOP data from list in redis"
 	ErrDevRedisSAdd            = "failed to SAdd data into set in redis"
 	ErrDevRedisSMembers        = "failed to SMembers data from set in redis"
+	ErrDevRedisUnlock          = "failed to unlock data from redis"
 
 	// RabbitMQ messages
 	ErrDevRabbitMQPublishMessage = "failed to publish message to %s queue"

@@ -2,6 +2,7 @@ package appointments
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
@@ -25,6 +26,7 @@ type appointmentUsecase struct {
 	RedisRepository        contracts.RedisRepository
 	SessionService         contracts.SessionService
 	OyService              contracts.PaymentGatewayService
+	LockService            contracts.LockerService
 	InternalConfig         *config.InternalConfig
 }
 
@@ -38,6 +40,7 @@ func NewAppointmentUsecase(
 	redisRepository contracts.RedisRepository,
 	sessionService contracts.SessionService,
 	oyService contracts.PaymentGatewayService,
+	lockService contracts.LockerService,
 	internalConfig *config.InternalConfig,
 ) contracts.AppointmentUsecase {
 	return &appointmentUsecase{
@@ -50,6 +53,7 @@ func NewAppointmentUsecase(
 		RedisRepository:        redisRepository,
 		SessionService:         sessionService,
 		OyService:              oyService,
+		LockService:            lockService,
 		InternalConfig:         internalConfig,
 	}
 }
@@ -231,6 +235,15 @@ func (uc *appointmentUsecase) CreateAppointment(ctx context.Context, sessionData
 		return nil, exceptions.ErrCannotParseTime(err)
 	}
 
+	isAvailable, err := uc.checkSlotAvailability(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	if !isAvailable {
+		customErrMessage := errors.New("requested time is already booked or not available")
+		return nil, exceptions.ErrClientCustomMessage(customErrMessage)
+	}
+
 	slotsToBook, lastSlot, err := uc.createSlots(ctx, request)
 	if err != nil {
 		return nil, err
@@ -273,6 +286,41 @@ func (uc *appointmentUsecase) parseAndValidatePatientSession(ctx context.Context
 
 func parseAppointmentStartTime(dateStr, timeStr string) (time.Time, error) {
 	return time.Parse("2006-01-02 15:04", fmt.Sprintf("%s %s", dateStr, timeStr))
+}
+
+func (uc *appointmentUsecase) checkSlotAvailability(ctx context.Context, req *requests.CreateAppointmentRequest) (bool, error) {
+	var timeRanges []struct {
+		Start time.Time
+		End   time.Time
+	}
+
+	for i := 0; i < req.NumberOfSessions; i++ {
+		slotStart := req.StartTime.Add(
+			time.Duration(i) * time.Duration(uc.InternalConfig.App.SessionMultiplierInMinutes) * time.Minute,
+		)
+		slotEnd := slotStart.Add(
+			time.Duration(uc.InternalConfig.App.SessionMultiplierInMinutes) * time.Minute,
+		)
+		timeRanges = append(timeRanges, struct {
+			Start time.Time
+			End   time.Time
+		}{
+			Start: slotStart,
+			End:   slotEnd,
+		})
+	}
+
+	for _, timeRange := range timeRanges {
+		existingBusySlots, err := uc.SlotFhirClient.FindSlotByScheduleAndTimeRange(ctx, req.ScheduleID, timeRange.Start, timeRange.End)
+		if err != nil {
+			return false, err
+		}
+		if len(existingBusySlots) > 0 {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
 
 func (uc *appointmentUsecase) createSlots(ctx context.Context, request *requests.CreateAppointmentRequest) ([]fhir_dto.Reference, *fhir_dto.Slot, error) {

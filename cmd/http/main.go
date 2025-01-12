@@ -37,6 +37,7 @@ import (
 	questionnaireResponsesFhir "konsulin-service/internal/app/services/fhir_spark/questionnaires_responses"
 	"konsulin-service/internal/app/services/fhir_spark/schedules"
 	"konsulin-service/internal/app/services/fhir_spark/slots"
+	"konsulin-service/internal/app/services/shared/locker"
 	"konsulin-service/internal/app/services/shared/mailer"
 	"konsulin-service/internal/app/services/shared/payment_gateway"
 	redisKonsulin "konsulin-service/internal/app/services/shared/redis"
@@ -196,6 +197,9 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	// Initialize session service with Redis repository
 	sessionService := session.NewSessionService(redisRepository)
 
+	// Initialize session service with Redis repository
+	lockService := locker.NewLockService(redisRepository)
+
 	// Initialize FHIR clients
 	patientFhirClient := patientsFhir.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
 	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
@@ -256,7 +260,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	assessmentResponseController := controllers.NewAssessmentResponseController(bootstrap.Logger, assessmentResponseUsecase)
 
 	// Initialize Assessment Response dependencies
-	appointmentUsecase := appointments.NewAppointmentUsecase(transactionPostgresRepository, clinicianUsecase, appointmentFhirClient, patientFhirClient, practitionerFhirClient, slotFhirClient, redisRepository, sessionService, oyService, bootstrap.InternalConfig)
+	appointmentUsecase := appointments.NewAppointmentUsecase(transactionPostgresRepository, clinicianUsecase, appointmentFhirClient, patientFhirClient, practitionerFhirClient, slotFhirClient, redisRepository, sessionService, oyService, lockService, bootstrap.InternalConfig)
 	appointmentController := controllers.NewAppointmentController(bootstrap.Logger, appointmentUsecase)
 
 	// Initialize Auth usecase with dependencies

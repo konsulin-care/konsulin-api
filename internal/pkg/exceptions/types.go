@@ -168,6 +168,9 @@ var (
 	ErrRedisGetSetMembers = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevRedisSMembers)
 	}
+	ErrRedisUnlock = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevRedisSMembers)
+	}
 
 	// RabbitMQ
 	ErrRabbitMQPublishMessage = func(err error, queueName string) *CustomError {
