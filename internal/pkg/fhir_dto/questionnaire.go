@@ -29,14 +29,14 @@ type Questionnaire struct {
 	ApprovalDate      string              `json:"approvalDate,omitempty"`
 	LastReviewDate    string              `json:"lastReviewDate,omitempty"`
 	EffectivePeriod   Period              `json:"effectivePeriod,omitempty"`
-	Code              []CodeableConcept   `json:"code,omitempty"`
+	Code              []Coding            `json:"code,omitempty"`
 	Item              []QuestionnaireItem `json:"item,omitempty"`
 }
 
 type QuestionnaireItem struct {
 	LinkID         string                          `json:"linkId"`
 	Definition     string                          `json:"definition,omitempty"`
-	Code           []CodeableConcept               `json:"code,omitempty"`
+	Code           []Coding                        `json:"code,omitempty"`
 	Prefix         string                          `json:"prefix,omitempty"`
 	Text           string                          `json:"text,omitempty"`
 	Type           string                          `json:"type,omitempty"`
@@ -68,13 +68,14 @@ type QuestionnaireItemEnableWhen struct {
 }
 
 type QuestionnaireItemAnswerOption struct {
-	ValueInteger    int       `json:"valueInteger,omitempty"`
-	ValueDate       string    `json:"valueDate,omitempty"`
-	ValueTime       string    `json:"valueTime,omitempty"`
-	ValueString     string    `json:"valueString,omitempty"`
-	ValueCoding     Coding    `json:"valueCoding,omitempty"`
-	ValueReference  Reference `json:"valueReference,omitempty"`
-	InitialSelected bool      `json:"initialSelected,omitempty"`
+	ValueInteger    int         `json:"valueInteger,omitempty"`
+	ValueDate       string      `json:"valueDate,omitempty"`
+	ValueTime       string      `json:"valueTime,omitempty"`
+	ValueString     string      `json:"valueString,omitempty"`
+	ValueCoding     Coding      `json:"valueCoding,omitempty"`
+	ValueReference  Reference   `json:"valueReference,omitempty"`
+	InitialSelected bool        `json:"initialSelected,omitempty"`
+	Extension       []Extension `json:"extension,omitempty"`
 }
 
 type QuestionnaireItemInitial struct {

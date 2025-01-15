@@ -24,6 +24,18 @@ func capitalizeFirstLetter(s string) string {
 	return first + s[1:]
 }
 
+func capitalize(input string) string {
+	if len(input) == 0 {
+		return input
+	}
+	runes := []rune(input)
+	runes[0] = unicode.ToUpper(runes[0])
+	for i := 1; i < len(runes); i++ {
+		runes[i] = unicode.ToLower(runes[i])
+	}
+	return string(runes)
+}
+
 func SanitizeRegisterViaWhatsAppRequest(input *requests.RegisterViaWhatsApp) {
 	input.To = strings.TrimSpace(input.To)
 }

@@ -149,11 +149,22 @@ type Money struct {
 }
 
 type Extension struct {
-	Url         string `json:"url,omitempty"`
-	ValueString string `json:"valueString,omitempty"`
-	ValueCode   string `json:"valueCode,omitempty"`
-	ValueInt    int    `json:"valueInt,omitempty"`
-	ValueMoney  *Money `json:"valueMoney,omitempty"`
+	Url            string    `json:"url,omitempty"`
+	ValueString    string    `json:"valueString,omitempty"`
+	ValueCode      string    `json:"valueCode,omitempty"`
+	ValueInt       int       `json:"valueInt,omitempty"`
+	ValueMoney     *Money    `json:"valueMoney,omitempty"`
+	ValueBoolean   bool      `json:"valueBoolean,omitempty" bson:"valueBoolean,omitempty"`
+	ValueInteger   int       `json:"valueInteger,omitempty" bson:"valueInteger,omitempty"`
+	ValueDecimal   float64   `json:"valueDecimal,omitempty" bson:"valueDecimal,omitempty"`
+	ValueUri       string    `json:"valueUri,omitempty" bson:"valueUri,omitempty"`
+	ValueId        string    `json:"valueId,omitempty" bson:"valueId,omitempty"`
+	ValueDate      string    `json:"valueDate,omitempty" bson:"valueDate,omitempty"`
+	ValueDateTime  time.Time `json:"valueDateTime,omitempty" bson:"valueDateTime,omitempty"`
+	ValueTime      string    `json:"valueTime,omitempty" bson:"valueTime,omitempty"`
+	ValueCoding    Coding    `json:"valueCoding,omitempty" bson:"valueCoding,omitempty"`
+	ValueQuantity  Quantity  `json:"valueQuantity,omitempty" bson:"valueQuantity,omitempty"`
+	ValueReference Reference `json:"valueReference,omitempty" bson:"valueReference,omitempty"`
 }
 
 type Address struct {
