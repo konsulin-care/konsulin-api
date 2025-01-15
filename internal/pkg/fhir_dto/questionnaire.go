@@ -29,7 +29,7 @@ type Questionnaire struct {
 	ApprovalDate      string              `json:"approvalDate,omitempty"`
 	LastReviewDate    string              `json:"lastReviewDate,omitempty"`
 	EffectivePeriod   Period              `json:"effectivePeriod,omitempty"`
-	Code              []CodeableConcept   `json:"code,omitempty"`
+	Code              []Coding            `json:"code,omitempty"`
 	Item              []QuestionnaireItem `json:"item,omitempty"`
 }
 
