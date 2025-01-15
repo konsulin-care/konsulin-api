@@ -46,7 +46,7 @@ func ParseDashSeparatedToSlashSeparated(input string) string {
 
 	typePart = strings.ReplaceAll(typePart, "-item", "Item")
 	typePart = strings.ReplaceAll(typePart, "-role", "Role")
-	typePart = strings.Title(strings.ReplaceAll(typePart, "-", ""))
+	typePart = capitalize(strings.ReplaceAll(typePart, "-", ""))
 
 	return fmt.Sprintf("%s/%s", typePart, idPart)
 }
