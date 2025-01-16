@@ -80,6 +80,7 @@ const (
 // Error messages for developers
 const (
 	ErrDevInvalidInput                  = "invalid input"
+	ErrDevCannotReadBody                = "cannot read data body"
 	ErrDevCannotParseJSON               = "cannot parse JSON into struct or other data types"
 	ErrDevCannotParseTime               = "cannot parse time into the given format"
 	ErrDevCannotMarshalJSON             = "cannot convert struct or other data types to JSON"

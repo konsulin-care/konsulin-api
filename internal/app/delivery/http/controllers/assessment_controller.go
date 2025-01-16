@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
@@ -45,20 +46,23 @@ func (ctrl *AssessmentController) FindAll(w http.ResponseWriter, r *http.Request
 }
 
 func (ctrl *AssessmentController) CreateAssessment(w http.ResponseWriter, r *http.Request) {
-	// Bind body to request
-	request := new(fhir_dto.Questionnaire)
-	err := json.NewDecoder(r.Body).Decode(&request)
+	defer r.Body.Close()
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
 		return
 	}
 
-	request.ResourceType = constvars.ResourceQuestionnaire
+	data, err := utils.ParseJSONBody(body)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	response, err := ctrl.AssessmentUsecase.CreateAssessment(ctx, request)
+	response, err := ctrl.AssessmentUsecase.CreateAssessment(ctx, data)
 	if err != nil {
 		if err == context.DeadlineExceeded {
 			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))

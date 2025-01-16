@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"encoding/json"
 	"fmt"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
@@ -10,6 +11,15 @@ import (
 	"strconv"
 	"strings"
 )
+
+func ParseJSONBody(body []byte) (map[string]interface{}, error) {
+	var data map[string]interface{}
+	err := json.Unmarshal(body, &data)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
 
 func BuildPaginationRequest(r *http.Request) *requests.Pagination {
 	pageStr := r.URL.Query().Get("page")
