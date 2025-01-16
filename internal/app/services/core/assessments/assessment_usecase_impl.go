@@ -42,7 +42,7 @@ func (uc *assessmentUsecase) mapFHIRQuestionnaireToAssessment(questionnaires []f
 	return assessments
 }
 
-func (uc *assessmentUsecase) CreateAssessment(ctx context.Context, request *fhir_dto.Questionnaire) (*fhir_dto.Questionnaire, error) {
+func (uc *assessmentUsecase) CreateAssessment(ctx context.Context, request map[string]interface{}) (map[string]interface{}, error) {
 	questionnaire, err := uc.QuestionnaireFhirClient.CreateQuestionnaire(ctx, request)
 	if err != nil {
 		return nil, err
@@ -60,8 +60,8 @@ func (uc *assessmentUsecase) UpdateAssessment(ctx context.Context, request *fhir
 	return questionnaire, nil
 }
 
-func (uc *assessmentUsecase) FindAssessmentByID(ctx context.Context, questionnaireID string) (*fhir_dto.Questionnaire, error) {
-	questionnaire, err := uc.QuestionnaireFhirClient.FindQuestionnaireByID(ctx, questionnaireID)
+func (uc *assessmentUsecase) FindAssessmentByID(ctx context.Context, questionnaireID string) (map[string]interface{}, error) {
+	questionnaire, err := uc.QuestionnaireFhirClient.FindRawQuestionnaireByID(ctx, questionnaireID)
 	if err != nil {
 		return nil, err
 	}

@@ -10,6 +10,7 @@ import (
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
+	"konsulin-service/internal/pkg/utils"
 	"net/http"
 )
 
@@ -77,7 +78,7 @@ func (c *questionnaireFhirClient) FindQuestionnaires(ctx context.Context) ([]fhi
 	return questionnaires, nil
 }
 
-func (c *questionnaireFhirClient) CreateQuestionnaire(ctx context.Context, request *fhir_dto.Questionnaire) (*fhir_dto.Questionnaire, error) {
+func (c *questionnaireFhirClient) CreateQuestionnaire(ctx context.Context, request map[string]interface{}) (map[string]interface{}, error) {
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
 		return nil, exceptions.ErrCannotMarshalJSON(err)
@@ -114,13 +115,64 @@ func (c *questionnaireFhirClient) CreateQuestionnaire(ctx context.Context, reque
 		}
 	}
 
-	questionnaireFhir := new(fhir_dto.Questionnaire)
-	err = json.NewDecoder(resp.Body).Decode(&questionnaireFhir)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourceQuestionnaire)
+		return nil, exceptions.ErrReadBody(err)
 	}
 
-	return questionnaireFhir, nil
+	data, err := utils.ParseJSONBody(body)
+	if err != nil {
+		return nil, exceptions.ErrCannotParseJSON(err)
+	}
+
+	return data, nil
+}
+
+func (c *questionnaireFhirClient) FindRawQuestionnaireByID(ctx context.Context, questionnaireID string) (map[string]interface{}, error) {
+	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, fmt.Sprintf("%s/%s", c.BaseUrl, questionnaireID), nil)
+	if err != nil {
+		return nil, exceptions.ErrCreateHTTPRequest(err)
+	}
+	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, exceptions.ErrSendHTTPRequest(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != constvars.StatusOK {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceQuestionnaire)
+		}
+
+		var outcome fhir_dto.OperationOutcome
+		err = json.Unmarshal(bodyBytes, &outcome)
+		if err != nil {
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceQuestionnaire)
+		}
+
+		if len(outcome.Issue) > 0 {
+			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourceQuestionnaire)
+		}
+	}
+
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, exceptions.ErrReadBody(err)
+	}
+
+	data, err := utils.ParseJSONBody(body)
+	if err != nil {
+		return nil, exceptions.ErrCannotParseJSON(err)
+	}
+
+	return data, nil
 }
 
 func (c *questionnaireFhirClient) FindQuestionnaireByID(ctx context.Context, questionnaireID string) (*fhir_dto.Questionnaire, error) {

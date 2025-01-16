@@ -83,6 +83,9 @@ var (
 	}
 
 	// Parse
+	ErrReadBody = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevCannotReadBody)
+	}
 	ErrCannotParseJSON = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevCannotParseJSON)
 	}
