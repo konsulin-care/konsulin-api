@@ -69,6 +69,19 @@ const (
 )
 
 const (
+	FhirObservationStatusRegistered     = "registered"
+	FhirObservationStatusPreliminary    = "preliminary"
+	FhirObservationStatusFinal          = "final"
+	FhirObservationStatusAmended        = "amended"
+	FhirObservationStatusCorrected      = "corrected"
+	FhirObservationStatusCancelled      = "cancelled"
+	FhirObservationStatusEnteredInError = "entered-in-error"
+	FhirObservationStatusUnknown        = "unknown"
+	FhirObservationJournalTitle         = "Journal Title"
+	FhirObservationJournalBody          = "Journal Body"
+)
+
+const (
 	FhirCurrencyPrefixIndonesia = "Rp"
 )
 

@@ -63,13 +63,13 @@ func getLocations(skip int) []Location {
 		Line:         line,
 		FunctionName: function,
 	})
-	pc, file, line, _ = runtime.Caller(skip - 1)
-	function = runtime.FuncForPC(pc).Name()
-	locations = append(locations, Location{
-		File:         file,
-		Line:         line,
-		FunctionName: function,
-	})
+	// pc, file, line, _ = runtime.Caller(skip - 1)
+	// function = runtime.FuncForPC(pc).Name()
+	// locations = append(locations, Location{
+	// 	File:         file,
+	// 	Line:         line,
+	// 	FunctionName: function,
+	// })
 
 	return locations
 }

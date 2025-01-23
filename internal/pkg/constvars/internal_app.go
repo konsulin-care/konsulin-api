@@ -1,5 +1,7 @@
 package constvars
 
+type ContextKey string
+
 const (
 	ResourceUsers           = "users"
 	ResourceRoles           = "roles"
@@ -42,4 +44,13 @@ const (
 	TIME_DIFFERENCE_BERLIN        = 1
 	TIME_DIFFERENCE_ROME          = 1
 	TIME_DIFFERENCE_CAIRO         = 2
+)
+
+const (
+	CONTEXT_REQUEST_ID_KEY           ContextKey = "request_id"
+	CONTEXT_IS_CLIENT_REQUEST_ID_KEY ContextKey = "is_client_request_id"
+)
+
+const (
+	REQUEST_ID_PREFIX = "KNSLN_SVC_"
 )

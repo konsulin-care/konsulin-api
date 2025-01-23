@@ -21,6 +21,7 @@ import (
 	"konsulin-service/internal/app/services/core/clinics"
 	educationLevels "konsulin-service/internal/app/services/core/education_levels"
 	"konsulin-service/internal/app/services/core/genders"
+	"konsulin-service/internal/app/services/core/journals"
 	"konsulin-service/internal/app/services/core/patients"
 	"konsulin-service/internal/app/services/core/payments"
 	"konsulin-service/internal/app/services/core/roles"
@@ -29,6 +30,7 @@ import (
 	"konsulin-service/internal/app/services/core/users"
 	fhir_appointments "konsulin-service/internal/app/services/fhir_spark/appointments"
 	"konsulin-service/internal/app/services/fhir_spark/charge_item_definitions"
+	"konsulin-service/internal/app/services/fhir_spark/observations"
 	"konsulin-service/internal/app/services/fhir_spark/organizations"
 	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
 	practitionerRoles "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
@@ -211,6 +213,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	chargeItemDefinitionFhirClient := charge_item_definitions.NewChargeItemDefinitionFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
 	questionnaireFhirClient := questionnairesFhir.NewQuestionnaireFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
 	questionnaireResponseFhirClient := questionnaireResponsesFhir.NewQuestionnaireResponseFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
+	observationFhirClient := observations.NewObservationFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
 
 	// Initialize Users dependencies
 	userPostgresRepository := users.NewUserPostgresRepository(bootstrap.PostgresDB)
@@ -258,6 +261,10 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	// Initialize Assessment Response dependencies
 	assessmentResponseUsecase := assessmentResponses.NewAssessmentResponseUsecase(questionnaireResponseFhirClient, questionnaireFhirClient, patientFhirClient, redisRepository, bootstrap.InternalConfig)
 	assessmentResponseController := controllers.NewAssessmentResponseController(bootstrap.Logger, assessmentResponseUsecase)
+
+	// Initialize Journal dependencies
+	journalUsecase := journals.NewJournalUsecase(sessionService, observationFhirClient, redisRepository, bootstrap.InternalConfig)
+	journalController := controllers.NewJournalController(bootstrap.Logger, journalUsecase)
 
 	// Initialize Assessment Response dependencies
 	appointmentUsecase := appointments.NewAppointmentUsecase(transactionPostgresRepository, clinicianUsecase, appointmentFhirClient, patientFhirClient, practitionerFhirClient, slotFhirClient, redisRepository, sessionService, oyService, lockService, bootstrap.InternalConfig)
@@ -315,6 +322,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 		assessmentResponseController,
 		appointmentController,
 		paymentController,
+		journalController,
 	)
 
 	return nil

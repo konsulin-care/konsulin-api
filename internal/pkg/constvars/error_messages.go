@@ -33,6 +33,7 @@ var CustomValidationErrorMessages = map[string]string{
 	"user_type":            "must be either 'practitioner' or 'patient'",
 	"phone_number":         "phone number given is not valid",
 	"not_past_date":        "the date must not be in the past",
+	"not_future_date":      "the date must not be in the future",
 	"not_past_time":        "the time must not be in the past for today's date.",
 }
 
