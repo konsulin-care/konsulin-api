@@ -40,6 +40,12 @@ const (
 	UpdateAssessmentResponseSuccessMessage = "assessment response successfully updated"
 	DeleteAssessmentResponseSuccessMessage = "assessment response successfully deleted"
 
+	// Assessment Response messages
+	CreateJournalSuccessMessage = "journal successfully created"
+	FindJournalSuccessMessage   = "journal successfully found"
+	UpdateJournalSuccessMessage = "journal successfully updated"
+	DeleteJournalSuccessMessage = "journal successfully deleted"
+
 	// Patient-related messages
 	CreatePatientAppointmentSuccessMessage = "appoinment successfully created for patient"
 

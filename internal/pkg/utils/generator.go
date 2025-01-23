@@ -3,6 +3,7 @@ package utils
 import (
 	"crypto/rand"
 	"fmt"
+	"konsulin-service/internal/pkg/constvars"
 	"math/big"
 	"time"
 
@@ -15,9 +16,9 @@ import (
 // since the Unix epoch, ensuring high precision and uniqueness
 // even in high-concurrency environments. The format of the ID
 // is "<unix nano timestamp>".
-func GenerateResponseID() int64 {
+func GenerateRequestID() string {
 	transID := time.Now().UnixNano()
-	return transID
+	return fmt.Sprintf("%s%d", constvars.REQUEST_ID_PREFIX, transID)
 }
 
 func GenerateSessionJWT(sessionID, secret string, jwtExpiryTime int) (string, error) {

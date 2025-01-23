@@ -18,6 +18,7 @@ func init() {
 	validate.RegisterValidation("phone_number", validatePhoneNumber)
 	validate.RegisterValidation("not_past_date", validateNotPastDate)
 	validate.RegisterValidation("not_past_time", validateNotPastTime)
+	validate.RegisterValidation("not_future_date", validateNotFutureDate)
 }
 
 func ValidateStruct(s interface{}) error {
@@ -79,4 +80,17 @@ func validateNotPastTime(fl validator.FieldLevel) bool {
 	currentTime := time.Date(0, 1, 1, now.Hour(), now.Minute(), 0, 0, time.UTC)
 
 	return !parsedTime.Before(currentTime)
+}
+
+func validateNotFutureDate(fl validator.FieldLevel) bool {
+	dateStr := fl.Field().String()
+
+	parsedDate, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return false
+	}
+
+	today := time.Now().Truncate(24 * time.Hour)
+
+	return !parsedDate.After(today)
 }

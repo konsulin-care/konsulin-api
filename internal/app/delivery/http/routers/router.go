@@ -30,6 +30,7 @@ func SetupRoutes(
 	assessmentResponseController *controllers.AssessmentResponseController,
 	appointmentController *controllers.AppointmentController,
 	paymentController *controllers.PaymentController,
+	journalController *controllers.JournalController,
 ) {
 
 	corsOptions := cors.Options{
@@ -40,6 +41,9 @@ func SetupRoutes(
 		AllowCredentials: true,
 		MaxAge:           300,
 	}
+
+	router.Use(middlewares.RequestIDMiddleware)
+	router.Use(middlewares.Logging(logger))
 	router.Use(cors.Handler(corsOptions))
 
 	// Rate limiting middleware using httprate
@@ -94,6 +98,9 @@ func SetupRoutes(
 			})
 			r.Route("/payments", func(r chi.Router) {
 				attachPaymentRouter(r, middlewares, paymentController)
+			})
+			r.Route("/journals", func(r chi.Router) {
+				attachJournalRouter(r, middlewares, journalController)
 			})
 		})
 	})

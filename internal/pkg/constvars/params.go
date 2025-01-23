@@ -6,10 +6,11 @@ const (
 
 const (
 	URLParamClinicID             = "clinic_id"
+	URLParamJournalID            = "journal_id"
 	URLParamClinicianID          = "clinician_id"
 	URLParamAssessmentID         = "assessment_id"
-	URLParamAssessmentResponseID = "assessment_response_id"
 	URLParamPractitionerID       = "practitioner_id"
+	URLParamAssessmentResponseID = "assessment_response_id"
 )
 
 const (

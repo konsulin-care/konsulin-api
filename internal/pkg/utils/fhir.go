@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
@@ -330,4 +332,164 @@ func AddAndGetTime(hoursToAdd, minutesToAdd, secondsToAdd int) string {
 			time.Duration(secondsToAdd)*time.Second)
 
 	return newTime.Format("2006-01-02 15:04:05")
+}
+
+func MapJournalRequestToCreateObserVationRequest(request *requests.CreateJournal) (*fhir_dto.Observation, error) {
+	journalDate, err := time.Parse("2006-01-02", request.JournalDate)
+	if err != nil {
+		return nil, err
+	}
+
+	components := []fhir_dto.Component{
+		{
+			Code: fhir_dto.CodeableConcept{
+				Text: constvars.FhirObservationJournalTitle,
+			},
+			ValueString: request.Title,
+		},
+	}
+
+	for _, body := range request.JournalBody {
+		components = append(components, fhir_dto.Component{
+			Code: fhir_dto.CodeableConcept{
+				Text: constvars.FhirObservationJournalBody,
+			},
+			ValueString: body,
+		})
+	}
+
+	observation := &fhir_dto.Observation{
+		ResourceType: constvars.ResourceObservation,
+		Status:       constvars.FhirObservationStatusFinal,
+		Code: fhir_dto.CodeableConcept{
+			Coding: []fhir_dto.Coding{
+				{
+					System:  "https://loinc.org",
+					Code:    "51855-5",
+					Display: "Patient Note",
+				},
+			},
+			Text: "Patient journaling note",
+		},
+		Subject: fhir_dto.Reference{
+			Reference: fmt.Sprintf("%s/%s", constvars.ResourcePatient, request.PatientID),
+		},
+		Performer: []fhir_dto.Reference{
+			{
+				Reference: fmt.Sprintf("%s/%s", constvars.ResourcePatient, request.PatientID),
+				Display:   "The patient as performer",
+			},
+		},
+		EffectiveDateTime: journalDate.Format(time.RFC3339),
+		Issued:            time.Now().Format(time.RFC3339),
+		Component:         components,
+	}
+
+	return observation, nil
+}
+
+func MapUpdateJournalToUpdateObservationRequest(request *requests.UpdateJournal) (*fhir_dto.Observation, error) {
+	journalDate, err := time.Parse("2006-01-02", request.JournalDate)
+	if err != nil {
+		return nil, exceptions.ErrCannotParseDate(err)
+	}
+
+	components := []fhir_dto.Component{
+		{
+			Code: fhir_dto.CodeableConcept{
+				Text: constvars.FhirObservationJournalTitle,
+			},
+			ValueString: request.Title,
+		},
+	}
+
+	for _, body := range request.JournalBody {
+		components = append(components, fhir_dto.Component{
+			Code: fhir_dto.CodeableConcept{
+				Text: constvars.FhirObservationJournalBody,
+			},
+			ValueString: body,
+		})
+	}
+
+	observation := &fhir_dto.Observation{
+		ResourceType: constvars.ResourceObservation,
+		ID:           request.JournalID,
+		Status:       constvars.FhirObservationStatusAmended,
+		Code: fhir_dto.CodeableConcept{
+			Coding: []fhir_dto.Coding{
+				{
+					System:  "https://loinc.org",
+					Code:    "51855-5",
+					Display: "Patient Note",
+				},
+			},
+			Text: "Patient journaling note",
+		},
+		Subject: fhir_dto.Reference{
+			Reference: fmt.Sprintf("%s/%s", constvars.ResourcePatient, request.PatientID),
+		},
+		Performer: []fhir_dto.Reference{
+			{
+				Reference: fmt.Sprintf("%s/%s", constvars.ResourcePatient, request.PatientID),
+				Display:   "The patient as performer",
+			},
+		},
+		EffectiveDateTime: journalDate.Format(time.RFC3339),
+		Issued:            time.Now().Format(time.RFC3339),
+		Component:         components,
+	}
+
+	return observation, nil
+}
+
+func MapObservationToJournalResponse(observation *fhir_dto.Observation) (*responses.Journal, error) {
+	var patientID string
+	if observation.Subject.Reference != "" {
+		parts := strings.Split(observation.Subject.Reference, "/")
+		if len(parts) == 2 {
+			patientID = parts[1]
+		}
+	}
+
+	journalDate, err := time.Parse(time.RFC3339, observation.EffectiveDateTime)
+	if err != nil {
+		return nil, exceptions.ErrCannotParseDate(err)
+	}
+
+	var title string
+	var journalBody []string
+	for _, component := range observation.Component {
+		if component.Code.Text == constvars.FhirObservationJournalTitle {
+			title = component.ValueString
+		} else if component.Code.Text == constvars.FhirObservationJournalBody {
+			journalBody = append(journalBody, component.ValueString)
+		}
+	}
+
+	journal := &responses.Journal{
+		JournalID:   observation.ID,
+		PatientID:   patientID,
+		Title:       title,
+		JournalBody: journalBody,
+		JournalDate: journalDate,
+	}
+
+	return journal, nil
+}
+
+func GetPatientIDFromObservation(observation *fhir_dto.Observation) (string, error) {
+	var err error
+	if observation.Subject.Reference == "" {
+		err = errors.New("subject reference is empty")
+		return "", exceptions.ErrServerProcess(err)
+	}
+
+	parts := strings.Split(observation.Subject.Reference, "/")
+	if len(parts) != 2 || parts[0] != constvars.ResourcePatient {
+		err = fmt.Errorf("invalid subject reference format: %s", observation.Subject.Reference)
+		return "", exceptions.ErrServerProcess(err)
+	}
+
+	return parts[1], nil
 }

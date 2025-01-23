@@ -95,7 +95,7 @@ var (
 
 	// Auth
 	ErrAuthInvalidRole = func(err error) *CustomError {
-		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientNotAuthorized, constvars.ErrDevRoleTypeDoesntMatch)
+		return BuildNewCustomError(err, constvars.StatusUnauthorized, constvars.ErrClientNotAuthorized, constvars.ErrDevRoleTypeDoesntMatch)
 	}
 
 	// Mongo DB

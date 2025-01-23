@@ -167,6 +167,10 @@ type Extension struct {
 	ValueReference Reference `json:"valueReference,omitempty" bson:"valueReference,omitempty"`
 }
 
+type Component struct {
+	Code        CodeableConcept `json:"code"`
+	ValueString string          `json:"valueString,omitempty"`
+}
 type Address struct {
 	Use        string   `json:"use,omitempty"`
 	Line       []string `json:"line,omitempty"`
