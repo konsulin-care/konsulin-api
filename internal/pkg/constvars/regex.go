@@ -18,4 +18,5 @@ const (
 	RegexHexColorCode                 = `^#?([a-fA-F0-9]{6}|[a-fA-F0-9]{3})$`
 	RegexIndonesiaPhoneNumber         = `^(?:\+62|62|0)8[1-9][0-9]{6,10}$`
 	RegexIndonesiaZIPCode             = `^\d{5}$`
+	RegexPhoneNumberGeneral           = `^\+[1-9]\d{9,14}$`
 )

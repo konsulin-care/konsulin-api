@@ -2,6 +2,7 @@ package journals
 
 import (
 	"context"
+	"fmt"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/models"
@@ -42,6 +43,7 @@ func (uc *journalUsecase) CreateJournal(ctx context.Context, request *requests.C
 		return nil, exceptions.ErrNotMatchRoleType(nil)
 	}
 
+	request.PatientID = session.PatientID
 	fhirObservation, err := utils.MapJournalRequestToCreateObserVationRequest(request)
 	if err != nil {
 		return nil, err
@@ -70,6 +72,7 @@ func (uc *journalUsecase) UpdateJournal(ctx context.Context, request *requests.U
 		return nil, exceptions.ErrNotMatchRoleType(nil)
 	}
 
+	request.PatientID = session.PatientID
 	isOwner, err := uc.isUserTheOwnerOfThisJournal(ctx, request.JournalID, session)
 	if err != nil || !isOwner {
 		return nil, err
@@ -143,6 +146,7 @@ func (uc *journalUsecase) isUserTheOwnerOfThisJournal(ctx context.Context, journ
 	if err != nil {
 		return false, err
 	}
+	fmt.Println(observation.Subject.Reference)
 
 	patientID, err := utils.GetPatientIDFromObservation(observation)
 	if err != nil {

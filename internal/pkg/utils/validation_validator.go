@@ -45,14 +45,14 @@ func validateUserType(fl validator.FieldLevel) bool {
 
 func validatePhoneNumber(fl validator.FieldLevel) bool {
 	phoneNumber := fl.Field().String()
-	re := regexp.MustCompile(`^\+[1-9]\d{9,14}$`)
+	re := regexp.MustCompile(constvars.RegexPhoneNumberGeneral)
 	return re.MatchString(phoneNumber)
 }
 
 func validateNotPastDate(fl validator.FieldLevel) bool {
 	dateStr := fl.Field().String()
 
-	parsedDate, err := time.Parse("2006-01-02", dateStr)
+	parsedDate, err := time.Parse(constvars.TIME_FORMAT_YYYY_MM_DD, dateStr)
 	if err != nil {
 		return false
 	}
@@ -66,7 +66,7 @@ func validateNotPastTime(fl validator.FieldLevel) bool {
 
 	dateStr := fl.Parent().FieldByName("Date").String()
 
-	today := time.Now().Format("2006-01-02")
+	today := time.Now().Format(constvars.TIME_FORMAT_YYYY_MM_DD)
 	if dateStr != today {
 		return true
 	}
@@ -85,12 +85,15 @@ func validateNotPastTime(fl validator.FieldLevel) bool {
 func validateNotFutureDate(fl validator.FieldLevel) bool {
 	dateStr := fl.Field().String()
 
-	parsedDate, err := time.Parse("2006-01-02", dateStr)
+	parsedDate, err := time.Parse(constvars.TIME_FORMAT_YYYY_MM_DD, dateStr)
 	if err != nil {
 		return false
 	}
 
-	today := time.Now().Truncate(24 * time.Hour)
-
+	todayDateString := time.Now().Format(constvars.TIME_FORMAT_YYYY_MM_DD)
+	today, err := time.Parse(constvars.TIME_FORMAT_YYYY_MM_DD, todayDateString)
+	if err != nil {
+		return false
+	}
 	return !parsedDate.After(today)
 }
