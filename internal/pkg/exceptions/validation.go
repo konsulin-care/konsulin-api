@@ -48,6 +48,7 @@ func FormatFirstValidationError(err error) string {
 		if !ok {
 			customMessage = "is invalid"
 		}
+
 		if constvars.TagsWithParams[tag] {
 			if tag == "oneof" {
 				customMessage = strings.Replace(customMessage, "%s", strings.Join(strings.Fields(firstErr.Param()), ", "), 1)

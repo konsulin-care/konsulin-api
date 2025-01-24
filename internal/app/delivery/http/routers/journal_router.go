@@ -8,8 +8,8 @@ import (
 )
 
 func attachJournalRouter(router chi.Router, middlewares *middlewares.Middlewares, journalController *controllers.JournalController) {
-	router.Get("/", journalController.CreateJournal)
-	router.Put("/{journal_id}", journalController.UpdateJournalByID)
-	router.Get("/{journal_id}", journalController.FindJournalByID)
-	router.Delete("/{journal_id}", journalController.DeleteJournalByID)
+	router.With(middlewares.Authenticate).Post("/", journalController.CreateJournal)
+	router.With(middlewares.Authenticate).Put("/{journal_id}", journalController.UpdateJournalByID)
+	router.With(middlewares.Authenticate).Get("/{journal_id}", journalController.FindJournalByID)
+	router.With(middlewares.Authenticate).Delete("/{journal_id}", journalController.DeleteJournalByID)
 }

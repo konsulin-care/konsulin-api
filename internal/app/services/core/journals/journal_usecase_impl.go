@@ -42,6 +42,7 @@ func (uc *journalUsecase) CreateJournal(ctx context.Context, request *requests.C
 		return nil, exceptions.ErrNotMatchRoleType(nil)
 	}
 
+	request.PatientID = session.PatientID
 	fhirObservation, err := utils.MapJournalRequestToCreateObserVationRequest(request)
 	if err != nil {
 		return nil, err
@@ -70,6 +71,7 @@ func (uc *journalUsecase) UpdateJournal(ctx context.Context, request *requests.U
 		return nil, exceptions.ErrNotMatchRoleType(nil)
 	}
 
+	request.PatientID = session.PatientID
 	isOwner, err := uc.isUserTheOwnerOfThisJournal(ctx, request.JournalID, session)
 	if err != nil || !isOwner {
 		return nil, err
