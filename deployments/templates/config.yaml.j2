@@ -43,13 +43,6 @@ internal_config:
     fhir_db_name: {{ internal_config.mongodb.fhir_db_name | default('') }}
     konsulin_db_name: {{ internal_config.mongodb.konsulin_db_name | default('') }}
 
-driver_config:
-  mongodb:
-    port: {{ driver_config.mongodb.port | default('') }}
-    host: {{ driver_config.mongodb.host | default('') }}
-    username: {{ driver_config.mongodb.username | default('') }}
-    password: {{ driver_config.mongodb.password | default('') }}
-  
   konsulin:
     bank_code: {{ driver_config.konsulin.bank_code | default('') }}
     bank_account_number: {{ driver_config.konsulin.bank_account_number | default('') }}
@@ -60,6 +53,13 @@ driver_config:
     username: {{ driver_config.konsulin.username | default('') }}
     api_key: {{ driver_config.konsulin.api_key | default('') }}
     base_url: {{ driver_config.konsulin.base_url | default('') }}
+
+driver_config:
+  mongodb:
+    port: {{ driver_config.mongodb.port | default('') }}
+    host: {{ driver_config.mongodb.host | default('') }}
+    username: {{ driver_config.mongodb.username | default('') }}
+    password: {{ driver_config.mongodb.password | default('') }}
 
   redis:
     host: {{ driver_config.redis.host | default('') }}
