@@ -44,15 +44,15 @@ internal_config:
     konsulin_db_name: {{ internal_config.mongodb.konsulin_db_name | default('') }}
 
   konsulin:
-    bank_code: {{ driver_config.konsulin.bank_code | default('') }}
-    bank_account_number: {{ driver_config.konsulin.bank_account_number | default('') }}
-    finance_email: {{ driver_config.konsulin.finance_email | default('') }}
-    payment_display_name: {{ driver_config.konsulin.payment_display_name | default('') }}
+    bank_code: {{ internal_config.konsulin.bank_code | default('') }}
+    bank_account_number: {{ internal_config.konsulin.bank_account_number | default('') }}
+    finance_email: {{ internal_config.konsulin.finance_email | default('') }}
+    payment_display_name: {{ internal_config.konsulin.payment_display_name | default('') }}
   
   payment_gateway:
-    username: {{ driver_config.konsulin.username | default('') }}
-    api_key: {{ driver_config.konsulin.api_key | default('') }}
-    base_url: {{ driver_config.konsulin.base_url | default('') }}
+    username: {{ internal_config.konsulin.username | default('') }}
+    api_key: {{ internal_config.konsulin.api_key | default('') }}
+    base_url: {{ internal_config.konsulin.base_url | default('') }}
 
 driver_config:
   mongodb:
