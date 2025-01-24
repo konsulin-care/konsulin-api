@@ -2,7 +2,6 @@ package journals
 
 import (
 	"context"
-	"fmt"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/models"
@@ -146,7 +145,6 @@ func (uc *journalUsecase) isUserTheOwnerOfThisJournal(ctx context.Context, journ
 	if err != nil {
 		return false, err
 	}
-	fmt.Println(observation.Subject.Reference)
 
 	patientID, err := utils.GetPatientIDFromObservation(observation)
 	if err != nil {
