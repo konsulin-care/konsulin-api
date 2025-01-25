@@ -50,9 +50,9 @@ internal_config:
     payment_display_name: {{ internal_config.konsulin.payment_display_name | default('') }}
   
   payment_gateway:
-    username: {{ internal_config.konsulin.username | default('') }}
-    api_key: {{ internal_config.konsulin.api_key | default('') }}
-    base_url: {{ internal_config.konsulin.base_url | default('') }}
+    username: {{ internal_config.payment_gateway.username | default('') }}
+    api_key: {{ internal_config.payment_gateway.api_key | default('') }}
+    base_url: {{ internal_config.payment_gateway.base_url | default('') }}
 
 driver_config:
   mongodb:
