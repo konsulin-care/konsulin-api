@@ -82,6 +82,28 @@ func (ctrl *AssessmentResponseController) UpdateAssessmentResponse(w http.Respon
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.UpdateAssessmentResponseSuccessMessage, response)
 }
 
+func (ctrl *AssessmentResponseController) FindAll(w http.ResponseWriter, r *http.Request) {
+	request := &requests.FindAllAssessmentResponse{
+		SessionData:  r.Context().Value("sessionData").(string),
+		AssessmentID: r.URL.Query().Get(constvars.URLQueryParamAssessmentID),
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	response, err := ctrl.AssessmentResponseUsecase.FindAll(ctx, request)
+	if err != nil {
+		if err == context.DeadlineExceeded {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.GetAssessmentsSuccessMessage, response)
+}
+
 func (ctrl *AssessmentResponseController) FindQuestionnaireResponseByID(w http.ResponseWriter, r *http.Request) {
 	questionnaireResponseID := chi.URLParam(r, constvars.URLParamAssessmentResponseID)
 

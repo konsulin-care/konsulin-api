@@ -21,6 +21,7 @@ type assessmentResponseUsecase struct {
 	QuestionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient
 	QuestionnaireFhirClient         contracts.QuestionnaireFhirClient
 	PatientFhirClient               contracts.PatientFhirClient
+	SessionService                  contracts.SessionService
 	RedisRepository                 contracts.RedisRepository
 	InternalConfig                  *config.InternalConfig
 }
@@ -29,6 +30,7 @@ func NewAssessmentResponseUsecase(
 	questionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient,
 	questionnaireFhirClient contracts.QuestionnaireFhirClient,
 	patientFhirClient contracts.PatientFhirClient,
+	sessionService contracts.SessionService,
 	redisRepository contracts.RedisRepository,
 	internalConfig *config.InternalConfig,
 ) contracts.AssessmentResponseUsecase {
@@ -36,6 +38,7 @@ func NewAssessmentResponseUsecase(
 		QuestionnaireResponseFhirClient: questionnaireResponseFhirClient,
 		QuestionnaireFhirClient:         questionnaireFhirClient,
 		PatientFhirClient:               patientFhirClient,
+		SessionService:                  sessionService,
 		RedisRepository:                 redisRepository,
 		InternalConfig:                  internalConfig,
 	}
@@ -69,6 +72,22 @@ func (uc *assessmentResponseUsecase) UpdateAssessmentResponse(ctx context.Contex
 	}
 
 	return questionnaireResponse, nil
+}
+
+func (uc *assessmentResponseUsecase) FindAll(ctx context.Context, request *requests.FindAllAssessmentResponse) ([]fhir_dto.QuestionnaireResponse, error) {
+	session, err := uc.SessionService.ParseSessionData(ctx, request.SessionData)
+	if err != nil {
+		return nil, err
+	}
+	request.PatientID = session.PatientID
+
+	assessmentResponses, err := uc.QuestionnaireResponseFhirClient.FindQuestionnaireResponses(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	// assessments := uc.mapFHIRQuestionnaireToAssessment(questionnaires)
+	return assessmentResponses, nil
 }
 
 func (uc *assessmentResponseUsecase) FindAssessmentResponseByID(ctx context.Context, assessmentResponseID string) (*responses.AssessmentResponse, error) {
