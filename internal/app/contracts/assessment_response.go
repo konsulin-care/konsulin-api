@@ -8,6 +8,7 @@ import (
 )
 
 type AssessmentResponseUsecase interface {
+	FindAll(ctx context.Context, request *requests.FindAllAssessmentResponse) ([]fhir_dto.QuestionnaireResponse, error)
 	CreateAssessmentResponse(ctx context.Context, request *requests.CreateAssesmentResponse) (*responses.CreateAssessmentResponse, error)
 	UpdateAssessmentResponse(ctx context.Context, request *fhir_dto.QuestionnaireResponse) (*fhir_dto.QuestionnaireResponse, error)
 	FindAssessmentResponseByID(ctx context.Context, questionnaireResponseID string) (*responses.AssessmentResponse, error)

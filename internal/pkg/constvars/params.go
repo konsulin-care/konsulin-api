@@ -14,8 +14,9 @@ const (
 )
 
 const (
-	URLQueryParamSearch    = "search"
-	URLQueryParamFetchType = "fetch_type"
+	URLQueryParamSearch       = "search"
+	URLQueryParamFetchType    = "fetch_type"
+	URLQueryParamAssessmentID = "assessment_id"
 )
 
 const (
