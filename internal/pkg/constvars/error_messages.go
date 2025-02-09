@@ -138,6 +138,8 @@ const (
 	ErrDevAuthRoleNotExists         = "role doesn't exist on the system"
 	ErrDevAuthWhatsAppOTPExpired    = "whatsapp otp lifetime already exceed our internal app config"
 	ErrDevAuthWhatsAppOTPInvalid    = "whatsapp otp given by user doesn't match with otp in database"
+	ErrDevAuthSessionDataIsMissing  = "session data not found in context"
+	ErrDevAuthRequestIDIsMissing    = "requestID not found in context"
 
 	// Database messages
 	ErrDevDBFailedToInsertDocument   = "failed to insert document into database"

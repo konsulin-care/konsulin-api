@@ -57,6 +57,7 @@ func NewAppointmentUsecase(
 		InternalConfig:         internalConfig,
 	}
 }
+
 func (uc *appointmentUsecase) FindAll(ctx context.Context, sessionData string, queryParamsRequest *requests.QueryParams) ([]responses.Appointment, error) {
 	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
 	if err != nil {
@@ -255,21 +256,24 @@ func (uc *appointmentUsecase) CreateAppointment(ctx context.Context, sessionData
 	}
 
 	totalPrice := request.NumberOfSessions * request.PricePerSession
-	paymentResponse, err := uc.createPayment(ctx, savedAppointment.ID, totalPrice)
-	if err != nil {
-		return nil, err
-	}
+	// paymentResponse, err := uc.createPayment(ctx, savedAppointment.ID, totalPrice)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	err = uc.saveTransaction(ctx, paymentResponse, request, totalPrice)
+	err = uc.saveTransaction(ctx, savedAppointment, request, totalPrice)
 	if err != nil {
 		return nil, err
 	}
 
 	return &responses.CreateAppointment{
-		Status:               paymentResponse.Status.Message,
-		TransactionID:        paymentResponse.TrxID,
-		PartnerTransactionID: paymentResponse.PartnerTrxID,
-		PaymentLink:          paymentResponse.PaymentInfo.PaymentCheckoutURL,
+		ID:              savedAppointment.ID,
+		Status:          savedAppointment.Status,
+		ClinicianID:     request.ClinicianID,
+		PatientID:       request.PatientID,
+		AppointmentTime: savedAppointment.Start,
+		Description:     request.ProblemBrief,
+		MinutesDuration: request.NumberOfSessions * uc.InternalConfig.App.SessionMultiplierInMinutes,
 	}, nil
 }
 
@@ -426,18 +430,15 @@ func (uc *appointmentUsecase) createPayment(ctx context.Context, partnerTransact
 	return uc.OyService.CreatePaymentRouting(ctx, paymentRequestDTO)
 }
 
-func (uc *appointmentUsecase) saveTransaction(ctx context.Context, paymentResponse *responses.PaymentResponse, request *requests.CreateAppointmentRequest, totalPrice int) error {
+func (uc *appointmentUsecase) saveTransaction(ctx context.Context, savedAppointment *fhir_dto.Appointment, request *requests.CreateAppointmentRequest, totalPrice int) error {
 	transaction := &models.Transaction{
-		ID:                      paymentResponse.PartnerTrxID,
+		ID:                      savedAppointment.ID,
 		PatientID:               request.PatientID,
 		PractitionerID:          request.ClinicianID,
 		LengthMinutesPerSession: uc.InternalConfig.App.SessionMultiplierInMinutes,
 		SessionTotal:            request.NumberOfSessions,
 		Currency:                constvars.CurrencyIndonesianRupiah,
-		PaymentLink:             paymentResponse.PaymentInfo.PaymentCheckoutURL,
 		Amount:                  float64(totalPrice),
-		StatusPayment:           models.Pending,
-		RefundStatus:            models.None,
 		SessionType:             models.TransactionSessionType(request.SessionType),
 	}
 

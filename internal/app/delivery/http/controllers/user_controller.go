@@ -31,7 +31,7 @@ func NewUserController(logger *zap.Logger, userUsecase contracts.UserUsecase, in
 
 func (ctrl *UserController) GetUserProfileBySession(w http.ResponseWriter, r *http.Request) {
 	// Get session data from context
-	sessionData := r.Context().Value("sessionData").(string)
+	sessionData := r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -93,7 +93,7 @@ func (ctrl *UserController) UpdateUserBySession(w http.ResponseWriter, r *http.R
 	}
 
 	// Retrieve the session data from the request context
-	sessionData := r.Context().Value("sessionData").(string)
+	sessionData := r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string)
 
 	// Create a new context with a timeout of 20 seconds for the update operation
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
@@ -119,7 +119,7 @@ func (ctrl *UserController) UpdateUserBySession(w http.ResponseWriter, r *http.R
 
 func (ctrl *UserController) DeactivateUserBySession(w http.ResponseWriter, r *http.Request) {
 	// Get session data from context
-	sessionData := r.Context().Value("sessionData").(string)
+	sessionData := r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

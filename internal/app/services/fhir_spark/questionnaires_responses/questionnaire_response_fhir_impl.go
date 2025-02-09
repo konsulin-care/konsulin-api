@@ -98,7 +98,6 @@ func (c *questionnaireResponseFhirClient) FindQuestionnaireResponses(ctx context
 	if resp.StatusCode != constvars.StatusOK {
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
-			fmt.Println("here")
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceQuestionnaireResponse)
 		}
 

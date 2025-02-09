@@ -34,7 +34,7 @@ func (ctrl *JournalController) CreateJournal(w http.ResponseWriter, r *http.Requ
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
 		return
 	}
-	request.SessionData = r.Context().Value("sessionData").(string)
+	request.SessionData = r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string)
 
 	err = utils.ValidateStruct(request)
 	if err != nil {
@@ -65,7 +65,7 @@ func (ctrl *JournalController) UpdateJournalByID(w http.ResponseWriter, r *http.
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
 		return
 	}
-	request.SessionData = r.Context().Value("sessionData").(string)
+	request.SessionData = r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string)
 	request.JournalID = chi.URLParam(r, constvars.URLParamJournalID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -87,7 +87,7 @@ func (ctrl *JournalController) UpdateJournalByID(w http.ResponseWriter, r *http.
 func (ctrl *JournalController) FindJournalByID(w http.ResponseWriter, r *http.Request) {
 	request := &requests.FindJournalByID{
 		JournalID:   chi.URLParam(r, constvars.URLParamJournalID),
-		SessionData: r.Context().Value("sessionData").(string),
+		SessionData: r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string),
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -109,7 +109,7 @@ func (ctrl *JournalController) FindJournalByID(w http.ResponseWriter, r *http.Re
 func (ctrl *JournalController) DeleteJournalByID(w http.ResponseWriter, r *http.Request) {
 	request := &requests.DeleteJournalByID{
 		JournalID:   chi.URLParam(r, constvars.URLParamJournalID),
-		SessionData: r.Context().Value("sessionData").(string),
+		SessionData: r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string),
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

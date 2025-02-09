@@ -313,7 +313,7 @@ func (ctrl *AuthController) LoginClinician(w http.ResponseWriter, r *http.Reques
 
 func (ctrl *AuthController) Logout(w http.ResponseWriter, r *http.Request) {
 	// Get session
-	sessionData := r.Context().Value("sessionData").(string)
+	sessionData := r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

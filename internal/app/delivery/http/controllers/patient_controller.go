@@ -40,7 +40,7 @@ func (ctrl *PatientController) CreateAppointment(w http.ResponseWriter, r *http.
 	request.ClinicianID = clinicianID
 
 	// Get session data from context
-	sessionData := r.Context().Value("sessionData").(string)
+	sessionData := r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
