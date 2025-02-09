@@ -84,7 +84,7 @@ func (ctrl *AssessmentResponseController) UpdateAssessmentResponse(w http.Respon
 
 func (ctrl *AssessmentResponseController) FindAll(w http.ResponseWriter, r *http.Request) {
 	request := &requests.FindAllAssessmentResponse{
-		SessionData:  r.Context().Value("sessionData").(string),
+		SessionData:  r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string),
 		AssessmentID: r.URL.Query().Get(constvars.URLQueryParamAssessmentID),
 	}
 

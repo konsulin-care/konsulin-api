@@ -46,7 +46,7 @@ func SetupRoutes(
 	router.Use(middlewares.Logging(logger))
 	router.Use(cors.Handler(corsOptions))
 
-	// Rate limiting middleware using httprate
+	// Rate limiting pake httprate
 	rateLimiter := httprate.LimitByIP(internalConfig.App.MaxRequests, time.Second)
 	router.Use(rateLimiter)
 

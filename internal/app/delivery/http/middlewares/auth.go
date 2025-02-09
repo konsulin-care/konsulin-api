@@ -2,6 +2,7 @@ package middlewares
 
 import (
 	"context"
+	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
@@ -12,7 +13,7 @@ import (
 
 func (m *Middlewares) Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
+		authHeader := r.Header.Get(constvars.HeaderAuthorization)
 		if authHeader == "" {
 			utils.BuildErrorResponse(m.Log, w, exceptions.ErrTokenMissing(nil))
 			return
@@ -38,7 +39,7 @@ func (m *Middlewares) Authenticate(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx = context.WithValue(r.Context(), "sessionData", sessionData)
+		ctx = context.WithValue(r.Context(), constvars.CONTEXT_SESSION_DATA_KEY, sessionData)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -46,7 +47,7 @@ func (m *Middlewares) Authenticate(next http.Handler) http.Handler {
 func (m *Middlewares) Authorize(resource, requiredAction string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			sessionData := r.Context().Value("sessionData").(string)
+			sessionData := r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()

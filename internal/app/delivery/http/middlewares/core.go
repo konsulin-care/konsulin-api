@@ -32,7 +32,7 @@ func (m *Middlewares) Logging(logger *zap.Logger) func(http.Handler) http.Handle
 			requestID := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY)
 			isClientRequestID := r.Context().Value(constvars.CONTEXT_IS_CLIENT_REQUEST_ID_KEY)
 
-			logger.Info("API request served successfully",
+			logger.Info("API request completed",
 				zap.Int("status_code", rec.statusCode),
 				zap.Any("request_id", requestID),
 				zap.Any("is_client_request_id", isClientRequestID),
@@ -58,6 +58,7 @@ func (m *Middlewares) RequestIDMiddleware(next http.Handler) http.Handler {
 
 		ctx := context.WithValue(r.Context(), constvars.CONTEXT_REQUEST_ID_KEY, requestID)
 		ctx = context.WithValue(ctx, constvars.CONTEXT_IS_CLIENT_REQUEST_ID_KEY, isClientRequestID)
+		ctx = context.WithValue(ctx, constvars.CONTEXT_STEPS_KEY, 1)
 
 		w.Header().Set(constvars.HeaderXRequestID, requestID)
 

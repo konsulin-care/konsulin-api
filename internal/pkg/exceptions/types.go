@@ -36,6 +36,12 @@ var (
 	ErrServerDeadlineExceeded = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusGatewayTimeout, constvars.ErrClientServerLongRespond, constvars.ErrDevServerDeadlineExceeded)
 	}
+	ErrMissingSessionData = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, constvars.ErrDevAuthSessionDataIsMissing)
+	}
+	ErrMissingRequestID = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, constvars.ErrDevAuthRequestIDIsMissing)
+	}
 	ErrInvalidUsernameOrPassword = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusUnauthorized, constvars.ErrClientInvalidUsernameOrPassword, constvars.ErrDevInvalidCredentials)
 	}

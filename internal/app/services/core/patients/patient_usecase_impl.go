@@ -157,9 +157,6 @@ func (uc *patientUsecase) CreateAppointment(ctx context.Context, sessionData str
 	}
 
 	return &responses.CreateAppointment{
-		Status:               paymentResponse.Status.Message,
-		TransactionID:        paymentResponse.TrxID,
-		PartnerTransactionID: paymentResponse.PartnerTrxID,
-		PaymentLink:          paymentResponse.PaymentInfo.PaymentCheckoutURL,
+		Status: paymentResponse.Status.Message,
 	}, nil
 }

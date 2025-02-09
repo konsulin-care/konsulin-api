@@ -37,7 +37,7 @@ func (ctrl *ClinicianController) CreatePracticeInformation(w http.ResponseWriter
 	}
 
 	// Get session data from context
-	sessionData := r.Context().Value("sessionData").(string)
+	sessionData := r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -111,7 +111,7 @@ func (ctrl *ClinicianController) CreatePracticeAvailability(w http.ResponseWrite
 	}
 
 	// Get session data from context
-	sessionData := r.Context().Value("sessionData").(string)
+	sessionData := r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -136,7 +136,7 @@ func (ctrl *ClinicianController) DeleteClinicByID(w http.ResponseWriter, r *http
 	defer cancel()
 
 	// Get session data from context
-	sessionData := r.Context().Value("sessionData").(string)
+	sessionData := r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string)
 
 	err := ctrl.ClinicianUsecase.DeleteClinicByID(ctx, sessionData, clinicID)
 	if err != nil {
