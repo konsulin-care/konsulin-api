@@ -14,7 +14,10 @@ import (
 	"konsulin-service/internal/pkg/utils"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 type clinicianUsecase struct {
@@ -26,7 +29,13 @@ type clinicianUsecase struct {
 	AppointmentFhirClient          contracts.AppointmentFhirClient
 	ChargeItemDefinitionFhirClient contracts.ChargeItemDefinitionFhirClient
 	SessionService                 contracts.SessionService
+	Log                            *zap.Logger
 }
+
+var (
+	clinicianUsecaseInstance contracts.ClinicianUsecase
+	onceClinicianUsecase     sync.Once
+)
 
 func NewClinicianUsecase(
 	practitionerFhirClient contracts.PractitionerFhirClient,
@@ -37,17 +46,23 @@ func NewClinicianUsecase(
 	appointmentFhirClient contracts.AppointmentFhirClient,
 	chargeItemDefinitionFhirClient contracts.ChargeItemDefinitionFhirClient,
 	sessionService contracts.SessionService,
+	logger *zap.Logger,
 ) contracts.ClinicianUsecase {
-	return &clinicianUsecase{
-		PractitionerFhirClient:         practitionerFhirClient,
-		PractitionerRoleFhirClient:     practitionerRoleFhirClient,
-		OrganizationFhirClient:         organizationFhirClient,
-		ScheduleFhirClient:             scheduleFhirClient,
-		SlotFhirClient:                 slotFhirClient,
-		AppointmentFhirClient:          appointmentFhirClient,
-		ChargeItemDefinitionFhirClient: chargeItemDefinitionFhirClient,
-		SessionService:                 sessionService,
-	}
+	onceClinicianUsecase.Do(func() {
+		instance := &clinicianUsecase{
+			PractitionerFhirClient:         practitionerFhirClient,
+			PractitionerRoleFhirClient:     practitionerRoleFhirClient,
+			OrganizationFhirClient:         organizationFhirClient,
+			ScheduleFhirClient:             scheduleFhirClient,
+			SlotFhirClient:                 slotFhirClient,
+			AppointmentFhirClient:          appointmentFhirClient,
+			ChargeItemDefinitionFhirClient: chargeItemDefinitionFhirClient,
+			SessionService:                 sessionService,
+			Log:                            logger,
+		}
+		clinicianUsecaseInstance = instance
+	})
+	return clinicianUsecaseInstance
 }
 
 func (uc *clinicianUsecase) DeleteClinicByID(ctx context.Context, sessionData, clinicID string) error {

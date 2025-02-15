@@ -8,29 +8,45 @@ import (
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
+	"sync"
+
+	"go.uber.org/zap"
 )
 
 type genderUsecase struct {
 	GenderRepository contracts.GenderRepository
 	RedisRepository  contracts.RedisRepository
+	Log              *zap.Logger
 }
+
+var (
+	genderUsecaseInstance contracts.GenderUsecase
+	onceGenderUsecase     sync.Once
+	genderUsecaseError    error
+)
 
 func NewGenderUsecase(
 	genderPostgresRepository contracts.GenderRepository,
 	redisRepository contracts.RedisRepository,
+	logger *zap.Logger,
 ) (contracts.GenderUsecase, error) {
-	genderUsecase := &genderUsecase{
-		GenderRepository: genderPostgresRepository,
-		RedisRepository:  redisRepository,
-	}
+	onceGenderUsecase.Do(func() {
+		instance := &genderUsecase{
+			GenderRepository: genderPostgresRepository,
+			RedisRepository:  redisRepository,
+			Log:              logger,
+		}
 
-	ctx := context.Background()
-	err := genderUsecase.initializeData(ctx)
-	if err != nil {
-		return nil, err
-	}
+		ctx := context.Background()
+		err := instance.initializeData(ctx)
+		if err != nil {
+			genderUsecaseError = err
+			return
+		}
+		genderUsecaseInstance = instance
+	})
 
-	return genderUsecase, nil
+	return genderUsecaseInstance, genderUsecaseError
 }
 
 func (uc *genderUsecase) FindAll(ctx context.Context) ([]responses.Gender, error) {

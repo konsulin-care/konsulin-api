@@ -8,24 +8,39 @@ import (
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/fhir_dto"
+	"sync"
+
+	"go.uber.org/zap"
 )
 
 type paymentUsecase struct {
 	TransactionRepository contracts.TransactionRepository
 	AppointmentFhirClient contracts.AppointmentFhirClient
 	InternalConfig        *config.InternalConfig
+	Log                   *zap.Logger
 }
+
+var (
+	paymentUsecaseInstance contracts.PaymentUsecase
+	oncePaymentUsecase     sync.Once
+)
 
 func NewPaymentUsecase(
 	transactionRepository contracts.TransactionRepository,
 	appointmentFhirClient contracts.AppointmentFhirClient,
 	internalConfig *config.InternalConfig,
+	logger *zap.Logger,
 ) contracts.PaymentUsecase {
-	return &paymentUsecase{
-		TransactionRepository: transactionRepository,
-		AppointmentFhirClient: appointmentFhirClient,
-		InternalConfig:        internalConfig,
-	}
+	oncePaymentUsecase.Do(func() {
+		instance := &paymentUsecase{
+			TransactionRepository: transactionRepository,
+			AppointmentFhirClient: appointmentFhirClient,
+			InternalConfig:        internalConfig,
+			Log:                   logger,
+		}
+		paymentUsecaseInstance = instance
+	})
+	return paymentUsecaseInstance
 }
 
 func (uc *paymentUsecase) PaymentRoutingCallback(ctx context.Context, request *requests.PaymentRoutingCallback) error {

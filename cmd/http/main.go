@@ -173,101 +173,98 @@ func main() {
 // bootstrapingTheApp initializes and sets up the application with the given bootstrap components
 func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	// Initialize the repository for Redis
-	redisRepository := redisKonsulin.NewRedisRepository(bootstrap.Redis)
+	redisRepository := redisKonsulin.NewRedisRepository(bootstrap.Redis, bootstrap.Logger)
 
 	// Initialize the mailer service with RabbitMQ
-	mailerService, err := mailer.NewMailerService(bootstrap.RabbitMQ, bootstrap.InternalConfig.RabbitMQ.MailerQueue)
+	mailerService, err := mailer.NewMailerService(bootstrap.RabbitMQ, bootstrap.Logger, bootstrap.InternalConfig.RabbitMQ.MailerQueue)
 	if err != nil {
 		return err
 	}
 
 	// Initialize the whatsApp service with RabbitMQ
-	whatsAppService, err := whatsapp.NewWhatsAppService(bootstrap.RabbitMQ, bootstrap.InternalConfig.RabbitMQ.WhatsAppQueue)
+	whatsAppService, err := whatsapp.NewWhatsAppService(bootstrap.RabbitMQ, bootstrap.Logger, bootstrap.InternalConfig.RabbitMQ.WhatsAppQueue)
 	if err != nil {
 		return err
 	}
 
 	// Initialize oy service
-	oyService, err := payment_gateway.NewOyService(bootstrap.InternalConfig)
-	if err != nil {
-		return err
-	}
+	oyService := payment_gateway.NewOyService(bootstrap.InternalConfig, bootstrap.Logger)
 
 	// Initialize Minio storage
 	minioStorage := storageKonsulin.NewMinioStorage(bootstrap.Minio)
 
 	// Initialize session service with Redis repository
-	sessionService := session.NewSessionService(redisRepository)
+	sessionService := session.NewSessionService(redisRepository, bootstrap.Logger)
 
 	// Initialize session service with Redis repository
-	lockService := locker.NewLockService(redisRepository)
+	lockService := locker.NewLockService(redisRepository, bootstrap.Logger)
 
 	// Initialize FHIR clients
-	patientFhirClient := patientsFhir.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
-	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
-	organizationFhirClient := organizations.NewOrganizationFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
-	practitionerRoleFhirClient := practitionerRoles.NewPractitionerRoleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
-	scheduleFhirClient := schedules.NewScheduleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
-	slotFhirClient := slots.NewSlotFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
-	appointmentFhirClient := fhir_appointments.NewAppointmentFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
-	chargeItemDefinitionFhirClient := charge_item_definitions.NewChargeItemDefinitionFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
-	questionnaireFhirClient := questionnairesFhir.NewQuestionnaireFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
-	questionnaireResponseFhirClient := questionnaireResponsesFhir.NewQuestionnaireResponseFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
-	observationFhirClient := observations.NewObservationFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl)
+	patientFhirClient := patientsFhir.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	organizationFhirClient := organizations.NewOrganizationFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	practitionerRoleFhirClient := practitionerRoles.NewPractitionerRoleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	scheduleFhirClient := schedules.NewScheduleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	slotFhirClient := slots.NewSlotFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	appointmentFhirClient := fhir_appointments.NewAppointmentFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	chargeItemDefinitionFhirClient := charge_item_definitions.NewChargeItemDefinitionFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	questionnaireFhirClient := questionnairesFhir.NewQuestionnaireFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	questionnaireResponseFhirClient := questionnaireResponsesFhir.NewQuestionnaireResponseFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	observationFhirClient := observations.NewObservationFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 
 	// Initialize Users dependencies
-	userPostgresRepository := users.NewUserPostgresRepository(bootstrap.PostgresDB)
-	userUseCase := users.NewUserUsecase(userPostgresRepository, patientFhirClient, practitionerFhirClient, practitionerRoleFhirClient, organizationFhirClient, redisRepository, sessionService, minioStorage, bootstrap.InternalConfig)
+	userPostgresRepository := users.NewUserPostgresRepository(bootstrap.PostgresDB, bootstrap.Logger)
+	userUseCase := users.NewUserUsecase(userPostgresRepository, patientFhirClient, practitionerFhirClient, practitionerRoleFhirClient, organizationFhirClient, redisRepository, sessionService, minioStorage, bootstrap.InternalConfig, bootstrap.Logger)
 	userController := controllers.NewUserController(bootstrap.Logger, userUseCase, bootstrap.InternalConfig)
 
 	// Initialize Education Level dependencies
-	educationLevelPostgresRepository := educationLevels.NewEducationLevelPostgresRepository(bootstrap.PostgresDB)
-	educationLevelUseCase, err := educationLevels.NewEducationLevelUsecase(educationLevelPostgresRepository, redisRepository)
+	educationLevelPostgresRepository := educationLevels.NewEducationLevelPostgresRepository(bootstrap.PostgresDB, bootstrap.Logger)
+	educationLevelUseCase, err := educationLevels.NewEducationLevelUsecase(educationLevelPostgresRepository, redisRepository, bootstrap.Logger)
 	if err != nil {
 		return err
 	}
 	educationLevelController := controllers.NewEducationLevelController(bootstrap.Logger, educationLevelUseCase)
 
 	// Initialize Gender dependencies
-	genderPostgresRepository := genders.NewGenderPostgresRepository(bootstrap.PostgresDB)
-	genderUseCase, err := genders.NewGenderUsecase(genderPostgresRepository, redisRepository)
+	genderPostgresRepository := genders.NewGenderPostgresRepository(bootstrap.PostgresDB, bootstrap.Logger)
+	genderUseCase, err := genders.NewGenderUsecase(genderPostgresRepository, redisRepository, bootstrap.Logger)
 	if err != nil {
 		return err
 	}
 	genderController := controllers.NewGenderController(bootstrap.Logger, genderUseCase)
 
 	// Initialize Role repository with MongoDB
-	rolePostgresRepository := roles.NewRolePostgresRepository(bootstrap.PostgresDB)
+	rolePostgresRepository := roles.NewRolePostgresRepository(bootstrap.PostgresDB, bootstrap.Logger)
 
 	// Initialize Transaction repository with MongoDB
-	transactionPostgresRepository := transactions.NewTransactionPostgresRepository(bootstrap.PostgresDB)
+	transactionPostgresRepository := transactions.NewTransactionPostgresRepository(bootstrap.PostgresDB, bootstrap.Logger)
 
 	// Initialize Clinic dependencies
-	clinicUsecase := clinics.NewClinicUsecase(organizationFhirClient, practitionerRoleFhirClient, practitionerFhirClient, scheduleFhirClient, chargeItemDefinitionFhirClient, redisRepository, bootstrap.InternalConfig)
+	clinicUsecase := clinics.NewClinicUsecase(organizationFhirClient, practitionerRoleFhirClient, practitionerFhirClient, scheduleFhirClient, chargeItemDefinitionFhirClient, redisRepository, bootstrap.InternalConfig, bootstrap.Logger)
 	clinicController := controllers.NewClinicController(bootstrap.Logger, clinicUsecase)
 
 	// Initialize Clinic dependencies
-	clinicianUsecase := clinicians.NewClinicianUsecase(practitionerFhirClient, practitionerRoleFhirClient, organizationFhirClient, scheduleFhirClient, slotFhirClient, appointmentFhirClient, chargeItemDefinitionFhirClient, sessionService)
+	clinicianUsecase := clinicians.NewClinicianUsecase(practitionerFhirClient, practitionerRoleFhirClient, organizationFhirClient, scheduleFhirClient, slotFhirClient, appointmentFhirClient, chargeItemDefinitionFhirClient, sessionService, bootstrap.Logger)
 	clinicianController := controllers.NewClinicianController(bootstrap.Logger, clinicianUsecase)
 
 	// Initialize Clinic dependencies
-	patientUsecase := patients.NewPatientUsecase(practitionerFhirClient, practitionerRoleFhirClient, scheduleFhirClient, slotFhirClient, appointmentFhirClient, sessionService, oyService, bootstrap.InternalConfig)
+	patientUsecase := patients.NewPatientUsecase(practitionerFhirClient, practitionerRoleFhirClient, scheduleFhirClient, slotFhirClient, appointmentFhirClient, sessionService, oyService, bootstrap.InternalConfig, bootstrap.Logger)
 	patientController := controllers.NewPatientController(bootstrap.Logger, patientUsecase)
 
 	// Initialize Assessment dependencies
-	assessmentUsecase := assessments.NewAssessmentUsecase(questionnaireFhirClient)
+	assessmentUsecase := assessments.NewAssessmentUsecase(questionnaireFhirClient, bootstrap.Logger)
 	assessmentController := controllers.NewAssessmentController(bootstrap.Logger, assessmentUsecase)
 
 	// Initialize Assessment Response dependencies
-	assessmentResponseUsecase := assessmentResponses.NewAssessmentResponseUsecase(questionnaireResponseFhirClient, questionnaireFhirClient, patientFhirClient, sessionService, redisRepository, bootstrap.InternalConfig)
+	assessmentResponseUsecase := assessmentResponses.NewAssessmentResponseUsecase(questionnaireResponseFhirClient, questionnaireFhirClient, patientFhirClient, sessionService, redisRepository, bootstrap.InternalConfig, bootstrap.Logger)
 	assessmentResponseController := controllers.NewAssessmentResponseController(bootstrap.Logger, assessmentResponseUsecase)
 
 	// Initialize Journal dependencies
-	journalUsecase := journals.NewJournalUsecase(sessionService, observationFhirClient, redisRepository, bootstrap.InternalConfig)
+	journalUsecase := journals.NewJournalUsecase(sessionService, observationFhirClient, redisRepository, bootstrap.InternalConfig, bootstrap.Logger)
 	journalController := controllers.NewJournalController(bootstrap.Logger, journalUsecase)
 
 	// Initialize Assessment Response dependencies
-	appointmentUsecase := appointments.NewAppointmentUsecase(transactionPostgresRepository, clinicianUsecase, appointmentFhirClient, patientFhirClient, practitionerFhirClient, slotFhirClient, redisRepository, sessionService, oyService, lockService, bootstrap.InternalConfig)
+	appointmentUsecase := appointments.NewAppointmentUsecase(transactionPostgresRepository, clinicianUsecase, appointmentFhirClient, patientFhirClient, practitionerFhirClient, slotFhirClient, redisRepository, sessionService, oyService, lockService, bootstrap.InternalConfig, bootstrap.Logger)
 	appointmentController := controllers.NewAppointmentController(bootstrap.Logger, appointmentUsecase)
 
 	// Initialize Auth usecase with dependencies
@@ -284,6 +281,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 		whatsAppService,
 		minioStorage,
 		bootstrap.InternalConfig,
+		bootstrap.Logger,
 	)
 	if err != nil {
 		return err
@@ -291,14 +289,14 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	authController := controllers.NewAuthController(bootstrap.Logger, authUseCase)
 
 	// Initialize Education Level dependencies
-	cityPostgresRepository := cities.NewCityPostgresRepository(bootstrap.PostgresDB)
-	cityUseCase, err := cities.NewCityUsecase(cityPostgresRepository, redisRepository)
+	cityPostgresRepository := cities.NewCityPostgresRepository(bootstrap.PostgresDB, bootstrap.Logger)
+	cityUseCase, err := cities.NewCityUsecase(cityPostgresRepository, redisRepository, bootstrap.Logger)
 	if err != nil {
 		return err
 	}
 	cityController := controllers.NewCityController(bootstrap.Logger, cityUseCase)
 
-	paymentUsecase := payments.NewPaymentUsecase(transactionPostgresRepository, appointmentFhirClient, bootstrap.InternalConfig)
+	paymentUsecase := payments.NewPaymentUsecase(transactionPostgresRepository, appointmentFhirClient, bootstrap.InternalConfig, bootstrap.Logger)
 	paymentController := controllers.NewPaymentController(bootstrap.Logger, paymentUsecase)
 
 	// Initialize middlewares with logger, session service, and auth usecase

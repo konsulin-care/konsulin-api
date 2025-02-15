@@ -11,7 +11,10 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
 	"strings"
+	"sync"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 type userUsecase struct {
@@ -24,7 +27,13 @@ type userUsecase struct {
 	SessionService             contracts.SessionService
 	MinioStorage               contracts.Storage
 	InternalConfig             *config.InternalConfig
+	Log                        *zap.Logger
 }
+
+var (
+	userUsecaseInstance contracts.UserUsecase
+	onceUserUsecase     sync.Once
+)
 
 func NewUserUsecase(
 	userMongoRepository contracts.UserRepository,
@@ -36,18 +45,24 @@ func NewUserUsecase(
 	sessionService contracts.SessionService,
 	minioStorage contracts.Storage,
 	internalConfig *config.InternalConfig,
+	logger *zap.Logger,
 ) contracts.UserUsecase {
-	return &userUsecase{
-		UserRepository:             userMongoRepository,
-		PatientFhirClient:          patientFhirClient,
-		PractitionerFhirClient:     practitionerFhirClient,
-		PractitionerRoleFhirClient: practitionerRoleFhirClient,
-		OrganizationFhirClient:     organizationFhirClient,
-		RedisRepository:            redisRepository,
-		SessionService:             sessionService,
-		MinioStorage:               minioStorage,
-		InternalConfig:             internalConfig,
-	}
+	onceUserUsecase.Do(func() {
+		instance := &userUsecase{
+			UserRepository:             userMongoRepository,
+			PatientFhirClient:          patientFhirClient,
+			PractitionerFhirClient:     practitionerFhirClient,
+			PractitionerRoleFhirClient: practitionerRoleFhirClient,
+			OrganizationFhirClient:     organizationFhirClient,
+			RedisRepository:            redisRepository,
+			SessionService:             sessionService,
+			MinioStorage:               minioStorage,
+			InternalConfig:             internalConfig,
+			Log:                        logger,
+		}
+		userUsecaseInstance = instance
+	})
+	return userUsecaseInstance
 }
 
 func (uc *userUsecase) GetUserProfileBySession(ctx context.Context, sessionData string) (*responses.UserProfile, error) {

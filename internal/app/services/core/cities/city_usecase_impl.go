@@ -10,29 +10,45 @@ import (
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
 	"strings"
+	"sync"
+
+	"go.uber.org/zap"
 )
 
 type cityUsecase struct {
 	CityRepository  contracts.CityRepository
 	RedisRepository contracts.RedisRepository
+	Log             *zap.Logger
 }
+
+var (
+	cityUsecaseInstance contracts.CityUsecase
+	onceCityUsecase     sync.Once
+	cityUsecaseError    error
+)
 
 func NewCityUsecase(
 	cityPostgresRepository contracts.CityRepository,
 	redisRepository contracts.RedisRepository,
+	logger *zap.Logger,
 ) (contracts.CityUsecase, error) {
-	cityUsecase := &cityUsecase{
-		CityRepository:  cityPostgresRepository,
-		RedisRepository: redisRepository,
-	}
+	onceCityUsecase.Do(func() {
+		instance := &cityUsecase{
+			CityRepository:  cityPostgresRepository,
+			RedisRepository: redisRepository,
+			Log:             logger,
+		}
 
-	ctx := context.Background()
-	err := cityUsecase.initializeData(ctx)
-	if err != nil {
-		return nil, err
-	}
+		ctx := context.Background()
+		err := instance.initializeData(ctx)
+		if err != nil {
+			cityUsecaseError = err
+			return
+		}
+		cityUsecaseInstance = instance
+	})
 
-	return cityUsecase, nil
+	return cityUsecaseInstance, cityUsecaseError
 }
 
 func (uc *cityUsecase) FindAll(ctx context.Context, queryParamsRequest *requests.QueryParams) ([]responses.City, error) {

@@ -8,29 +8,45 @@ import (
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
+	"sync"
+
+	"go.uber.org/zap"
 )
 
 type educationLevelUsecase struct {
 	EducationLevelRepository contracts.EducationLevelRepository
 	RedisRepository          contracts.RedisRepository
+	Log                      *zap.Logger
 }
+
+var (
+	educationLevelUsecaseInstance contracts.EducationLevelUsecase
+	onceEducationLevelUsecase     sync.Once
+	educationLevelUsecaseError    error
+)
 
 func NewEducationLevelUsecase(
 	educationLevelPostgresRepository contracts.EducationLevelRepository,
 	redisRepository contracts.RedisRepository,
+	logger *zap.Logger,
 ) (contracts.EducationLevelUsecase, error) {
-	educationLevelUsecase := &educationLevelUsecase{
-		EducationLevelRepository: educationLevelPostgresRepository,
-		RedisRepository:          redisRepository,
-	}
+	onceEducationLevelUsecase.Do(func() {
+		instance := &educationLevelUsecase{
+			EducationLevelRepository: educationLevelPostgresRepository,
+			RedisRepository:          redisRepository,
+			Log:                      logger,
+		}
 
-	ctx := context.Background()
-	err := educationLevelUsecase.initializeData(ctx)
-	if err != nil {
-		return nil, err
-	}
+		ctx := context.Background()
+		err := instance.initializeData(ctx)
+		if err != nil {
+			educationLevelUsecaseError = err
+			return
+		}
+		educationLevelUsecaseInstance = instance
+	})
 
-	return educationLevelUsecase, nil
+	return educationLevelUsecaseInstance, educationLevelUsecaseError
 }
 
 func (uc *educationLevelUsecase) FindAll(ctx context.Context) ([]responses.EducationLevel, error) {

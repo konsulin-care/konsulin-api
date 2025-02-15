@@ -11,6 +11,9 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/utils"
+	"sync"
+
+	"go.uber.org/zap"
 )
 
 type clinicUsecase struct {
@@ -21,7 +24,13 @@ type clinicUsecase struct {
 	ChargeItemDefinition       contracts.ChargeItemDefinitionFhirClient
 	RedisRepository            contracts.RedisRepository
 	InternalConfig             *config.InternalConfig
+	Log                        *zap.Logger
 }
+
+var (
+	clinicUsecaseInstance contracts.ClinicUsecase
+	onceClinicUsecase     sync.Once
+)
 
 func NewClinicUsecase(
 	organizationFhirClient contracts.OrganizationFhirClient,
@@ -31,16 +40,22 @@ func NewClinicUsecase(
 	chargeItemDefinition contracts.ChargeItemDefinitionFhirClient,
 	redisRepository contracts.RedisRepository,
 	internalConfig *config.InternalConfig,
+	logger *zap.Logger,
 ) contracts.ClinicUsecase {
-	return &clinicUsecase{
-		OrganizationFhirClient:     organizationFhirClient,
-		PractitionerFhirClient:     practitionerFhirClient,
-		PractitionerRoleFhirClient: practitionerRoleFhirClient,
-		ScheduleFhirClient:         scheduleFhirClient,
-		ChargeItemDefinition:       chargeItemDefinition,
-		RedisRepository:            redisRepository,
-		InternalConfig:             internalConfig,
-	}
+	onceClinicUsecase.Do(func() {
+		instance := &clinicUsecase{
+			OrganizationFhirClient:     organizationFhirClient,
+			PractitionerFhirClient:     practitionerFhirClient,
+			PractitionerRoleFhirClient: practitionerRoleFhirClient,
+			ScheduleFhirClient:         scheduleFhirClient,
+			ChargeItemDefinition:       chargeItemDefinition,
+			RedisRepository:            redisRepository,
+			InternalConfig:             internalConfig,
+			Log:                        logger,
+		}
+		clinicUsecaseInstance = instance
+	})
+	return clinicUsecaseInstance
 }
 
 func (uc *clinicUsecase) FindAll(ctx context.Context, nameFilter, fetchType string, page, pageSize int) ([]responses.Clinic, *responses.Pagination, error) {

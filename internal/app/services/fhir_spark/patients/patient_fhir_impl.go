@@ -11,26 +11,53 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"net/http"
+	"sync"
+
+	"go.uber.org/zap"
+)
+
+var (
+	patientFhirClientInstance contracts.PatientFhirClient
+	oncePatientFhirClient     sync.Once
 )
 
 type patientFhirClient struct {
 	BaseUrl string
+	Log     *zap.Logger
 }
 
-func NewPatientFhirClient(baseUrl string) contracts.PatientFhirClient {
-	return &patientFhirClient{
-		BaseUrl: baseUrl + constvars.ResourcePatient,
-	}
+func NewPatientFhirClient(baseUrl string, logger *zap.Logger) contracts.PatientFhirClient {
+	oncePatientFhirClient.Do(func() {
+		client := &patientFhirClient{
+			BaseUrl: baseUrl + constvars.ResourcePatient,
+			Log:     logger,
+		}
+		patientFhirClientInstance = client
+	})
+	return patientFhirClientInstance
 }
 
 func (c *patientFhirClient) CreatePatient(ctx context.Context, request *fhir_dto.Patient) (*fhir_dto.Patient, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	c.Log.Info("patientFhirClient.CreatePatient called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
+		c.Log.Error("patientFhirClient.CreatePatient error marshaling JSON",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, exceptions.ErrCannotMarshalJSON(err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodPost, c.BaseUrl, bytes.NewBuffer(requestJSON))
 	if err != nil {
+		c.Log.Error("patientFhirClient.CreatePatient error creating HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, exceptions.ErrCreateHTTPRequest(err)
 	}
 	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
@@ -38,6 +65,10 @@ func (c *patientFhirClient) CreatePatient(ctx context.Context, request *fhir_dto
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
+		c.Log.Error("patientFhirClient.CreatePatient error sending HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, exceptions.ErrSendHTTPRequest(err)
 	}
 	defer resp.Body.Close()
@@ -45,17 +76,29 @@ func (c *patientFhirClient) CreatePatient(ctx context.Context, request *fhir_dto
 	if resp.StatusCode != constvars.StatusCreated {
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
+			c.Log.Error("patientFhirClient.CreatePatient error reading response body",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
 			return nil, exceptions.ErrCreateFHIRResource(err, constvars.ResourcePatient)
 		}
 
 		var outcome fhir_dto.OperationOutcome
 		err = json.Unmarshal(bodyBytes, &outcome)
 		if err != nil {
+			c.Log.Error("patientFhirClient.CreatePatient error unmarshaling outcome",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
 			return nil, exceptions.ErrCreateFHIRResource(err, constvars.ResourcePatient)
 		}
 
 		if len(outcome.Issue) > 0 {
 			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			c.Log.Error("patientFhirClient.CreatePatient FHIR error",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(fhirErrorIssue),
+			)
 			return nil, exceptions.ErrCreateFHIRResource(fhirErrorIssue, constvars.ResourcePatient)
 		}
 	}
@@ -63,15 +106,33 @@ func (c *patientFhirClient) CreatePatient(ctx context.Context, request *fhir_dto
 	patientFhir := new(fhir_dto.Patient)
 	err = json.NewDecoder(resp.Body).Decode(&patientFhir)
 	if err != nil {
+		c.Log.Error("patientFhirClient.CreatePatient error decoding response",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePatient)
 	}
 
+	c.Log.Info("patientFhirClient.CreatePatient succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingPatientIDKey, patientFhir.ID),
+	)
 	return patientFhir, nil
 }
 
 func (c *patientFhirClient) FindPatientByID(ctx context.Context, patientID string) (*fhir_dto.Patient, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	c.Log.Info("patientFhirClient.FindPatientByID called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingPatientIDKey, patientID),
+	)
+
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, fmt.Sprintf("%s/%s", c.BaseUrl, patientID), nil)
 	if err != nil {
+		c.Log.Error("patientFhirClient.FindPatientByID error creating HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, exceptions.ErrCreateHTTPRequest(err)
 	}
 	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
@@ -79,6 +140,10 @@ func (c *patientFhirClient) FindPatientByID(ctx context.Context, patientID strin
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
+		c.Log.Error("patientFhirClient.FindPatientByID error sending HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, exceptions.ErrSendHTTPRequest(err)
 	}
 	defer resp.Body.Close()
@@ -86,17 +151,29 @@ func (c *patientFhirClient) FindPatientByID(ctx context.Context, patientID strin
 	if resp.StatusCode != constvars.StatusOK {
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
+			c.Log.Error("patientFhirClient.FindPatientByID error reading response body",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePatient)
 		}
 
 		var outcome fhir_dto.OperationOutcome
 		err = json.Unmarshal(bodyBytes, &outcome)
 		if err != nil {
+			c.Log.Error("patientFhirClient.FindPatientByID error unmarshaling outcome",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePatient)
 		}
 
 		if len(outcome.Issue) > 0 {
 			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			c.Log.Error("patientFhirClient.FindPatientByID FHIR error",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(fhirErrorIssue),
+			)
 			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourcePatient)
 		}
 	}
@@ -104,22 +181,41 @@ func (c *patientFhirClient) FindPatientByID(ctx context.Context, patientID strin
 	patientFhir := new(fhir_dto.Patient)
 	err = json.NewDecoder(resp.Body).Decode(&patientFhir)
 	if err != nil {
+		c.Log.Error("patientFhirClient.FindPatientByID error decoding response",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePatient)
 	}
 
+	c.Log.Info("patientFhirClient.FindPatientByID succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingPatientIDKey, patientFhir.ID),
+	)
 	return patientFhir, nil
 }
 
 func (c *patientFhirClient) UpdatePatient(ctx context.Context, request *fhir_dto.Patient) (*fhir_dto.Patient, error) {
-	// Convert FHIR Patient to JSON
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	c.Log.Info("patientFhirClient.UpdatePatient called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
+		c.Log.Error("patientFhirClient.UpdatePatient error marshaling JSON",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, exceptions.ErrCannotMarshalJSON(err)
 	}
 
-	// Send PUT request to FHIR server
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodPut, fmt.Sprintf("%s/%s", c.BaseUrl, request.ID), bytes.NewBuffer(requestJSON))
 	if err != nil {
+		c.Log.Error("patientFhirClient.UpdatePatient error creating HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, exceptions.ErrCreateHTTPRequest(err)
 	}
 	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
@@ -127,6 +223,10 @@ func (c *patientFhirClient) UpdatePatient(ctx context.Context, request *fhir_dto
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
+		c.Log.Error("patientFhirClient.UpdatePatient error sending HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, exceptions.ErrSendHTTPRequest(err)
 	}
 	defer resp.Body.Close()
@@ -134,17 +234,29 @@ func (c *patientFhirClient) UpdatePatient(ctx context.Context, request *fhir_dto
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
+			c.Log.Error("patientFhirClient.UpdatePatient error reading response body",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
 			return nil, exceptions.ErrUpdateFHIRResource(err, constvars.ResourcePatient)
 		}
 
 		var outcome fhir_dto.OperationOutcome
 		err = json.Unmarshal(bodyBytes, &outcome)
 		if err != nil {
+			c.Log.Error("patientFhirClient.UpdatePatient error unmarshaling outcome",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
 			return nil, exceptions.ErrUpdateFHIRResource(err, constvars.ResourcePatient)
 		}
 
 		if len(outcome.Issue) > 0 {
 			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			c.Log.Error("patientFhirClient.UpdatePatient FHIR error",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(fhirErrorIssue),
+			)
 			return nil, exceptions.ErrUpdateFHIRResource(fhirErrorIssue, constvars.ResourcePatient)
 		}
 	}
@@ -152,22 +264,41 @@ func (c *patientFhirClient) UpdatePatient(ctx context.Context, request *fhir_dto
 	patientFhir := new(fhir_dto.Patient)
 	err = json.NewDecoder(resp.Body).Decode(&patientFhir)
 	if err != nil {
+		c.Log.Error("patientFhirClient.UpdatePatient error decoding response",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePatient)
 	}
 
+	c.Log.Info("patientFhirClient.UpdatePatient succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingPatientIDKey, patientFhir.ID),
+	)
 	return patientFhir, nil
 }
 
 func (c *patientFhirClient) PatchPatient(ctx context.Context, request *fhir_dto.Patient) (*fhir_dto.Patient, error) {
-	// Convert FHIR Patient to JSON
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	c.Log.Info("patientFhirClient.PatchPatient called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
+		c.Log.Error("patientFhirClient.PatchPatient error marshaling JSON",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, exceptions.ErrCannotMarshalJSON(err)
 	}
 
-	// Send PUT request to FHIR server
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodPatch, fmt.Sprintf("%s/%s", c.BaseUrl, request.ID), bytes.NewBuffer(requestJSON))
 	if err != nil {
+		c.Log.Error("patientFhirClient.PatchPatient error creating HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, exceptions.ErrCreateHTTPRequest(err)
 	}
 	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
@@ -175,6 +306,10 @@ func (c *patientFhirClient) PatchPatient(ctx context.Context, request *fhir_dto.
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
+		c.Log.Error("patientFhirClient.PatchPatient error sending HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, exceptions.ErrSendHTTPRequest(err)
 	}
 	defer resp.Body.Close()
@@ -182,17 +317,29 @@ func (c *patientFhirClient) PatchPatient(ctx context.Context, request *fhir_dto.
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
+			c.Log.Error("patientFhirClient.PatchPatient error reading response body",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
 			return nil, exceptions.ErrUpdateFHIRResource(err, constvars.ResourcePatient)
 		}
 
 		var outcome fhir_dto.OperationOutcome
 		err = json.Unmarshal(bodyBytes, &outcome)
 		if err != nil {
+			c.Log.Error("patientFhirClient.PatchPatient error unmarshaling outcome",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
 			return nil, exceptions.ErrUpdateFHIRResource(err, constvars.ResourcePatient)
 		}
 
 		if len(outcome.Issue) > 0 {
 			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			c.Log.Error("patientFhirClient.PatchPatient FHIR error",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(fhirErrorIssue),
+			)
 			return nil, exceptions.ErrUpdateFHIRResource(fhirErrorIssue, constvars.ResourcePatient)
 		}
 	}
@@ -200,8 +347,16 @@ func (c *patientFhirClient) PatchPatient(ctx context.Context, request *fhir_dto.
 	patientFhir := new(fhir_dto.Patient)
 	err = json.NewDecoder(resp.Body).Decode(&patientFhir)
 	if err != nil {
+		c.Log.Error("patientFhirClient.PatchPatient error decoding response",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePatient)
 	}
 
+	c.Log.Info("patientFhirClient.PatchPatient succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingPatientIDKey, patientFhir.ID),
+	)
 	return patientFhir, nil
 }

@@ -8,16 +8,31 @@ import (
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/queries"
+	"sync"
 
 	"github.com/lib/pq"
+	"go.uber.org/zap"
 )
 
 type userPostgresRepository struct {
-	DB *sql.DB
+	DB  *sql.DB
+	Log *zap.Logger
 }
 
-func NewUserPostgresRepository(db *sql.DB) contracts.UserRepository {
-	return &userPostgresRepository{DB: db}
+var (
+	userPostgresRepositoryInstance contracts.UserRepository
+	onceUserPostgresRepository     sync.Once
+)
+
+func NewUserPostgresRepository(db *sql.DB, logger *zap.Logger) contracts.UserRepository {
+	onceUserPostgresRepository.Do(func() {
+		instance := &userPostgresRepository{
+			DB:  db,
+			Log: logger,
+		}
+		userPostgresRepositoryInstance = instance
+	})
+	return userPostgresRepositoryInstance
 }
 
 func (repo *userPostgresRepository) GetClient(ctx context.Context) interface{} {

@@ -7,16 +7,30 @@ import (
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/queries"
+	"sync"
+
+	"go.uber.org/zap"
 )
 
 type genderPostgresRepository struct {
-	DB *sql.DB
+	DB  *sql.DB
+	Log *zap.Logger
 }
 
-func NewGenderPostgresRepository(db *sql.DB) contracts.GenderRepository {
-	return &genderPostgresRepository{
-		DB: db,
-	}
+var (
+	genderPostgresRepositoryInstance contracts.GenderRepository
+	onceGenderPostgresRepository     sync.Once
+)
+
+func NewGenderPostgresRepository(db *sql.DB, logger *zap.Logger) contracts.GenderRepository {
+	onceGenderPostgresRepository.Do(func() {
+		instance := &genderPostgresRepository{
+			DB:  db,
+			Log: logger,
+		}
+		genderPostgresRepositoryInstance = instance
+	})
+	return genderPostgresRepositoryInstance
 }
 
 func (repo *genderPostgresRepository) FindAll(ctx context.Context) ([]models.Gender, error) {

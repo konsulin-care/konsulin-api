@@ -10,15 +10,18 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.uber.org/zap"
 )
 
 type roleMongoRepository struct {
 	Collection *mongo.Collection
+	Log        *zap.Logger
 }
 
-func NewRoleMongoRepository(db *mongo.Client, dbName string) contracts.RoleRepository {
+func NewRoleMongoRepository(db *mongo.Client, logger *zap.Logger, dbName string) contracts.RoleRepository {
 	return &roleMongoRepository{
 		Collection: db.Database(dbName).Collection(constvars.MongoCollectionRoles),
+		Log:        logger,
 	}
 }
 

@@ -8,16 +8,30 @@ import (
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/queries"
+	"sync"
+
+	"go.uber.org/zap"
 )
 
 type rolePostgresRepository struct {
-	DB *sql.DB
+	DB  *sql.DB
+	Log *zap.Logger
 }
 
-func NewRolePostgresRepository(db *sql.DB) contracts.RoleRepository {
-	return &rolePostgresRepository{
-		DB: db,
-	}
+var (
+	rolePostgresRepositoryInstance contracts.RoleRepository
+	onceRolePostgresRepository     sync.Once
+)
+
+func NewRolePostgresRepository(db *sql.DB, logger *zap.Logger) contracts.RoleRepository {
+	onceRolePostgresRepository.Do(func() {
+		instance := &rolePostgresRepository{
+			DB:  db,
+			Log: logger,
+		}
+		rolePostgresRepositoryInstance = instance
+	})
+	return rolePostgresRepositoryInstance
 }
 
 func (repo *rolePostgresRepository) FindAll(ctx context.Context) ([]models.Role, error) {

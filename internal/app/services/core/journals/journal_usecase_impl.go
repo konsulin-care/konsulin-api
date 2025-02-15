@@ -9,6 +9,9 @@ import (
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
+	"sync"
+
+	"go.uber.org/zap"
 )
 
 type journalUsecase struct {
@@ -16,20 +19,32 @@ type journalUsecase struct {
 	ObservationFhirClient contracts.ObservationFhirClient
 	RedisRepository       contracts.RedisRepository
 	InternalConfig        *config.InternalConfig
+	Log                   *zap.Logger
 }
+
+var (
+	journalUsecaseInstance contracts.JournalUsecase
+	onceJournalUsecase     sync.Once
+)
 
 func NewJournalUsecase(
 	sessionService contracts.SessionService,
 	observationFhirClient contracts.ObservationFhirClient,
 	redisRepository contracts.RedisRepository,
 	internalConfig *config.InternalConfig,
+	logger *zap.Logger,
 ) contracts.JournalUsecase {
-	return &journalUsecase{
-		SessionService:        sessionService,
-		ObservationFhirClient: observationFhirClient,
-		RedisRepository:       redisRepository,
-		InternalConfig:        internalConfig,
-	}
+	onceJournalUsecase.Do(func() {
+		instance := &journalUsecase{
+			SessionService:        sessionService,
+			ObservationFhirClient: observationFhirClient,
+			RedisRepository:       redisRepository,
+			InternalConfig:        internalConfig,
+			Log:                   logger,
+		}
+		journalUsecaseInstance = instance
+	})
+	return journalUsecaseInstance
 }
 
 func (uc *journalUsecase) CreateJournal(ctx context.Context, request *requests.CreateJournal) (*responses.Journal, error) {

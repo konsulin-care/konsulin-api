@@ -12,9 +12,11 @@ import (
 	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/utils"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 type assessmentResponseUsecase struct {
@@ -24,7 +26,13 @@ type assessmentResponseUsecase struct {
 	SessionService                  contracts.SessionService
 	RedisRepository                 contracts.RedisRepository
 	InternalConfig                  *config.InternalConfig
+	Log                             *zap.Logger
 }
+
+var (
+	assessmentResponseUsecaseInstance contracts.AssessmentResponseUsecase
+	onceAssessmentResponseUsecase     sync.Once
+)
 
 func NewAssessmentResponseUsecase(
 	questionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient,
@@ -33,15 +41,21 @@ func NewAssessmentResponseUsecase(
 	sessionService contracts.SessionService,
 	redisRepository contracts.RedisRepository,
 	internalConfig *config.InternalConfig,
+	logger *zap.Logger,
 ) contracts.AssessmentResponseUsecase {
-	return &assessmentResponseUsecase{
-		QuestionnaireResponseFhirClient: questionnaireResponseFhirClient,
-		QuestionnaireFhirClient:         questionnaireFhirClient,
-		PatientFhirClient:               patientFhirClient,
-		SessionService:                  sessionService,
-		RedisRepository:                 redisRepository,
-		InternalConfig:                  internalConfig,
-	}
+	onceAssessmentResponseUsecase.Do(func() {
+		instance := &assessmentResponseUsecase{
+			QuestionnaireResponseFhirClient: questionnaireResponseFhirClient,
+			QuestionnaireFhirClient:         questionnaireFhirClient,
+			PatientFhirClient:               patientFhirClient,
+			SessionService:                  sessionService,
+			RedisRepository:                 redisRepository,
+			InternalConfig:                  internalConfig,
+			Log:                             logger,
+		}
+		assessmentResponseUsecaseInstance = instance
+	})
+	return assessmentResponseUsecaseInstance
 }
 
 func (uc *assessmentResponseUsecase) CreateAssessmentResponse(ctx context.Context, request *requests.CreateAssesmentResponse) (*responses.CreateAssessmentResponse, error) {

@@ -7,16 +7,30 @@ import (
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/queries"
+	"sync"
+
+	"go.uber.org/zap"
 )
 
 type educationLevelPostgresRepository struct {
-	DB *sql.DB
+	DB  *sql.DB
+	Log *zap.Logger
 }
 
-func NewEducationLevelPostgresRepository(db *sql.DB) contracts.EducationLevelRepository {
-	return &educationLevelPostgresRepository{
-		DB: db,
-	}
+var (
+	educationLevelPostgresRepositoryInstance contracts.EducationLevelRepository
+	onceEducationLevelPostgresRepository     sync.Once
+)
+
+func NewEducationLevelPostgresRepository(db *sql.DB, logger *zap.Logger) contracts.EducationLevelRepository {
+	onceEducationLevelPostgresRepository.Do(func() {
+		instance := &educationLevelPostgresRepository{
+			DB:  db,
+			Log: logger,
+		}
+		educationLevelPostgresRepositoryInstance = instance
+	})
+	return educationLevelPostgresRepositoryInstance
 }
 
 func (repo *educationLevelPostgresRepository) FindAll(ctx context.Context) ([]models.EducationLevel, error) {

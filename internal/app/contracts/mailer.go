@@ -7,5 +7,4 @@ import (
 
 type MailerService interface {
 	SendEmail(ctx context.Context, request *requests.EmailPayload) error
-	ValidateEmail(email string) bool
 }

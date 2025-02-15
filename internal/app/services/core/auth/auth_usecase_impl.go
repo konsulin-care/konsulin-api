@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 type authUsecase struct {
@@ -33,7 +34,14 @@ type authUsecase struct {
 	InternalConfig                  *config.InternalConfig
 	Roles                           map[string]*models.Role
 	mu                              sync.RWMutex
+	Log                             *zap.Logger
 }
+
+var (
+	authUsecaseInstance contracts.AuthUsecase
+	onceAuthUsecase     sync.Once
+	authUsecaseError    error
+)
 
 func NewAuthUsecase(
 	userRepository contracts.UserRepository,
@@ -48,30 +56,36 @@ func NewAuthUsecase(
 	whatsAppService contracts.WhatsAppService,
 	minioStorage contracts.Storage,
 	internalConfig *config.InternalConfig,
+	logger *zap.Logger,
 ) (contracts.AuthUsecase, error) {
-	authUsecase := &authUsecase{
-		UserRepository:                  userRepository,
-		RedisRepository:                 redisRepository,
-		SessionService:                  sessionService,
-		RoleRepository:                  rolesRepository,
-		PatientFhirClient:               patientFhirClient,
-		PractitionerFhirClient:          practitionerFhirClient,
-		PractitionerRoleFhirClient:      practitionerRoleFhirClient,
-		QuestionnaireResponseFhirClient: questionnaireResponsesFhirClient,
-		MailerService:                   mailerService,
-		MinioStorage:                    minioStorage,
-		WhatsAppService:                 whatsAppService,
-		InternalConfig:                  internalConfig,
-		Roles:                           make(map[string]*models.Role),
-	}
+	onceAuthUsecase.Do(func() {
+		instance := &authUsecase{
+			UserRepository:                  userRepository,
+			RedisRepository:                 redisRepository,
+			SessionService:                  sessionService,
+			RoleRepository:                  rolesRepository,
+			PatientFhirClient:               patientFhirClient,
+			PractitionerFhirClient:          practitionerFhirClient,
+			PractitionerRoleFhirClient:      practitionerRoleFhirClient,
+			QuestionnaireResponseFhirClient: questionnaireResponsesFhirClient,
+			MailerService:                   mailerService,
+			MinioStorage:                    minioStorage,
+			WhatsAppService:                 whatsAppService,
+			InternalConfig:                  internalConfig,
+			Roles:                           make(map[string]*models.Role),
+			Log:                             logger,
+		}
 
-	ctx := context.Background()
-	err := authUsecase.loadRoles(ctx)
-	if err != nil {
-		return nil, err
-	}
+		ctx := context.Background()
+		err := instance.loadRoles(ctx)
+		if err != nil {
+			authUsecaseError = err
+			return
+		}
+		authUsecaseInstance = instance
+	})
 
-	return authUsecase, nil
+	return authUsecaseInstance, authUsecaseError
 }
 
 func (uc *authUsecase) RegisterViaWhatsApp(ctx context.Context, request *requests.RegisterViaWhatsApp) error {

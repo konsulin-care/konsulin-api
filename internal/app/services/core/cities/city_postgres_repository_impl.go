@@ -7,16 +7,30 @@ import (
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/queries"
+	"sync"
+
+	"go.uber.org/zap"
 )
 
 type cityPostgresRepository struct {
-	DB *sql.DB
+	DB  *sql.DB
+	Log *zap.Logger
 }
 
-func NewCityPostgresRepository(db *sql.DB) contracts.CityRepository {
-	return &cityPostgresRepository{
-		DB: db,
-	}
+var (
+	cityPostgresRepositoryInstance contracts.CityRepository
+	onceCityPostgresRepository     sync.Once
+)
+
+func NewCityPostgresRepository(db *sql.DB, logger *zap.Logger) contracts.CityRepository {
+	onceCityPostgresRepository.Do(func() {
+		instance := &cityPostgresRepository{
+			DB:  db,
+			Log: logger,
+		}
+		cityPostgresRepositoryInstance = instance
+	})
+	return cityPostgresRepositoryInstance
 }
 
 func (r *cityPostgresRepository) FindAll(ctx context.Context) ([]models.City, error) {

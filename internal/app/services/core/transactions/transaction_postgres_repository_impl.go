@@ -7,17 +7,32 @@ import (
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/queries"
+	"sync"
+
+	"go.uber.org/zap"
 )
 
 type transactionPostgresRepository struct {
-	DB *sql.DB
+	DB  *sql.DB
+	Log *zap.Logger
 }
 
-func NewTransactionPostgresRepository(db *sql.DB) contracts.TransactionRepository {
-	return &transactionPostgresRepository{
-		DB: db,
-	}
+var (
+	transactionPostgresRepositoryInstance contracts.TransactionRepository
+	onceTransactionPostgresRepository     sync.Once
+)
+
+func NewTransactionPostgresRepository(db *sql.DB, logger *zap.Logger) contracts.TransactionRepository {
+	onceTransactionPostgresRepository.Do(func() {
+		instance := &transactionPostgresRepository{
+			DB:  db,
+			Log: logger,
+		}
+		transactionPostgresRepositoryInstance = instance
+	})
+	return transactionPostgresRepositoryInstance
 }
+
 func (repo *transactionPostgresRepository) FindAll(ctx context.Context) ([]models.Transaction, error) {
 	query := queries.GetAllTransactions
 	rows, err := repo.DB.QueryContext(ctx, query)

@@ -11,7 +11,10 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/utils"
+	"sync"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 type patientUsecase struct {
@@ -23,7 +26,13 @@ type patientUsecase struct {
 	SessionService             contracts.SessionService
 	OyService                  contracts.PaymentGatewayService
 	InternalConfig             *config.InternalConfig
+	Log                        *zap.Logger
 }
+
+var (
+	patientUsecaseInstance contracts.PatientUsecase
+	oncePatientUsecase     sync.Once
+)
 
 func NewPatientUsecase(
 	practitionerFhirClient contracts.PractitionerFhirClient,
@@ -34,17 +43,23 @@ func NewPatientUsecase(
 	sessionService contracts.SessionService,
 	oyService contracts.PaymentGatewayService,
 	internalConfig *config.InternalConfig,
+	logger *zap.Logger,
 ) contracts.PatientUsecase {
-	return &patientUsecase{
-		PractitionerFhirClient:     practitionerFhirClient,
-		PractitionerRoleFhirClient: practitionerRoleFhirClient,
-		ScheduleFhirClient:         scheduleFhirClient,
-		SlotFhirClient:             slotFhirClient,
-		AppointmentFhirClient:      appointmentFhirClient,
-		SessionService:             sessionService,
-		OyService:                  oyService,
-		InternalConfig:             internalConfig,
-	}
+	oncePatientUsecase.Do(func() {
+		instance := &patientUsecase{
+			PractitionerFhirClient:     practitionerFhirClient,
+			PractitionerRoleFhirClient: practitionerRoleFhirClient,
+			ScheduleFhirClient:         scheduleFhirClient,
+			SlotFhirClient:             slotFhirClient,
+			AppointmentFhirClient:      appointmentFhirClient,
+			SessionService:             sessionService,
+			OyService:                  oyService,
+			InternalConfig:             internalConfig,
+			Log:                        logger,
+		}
+		patientUsecaseInstance = instance
+	})
+	return patientUsecaseInstance
 }
 
 func (uc *patientUsecase) CreateAppointment(ctx context.Context, sessionData string, request *requests.CreateAppointmentRequest) (*responses.CreateAppointment, error) {

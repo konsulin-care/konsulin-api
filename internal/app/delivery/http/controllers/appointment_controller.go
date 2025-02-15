@@ -178,7 +178,7 @@ func (ctrl *AppointmentController) CreateAppointment(w http.ResponseWriter, r *h
 
 	response, err := ctrl.AppointmentUsecase.CreateAppointment(ctx, sessionData, request)
 	if err != nil {
-		ctrl.Log.Error("AppointmentController.CreateAppointment AppointmentUsecase.CreateAppointment error",
+		ctrl.Log.Error("AppointmentUsecase.CreateAppointment error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err))
 
