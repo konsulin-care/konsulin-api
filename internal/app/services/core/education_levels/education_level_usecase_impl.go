@@ -48,65 +48,120 @@ func NewEducationLevelUsecase(
 
 	return educationLevelUsecaseInstance, educationLevelUsecaseError
 }
-
 func (uc *educationLevelUsecase) FindAll(ctx context.Context) ([]responses.EducationLevel, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	uc.Log.Info("educationLevelUsecase.FindAll called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
 	var educationLevels []models.EducationLevel
 
-	// Retrieve the 'educationLevel' data from Redis
 	educationLevelRedisData, err := uc.RedisRepository.Get(ctx, constvars.RedisKeyEducationLevelList)
 	if err != nil {
+		uc.Log.Error("educationLevelUsecase.FindAll error retrieving data from Redis",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, err
 	}
 
 	if educationLevelRedisData == "" {
-		// Fetch data from MongoDB if not found in Redis
+		uc.Log.Info("educationLevelUsecase.FindAll no data in Redis; fetching from MongoDB",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
 		educationLevels, err = uc.EducationLevelRepository.FindAll(ctx)
 		if err != nil {
+			uc.Log.Error("educationLevelUsecase.FindAll error fetching data from MongoDB",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
 			return nil, err
 		}
 
-		// Cache the data in Redis
 		err = uc.RedisRepository.Set(ctx, constvars.RedisKeyEducationLevelList, educationLevels, 0)
 		if err != nil {
+			uc.Log.Error("educationLevelUsecase.FindAll error caching data in Redis",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
 			return nil, err
 		}
+		uc.Log.Info("educationLevelUsecase.FindAll successfully fetched and cached data from MongoDB",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
 	} else {
-		// Parse the data from Redis
+		uc.Log.Info("educationLevelUsecase.FindAll data found in Redis",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
 		err = json.Unmarshal([]byte(educationLevelRedisData), &educationLevels)
 		if err != nil {
+			uc.Log.Error("educationLevelUsecase.FindAll error parsing JSON from Redis",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
 			return nil, exceptions.ErrCannotParseJSON(err)
 		}
 	}
 
-	// Build the response
 	response := make([]responses.EducationLevel, len(educationLevels))
 	for i, eachEducationLevel := range educationLevels {
 		response[i] = eachEducationLevel.ConvertIntoResponse()
 	}
 
+	uc.Log.Info("educationLevelUsecase.FindAll succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.Int(constvars.LoggingEducationLevelCountKey, len(response)),
+	)
 	return response, nil
 }
 
 func (uc *educationLevelUsecase) initializeData(ctx context.Context) error {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	uc.Log.Info("educationLevelUsecase.initializeData called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
 	educationLevelRedisData, err := uc.RedisRepository.Get(ctx, constvars.RedisKeyEducationLevelList)
 	if err != nil {
+		uc.Log.Error("educationLevelUsecase.initializeData error retrieving data from Redis",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return err
 	}
 
-	// If 'educationLevelRedisData' is empty
 	if educationLevelRedisData == "" {
-		// Retrieve data from MongoDB
+		uc.Log.Info("educationLevelUsecase.initializeData no data in Redis; fetching from MongoDB",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
 		educationLevels, err := uc.EducationLevelRepository.FindAll(ctx)
 		if err != nil {
+			uc.Log.Error("educationLevelUsecase.initializeData error fetching data from MongoDB",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
 			return err
 		}
 
-		// Cache the data in Redis
 		err = uc.RedisRepository.Set(ctx, constvars.RedisKeyEducationLevelList, educationLevels, 0)
 		if err != nil {
+			uc.Log.Error("educationLevelUsecase.initializeData error caching data in Redis",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
 			return err
 		}
+		uc.Log.Info("educationLevelUsecase.initializeData successfully fetched and cached data from MongoDB",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
+	} else {
+		uc.Log.Info("educationLevelUsecase.initializeData data already exists in Redis",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
 	}
 
+	uc.Log.Info("educationLevelUsecase.initializeData completed",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
 	return nil
 }

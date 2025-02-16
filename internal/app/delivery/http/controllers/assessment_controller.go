@@ -10,6 +10,7 @@ import (
 	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/utils"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -21,14 +22,20 @@ type AssessmentController struct {
 	AssessmentUsecase contracts.AssessmentUsecase
 }
 
-func NewAssessmentController(
-	logger *zap.Logger,
-	assessmentUsecase contracts.AssessmentUsecase,
-) *AssessmentController {
-	return &AssessmentController{
-		Log:               logger,
-		AssessmentUsecase: assessmentUsecase,
-	}
+var (
+	assessmentControllerInstance *AssessmentController
+	onceAssessmentController     sync.Once
+)
+
+func NewAssessmentController(logger *zap.Logger, assessmentUsecase contracts.AssessmentUsecase) *AssessmentController {
+	onceAssessmentController.Do(func() {
+		instance := &AssessmentController{
+			Log:               logger,
+			AssessmentUsecase: assessmentUsecase,
+		}
+		assessmentControllerInstance = instance
+	})
+	return assessmentControllerInstance
 }
 
 func (ctrl *AssessmentController) FindAll(w http.ResponseWriter, r *http.Request) {
@@ -43,7 +50,7 @@ func (ctrl *AssessmentController) FindAll(w http.ResponseWriter, r *http.Request
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
 	response, err := ctrl.AssessmentUsecase.FindAll(ctx)
@@ -101,7 +108,7 @@ func (ctrl *AssessmentController) CreateAssessment(w http.ResponseWriter, r *htt
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
 	response, err := ctrl.AssessmentUsecase.CreateAssessment(ctx, data)
@@ -152,7 +159,7 @@ func (ctrl *AssessmentController) UpdateAssessment(w http.ResponseWriter, r *htt
 	request.ResourceType = constvars.ResourceQuestionnaire
 	request.ID = chi.URLParam(r, constvars.URLParamAssessmentID)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
 	response, err := ctrl.AssessmentUsecase.UpdateAssessment(ctx, request)
@@ -191,7 +198,7 @@ func (ctrl *AssessmentController) FindAssessmentByID(w http.ResponseWriter, r *h
 		zap.String("questionnaire_id", questionnaireID),
 	)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
 	response, err := ctrl.AssessmentUsecase.FindAssessmentByID(ctx, questionnaireID)
@@ -230,7 +237,7 @@ func (ctrl *AssessmentController) DeleteAssessmentByID(w http.ResponseWriter, r 
 		zap.String("questionnaire_id", questionnaireID),
 	)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
 	err := ctrl.AssessmentUsecase.DeleteAssessmentByID(ctx, questionnaireID)

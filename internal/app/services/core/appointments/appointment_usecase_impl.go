@@ -137,7 +137,7 @@ func (uc *appointmentUsecase) buildAppointmentResponse(ctx context.Context, fhir
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	uc.Log.Info("appointmentUsecase.buildAppointmentResponse called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String("fhir_appointment_id", fhirAppointment.ID),
+		zap.String(constvars.LoggingAppointmentIDKey, fhirAppointment.ID),
 	)
 
 	patientID, err := utils.FindPatientIDFromFhirAppointment(ctx, fhirAppointment)
@@ -204,7 +204,6 @@ func (uc *appointmentUsecase) buildAppointmentResponse(ctx context.Context, fhir
 
 	uc.Log.Info("appointmentUsecase.buildAppointmentResponse succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.Any("appointment_response", appointment),
 	)
 	return appointment, nil
 }
@@ -326,7 +325,6 @@ func (uc *appointmentUsecase) buildPatientAppointmentResponse(ctx context.Contex
 
 	uc.Log.Info("appointmentUsecase.buildPatientAppointmentResponse succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.Any("appointment_response", appointment),
 	)
 	return appointment, nil
 }
@@ -381,7 +379,6 @@ func (uc *appointmentUsecase) buildPractitionerAppointmentResponse(ctx context.C
 
 	uc.Log.Info("appointmentUsecase.buildPractitionerAppointmentResponse succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.Any("appointment_response", appointment),
 	)
 	return appointment, nil
 }
@@ -413,7 +410,6 @@ func (uc *appointmentUsecase) CreateAppointment(ctx context.Context, sessionData
 	}
 	uc.Log.Info("appointmentUsecase.CreateAppointment start time parsed",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.Time("start_time", request.StartTime),
 	)
 
 	isAvailable, err := uc.checkSlotAvailability(ctx, request)
@@ -461,7 +457,7 @@ func (uc *appointmentUsecase) CreateAppointment(ctx context.Context, sessionData
 
 	totalPrice := request.NumberOfSessions * request.PricePerSession
 
-	// Uncomment below to enable payment creation if needed.
+	// Uncomment to activeate the createPayment again.
 	/*
 		paymentResponse, err := uc.createPayment(ctx, savedAppointment.ID, totalPrice)
 		if err != nil {
@@ -501,7 +497,6 @@ func (uc *appointmentUsecase) CreateAppointment(ctx context.Context, sessionData
 
 	uc.Log.Info("appointmentUsecase.CreateAppointment succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.Any("response", response),
 	)
 	return response, nil
 }
@@ -615,7 +610,6 @@ func (uc *appointmentUsecase) createSlots(ctx context.Context, request *requests
 		if err != nil {
 			uc.Log.Error("appointmentUsecase.createSlots error creating slot",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Int("session_index", i),
 				zap.Error(err),
 			)
 			return nil, nil, err
@@ -623,9 +617,9 @@ func (uc *appointmentUsecase) createSlots(ctx context.Context, request *requests
 
 		uc.Log.Info("appointmentUsecase.createSlots slot created",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("slot_id", createdSlot.ID),
-			zap.Time("start", createdSlot.Start),
-			zap.Time("end", createdSlot.End),
+			zap.String(constvars.LoggingSlotsIDKey, createdSlot.ID),
+			zap.Time(constvars.LoggingSlotsStartKey, createdSlot.Start),
+			zap.Time(constvars.LoggingSlotsEndKey, createdSlot.End),
 		)
 
 		slotsToBook = append(slotsToBook, fhir_dto.Reference{
@@ -736,7 +730,6 @@ func (uc *appointmentUsecase) createPayment(ctx context.Context, partnerTransact
 
 	uc.Log.Info("appointmentUsecase.createPayment succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.Any("payment_response", paymentResponse),
 	)
 	return paymentResponse, nil
 }

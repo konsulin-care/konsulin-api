@@ -61,28 +61,53 @@ func NewPatientUsecase(
 	})
 	return patientUsecaseInstance
 }
-
 func (uc *patientUsecase) CreateAppointment(ctx context.Context, sessionData string, request *requests.CreateAppointmentRequest) (*responses.CreateAppointment, error) {
-	// Parse session data
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	uc.Log.Info("patientUsecase.CreateAppointment called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
 	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
 	if err != nil {
+		uc.Log.Error("patientUsecase.CreateAppointment error parsing session data",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, err
 	}
 
 	if session.IsNotPatient() {
+		uc.Log.Error("patientUsecase.CreateAppointment error: session role is not patient",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
 		return nil, exceptions.ErrNotMatchRoleType(nil)
 	}
 
 	appointmentStartTime, err := time.Parse("2006-01-02 15:04", fmt.Sprintf("%s %s", request.Date, request.Time))
 	if err != nil {
+		uc.Log.Error("patientUsecase.CreateAppointment error parsing appointment start time",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, exceptions.ErrCannotParseTime(err)
 	}
+	uc.Log.Info("patientUsecase.CreateAppointment appointment start time parsed",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.Time("appointment_start", appointmentStartTime),
+	)
 
 	var slotsToBook []fhir_dto.Reference
 	var lastSlotBooked *fhir_dto.Slot
 	for i := 0; i < request.NumberOfSessions; i++ {
 		startTime := appointmentStartTime.Add(time.Duration(i) * 30 * time.Minute)
 		endTime := startTime.Add(30 * time.Minute)
+
+		uc.Log.Info("patientUsecase.CreateAppointment creating slot",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Int("session_index", i),
+			zap.Time(constvars.LoggingSlotsStartKey, startTime),
+			zap.Time(constvars.LoggingSlotsEndKey, endTime),
+		)
 
 		slotFhirRequest := &fhir_dto.Slot{
 			ResourceType: constvars.ResourceSlot,
@@ -94,11 +119,19 @@ func (uc *patientUsecase) CreateAppointment(ctx context.Context, sessionData str
 			End:    endTime,
 		}
 
-		// Generate the slot on demand
 		slot, err := uc.SlotFhirClient.CreateSlot(ctx, slotFhirRequest)
 		if err != nil {
+			uc.Log.Error("patientUsecase.CreateAppointment error creating slot",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
 			return nil, err
 		}
+
+		uc.Log.Info("patientUsecase.CreateAppointment slot created",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingSlotsIDKey, slot.ID),
+		)
 
 		slotsToBook = append(slotsToBook, fhir_dto.Reference{
 			Reference: fmt.Sprintf("Slot/%s", slot.ID),
@@ -131,11 +164,24 @@ func (uc *patientUsecase) CreateAppointment(ctx context.Context, sessionData str
 			},
 		},
 	}
+	uc.Log.Info("patientUsecase.CreateAppointment built appointment FHIR request",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.Time(constvars.LoggingAppointmentStartTimeKey, appointmentFhirRequest.Start),
+		zap.Time(constvars.LoggingAppointmentEndTimeKey, appointmentFhirRequest.End),
+	)
 
 	savedAppointment, err := uc.AppointmentFhirClient.CreateAppointment(ctx, appointmentFhirRequest)
 	if err != nil {
+		uc.Log.Error("patientUsecase.CreateAppointment error creating appointment",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, err
 	}
+	uc.Log.Info("patientUsecase.CreateAppointment appointment created",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingAppointmentIDKey, savedAppointment.ID),
+	)
 
 	paymentRoutingRequest := &requests.PaymentRequest{
 		UseLinkedAccount:     false,
@@ -163,14 +209,28 @@ func (uc *patientUsecase) CreateAppointment(ctx context.Context, sessionData str
 			},
 		},
 	}
+	uc.Log.Info("patientUsecase.CreateAppointment built payment routing request",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingAppointmentIDKey, savedAppointment.ID),
+	)
 
 	paymentRequestDTO := utils.MapPaymentRequestToDTO(paymentRoutingRequest)
 
 	paymentResponse, err := uc.OyService.CreatePaymentRouting(ctx, paymentRequestDTO)
 	if err != nil {
+		uc.Log.Error("patientUsecase.CreateAppointment error creating payment routing",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, err
 	}
+	uc.Log.Info("patientUsecase.CreateAppointment payment routing created",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
 
+	uc.Log.Info("patientUsecase.CreateAppointment succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
 	return &responses.CreateAppointment{
 		Status: paymentResponse.Status.Message,
 	}, nil

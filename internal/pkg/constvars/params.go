@@ -14,9 +14,17 @@ const (
 )
 
 const (
-	URLQueryParamSearch       = "search"
-	URLQueryParamFetchType    = "fetch_type"
-	URLQueryParamAssessmentID = "assessment_id"
+	URLQueryParamSearch    = "search"
+	URLQueryParamName      = "name"
+	URLQueryParamPage      = "page"
+	URLQueryParamPageSize  = "page_size"
+	URLQueryParamFetchType = "fetch_type"
+	URLQueryParamType      = "type"
+	URLQueryYear           = "year"
+	URLQueryMonth          = "month"
+
+	URLQueryParamAssessmentID       = "assessment_id"
+	URLQueryParamPractitionerRoleID = "practitioner_role_id"
 )
 
 const (

@@ -10,6 +10,7 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
 	"net/http"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -21,23 +22,51 @@ type UserController struct {
 	InternalConfig *config.InternalConfig
 }
 
+var (
+	userControllerInstance *UserController
+	onceUserController     sync.Once
+)
+
 func NewUserController(logger *zap.Logger, userUsecase contracts.UserUsecase, internalConfig *config.InternalConfig) *UserController {
-	return &UserController{
-		Log:            logger,
-		UserUsecase:    userUsecase,
-		InternalConfig: internalConfig,
-	}
+	onceUserController.Do(func() {
+		instance := &UserController{
+			Log:            logger,
+			UserUsecase:    userUsecase,
+			InternalConfig: internalConfig,
+		}
+		userControllerInstance = instance
+	})
+	return userControllerInstance
 }
-
 func (ctrl *UserController) GetUserProfileBySession(w http.ResponseWriter, r *http.Request) {
-	// Get session data from context
-	sessionData := r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string)
+	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	if !ok || requestID == "" {
+		ctrl.Log.Error("UserController.GetUserProfileBySession requestID not found in context")
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingRequestID(nil))
+		return
+	}
+	ctrl.Log.Info("UserController.GetUserProfileBySession called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	sessionData, ok := r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string)
+	if !ok || sessionData == "" {
+		ctrl.Log.Error("UserController.GetUserProfileBySession sessionData not found in context",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingSessionData(nil))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
 	result, err := ctrl.UserUsecase.GetUserProfileBySession(ctx, sessionData)
 	if err != nil {
+		ctrl.Log.Error("UserController.GetUserProfileBySession error from usecase",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		if err == context.DeadlineExceeded {
 			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
 			return
@@ -46,86 +75,136 @@ func (ctrl *UserController) GetUserProfileBySession(w http.ResponseWriter, r *ht
 		return
 	}
 
+	ctrl.Log.Info("UserController.GetUserProfileBySession succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.GetProfileSuccessMessage, result)
 }
 
 func (ctrl *UserController) UpdateUserBySession(w http.ResponseWriter, r *http.Request) {
-	// Bind body to request
-	request := new(requests.UpdateProfile)
-	err := json.NewDecoder(r.Body).Decode(&request)
-	if err != nil {
+	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	if !ok || requestID == "" {
+		ctrl.Log.Error("UserController.UpdateUserBySession requestID not found in context")
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingRequestID(nil))
+		return
+	}
+	ctrl.Log.Info("UserController.UpdateUserBySession called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
+	reqPayload := new(requests.UpdateProfile)
+	if err := json.NewDecoder(r.Body).Decode(&reqPayload); err != nil {
+		ctrl.Log.Error("UserController.UpdateUserBySession error decoding JSON",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
 		return
 	}
 
-	if request.ProfilePicture != "" {
-		data, ext, err := utils.DecodeBase64Image(request.ProfilePicture)
+	if reqPayload.ProfilePicture != "" {
+		data, ext, err := utils.DecodeBase64Image(reqPayload.ProfilePicture)
 		if err != nil {
+			ctrl.Log.Error("UserController.UpdateUserBySession error decoding base64 image",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
 			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrImageValidation(err))
 			return
 		}
-
-		err = utils.ValidateImageFormat(ext, constvars.ImageAllowedProfilePictureFormats)
-		if err != nil {
+		if err := utils.ValidateImageFormat(ext, constvars.ImageAllowedProfilePictureFormats); err != nil {
+			ctrl.Log.Error("UserController.UpdateUserBySession error validating image format",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
 			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrImageValidation(err))
 			return
 		}
-
-		err = utils.ValidateImageSize(data, ctrl.InternalConfig.Minio.ProfilePictureMaxUploadSizeInMB)
-		if err != nil {
+		if err := utils.ValidateImageSize(data, ctrl.InternalConfig.Minio.ProfilePictureMaxUploadSizeInMB); err != nil {
+			ctrl.Log.Error("UserController.UpdateUserBySession error validating image size",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
 			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrImageValidation(err))
 			return
 		}
-
-		request.ProfilePictureData = data
-		request.ProfilePictureExtension = ext
+		reqPayload.ProfilePictureData = data
+		reqPayload.ProfilePictureExtension = ext
 	}
 
-	// Sanitize the request data to remove any unwanted characters or spaces
-	utils.SanitizeUpdateProfileRequest(request)
+	utils.SanitizeUpdateProfileRequest(reqPayload)
 
-	// Validate the sanitized request data to ensure it meets all requirements
-	err = utils.ValidateStruct(request)
-	if err != nil {
-		// If the validation fails, build and send an error response
+	if err := utils.ValidateStruct(reqPayload); err != nil {
+		ctrl.Log.Error("UserController.UpdateUserBySession validation error",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
 		return
 	}
 
-	// Retrieve the session data from the request context
-	sessionData := r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string)
+	sessionData, ok := r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string)
+	if !ok || sessionData == "" {
+		ctrl.Log.Error("UserController.UpdateUserBySession sessionData not found in context",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingSessionData(nil))
+		return
+	}
 
-	// Create a new context with a timeout of 20 seconds for the update operation
-	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 40*time.Second)
 	defer cancel()
 
-	// Call the usecase to update the user profile based on the session data and request
-	response, err := ctrl.UserUsecase.UpdateUserProfileBySession(ctx, sessionData, request)
+	response, err := ctrl.UserUsecase.UpdateUserProfileBySession(ctx, sessionData, reqPayload)
 	if err != nil {
-		// Check if the error is due to the context deadline being exceeded
+		ctrl.Log.Error("UserController.UpdateUserBySession error from usecase",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		if err == context.DeadlineExceeded {
-			// If the context deadline is exceeded, build and send a deadline exceeded error response
 			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
 			return
 		}
-		// For any other error, build and send a generic error response
 		utils.BuildErrorResponse(ctrl.Log, w, err)
 		return
 	}
 
-	// If the update is successful, build and send a success response
+	ctrl.Log.Info("UserController.UpdateUserBySession succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.Any("response", response),
+	)
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.UpdateUserSuccessMessage, response)
 }
 
 func (ctrl *UserController) DeactivateUserBySession(w http.ResponseWriter, r *http.Request) {
-	// Get session data from context
-	sessionData := r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string)
+	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	if !ok || requestID == "" {
+		ctrl.Log.Error("UserController.DeactivateUserBySession requestID not found in context")
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingRequestID(nil))
+		return
+	}
+	ctrl.Log.Info("UserController.DeactivateUserBySession called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	sessionData, ok := r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string)
+	if !ok || sessionData == "" {
+		ctrl.Log.Error("UserController.DeactivateUserBySession sessionData not found in context",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingSessionData(nil))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
 	err := ctrl.UserUsecase.DeactivateUserBySession(ctx, sessionData)
 	if err != nil {
+		ctrl.Log.Error("UserController.DeactivateUserBySession error from usecase",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		if err == context.DeadlineExceeded {
 			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
 			return
@@ -134,5 +213,8 @@ func (ctrl *UserController) DeactivateUserBySession(w http.ResponseWriter, r *ht
 		return
 	}
 
+	ctrl.Log.Info("UserController.DeactivateUserBySession succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.DeleteUserSuccessMessage, nil)
 }

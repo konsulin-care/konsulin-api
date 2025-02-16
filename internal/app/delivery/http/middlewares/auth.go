@@ -26,7 +26,7 @@ func (m *Middlewares) Authenticate(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
 
 		sessionData, err := m.SessionService.GetSessionData(ctx, sessionID)
@@ -49,7 +49,7 @@ func (m *Middlewares) Authorize(resource, requiredAction string) func(http.Handl
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			sessionData := r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string)
 
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 			defer cancel()
 
 			request := requests.AuthorizeUser{

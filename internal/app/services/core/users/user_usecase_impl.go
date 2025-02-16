@@ -66,18 +66,36 @@ func NewUserUsecase(
 }
 
 func (uc *userUsecase) GetUserProfileBySession(ctx context.Context, sessionData string) (*responses.UserProfile, error) {
-	// Parse session data
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	uc.Log.Info("userUsecase.GetUserProfileBySession called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingSessionDataKey, sessionData),
+	)
+
 	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
 	if err != nil {
+		uc.Log.Error("userUsecase.GetUserProfileBySession error parsing session data",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, err
 	}
 
 	existingUser, err := uc.UserRepository.FindByID(ctx, session.UserID)
 	if err != nil {
+		uc.Log.Error("userUsecase.GetUserProfileBySession error fetching user by ID",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingUserIDKey, session.UserID),
+			zap.Error(err),
+		)
 		return nil, err
 	}
 
 	if existingUser == nil {
+		uc.Log.Error("userUsecase.GetUserProfileBySession user does not exist",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingUserIDKey, session.UserID),
+		)
 		return nil, exceptions.ErrUserNotExist(nil)
 	}
 
@@ -86,170 +104,314 @@ func (uc *userUsecase) GetUserProfileBySession(ctx context.Context, sessionData 
 		objectUrlExpiryTime := time.Duration(uc.InternalConfig.App.MinioPreSignedUrlObjectExpiryTimeInHours) * time.Hour
 		preSignedUrl, err = uc.MinioStorage.GetObjectUrlWithExpiryTime(ctx, uc.InternalConfig.Minio.BucketName, existingUser.ProfilePictureName, objectUrlExpiryTime)
 		if err != nil {
+			uc.Log.Error("userUsecase.GetUserProfileBySession error generating pre-signed URL",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
 			return nil, err
 		}
+		uc.Log.Info("userUsecase.GetUserProfileBySession generated pre-signed URL",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingPreSignedUrlKey, preSignedUrl),
+		)
 	}
 
-	// Handle get user profile based on role
 	switch session.RoleName {
 	case constvars.RoleTypePractitioner:
+		uc.Log.Info("userUsecase.GetUserProfileBySession processing practitioner profile",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
 		return uc.getPractitionerProfile(ctx, session, preSignedUrl)
 	case constvars.RoleTypePatient:
+		uc.Log.Info("userUsecase.GetUserProfileBySession processing patient profile",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
 		return uc.getPatientProfile(ctx, session, preSignedUrl)
 	default:
+		uc.Log.Error("userUsecase.GetUserProfileBySession invalid role type",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
 		return nil, exceptions.ErrInvalidRoleType(nil)
 	}
 }
 
 func (uc *userUsecase) UpdateUserProfileBySession(ctx context.Context, sessionData string, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error) {
-	// Parse session data
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	uc.Log.Info("userUsecase.UpdateUserProfileBySession called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
 	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
 	if err != nil {
+		uc.Log.Error("userUsecase.UpdateUserProfileBySession error parsing session data",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, err
 	}
 
-	// Make sure to allow the changes if current (session) email is the same as the requested email
 	if session.Email != request.Email {
-		// Check if email already exists
+		uc.Log.Info("userUsecase.UpdateUserProfileBySession email change detected; checking for existence",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
 		existingUser, err := uc.UserRepository.FindByEmail(ctx, request.Email)
 		if err != nil {
+			uc.Log.Error("userUsecase.UpdateUserProfileBySession error checking email existence",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
 			return nil, err
 		}
 		if existingUser != nil {
+			uc.Log.Error("userUsecase.UpdateUserProfileBySession email already exists",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+			)
 			return nil, exceptions.ErrEmailAlreadyExist(nil)
 		}
 	}
 
 	if request.ProfilePicture != "" {
+		uc.Log.Info("userUsecase.UpdateUserProfileBySession uploading new profile picture",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
 		request.ProfilePictureObjectName, err = uc.uploadProfilePicture(ctx, session.Username, request)
 		if err != nil {
+			uc.Log.Error("userUsecase.UpdateUserProfileBySession error uploading profile picture",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
 			return nil, err
 		}
+		uc.Log.Info("userUsecase.UpdateUserProfileBySession profile picture uploaded",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("object_name", request.ProfilePictureObjectName),
+		)
 	}
 
-	// Find user by ID by 'session.UserID'
 	existingUser, err := uc.UserRepository.FindByID(ctx, session.UserID)
 	if err != nil {
+		uc.Log.Error("userUsecase.UpdateUserProfileBySession error fetching user by ID",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingUserIDKey, session.UserID),
+			zap.Error(err),
+		)
 		return nil, err
 	}
 
-	// Throw 'ErrUserNotExist' if existingUser doesn't exist
 	if existingUser == nil {
+		uc.Log.Error("userUsecase.UpdateUserProfileBySession user does not exist",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingUserIDKey, session.UserID),
+		)
 		return nil, exceptions.ErrUserNotExist(nil)
 	}
 
-	// Set the existingUser data with 'UpdateProfile' request
 	existingUser.SetDataForUpdateProfile(request)
-
-	// Update the user using 'existingUser' that already updated with the request
 	err = uc.UserRepository.UpdateUser(ctx, existingUser)
 	if err != nil {
+		uc.Log.Error("userUsecase.UpdateUserProfileBySession error updating user",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, err
 	}
 
-	// Handle update user profile based on role
+	uc.Log.Info("userUsecase.UpdateUserProfileBySession user updated successfully",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingUserIDKey, existingUser.ID),
+	)
+
 	switch session.RoleName {
 	case constvars.RoleTypePractitioner:
+		uc.Log.Info("userUsecase.UpdateUserProfileBySession updating practitioner profile",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
 		return uc.updatePractitionerFhirProfile(ctx, existingUser, session, request)
 	case constvars.RoleTypePatient:
+		uc.Log.Info("userUsecase.UpdateUserProfileBySession updating patient profile",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
 		return uc.updatePatientFhirProfile(ctx, existingUser, session, request)
 	default:
+		uc.Log.Error("userUsecase.UpdateUserProfileBySession invalid role type",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
 		return nil, exceptions.ErrInvalidRoleType(nil)
 	}
-
 }
 
 func (uc *userUsecase) DeleteUserBySession(ctx context.Context, sessionData string) error {
-	// Parse session data
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	uc.Log.Info("userUsecase.DeleteUserBySession called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingSessionDataKey, sessionData),
+	)
+
 	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
 	if err != nil {
+		uc.Log.Error("userUsecase.DeleteUserBySession error parsing session data",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return err
 	}
 
-	// Delete the user by using his/her 'session.UserID'
 	err = uc.UserRepository.DeleteByID(ctx, session.UserID)
 	if err != nil {
+		uc.Log.Error("userUsecase.DeleteUserBySession error deleting user",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingUserIDKey, session.UserID),
+			zap.Error(err),
+		)
 		return err
 	}
+	uc.Log.Info("userUsecase.DeleteUserBySession user deleted",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingUserIDKey, session.UserID),
+	)
 
-	// Delete the session in Redis using 'session.SessionID'
 	err = uc.RedisRepository.Delete(ctx, session.SessionID)
 	if err != nil {
+		uc.Log.Error("userUsecase.DeleteUserBySession error deleting session from Redis",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingSessionIDKey, session.SessionID),
+			zap.Error(err),
+		)
 		return err
 	}
-
-	// Return nil error indicating successful deletion
+	uc.Log.Info("userUsecase.DeleteUserBySession session deleted from Redis",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingSessionIDKey, session.SessionID),
+	)
 	return nil
 }
 
 func (uc *userUsecase) DeactivateUserBySession(ctx context.Context, sessionData string) error {
-	// Parse session data
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	uc.Log.Info("userUsecase.DeactivateUserBySession called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingSessionDataKey, sessionData),
+	)
+
 	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
 	if err != nil {
+		uc.Log.Error("userUsecase.DeactivateUserBySession error parsing session data",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return err
 	}
 
-	// Delete the user by using his/her 'session.UserID'
 	existingUser, err := uc.UserRepository.FindByID(ctx, session.UserID)
 	if err != nil {
+		uc.Log.Error("userUsecase.DeactivateUserBySession error fetching user",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingUserIDKey, session.UserID),
+			zap.Error(err),
+		)
 		return err
 	}
 
-	// Set deleted at for existing user
 	existingUser.SetDeletedAt()
-
-	// Update the user using 'existingUser' that already updated with the request
 	err = uc.UserRepository.UpdateUser(ctx, existingUser)
 	if err != nil {
+		uc.Log.Error("userUsecase.DeactivateUserBySession error updating user for deactivation",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return err
 	}
+	uc.Log.Info("userUsecase.DeactivateUserBySession user deactivated",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingUserIDKey, existingUser.ID),
+	)
 
-	// Delete the session in Redis using 'session.SessionID'
 	err = uc.RedisRepository.Delete(ctx, session.SessionID)
 	if err != nil {
+		uc.Log.Error("userUsecase.DeactivateUserBySession error deleting session from Redis",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingSessionIDKey, session.SessionID),
+			zap.Error(err),
+		)
 		return err
 	}
+	uc.Log.Info("userUsecase.DeactivateUserBySession session deleted from Redis",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingSessionIDKey, session.SessionID),
+	)
 
 	switch session.RoleName {
 	case constvars.RoleTypePractitioner:
+		uc.Log.Info("userUsecase.DeactivateUserBySession deactivating practitioner FHIR data",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
 		return uc.deactivatePractitionerFhirData(ctx, existingUser)
 	case constvars.RoleTypePatient:
+		uc.Log.Info("userUsecase.DeactivateUserBySession deactivating patient FHIR data",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
 		return uc.deactivatePatientFhirData(ctx, existingUser)
 	default:
+		uc.Log.Error("userUsecase.DeactivateUserBySession invalid role type",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
 		return exceptions.ErrInvalidRoleType(nil)
 	}
 }
 
 func (uc *userUsecase) deactivatePractitionerFhirData(ctx context.Context, user *models.User) error {
-	// Set deactivate account request for User's fhir resource
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	uc.Log.Info("userUsecase.deactivatePractitionerFhirData called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingUserIDKey, user.ID),
+	)
+
 	practitionerFhirRequest := user.ConvertToPractitionerFhirDeactivationRequest()
 
-	// Send 'patientFhirRequest' to FHIR Spark Patient Client to update the 'patient' resource
 	_, err := uc.PractitionerFhirClient.UpdatePractitioner(ctx, practitionerFhirRequest)
 	if err != nil {
+		uc.Log.Error("userUsecase.deactivatePractitionerFhirData error updating practitioner FHIR resource",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return err
 	}
-
-	// Return the response back to Controller
+	uc.Log.Info("userUsecase.deactivatePractitionerFhirData succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
 	return nil
 }
 
 func (uc *userUsecase) deactivatePatientFhirData(ctx context.Context, user *models.User) error {
-	// Set deactivate account request for User's fhir resource
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	uc.Log.Info("userUsecase.deactivatePatientFhirData called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingUserIDKey, user.ID),
+	)
+
 	patientFhirRequest := user.ConvertToPatientFhirDeactivationRequest()
 
-	// Send 'patientFhirRequest' to FHIR Spark Patient Client to update the 'patient' resource
 	_, err := uc.PatientFhirClient.UpdatePatient(ctx, patientFhirRequest)
 	if err != nil {
+		uc.Log.Error("userUsecase.deactivatePatientFhirData error updating patient FHIR resource",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return err
 	}
-
-	// Return the response back to Controller
+	uc.Log.Info("userUsecase.deactivatePatientFhirData succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
 	return nil
 }
 
 func (uc *userUsecase) updatePatientFhirProfile(ctx context.Context, user *models.User, session *models.Session, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error) {
-	// Create session data with updated user, existing role, and session details
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	uc.Log.Info("userUsecase.updatePatientFhirProfile called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingPatientIDKey, session.PatientID),
+	)
+
 	sessionModel := models.Session{
 		UserID:    user.ID,
 		PatientID: user.PatientID,
@@ -260,33 +422,43 @@ func (uc *userUsecase) updatePatientFhirProfile(ctx context.Context, user *model
 		SessionID: session.SessionID,
 	}
 
-	// Store the session data in Redis with a 1-hour expiration
 	err := uc.RedisRepository.Set(ctx, session.SessionID, sessionModel, time.Hour)
 	if err != nil {
-		// Return error if there is an issue storing the session data
+		uc.Log.Error("userUsecase.updatePatientFhirProfile error storing updated session in Redis",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, err
 	}
 
-	// Build the 'UpdateProfile' request into 'patientFhirRequest'
 	patientFhirRequest := utils.BuildFhirPatientUpdateProfileRequest(request, session.PatientID)
-
-	// Send 'patientFhirRequest' to FHIR Spark Patient Client to update the 'patient' resource
 	fhirPatient, err := uc.PatientFhirClient.UpdatePatient(ctx, patientFhirRequest)
 	if err != nil {
+		uc.Log.Error("userUsecase.updatePatientFhirProfile error updating patient FHIR resource",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, err
 	}
 
-	// Build the response before sending it back to Controller
+	uc.Log.Info("userUsecase.updatePatientFhirProfile succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingPatientIDKey, fhirPatient.ID),
+	)
+
 	response := &responses.UpdateUserProfile{
 		PatientID: fhirPatient.ID,
 	}
-
-	// Return the response back to Controller
 	return response, nil
 }
 
 func (uc *userUsecase) updatePractitionerFhirProfile(ctx context.Context, user *models.User, session *models.Session, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error) {
-	// Create session data with updated user, existing role, and session details
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	uc.Log.Info("userUsecase.updatePractitionerFhirProfile called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingPractitionerIDKey, session.PractitionerID),
+	)
+
 	sessionModel := models.Session{
 		UserID:         user.ID,
 		PractitionerID: user.PractitionerID,
@@ -297,69 +469,100 @@ func (uc *userUsecase) updatePractitionerFhirProfile(ctx context.Context, user *
 		SessionID:      session.SessionID,
 	}
 
-	// Store the session data in Redis with a 1-hour expiration
 	err := uc.RedisRepository.Set(ctx, session.SessionID, sessionModel, time.Hour)
 	if err != nil {
-		// Return error if there is an issue storing the session data
+		uc.Log.Error("userUsecase.updatePractitionerFhirProfile error storing updated session in Redis",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, err
 	}
 
-	// Build the 'UpdateProfile' request into 'practitionerFhirRequest'
 	practitionerFhirRequest := utils.BuildFhirPractitionerUpdateProfileRequest(request, session.PractitionerID)
-
-	// Send 'practitionerFhirRequest' to FHIR Spark Practitioner Client to update the 'practitioner' resource
 	fhirPractitioner, err := uc.PractitionerFhirClient.UpdatePractitioner(ctx, practitionerFhirRequest)
 	if err != nil {
+		uc.Log.Error("userUsecase.updatePractitionerFhirProfile error updating practitioner FHIR resource",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, err
 	}
 
-	// Build the response before sending it back to Controller
+	uc.Log.Info("userUsecase.updatePractitionerFhirProfile succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingPractitionerIDKey, fhirPractitioner.ID),
+	)
+
 	response := &responses.UpdateUserProfile{
 		PractitionerID: fhirPractitioner.ID,
 	}
-
-	// Return the response back to Controller
 	return response, nil
 }
 
 func (uc *userUsecase) getPatientProfile(ctx context.Context, session *models.Session, preSignedUrl string) (*responses.UserProfile, error) {
-	// Get patient data from FHIR Spark Patient Client
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	uc.Log.Info("userUsecase.getPatientProfile called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingPatientIDKey, session.PatientID),
+	)
+
 	patientFhir, err := uc.PatientFhirClient.FindPatientByID(ctx, session.PatientID)
 	if err != nil {
+		uc.Log.Error("userUsecase.getPatientProfile error fetching patient FHIR resource",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, err
 	}
 
-	// Build patient profile response
 	response := utils.BuildPatientProfileResponse(patientFhir)
 	response.ProfilePicture = preSignedUrl
 
-	// Return the response to Controller
+	uc.Log.Info("userUsecase.getPatientProfile succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
 	return response, nil
 }
 
 func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *models.Session, preSignedUrl string) (*responses.UserProfile, error) {
-	// Get practitioner data from FHIR Spark Practitioner Client
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	uc.Log.Info("userUsecase.getPractitionerProfile called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingPractitionerIDKey, session.PractitionerID),
+	)
+
 	practitionerFhir, err := uc.PractitionerFhirClient.FindPractitionerByID(ctx, session.PractitionerID)
 	if err != nil {
+		uc.Log.Error("userUsecase.getPractitionerProfile error fetching practitioner FHIR resource",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, err
 	}
 
-	// Build patient profile response
 	response := utils.BuildPractitionerProfileResponse(practitionerFhir)
 	response.ProfilePicture = preSignedUrl
 
 	practitionerRoles, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerID(ctx, session.PractitionerID)
 	if err != nil {
+		uc.Log.Error("userUsecase.getPractitionerProfile error fetching practitioner roles",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, err
 	}
 
 	practiceInformations := make([]responses.PracticeInformation, 0, len(practitionerRoles))
 	practiceAvailabilities := make([]responses.PracticeAvailability, 0, len(practitionerRoles))
-
 	for _, practitionerRole := range practitionerRoles {
 		organizationID := strings.Split(practitionerRole.Organization.Reference, "/")[1]
 		organization, err := uc.OrganizationFhirClient.FindOrganizationByID(ctx, organizationID)
 		if err != nil {
+			uc.Log.Error("userUsecase.getPractitionerProfile error fetching organization",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.String(constvars.LoggingOrganizationIDKey, organizationID),
+				zap.Error(err),
+			)
 			return nil, err
 		}
 		practiceInformations = append(practiceInformations, responses.PracticeInformation{
@@ -372,7 +575,6 @@ func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *mode
 				Currency: practitionerRole.Extension[0].ValueMoney.Currency,
 			},
 		})
-
 		if len(practitionerRole.AvailableTime) > 0 {
 			practiceAvailabilities = append(practiceAvailabilities, responses.PracticeAvailability{
 				ClinicID:       organization.ID,
@@ -380,16 +582,27 @@ func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *mode
 			})
 		}
 	}
-
 	response.PracticeInformations = practiceInformations
 	response.PracticeAvailabilities = practiceAvailabilities
 
-	// Return the response to Controller
+	uc.Log.Info("userUsecase.getPractitionerProfile succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
 	return response, nil
 }
 
 func (uc *userUsecase) uploadProfilePicture(ctx context.Context, username string, request *requests.UpdateProfile) (string, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	uc.Log.Info("userUsecase.uploadProfilePicture called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("username", username),
+	)
+
 	fileName := utils.GenerateFileName(constvars.ImageProfilePicturePrefix, username, request.ProfilePictureExtension)
+	uc.Log.Info("userUsecase.uploadProfilePicture generated file name",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("file_name", fileName),
+	)
 
 	profilePictureURL, err := uc.MinioStorage.UploadBase64Image(
 		ctx,
@@ -398,10 +611,17 @@ func (uc *userUsecase) uploadProfilePicture(ctx context.Context, username string
 		fileName,
 		request.ProfilePictureExtension,
 	)
-
 	if err != nil {
+		uc.Log.Error("userUsecase.uploadProfilePicture error uploading image",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return "", err
 	}
 
+	uc.Log.Info("userUsecase.uploadProfilePicture succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("profile_picture_url", profilePictureURL),
+	)
 	return profilePictureURL, nil
 }

@@ -9,6 +9,7 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
 	"net/http"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -19,11 +20,20 @@ type AppointmentController struct {
 	AppointmentUsecase contracts.AppointmentUsecase
 }
 
+var (
+	appointmentControllerInstance *AppointmentController
+	onceAppointmentController     sync.Once
+)
+
 func NewAppointmentController(logger *zap.Logger, appointmentUsecase contracts.AppointmentUsecase) *AppointmentController {
-	return &AppointmentController{
-		Log:                logger,
-		AppointmentUsecase: appointmentUsecase,
-	}
+	onceAppointmentController.Do(func() {
+		instance := &AppointmentController{
+			Log:                logger,
+			AppointmentUsecase: appointmentUsecase,
+		}
+		appointmentControllerInstance = instance
+	})
+	return appointmentControllerInstance
 }
 
 func (ctrl *AppointmentController) FindAll(w http.ResponseWriter, r *http.Request) {
@@ -47,7 +57,7 @@ func (ctrl *AppointmentController) FindAll(w http.ResponseWriter, r *http.Reques
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String(constvars.LoggingSessionDataKey, sessionData))
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
 	queryParamsRequest := utils.BuildQueryParamsRequest(r)
@@ -96,7 +106,7 @@ func (ctrl *AppointmentController) UpcomingAppointment(w http.ResponseWriter, r 
 		zap.String(constvars.LoggingSessionDataKey, sessionData))
 
 	// Create a context with timeout.
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
 	// Build query parameters.
@@ -173,7 +183,7 @@ func (ctrl *AppointmentController) CreateAppointment(w http.ResponseWriter, r *h
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
 	response, err := ctrl.AppointmentUsecase.CreateAppointment(ctx, sessionData, request)

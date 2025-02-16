@@ -55,25 +55,13 @@ func (uc *assessmentUsecase) FindAll(ctx context.Context) ([]responses.Assessmen
 		zap.Int(constvars.LoggingQuestionnaireCountKey, len(questionnaires)),
 	)
 
-	assessments := uc.mapFHIRQuestionnaireToAssessment(questionnaires)
+	assessments := uc.mapFHIRQuestionnaireToAssessment(ctx, questionnaires)
 	uc.Log.Info("assessmentUsecase.FindAll mapped assessments",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.Int(constvars.LoggingAssessmentCountKey, len(assessments)),
 	)
 
 	return assessments, nil
-}
-
-func (uc *assessmentUsecase) mapFHIRQuestionnaireToAssessment(questionnaires []fhir_dto.Questionnaire) []responses.Assessment {
-	assessments := make([]responses.Assessment, 0, len(questionnaires))
-	for _, eachQuestionnaire := range questionnaires {
-		assessment := responses.Assessment{
-			AssessmentID: eachQuestionnaire.ID,
-			Title:        eachQuestionnaire.Title,
-		}
-		assessments = append(assessments, assessment)
-	}
-	return assessments
 }
 
 func (uc *assessmentUsecase) CreateAssessment(ctx context.Context, request map[string]interface{}) (map[string]interface{}, error) {
@@ -166,4 +154,25 @@ func (uc *assessmentUsecase) DeleteAssessmentByID(ctx context.Context, questionn
 		zap.String(constvars.LoggingQuestionnaireIDKey, questionnaireID),
 	)
 	return nil
+}
+
+func (uc *assessmentUsecase) mapFHIRQuestionnaireToAssessment(ctx context.Context, questionnaires []fhir_dto.Questionnaire) []responses.Assessment {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	uc.Log.Info("assessmentUsecase.mapFHIRQuestionnaireToAssessment called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
+	assessments := make([]responses.Assessment, 0, len(questionnaires))
+	for _, eachQuestionnaire := range questionnaires {
+		assessment := responses.Assessment{
+			AssessmentID: eachQuestionnaire.ID,
+			Title:        eachQuestionnaire.Title,
+		}
+		assessments = append(assessments, assessment)
+	}
+	uc.Log.Info("assessmentUsecase.mapFHIRQuestionnaireToAssessment succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.Int(constvars.LoggingAssessmentCountKey, len(assessments)),
+	)
+	return assessments
 }

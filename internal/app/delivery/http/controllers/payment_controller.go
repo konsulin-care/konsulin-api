@@ -9,6 +9,7 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
 	"net/http"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -19,26 +20,54 @@ type PaymentController struct {
 	PaymentUsecase contracts.PaymentUsecase
 }
 
-func NewPaymentController(logger *zap.Logger, paymentUsecase contracts.PaymentUsecase) *PaymentController {
-	return &PaymentController{
-		Log:            logger,
-		PaymentUsecase: paymentUsecase,
-	}
-}
+var (
+	paymentControllerInstance *PaymentController
+	oncePaymentController     sync.Once
+)
 
+func NewPaymentController(logger *zap.Logger, paymentUsecase contracts.PaymentUsecase) *PaymentController {
+	oncePaymentController.Do(func() {
+		instance := &PaymentController{
+			Log:            logger,
+			PaymentUsecase: paymentUsecase,
+		}
+		paymentControllerInstance = instance
+	})
+	return paymentControllerInstance
+}
 func (ctrl *PaymentController) PaymentRoutingCallback(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	if !ok || requestID == "" {
+		ctrl.Log.Error("PaymentController.PaymentRoutingCallback requestID not found in context")
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingRequestID(nil))
+		return
+	}
+	ctrl.Log.Info("PaymentController.PaymentRoutingCallback called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
 
 	request := new(requests.PaymentRoutingCallback)
-	err := json.NewDecoder(r.Body).Decode(&request)
-	if err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		ctrl.Log.Error("PaymentController.PaymentRoutingCallback error decoding JSON",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
 		return
 	}
+	ctrl.Log.Info("PaymentController.PaymentRoutingCallback request decoded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
 
-	err = ctrl.PaymentUsecase.PaymentRoutingCallback(ctx, request)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	err := ctrl.PaymentUsecase.PaymentRoutingCallback(ctx, request)
 	if err != nil {
+		ctrl.Log.Error("PaymentController.PaymentRoutingCallback error from usecase",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		if err == context.DeadlineExceeded {
 			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
 			return
@@ -47,5 +76,8 @@ func (ctrl *PaymentController) PaymentRoutingCallback(w http.ResponseWriter, r *
 		return
 	}
 
+	ctrl.Log.Info("PaymentController.PaymentRoutingCallback succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.PaymentRoutingCallbackSuccessfullyCalled, request.PaymentStatus)
 }
