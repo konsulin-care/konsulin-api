@@ -8,10 +8,12 @@ import (
 	"io"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/utils"
 	"net/http"
+	"net/url"
 	"sync"
 
 	"go.uber.org/zap"
@@ -38,13 +40,19 @@ func NewQuestionnaireFhirClient(baseUrl string, logger *zap.Logger) contracts.Qu
 	return questionnaireFhirClientInstance
 }
 
-func (c *questionnaireFhirClient) FindQuestionnaires(ctx context.Context) ([]fhir_dto.Questionnaire, error) {
+func (c *questionnaireFhirClient) FindQuestionnaires(ctx context.Context, request *requests.FindAllAssessment) ([]fhir_dto.Questionnaire, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	c.Log.Info("questionnaireFhirClient.FindQuestionnaires called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
 
-	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, c.BaseUrl, nil)
+	params := url.Values{}
+	if request.SubjectType != "" {
+		params.Add("subject-type", request.SubjectType)
+	}
+	url := fmt.Sprintf("%s?%s", c.BaseUrl, params.Encode())
+
+	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, url, nil)
 	if err != nil {
 		c.Log.Error("questionnaireFhirClient.FindQuestionnaires error creating HTTP request",
 			zap.String(constvars.LoggingRequestIDKey, requestID),

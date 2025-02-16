@@ -45,7 +45,7 @@ func (ctrl *AssessmentController) FindAll(w http.ResponseWriter, r *http.Request
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingRequestID(nil))
 		return
 	}
-
+	sessionData, _ := r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string)
 	ctrl.Log.Info("AssessmentController.FindAll called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
@@ -53,7 +53,7 @@ func (ctrl *AssessmentController) FindAll(w http.ResponseWriter, r *http.Request
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	response, err := ctrl.AssessmentUsecase.FindAll(ctx)
+	response, err := ctrl.AssessmentUsecase.FindAll(ctx, sessionData)
 	if err != nil {
 		ctrl.Log.Error("AssessmentController.FindAll error in AssessmentUsecase.FindAll",
 			zap.String(constvars.LoggingRequestIDKey, requestID),

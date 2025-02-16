@@ -8,7 +8,7 @@ import (
 )
 
 func attachQuestionnaireRouter(router chi.Router, middlewares *middlewares.Middlewares, assessmentController *controllers.AssessmentController) {
-	router.Get("/", assessmentController.FindAll)
+	router.With(middlewares.OptionalAuthenticate).Get("/", assessmentController.FindAll)
 	router.Post("/", assessmentController.CreateAssessment)
 	router.Put("/{assessment_id}", assessmentController.UpdateAssessment)
 	router.Get("/{assessment_id}", assessmentController.FindAssessmentByID)

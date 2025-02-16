@@ -9,6 +9,7 @@ const (
 	ResourceClinics         = "clinics"
 	ResourceGenders         = "genders"
 	ResourceEducationLevels = "education-levels"
+	ResourcePerson          = "Person"
 )
 
 const (

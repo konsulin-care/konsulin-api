@@ -4,7 +4,9 @@ import (
 	"context"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
+	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"sync"
 
@@ -13,6 +15,7 @@ import (
 
 type assessmentUsecase struct {
 	QuestionnaireFhirClient contracts.QuestionnaireFhirClient
+	SessionService          contracts.SessionService
 	Log                     *zap.Logger
 }
 
@@ -23,11 +26,13 @@ var (
 
 func NewAssessmentUsecase(
 	questionnaireFhirClient contracts.QuestionnaireFhirClient,
+	sessionService contracts.SessionService,
 	logger *zap.Logger,
 ) contracts.AssessmentUsecase {
 	onceAssessmentUsecase.Do(func() {
 		instance := &assessmentUsecase{
 			QuestionnaireFhirClient: questionnaireFhirClient,
+			SessionService:          sessionService,
 			Log:                     logger,
 		}
 		assessmentUsecaseInstance = instance
@@ -35,13 +40,41 @@ func NewAssessmentUsecase(
 	return assessmentUsecaseInstance
 }
 
-func (uc *assessmentUsecase) FindAll(ctx context.Context) ([]responses.Assessment, error) {
+func (uc *assessmentUsecase) FindAll(ctx context.Context, sessionData string) ([]responses.Assessment, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	uc.Log.Info("assessmentUsecase.FindAll called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
 
-	questionnaires, err := uc.QuestionnaireFhirClient.FindQuestionnaires(ctx)
+	request := new(requests.FindAllAssessment)
+
+	if sessionData != "" {
+		session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
+		if err != nil {
+			uc.Log.Error("assessmentUsecase.FindAll error parse session data",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
+			return nil, err
+		}
+
+		if session.IsPatient() {
+			request.SubjectType = constvars.ResourcePatient
+		} else if session.IsPractitioner() {
+			request.SubjectType = constvars.ResourcePractitioner
+		} else {
+			uc.Log.Error("assessmentUsecase.FindAll role is not allowed to access feature",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.String(constvars.LoggingRoleNameKey, session.RoleName),
+				zap.Error(err),
+			)
+			return nil, exceptions.ErrInvalidRoleType(nil)
+		}
+	} else {
+		request.SubjectType = constvars.ResourcePerson
+	}
+
+	questionnaires, err := uc.QuestionnaireFhirClient.FindQuestionnaires(ctx, request)
 	if err != nil {
 		uc.Log.Error("assessmentUsecase.FindAll error fetching questionnaires",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
