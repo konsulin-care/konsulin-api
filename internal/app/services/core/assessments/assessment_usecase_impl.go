@@ -40,13 +40,11 @@ func NewAssessmentUsecase(
 	return assessmentUsecaseInstance
 }
 
-func (uc *assessmentUsecase) FindAll(ctx context.Context, sessionData string) ([]responses.Assessment, error) {
+func (uc *assessmentUsecase) FindAll(ctx context.Context, request *requests.FindAllAssessment, sessionData string) ([]responses.Assessment, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	uc.Log.Info("assessmentUsecase.FindAll called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
-
-	request := new(requests.FindAllAssessment)
 
 	if sessionData != "" {
 		session, err := uc.SessionService.ParseSessionData(ctx, sessionData)

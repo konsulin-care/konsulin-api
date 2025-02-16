@@ -6,6 +6,7 @@ import (
 	"io"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/utils"
@@ -53,7 +54,20 @@ func (ctrl *AssessmentController) FindAll(w http.ResponseWriter, r *http.Request
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	response, err := ctrl.AssessmentUsecase.FindAll(ctx, sessionData)
+	request := &requests.FindAllAssessment{
+		AssessmentType: r.URL.Query().Get("assessment_type"),
+	}
+
+	if err := utils.ValidateStruct(request); err != nil {
+		ctrl.Log.Error("AssessmentController.FindAll validation error",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
+		return
+	}
+
+	response, err := ctrl.AssessmentUsecase.FindAll(ctx, request, sessionData)
 	if err != nil {
 		ctrl.Log.Error("AssessmentController.FindAll error in AssessmentUsecase.FindAll",
 			zap.String(constvars.LoggingRequestIDKey, requestID),

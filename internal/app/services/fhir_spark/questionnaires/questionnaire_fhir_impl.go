@@ -25,15 +25,17 @@ var (
 )
 
 type questionnaireFhirClient struct {
-	BaseUrl string
-	Log     *zap.Logger
+	FhirBaseUrl string
+	BaseUrl     string
+	Log         *zap.Logger
 }
 
 func NewQuestionnaireFhirClient(baseUrl string, logger *zap.Logger) contracts.QuestionnaireFhirClient {
 	onceQuestionnaireFhirClient.Do(func() {
 		client := &questionnaireFhirClient{
-			BaseUrl: baseUrl + constvars.ResourceQuestionnaire,
-			Log:     logger,
+			FhirBaseUrl: baseUrl,
+			BaseUrl:     baseUrl + constvars.ResourceQuestionnaire,
+			Log:         logger,
 		}
 		questionnaireFhirClientInstance = client
 	})
@@ -50,7 +52,14 @@ func (c *questionnaireFhirClient) FindQuestionnaires(ctx context.Context, reques
 	if request.SubjectType != "" {
 		params.Add("subject-type", request.SubjectType)
 	}
+
+	if request.AssessmentType != "" {
+		params.Add("context", fmt.Sprintf("%s%s/%s|%s", c.FhirBaseUrl, "CodeSystem", "assessment-context", request.AssessmentType))
+	}
+
 	url := fmt.Sprintf("%s?%s", c.BaseUrl, params.Encode())
+
+	c.Log.Debug("HERE", zap.Any("url", url))
 
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, url, nil)
 	if err != nil {
