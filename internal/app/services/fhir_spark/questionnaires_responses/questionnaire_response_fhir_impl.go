@@ -11,6 +11,7 @@ import (
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
+	"konsulin-service/internal/pkg/utils"
 	"net/http"
 	"sync"
 
@@ -38,7 +39,7 @@ func NewQuestionnaireResponseFhirClient(baseUrl string, logger *zap.Logger) cont
 	return questionnaireResponseFhirClientInstance
 }
 
-func (c *questionnaireResponseFhirClient) CreateQuestionnaireResponse(ctx context.Context, request *fhir_dto.QuestionnaireResponse) (*fhir_dto.QuestionnaireResponse, error) {
+func (c *questionnaireResponseFhirClient) CreateQuestionnaireResponse(ctx context.Context, request map[string]interface{}) (map[string]interface{}, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	c.Log.Info("questionnaireResponseFhirClient.CreateQuestionnaireResponse called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -103,21 +104,28 @@ func (c *questionnaireResponseFhirClient) CreateQuestionnaireResponse(ctx contex
 		}
 	}
 
-	questionnaireResponseFhir := new(fhir_dto.QuestionnaireResponse)
-	err = json.NewDecoder(resp.Body).Decode(&questionnaireResponseFhir)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		c.Log.Error("questionnaireResponseFhirClient.CreateQuestionnaireResponse error decoding response",
+		c.Log.Error("questionnaireResponseFhirClient.CreateQuestionnaireResponse error reading response body after creation",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
-		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourceQuestionnaireResponse)
+		return nil, exceptions.ErrReadBody(err)
+	}
+
+	data, err := utils.ParseJSONBody(body)
+	if err != nil {
+		c.Log.Error("questionnaireResponseFhirClient.CreateQuestionnaireResponse error parsing JSON body",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrCannotParseJSON(err)
 	}
 
 	c.Log.Info("questionnaireResponseFhirClient.CreateQuestionnaireResponse succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingQuestionnaireResponseIDKey, questionnaireResponseFhir.ID),
 	)
-	return questionnaireResponseFhir, nil
+	return data, nil
 }
 
 func (c *questionnaireResponseFhirClient) FindQuestionnaireResponses(ctx context.Context, request *requests.FindAllAssessmentResponse) ([]fhir_dto.QuestionnaireResponse, error) {

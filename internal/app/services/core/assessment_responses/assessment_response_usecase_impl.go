@@ -64,6 +64,34 @@ func (uc *assessmentResponseUsecase) CreateAssessmentResponse(ctx context.Contex
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
 
+	if request.SessionData != "" {
+		session, err := uc.SessionService.ParseSessionData(ctx, request.SessionData)
+		if err != nil {
+			uc.Log.Error("assessmentResponseUsecase.CreateAssessmentResponse error parse session data",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
+			return nil, err
+		}
+
+		if session.IsPatient() {
+			request.QuestionnaireResponse["subject"] = map[string]interface{}{
+				"reference": fmt.Sprintf("%s/%s", constvars.ResourcePatient, session.PatientID),
+			}
+		} else if session.IsPractitioner() {
+			request.QuestionnaireResponse["subject"] = map[string]interface{}{
+				"reference": fmt.Sprintf("%s/%s", constvars.ResourcePractitioner, session.PractitionerID),
+			}
+		} else {
+			uc.Log.Error("assessmentResponseUsecase.CreateAssessmentResponse role is not allowed to create resposne",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.String(constvars.LoggingRoleNameKey, session.RoleName),
+				zap.Error(err),
+			)
+			return nil, exceptions.ErrInvalidRoleType(nil)
+		}
+	}
+
 	questionnaireResponse, err := uc.QuestionnaireResponseFhirClient.CreateQuestionnaireResponse(ctx, request.QuestionnaireResponse)
 	if err != nil {
 		uc.Log.Error("assessmentResponseUsecase.CreateAssessmentResponse error creating questionnaire response",
@@ -79,7 +107,7 @@ func (uc *assessmentResponseUsecase) CreateAssessmentResponse(ctx context.Contex
 	if request.RespondentType == constvars.RespondentTypeGuest {
 		responseID := uuid.New().String()
 		responseExpiryTime := time.Minute * time.Duration(uc.InternalConfig.App.QuestionnaireGuestResponseExpiredTimeInMinutes)
-		err := uc.RedisRepository.Set(ctx, responseID, questionnaireResponse.ID, responseExpiryTime)
+		err := uc.RedisRepository.Set(ctx, responseID, questionnaireResponse["id"], responseExpiryTime)
 		if err != nil {
 			uc.Log.Error("assessmentResponseUsecase.CreateAssessmentResponse error setting Redis key",
 				zap.String(constvars.LoggingRequestIDKey, requestID),

@@ -45,6 +45,7 @@ func (ctrl *AssessmentResponseController) CreateAssesmentResponse(w http.Respons
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingRequestID(nil))
 		return
 	}
+	sessionData, _ := r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string)
 	ctrl.Log.Info("AssessmentResponseController.CreateAssessmentResponse called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
@@ -59,7 +60,8 @@ func (ctrl *AssessmentResponseController) CreateAssesmentResponse(w http.Respons
 		return
 	}
 
-	request.QuestionnaireResponse.ResourceType = constvars.ResourceQuestionnaireResponse
+	request.QuestionnaireResponse["resourceType"] = constvars.ResourceQuestionnaireResponse
+	request.SessionData = sessionData
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()

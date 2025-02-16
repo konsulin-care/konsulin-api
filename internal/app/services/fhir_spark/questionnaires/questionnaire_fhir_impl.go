@@ -191,7 +191,6 @@ func (c *questionnaireFhirClient) CreateQuestionnaire(ctx context.Context, reque
 		}
 	}
 
-	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		c.Log.Error("questionnaireFhirClient.CreateQuestionnaire error reading response body after creation",
