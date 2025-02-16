@@ -5,24 +5,47 @@ import (
 	"database/sql"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/models"
+	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/queries"
+	"sync"
+
+	"go.uber.org/zap"
 )
 
 type cityPostgresRepository struct {
-	DB *sql.DB
+	DB  *sql.DB
+	Log *zap.Logger
 }
 
-func NewCityPostgresRepository(db *sql.DB) contracts.CityRepository {
-	return &cityPostgresRepository{
-		DB: db,
-	}
-}
+var (
+	cityPostgresRepositoryInstance contracts.CityRepository
+	onceCityPostgresRepository     sync.Once
+)
 
+func NewCityPostgresRepository(db *sql.DB, logger *zap.Logger) contracts.CityRepository {
+	onceCityPostgresRepository.Do(func() {
+		instance := &cityPostgresRepository{
+			DB:  db,
+			Log: logger,
+		}
+		cityPostgresRepositoryInstance = instance
+	})
+	return cityPostgresRepositoryInstance
+}
 func (r *cityPostgresRepository) FindAll(ctx context.Context) ([]models.City, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	r.Log.Info("cityPostgresRepository.FindAll called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
 	query := queries.GetAllCities
 	rows, err := r.DB.QueryContext(ctx, query)
 	if err != nil {
+		r.Log.Error("cityPostgresRepository.FindAll error querying database",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, exceptions.ErrPostgresDBFindData(err)
 	}
 	defer rows.Close()
@@ -31,28 +54,57 @@ func (r *cityPostgresRepository) FindAll(ctx context.Context) ([]models.City, er
 	for rows.Next() {
 		var model models.City
 		if err := rows.Scan(&model.ID, &model.Name); err != nil {
+			r.Log.Error("cityPostgresRepository.FindAll error scanning row",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
 			return nil, exceptions.ErrPostgresDBFindData(err)
-
 		}
 		cities = append(cities, model)
 	}
-
 	if err := rows.Err(); err != nil {
+		r.Log.Error("cityPostgresRepository.FindAll rows error",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, exceptions.ErrPostgresDBFindData(err)
-
 	}
 
+	r.Log.Info("cityPostgresRepository.FindAll succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.Int(constvars.LoggingCitiesCountKey, len(cities)),
+	)
 	return cities, nil
 }
 
 func (r *cityPostgresRepository) FindByID(ctx context.Context, cityID string) (*models.City, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	r.Log.Info("cityPostgresRepository.FindByID called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingCityIDKey, cityID),
+	)
+
 	query := queries.GetCityByID
 	var city models.City
 	err := r.DB.QueryRowContext(ctx, query, cityID).Scan(&city.ID, &city.Name)
 	if err == sql.ErrNoRows {
+		r.Log.Warn("cityPostgresRepository.FindByID no rows found",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingCityIDKey, cityID),
+		)
 		return nil, nil
 	} else if err != nil {
+		r.Log.Error("cityPostgresRepository.FindByID error querying database",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingCityIDKey, cityID),
+			zap.Error(err),
+		)
 		return nil, exceptions.ErrPostgresDBFindData(err)
 	}
+
+	r.Log.Info("cityPostgresRepository.FindByID succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingCityIDKey, city.ID),
+	)
 	return &city, nil
 }

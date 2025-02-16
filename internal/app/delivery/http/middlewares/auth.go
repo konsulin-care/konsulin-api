@@ -11,6 +11,35 @@ import (
 	"time"
 )
 
+func (m *Middlewares) OptionalAuthenticate(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get(constvars.HeaderAuthorization)
+		if authHeader == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		sessionID, err := utils.ParseJWT(token, m.InternalConfig.JWT.Secret)
+		if err != nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+
+		sessionData, err := m.SessionService.GetSessionData(ctx, sessionID)
+		if err != nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		ctx = context.WithValue(r.Context(), constvars.CONTEXT_SESSION_DATA_KEY, sessionData)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 func (m *Middlewares) Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get(constvars.HeaderAuthorization)
@@ -26,7 +55,7 @@ func (m *Middlewares) Authenticate(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
 
 		sessionData, err := m.SessionService.GetSessionData(ctx, sessionID)
@@ -49,7 +78,7 @@ func (m *Middlewares) Authorize(resource, requiredAction string) func(http.Handl
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			sessionData := r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string)
 
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 			defer cancel()
 
 			request := requests.AuthorizeUser{
