@@ -30,3 +30,7 @@ type ResetPassword struct {
 	RetypeNewPassword string `json:"retype_new_password" validate:"required,min=8"`
 	HashedNewPassword string
 }
+
+type CreateMagicLink struct {
+	PhoneNumber string `json:"phone_number" validate:"required,phone_number"`
+}

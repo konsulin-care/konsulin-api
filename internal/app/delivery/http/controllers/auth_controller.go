@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
@@ -12,6 +13,8 @@ import (
 	"time"
 
 	"github.com/goccy/go-json"
+	"github.com/supertokens/supertokens-golang/recipe/emailpassword"
+	"github.com/supertokens/supertokens-golang/supertokens"
 	"go.uber.org/zap"
 )
 
@@ -283,6 +286,18 @@ func (ctrl *AuthController) RegisterClinician(w http.ResponseWriter, r *http.Req
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
 		return
 	}
+
+	var userContext supertokens.UserContext = &map[string]any{
+		"username": request.Username,
+	}
+
+	resp, err := emailpassword.SignUp("public", request.Email, request.Password, userContext)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerProcess(err))
+		return
+	}
+
+	fmt.Println(resp)
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
@@ -614,4 +629,56 @@ func (ctrl *AuthController) ResetPassword(w http.ResponseWriter, r *http.Request
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.ResetPasswordSuccessMessage, nil)
+}
+
+func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Request) {
+	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	if !ok || requestID == "" {
+		ctrl.Log.Error("AuthController.MagicLink requestID not found in context")
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingRequestID(nil))
+		return
+	}
+	ctrl.Log.Info("AuthController.MagicLink called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
+	request := new(requests.CreateMagicLink)
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		ctrl.Log.Error("AuthController.MagicLink error decoding JSON",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+		return
+	}
+
+	if err := utils.ValidateStruct(request); err != nil {
+		ctrl.Log.Error("AuthController.MagicLink validation error",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	if err := ctrl.AuthUsecase.CreateMagicLink(ctx, request); err != nil {
+		ctrl.Log.Error("AuthController.MagicLink error from usecase",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		if err == context.DeadlineExceeded {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	ctrl.Log.Info("AuthController.MagicLink succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.MagicLinkSuccessMessage, nil)
 }

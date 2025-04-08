@@ -55,4 +55,5 @@ const (
 	LogoutSuccessMessage         = "successfully logout"
 	ForgotPasswordSuccessMessage = "if an account with this email exists, you will receive a password reset link."
 	ResetPasswordSuccessMessage  = "password already reset successfully"
+	MagicLinkSuccessMessage      = "magic link successfully generated"
 )

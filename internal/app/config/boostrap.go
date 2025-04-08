@@ -22,6 +22,7 @@ type Bootstrap struct {
 	RabbitMQ       *amqp091.Connection
 	Minio          *minio.Client
 	InternalConfig *InternalConfig
+	DriverConfig   *DriverConfig
 }
 
 func (b *Bootstrap) Shutdown(ctx context.Context) error {

@@ -60,6 +60,14 @@ driver_config:
     host: {{ driver_config.mongodb.host | default('') }}
     username: {{ driver_config.mongodb.username | default('') }}
     password: {{ driver_config.mongodb.password | default('') }}
+  
+  supertoken:
+    api_base_path: {{ driver_config.supertoken.api_base_path | default('') }}
+    website_base_path: {{ driver_config.supertoken.website_base_path | default('') }}
+    connection_uri: {{ driver_config.supertoken.connection_uri | default('') }}
+    app_name: {{ driver_config.supertoken.app_name | default('') }}
+    api_domain: {{ driver_config.supertoken.api_domain | default('') }}
+    website_domain: {{ driver_config.supertoken.website_domain | default('') }}
 
   redis:
     host: {{ driver_config.redis.host | default('') }}

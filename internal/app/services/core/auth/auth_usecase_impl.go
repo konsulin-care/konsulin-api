@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/supertokens/supertokens-golang/recipe/passwordless"
+	"github.com/supertokens/supertokens-golang/recipe/userroles"
 	"go.uber.org/zap"
 )
 
@@ -32,6 +34,7 @@ type authUsecase struct {
 	WhatsAppService                 contracts.WhatsAppService
 	MinioStorage                    contracts.Storage
 	InternalConfig                  *config.InternalConfig
+	DriverConfig                    *config.DriverConfig
 	Roles                           map[string]*models.Role
 	mu                              sync.RWMutex
 	Log                             *zap.Logger
@@ -56,6 +59,7 @@ func NewAuthUsecase(
 	whatsAppService contracts.WhatsAppService,
 	minioStorage contracts.Storage,
 	internalConfig *config.InternalConfig,
+	driverConfig *config.DriverConfig,
 	logger *zap.Logger,
 ) (contracts.AuthUsecase, error) {
 	onceAuthUsecase.Do(func() {
@@ -72,6 +76,7 @@ func NewAuthUsecase(
 			MinioStorage:                    minioStorage,
 			WhatsAppService:                 whatsAppService,
 			InternalConfig:                  internalConfig,
+			DriverConfig:                    driverConfig,
 			Roles:                           make(map[string]*models.Role),
 			Log:                             logger,
 		}
@@ -1087,6 +1092,74 @@ func (uc *authUsecase) ResetPassword(ctx context.Context, request *requests.Rese
 	}
 
 	uc.Log.Info("authUsecase.ResetPassword succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+	return nil
+}
+
+func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.CreateMagicLink) error {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	uc.Log.Info("authUsecase.CreateMagicLink called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
+	tenantID := "public"
+	plessResponse, err := passwordless.SignInUpByPhoneNumber(tenantID, request.PhoneNumber)
+	if err != nil {
+		uc.Log.Error("authUsecase.CreateMagicLink supertokens error create user by tenantID & phoneNumber",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return err
+	}
+
+	inviteLink, err := passwordless.CreateMagicLinkByPhoneNumber(tenantID, request.PhoneNumber)
+	if err != nil {
+		uc.Log.Error("authUsecase.CreateMagicLink supertokens error create magic link by phone number",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return err
+	}
+
+	uc.Log.Info("authUsecase.InitializeSupertoken assigning Patient Clinician to CreatedNewUser")
+	response, err := userroles.AddRoleToUser("public", plessResponse.User.ID, constvars.KonsulinRoleClinician, nil)
+	if err != nil {
+		uc.Log.Error("authUsecase.CreateMagicLink error userroles.AddRoleToUser",
+			zap.Error(err),
+		)
+		return err
+	}
+
+	if response.UnknownRoleError != nil {
+		uc.Log.Error("authUsecase.CreateMagicLink error unknown role",
+			zap.Error(err),
+		)
+		return fmt.Errorf("unknown role found when assign role: %v", response.UnknownRoleError)
+	}
+
+	if response.OK.DidUserAlreadyHaveRole {
+		uc.Log.Info("authUsecase.CreateMagicLink user already have role")
+	}
+
+	whatsappRequest := &requests.WhatsAppMessage{
+		To:        request.PhoneNumber,
+		Message:   inviteLink,
+		WithImage: false,
+	}
+
+	err = uc.WhatsAppService.SendWhatsAppMessage(ctx, whatsappRequest)
+	if err != nil {
+		uc.Log.Error("authUsecase.CreateMagicLink error sending the magic link via whatsapp",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return err
+	}
+
+	fmt.Println(inviteLink)
+
+	uc.Log.Info("authUsecase.CreateMagicLink succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
 	return nil

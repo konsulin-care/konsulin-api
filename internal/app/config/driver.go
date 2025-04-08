@@ -7,6 +7,7 @@ type DriverConfig struct {
 	Logger     Logger     `mapstructure:"logger"`
 	RabbitMQ   RabbitMQ   `mapstructure:"rabbitmq"`
 	Minio      Minio      `mapstructure:"minio"`
+	Supertoken Supertoken `mapstructure:"supertoken"`
 }
 
 type MongoDB struct {
@@ -48,4 +49,13 @@ type Minio struct {
 	Username string `mapstructure:"username"`
 	Password string `mapstructure:"password"`
 	UseSSL   bool   `mapstructure:"use_ssl"`
+}
+
+type Supertoken struct {
+	ApiBasePath     string `mapstructure:"api_base_path"`
+	WebsiteBasePath string `mapstructure:"website_base_path"`
+	ConnectionURI   string `mapstructure:"connection_uri"`
+	AppName         string `mapstructure:"app_name"`
+	ApiDomain       string `mapstructure:"api_domain"`
+	WebsiteDomain   string `mapstructure:"website_domain"`
 }
