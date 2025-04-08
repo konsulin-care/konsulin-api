@@ -113,6 +113,15 @@
           63363563383539343966383037343332376231616533383735306136343262373962633231323266
           3934303061353835300a323562353131333166303230636530356337613337623636653066303635
           31633362323466313662623337393230303032343337336663616231643133366630
+      
+      supertoken:
+        api_base_path: "/auth"
+        website_base_path: "/auth"
+        connection_uri: "https://login.konsulin.care"
+        app_name: "Konsulin"
+        api_domain: "https://dev-api.konsulin.care"
+        website_domain: "https://dev-app.konsulin.care"
+      
       redis:
         host: "37.27.46.214"
         port: 6379

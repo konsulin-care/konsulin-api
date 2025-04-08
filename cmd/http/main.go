@@ -105,6 +105,7 @@ func main() {
 		Minio:          minio,
 		RabbitMQ:       rabbitMQ,
 		InternalConfig: internalConfig,
+		DriverConfig:   driverConfig,
 	}
 
 	// Initialize the application with the bootstrap components
@@ -281,6 +282,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 		whatsAppService,
 		minioStorage,
 		bootstrap.InternalConfig,
+		bootstrap.DriverConfig,
 		bootstrap.Logger,
 	)
 	if err != nil {
@@ -301,6 +303,14 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 
 	// Initialize middlewares with logger, session service, and auth usecase
 	middlewares := middlewares.NewMiddlewares(bootstrap.Logger, sessionService, authUseCase, bootstrap.InternalConfig)
+
+	// Initialize supertokens
+	err = authUseCase.InitializeSupertoken()
+	if err != nil {
+		log.Fatalf("Error initializing supertokens: %v", err)
+	}
+
+	_ = roles.NewRoleUsecase(rolePostgresRepository, bootstrap.Logger)
 
 	// Setup routes with the router, configuration, middlewares, and controllers
 	routers.SetupRoutes(

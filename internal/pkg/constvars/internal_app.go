@@ -57,3 +57,8 @@ const (
 const (
 	REQUEST_ID_PREFIX = "KNSLN_SVC_"
 )
+
+const (
+	KonsulinRolePatient   = "patient"
+	KonsulinRoleClinician = "clinician"
+)

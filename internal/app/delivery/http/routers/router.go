@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
 	"github.com/go-chi/httprate"
+	"github.com/supertokens/supertokens-golang/supertokens"
 	"go.uber.org/zap"
 )
 
@@ -32,11 +33,10 @@ func SetupRoutes(
 	paymentController *controllers.PaymentController,
 	journalController *controllers.JournalController,
 ) {
-
 	corsOptions := cors.Options{
 		AllowedOrigins:   []string{"*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		AllowedHeaders:   append([]string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"}, supertokens.GetAllCORSHeaders()...),
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: true,
 		MaxAge:           300,
@@ -45,6 +45,7 @@ func SetupRoutes(
 	router.Use(middlewares.RequestIDMiddleware)
 	router.Use(middlewares.Logging(logger))
 	router.Use(cors.Handler(corsOptions))
+	router.Use(supertokens.Middleware)
 
 	// Rate limiting pake httprate
 	rateLimiter := httprate.LimitByIP(internalConfig.App.MaxRequests, time.Second)

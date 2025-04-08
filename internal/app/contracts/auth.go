@@ -7,6 +7,7 @@ import (
 )
 
 type AuthUsecase interface {
+	InitializeSupertoken() error
 	RegisterViaWhatsApp(ctx context.Context, request *requests.RegisterViaWhatsApp) error
 	VerifyRegisterWhatsAppOTP(ctx context.Context, request *requests.VerivyRegisterWhatsAppOTP) (*responses.RegisterUserWhatsApp, error)
 	LoginViaWhatsApp(ctx context.Context, request *requests.LoginViaWhatsApp) error
@@ -19,6 +20,7 @@ type AuthUsecase interface {
 	IsUserHasPermission(ctx context.Context, request requests.AuthorizeUser) (hasPermission bool, err error)
 	ForgotPassword(ctx context.Context, request *requests.ForgotPassword) error
 	ResetPassword(ctx context.Context, request *requests.ResetPassword) error
+	CreateMagicLink(ctx context.Context, request *requests.CreateMagicLink) error
 }
 
 type AuthRepository interface{}
