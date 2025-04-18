@@ -95,6 +95,9 @@
           36636162663362303665313730633166383739663634356636323566323033616533336662333539
           6464636336376539366538646532643033653234356230356361
         base_url: "https://api-stg.oyindonesia.com/api/"
+      supertoken:
+        magiclink_base_url: "https://dev-app.konsulin.care/auth/verify"
+        konsulin_tenant_id: "public"
     driver_config:
       mongodb:
         port: 17017

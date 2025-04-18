@@ -1097,25 +1097,24 @@ func (uc *authUsecase) ResetPassword(ctx context.Context, request *requests.Rese
 	return nil
 }
 
-func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.CreateMagicLink) error {
+func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.SupertokenPasswordlessCreateMagicLink) error {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	uc.Log.Info("authUsecase.CreateMagicLink called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
 
-	tenantID := "public"
-	plessResponse, err := passwordless.SignInUpByPhoneNumber(tenantID, request.PhoneNumber)
+	plessResponse, err := passwordless.SignInUpByEmail(uc.InternalConfig.Supertoken.KonsulinTenantID, request.Email)
 	if err != nil {
-		uc.Log.Error("authUsecase.CreateMagicLink supertokens error create user by tenantID & phoneNumber",
+		uc.Log.Error("authUsecase.CreateMagicLink supertokens error create user by tenantID & Email",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
 		return err
 	}
 
-	inviteLink, err := passwordless.CreateMagicLinkByPhoneNumber(tenantID, request.PhoneNumber)
+	inviteLink, err := passwordless.CreateMagicLinkByEmail(uc.InternalConfig.Supertoken.KonsulinTenantID, request.Email)
 	if err != nil {
-		uc.Log.Error("authUsecase.CreateMagicLink supertokens error create magic link by phone number",
+		uc.Log.Error("authUsecase.CreateMagicLink supertokens error create magic link by email",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
@@ -1123,7 +1122,7 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Cr
 	}
 
 	uc.Log.Info("authUsecase.InitializeSupertoken assigning Patient Clinician to CreatedNewUser")
-	response, err := userroles.AddRoleToUser("public", plessResponse.User.ID, constvars.KonsulinRoleClinician, nil)
+	response, err := userroles.AddRoleToUser(uc.InternalConfig.Supertoken.KonsulinTenantID, plessResponse.User.ID, constvars.KonsulinRoleClinician, nil)
 	if err != nil {
 		uc.Log.Error("authUsecase.CreateMagicLink error userroles.AddRoleToUser",
 			zap.Error(err),
@@ -1142,15 +1141,11 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Cr
 		uc.Log.Info("authUsecase.CreateMagicLink user already have role")
 	}
 
-	whatsappRequest := &requests.WhatsAppMessage{
-		To:        request.PhoneNumber,
-		Message:   inviteLink,
-		WithImage: false,
-	}
+	emailPayload := utils.BuildPasswordlessMagicLinkEmailPayload(uc.InternalConfig.Mailer.EmailSender, request.Email, inviteLink)
 
-	err = uc.WhatsAppService.SendWhatsAppMessage(ctx, whatsappRequest)
+	err = uc.MailerService.SendEmail(ctx, emailPayload)
 	if err != nil {
-		uc.Log.Error("authUsecase.CreateMagicLink error sending the magic link via whatsapp",
+		uc.Log.Error("authUsecase.CreateMagicLink error sending the magic link via email",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)

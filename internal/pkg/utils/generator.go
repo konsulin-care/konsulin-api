@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"konsulin-service/internal/pkg/constvars"
 	"math/big"
+	"net/url"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
@@ -68,4 +69,20 @@ func GenerateOTP(otpLength int) (string, error) {
 func GenerateFileName(prefix, username, fileExtension string) string {
 	timestamp := time.Now().Format("20060102_150405.000000000")
 	return fmt.Sprintf("%s_%s_%s%s", prefix, username, timestamp, fileExtension)
+}
+
+func GenerateMagicLink(baseURL, preAuthSessionID, tenantID, linkCode string) (string, error) {
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid base URL: %w", err)
+	}
+
+	q := u.Query()
+	q.Set("preAuthSessionId", preAuthSessionID)
+	q.Set("tenantId", tenantID)
+	u.RawQuery = q.Encode()
+
+	u.Fragment = linkCode
+
+	return u.String(), nil
 }

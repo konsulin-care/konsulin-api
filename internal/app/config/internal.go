@@ -9,6 +9,7 @@ type InternalConfig struct {
 	RabbitMQ       AppRabbitMQ       `mapstructure:"rabbitmq"`
 	MongoDB        AppMongoDB        `mapstructure:"mongodb"`
 	Konsulin       AppKonsulin       `mapstructure:"konsulin"`
+	Supertoken     AppSupertoken     `mapstructure:"supertoken"`
 	PaymentGateway AppPaymentGateway `mapstructure:"payment_gateway"`
 }
 
@@ -67,6 +68,11 @@ type AppKonsulin struct {
 	BankAccountNumber  string `mapstructure:"bank_account_number"`
 	FinanceEmail       string `mapstructure:"finance_email"`
 	PaymentDisplayName string `mapstructure:"payment_display_name"`
+}
+
+type AppSupertoken struct {
+	MagiclinkBaseUrl string `mapstructure:"magiclink_base_url"`
+	KonsulinTenantID string `mapstructure:"konsulin_tenant_id"`
 }
 type AppPaymentGateway struct {
 	Username string `mapstructure:"username"`

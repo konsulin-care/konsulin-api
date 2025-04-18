@@ -53,6 +53,10 @@ internal_config:
     username: {{ internal_config.payment_gateway.username | default('') }}
     api_key: {{ internal_config.payment_gateway.api_key | default('') }}
     base_url: {{ internal_config.payment_gateway.base_url | default('') }}
+  
+  supertoken:
+    magiclink_base_url: {{ internal_config.supertoken.magiclink_base_url | default('') }}
+    konsulin_tenant_id: {{ internal_config.supertoken.konsulin_tenant_id | default('') }}
 
 driver_config:
   mongodb:
