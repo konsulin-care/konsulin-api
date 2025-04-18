@@ -20,7 +20,7 @@ type AuthUsecase interface {
 	IsUserHasPermission(ctx context.Context, request requests.AuthorizeUser) (hasPermission bool, err error)
 	ForgotPassword(ctx context.Context, request *requests.ForgotPassword) error
 	ResetPassword(ctx context.Context, request *requests.ResetPassword) error
-	CreateMagicLink(ctx context.Context, request *requests.CreateMagicLink) error
+	CreateMagicLink(ctx context.Context, request *requests.SupertokenPasswordlessCreateMagicLink) error
 }
 
 type AuthRepository interface{}

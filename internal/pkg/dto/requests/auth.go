@@ -31,6 +31,10 @@ type ResetPassword struct {
 	HashedNewPassword string
 }
 
-type CreateMagicLink struct {
-	PhoneNumber string `json:"phone_number" validate:"required,phone_number"`
+type SupertokenPasswordlessCreateMagicLink struct {
+	Email string `json:"email" validate:"required,email"`
+}
+
+type SupertokenPasswordlessSigninupCreateCode struct {
+	Email *string `json:"email" validate:"required,email"`
 }

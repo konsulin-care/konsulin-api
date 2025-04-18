@@ -89,7 +89,8 @@ const (
 	ErrDevCannotParseMultipartForm      = "cannot parse multipart form body"
 	ErrDevCannotParsedate               = "cannot parse the requested date"
 	ErrDevBuildRequest                  = "encountering error while building request DTO"
-	ErrDevInvalidRoleType               = "invalid role type, should be 'practitioner' or 'patient'"
+	ErrDevInvalidRoleType               = "invalid role type, should be 'clinician' or 'patient'"
+	ErrDevUnknownRoleType               = "unknown role type, should be 'clinician' or 'patient'"
 	ErrDevRoleTypeDoesntMatch           = "invalid role type, request done by user with different type"
 	ErrDevFailedToCreateUser            = "failed to create user"
 	ErrDevFailedToHashPassword          = "failed to hash password"
@@ -102,6 +103,11 @@ const (
 
 	// SMTP
 	ErrDevSMTPSendEmail = "failed to send email via SMTP client hostname %s"
+
+	// Supertokens
+	ErrDevSupertoken            = "there is something wrong with the supertoken API/SDK"
+	ErrDevSupertokenConsumeCode = "failed to do pless.ConsumeCode with supertokens SDK"
+	ErrDevSupertokenCreateCode  = "failed to do pless.CreateCode with supertokens SDK"
 
 	// Usecase messages
 	ErrDevPasswordsDoNotMatch          = "passwords do not match with the password in database"

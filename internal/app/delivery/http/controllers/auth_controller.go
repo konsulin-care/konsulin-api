@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"context"
-	"fmt"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
@@ -13,8 +12,6 @@ import (
 	"time"
 
 	"github.com/goccy/go-json"
-	"github.com/supertokens/supertokens-golang/recipe/emailpassword"
-	"github.com/supertokens/supertokens-golang/supertokens"
 	"go.uber.org/zap"
 )
 
@@ -287,17 +284,17 @@ func (ctrl *AuthController) RegisterClinician(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	var userContext supertokens.UserContext = &map[string]any{
-		"username": request.Username,
-	}
+	// var userContext supertokens.UserContext = &map[string]any{
+	// 	"username": request.Username,
+	// }
 
-	resp, err := emailpassword.SignUp("public", request.Email, request.Password, userContext)
-	if err != nil {
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerProcess(err))
-		return
-	}
+	// resp, err := emailpassword.SignUp(constvars.SupertokenKonsulinTenantID, request.Email, request.Password, userContext)
+	// if err != nil {
+	// 	utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerProcess(err))
+	// 	return
+	// }
 
-	fmt.Println(resp)
+	// fmt.Println(resp)
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
@@ -642,7 +639,7 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
 
-	request := new(requests.CreateMagicLink)
+	request := new(requests.SupertokenPasswordlessCreateMagicLink)
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		ctrl.Log.Error("AuthController.MagicLink error decoding JSON",
 			zap.String(constvars.LoggingRequestIDKey, requestID),

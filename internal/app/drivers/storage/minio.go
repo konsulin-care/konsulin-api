@@ -18,10 +18,6 @@ func NewMinio(driverConfig *config.DriverConfig) *minio.Client {
 	if err != nil {
 		log.Fatalf("Failed to initialize Minio Client: %s", err.Error())
 	}
-	// _, err = minioClient.ListBuckets(context.Background())
-	// if err != nil {
-	// 	log.Fatalf("Failed to connect to Minio: %s", err.Error())
-	// }
 
 	log.Println("Successfully connected to minio")
 	return minioClient

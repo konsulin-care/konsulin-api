@@ -84,6 +84,9 @@ var (
 	ErrInvalidRoleType = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevInvalidRoleType)
 	}
+	ErrUnknownRoleType = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevInvalidRoleType)
+	}
 	ErrNotMatchRoleType = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, constvars.ErrDevRoleTypeDoesntMatch)
 	}
@@ -221,6 +224,11 @@ var (
 
 	ErrDecodeResponse = func(err error, resource string) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkDecodeFHIRResourceResponse, resource))
+	}
+
+	// Supertokens
+	ErrSupertoken = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevSupertoken)
 	}
 
 	// Default Server

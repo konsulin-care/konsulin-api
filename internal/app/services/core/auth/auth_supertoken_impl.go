@@ -2,21 +2,24 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
+	"konsulin-service/internal/pkg/dto/responses"
+	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/utils"
 	"log"
-	"regexp"
-	"strings"
+	"net/http"
 
+	"github.com/supertokens/supertokens-golang/ingredients/emaildelivery"
 	"github.com/supertokens/supertokens-golang/ingredients/smsdelivery"
 	"github.com/supertokens/supertokens-golang/recipe/emailpassword"
 	"github.com/supertokens/supertokens-golang/recipe/emailpassword/epmodels"
 	"github.com/supertokens/supertokens-golang/recipe/passwordless"
 	"github.com/supertokens/supertokens-golang/recipe/passwordless/plessmodels"
 	"github.com/supertokens/supertokens-golang/recipe/session"
-	"github.com/supertokens/supertokens-golang/recipe/thirdparty"
-	"github.com/supertokens/supertokens-golang/recipe/thirdparty/tpmodels"
+	"github.com/supertokens/supertokens-golang/recipe/session/sessmodels"
 	"github.com/supertokens/supertokens-golang/recipe/userroles"
 	"github.com/supertokens/supertokens-golang/supertokens"
 	"go.uber.org/zap"
@@ -39,74 +42,278 @@ func (uc *authUsecase) InitializeSupertoken() error {
 	}
 
 	supertokenRecipeList := []supertokens.Recipe{
-		thirdparty.Init(&tpmodels.TypeInput{
-			SignInAndUpFeature: tpmodels.TypeInputSignInAndUp{
-				Providers: []tpmodels.ProviderInput{
-					{
-						Config: tpmodels.ProviderConfig{
-							ThirdPartyId: "google",
-							Clients: []tpmodels.ProviderClientConfig{
-								{
-									ClientID:     "1060725074195-kmeum4crr01uirfl2op9kd5acmi9jutn.apps.googleusercontent.com",
-									ClientSecret: "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",
-								},
-							},
-						},
-					},
-					{
-						Config: tpmodels.ProviderConfig{
-							ThirdPartyId: "github",
-							Clients: []tpmodels.ProviderClientConfig{
-								{
-									ClientID:     "467101b197249757c71f",
-									ClientSecret: "e97051221f4b6426e8fe8d51486396703012f5bd",
-								},
-							},
-						},
-					},
-				},
-			},
-		}),
+		// Uncomment to actvivate the feature & ensure to do testing first on dev env
+
+		// thirdparty.Init(&tpmodels.TypeInput{
+		// 	SignInAndUpFeature: tpmodels.TypeInputSignInAndUp{
+		// 		Providers: []tpmodels.ProviderInput{
+		// 			{
+		// 				Config: tpmodels.ProviderConfig{
+		// 					ThirdPartyId: "google",
+		// 					Clients: []tpmodels.ProviderClientConfig{
+		// 						{
+		// 							ClientID:     "1060725074195-kmeum4crr01uirfl2op9kd5acmi9jutn.apps.googleusercontent.com",
+		// 							ClientSecret: "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",
+		// 						},
+		// 					},
+		// 				},
+		// 			},
+		// 			{
+		// 				Config: tpmodels.ProviderConfig{
+		// 					ThirdPartyId: "github",
+		// 					Clients: []tpmodels.ProviderClientConfig{
+		// 						{
+		// 							ClientID:     "467101b197249757c71f",
+		// 							ClientSecret: "e97051221f4b6426e8fe8d51486396703012f5bd",
+		// 						},
+		// 					},
+		// 				},
+		// 			},
+		// 		},
+		// 	},
+		// }),
 		passwordless.Init(plessmodels.TypeInput{
 			Override: &plessmodels.OverrideStruct{
+				APIs: func(originalImplementation plessmodels.APIInterface) plessmodels.APIInterface {
+					(*originalImplementation.CreateCodePOST) = func(email *string, phoneNumber *string, tenantId string, options plessmodels.APIOptions, userContext supertokens.UserContext) (plessmodels.CreateCodePOSTResponse, error) {
+						request := new(requests.SupertokenPasswordlessSigninupCreateCode)
+						request.Email = email
+
+						err := utils.ValidateStruct(request)
+						if err != nil {
+							err = exceptions.ErrInputValidation(err)
+							utils.BuildErrorResponse(uc.Log, options.Res, err)
+							return plessmodels.CreateCodePOSTResponse{
+								OK: &struct {
+									DeviceID         string
+									PreAuthSessionID string
+									FlowType         string
+								}{
+									DeviceID:         "",
+									PreAuthSessionID: "",
+									FlowType:         "",
+								},
+							}, nil
+						}
+
+						response, err := (*options.RecipeImplementation.CreateCode)(request.Email, phoneNumber, nil, tenantId, userContext)
+						if err != nil {
+							uc.Log.Error("authUsecase.SupertokenCreateCode error while do func originalCreateCode",
+								zap.Error(err),
+							)
+							err = exceptions.ErrSupertoken(err)
+							utils.BuildErrorResponse(uc.Log, options.Res, err)
+							return plessmodels.CreateCodePOSTResponse{
+								OK: &struct {
+									DeviceID         string
+									PreAuthSessionID string
+									FlowType         string
+								}{
+									DeviceID:         "",
+									PreAuthSessionID: "",
+									FlowType:         "",
+								},
+							}, nil
+						}
+
+						magicLink, err := utils.GenerateMagicLink(
+							uc.InternalConfig.Supertoken.MagiclinkBaseUrl,
+							response.OK.PreAuthSessionID,
+							uc.InternalConfig.Supertoken.KonsulinTenantID,
+							response.OK.LinkCode,
+						)
+
+						if err != nil {
+							uc.Log.Error("authUsecase.SupertokenCreateCode error while do func utils.GenerateMagicLink",
+								zap.Error(err),
+							)
+							err = exceptions.ErrSupertoken(err)
+							utils.BuildErrorResponse(uc.Log, options.Res, err)
+							return plessmodels.CreateCodePOSTResponse{
+								OK: &struct {
+									DeviceID         string
+									PreAuthSessionID string
+									FlowType         string
+								}{
+									DeviceID:         "",
+									PreAuthSessionID: "",
+									FlowType:         "",
+								},
+							}, nil
+						}
+
+						emailPayload := utils.BuildPasswordlessMagicLinkEmailPayload(uc.InternalConfig.Mailer.EmailSender, *request.Email, magicLink)
+
+						err = uc.MailerService.SendEmail(context.Background(), emailPayload)
+						if err != nil {
+							uc.Log.Error("authUsecase.SupertokenCreateCode error while do func MailerService.SendEmail",
+								zap.Error(err),
+							)
+							err = exceptions.ErrSupertoken(err)
+							utils.BuildErrorResponse(uc.Log, options.Res, err)
+							return plessmodels.CreateCodePOSTResponse{
+								OK: &struct {
+									DeviceID         string
+									PreAuthSessionID string
+									FlowType         string
+								}{
+									DeviceID:         "",
+									PreAuthSessionID: "",
+									FlowType:         "",
+								},
+							}, nil
+						}
+
+						dataResponse := responses.SupertokenCreateCode{
+							CodeID:           response.OK.CodeID,
+							DeviceID:         response.OK.DeviceID,
+							PreAuthSessionID: response.OK.PreAuthSessionID,
+						}
+
+						options.Res.Header().Set("Content-Type", "application/json; charset=utf-8")
+						options.Res.WriteHeader(200)
+
+						responseJson := responses.ResponseDTO{
+							Success: true,
+							Message: "successfully create passwordless code",
+							Data:    dataResponse,
+						}
+
+						bytes, _ := json.Marshal(responseJson)
+						options.Res.Write(bytes)
+
+						return plessmodels.CreateCodePOSTResponse{
+							OK: &struct {
+								DeviceID         string
+								PreAuthSessionID string
+								FlowType         string
+							}{
+								DeviceID:         "",
+								PreAuthSessionID: "",
+								FlowType:         "",
+							},
+						}, nil
+					}
+
+					(*originalImplementation.ConsumeCodePOST) = func(userInput *plessmodels.UserInputCodeWithDeviceID, linkCode *string, preAuthSessionID string, tenantId string, options plessmodels.APIOptions, userContext supertokens.UserContext) (plessmodels.ConsumeCodePOSTResponse, error) {
+						response, err := (*options.RecipeImplementation.ConsumeCode)(userInput, linkCode, preAuthSessionID, tenantId, userContext)
+						if err != nil {
+							uc.Log.Error("authUsecase.ConsumeCodePOST error while do func originalCreateCode",
+								zap.Error(err),
+							)
+							return plessmodels.ConsumeCodePOSTResponse{}, exceptions.ErrSupertoken(err)
+						}
+
+						if response.OK == nil {
+							uc.Log.Error("authUsecase.SupertokenCreateCode error while do func supertoken options.RecipeImplementation.ConsumeCode")
+							err = exceptions.ErrSupertoken(err)
+							utils.BuildErrorResponse(uc.Log, options.Res, err)
+							return plessmodels.ConsumeCodePOSTResponse{}, nil
+						}
+
+						options.Res.Header().Set("Content-Type", "application/json; charset=utf-8")
+						options.Res.WriteHeader(200)
+
+						dataResponse := responses.SupertokenConsumeCode{
+							User: responses.SupertokenPlessUser{
+								ID:         response.OK.User.ID,
+								Email:      *response.OK.User.Email,
+								TimeJoined: response.OK.User.TimeJoined,
+								TenantIds:  response.OK.User.TenantIds,
+							},
+							CreatedNewUser: response.OK.CreatedNewUser,
+						}
+
+						responseJson := responses.ResponseDTO{
+							Success: true,
+							Message: "successfully consume code",
+							Data:    dataResponse,
+						}
+
+						bytes, _ := json.Marshal(responseJson)
+						options.Res.Write(bytes)
+
+						return plessmodels.ConsumeCodePOSTResponse{
+							OK: &struct {
+								CreatedNewUser bool
+								User           plessmodels.User
+								Session        sessmodels.SessionContainer
+							}{},
+						}, nil
+					}
+
+					return originalImplementation
+				},
 				Functions: func(originalImplementation plessmodels.RecipeInterface) plessmodels.RecipeInterface {
 					originalConsumeCode := *originalImplementation.ConsumeCode
-
 					(*originalImplementation.ConsumeCode) = func(userInput *plessmodels.UserInputCodeWithDeviceID, linkCode *string, preAuthSessionID string, tenantId string, userContext supertokens.UserContext) (plessmodels.ConsumeCodeResponse, error) {
-
 						response, err := originalConsumeCode(userInput, linkCode, preAuthSessionID, tenantId, userContext)
 						if err != nil {
-							return plessmodels.ConsumeCodeResponse{}, err
+							uc.Log.Error("authUsecase.ConsumeCode error while do func originalConsumeCode",
+								zap.Error(err),
+							)
+							return plessmodels.ConsumeCodeResponse{}, exceptions.ErrSupertoken(err)
 						}
 
 						if response.OK != nil {
 							user := response.OK.User
 							if response.OK.CreatedNewUser {
-								uc.Log.Info("authUsecase.InitializeSupertoken assigning Patient Role to CreatedNewUser")
-								response, err := userroles.AddRoleToUser("public", user.ID, constvars.KonsulinRolePatient, nil)
+								uc.Log.Info("authUsecase.SupertokenConsumeCode assigning Patient Role to CreatedNewUser")
+								response, err := userroles.AddRoleToUser(uc.InternalConfig.Supertoken.KonsulinTenantID, user.ID, constvars.KonsulinRolePatient, nil)
 								if err != nil {
-									uc.Log.Error("authUsecase.InitializeSupertoken error userroles.AddRoleToUser",
+									uc.Log.Error("authUsecase.SupertokenConsumeCode error userroles.AddRoleToUser",
 										zap.Error(err),
 									)
-									return plessmodels.ConsumeCodeResponse{}, err
+									return plessmodels.ConsumeCodeResponse{}, exceptions.ErrSupertoken(err)
 								}
 
 								if response.UnknownRoleError != nil {
-									uc.Log.Error("authUsecase.InitializeSupertoken error unknown role",
+									uc.Log.Error("authUsecase.SupertokenConsumeCode error unknown role",
 										zap.Error(err),
 									)
-									return plessmodels.ConsumeCodeResponse{}, fmt.Errorf("unknown role")
+									return plessmodels.ConsumeCodeResponse{}, exceptions.ErrUnknownRoleType(nil)
 								}
 
 								if response.OK.DidUserAlreadyHaveRole {
-									uc.Log.Info("authUsecase.InitializeSupertoken user already have role")
+									uc.Log.Info("authUsecase.SupertokenConsumeCode user already have role")
 								}
 							} else {
-								// TODO: Post sign in logic
 							}
-
 						}
 						return response, nil
+					}
+
+					// originalCreateCode := *originalImplementation.CreateCode
+					// (*originalImplementation.CreateCode) = func(email *string, phoneNumber *string, userInputCode *string, tenantId string, userContext supertokens.UserContext) (plessmodels.CreateCodeResponse, error) {
+					// 	response, err := originalCreateCode(email, phoneNumber, userInputCode, tenantId, userContext)
+					// 	if err != nil {
+					// 		uc.Log.Error("authUsecase.SupertokenCreateCode error while do func originalCreateCode",
+					// 			zap.Error(err),
+					// 		)
+					// 		return plessmodels.CreateCodeResponse{}, exceptions.ErrSupertoken(err)
+					// 	}
+					// 	return response, nil
+					// }
+
+					return originalImplementation
+				},
+			},
+			EmailDelivery: &emaildelivery.TypeInput{
+				Override: func(originalImplementation emaildelivery.EmailDeliveryInterface) emaildelivery.EmailDeliveryInterface {
+					(*originalImplementation.SendEmail) = func(input emaildelivery.EmailType, userContext supertokens.UserContext) error {
+						emailPayload := utils.BuildPasswordlessMagicLinkEmailPayload(
+							uc.InternalConfig.Mailer.EmailSender,
+							input.PasswordlessLogin.Email,
+							*input.PasswordlessLogin.UrlWithLinkCode,
+						)
+
+						ctx := context.Background()
+						err := uc.MailerService.SendEmail(ctx, emailPayload)
+						if err != nil {
+							return err
+						}
+
+						return nil
 					}
 
 					return originalImplementation
@@ -114,7 +321,6 @@ func (uc *authUsecase) InitializeSupertoken() error {
 			},
 			SmsDelivery: &smsdelivery.TypeInput{
 				Override: func(originalImplementation smsdelivery.SmsDeliveryInterface) smsdelivery.SmsDeliveryInterface {
-
 					(*originalImplementation.SendSms) = func(input smsdelivery.SmsType, userContext supertokens.UserContext) error {
 						phoneNumber := input.PasswordlessLogin.PhoneNumber
 						urlWithLinkCode := input.PasswordlessLogin.UrlWithLinkCode
@@ -139,22 +345,32 @@ func (uc *authUsecase) InitializeSupertoken() error {
 				},
 			},
 			FlowType: "MAGIC_LINK",
-			ContactMethodPhone: plessmodels.ContactMethodPhoneConfig{
+			ContactMethodEmail: plessmodels.ContactMethodEmailConfig{
 				Enabled: true,
-				ValidatePhoneNumber: func(phoneNumber interface{}, tenantId string) *string {
-					number := strings.TrimPrefix(phoneNumber.(string), "+")
-					match, err := regexp.MatchString(`^[1-9][0-9]{7,14}$`, number)
-					if err != nil {
-						message := "invalid phone number"
-						return &message
-					}
-
-					if match {
-						return nil
-					}
+				ValidateEmailAddress: func(email interface{}, tenantId string) *string {
 					return nil
 				},
 			},
+			// ContactMethodEmail: plessmodels.ContactMethodEmailConfig{
+			// 	Enabled: true,
+			// 	ValidateEmailAddress: func(email interface{}, tenantId string) *string {
+			// 		emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
+			// 		emailStr, ok := email.(string)
+			// 		if !ok {
+			// 			message := "email must be a string"
+			// 			return &message
+			// 		}
+
+			// 		emailStr = strings.TrimSpace(emailStr)
+
+			// 		if emailRegex.MatchString(emailStr) {
+			// 			return nil
+			// 		}
+
+			// 		message := "invalid email address"
+			// 		return &message
+			// 	},
+			// },
 		}),
 		emailpassword.Init(&epmodels.TypeInput{
 			SignUpFeature: &epmodels.TypeInputSignUp{
@@ -166,13 +382,10 @@ func (uc *authUsecase) InitializeSupertoken() error {
 			},
 			Override: &epmodels.OverrideStruct{
 				Functions: func(originalImplementation epmodels.RecipeInterface) epmodels.RecipeInterface {
-					// create a copy of the originalImplementation func
 					originalSignIn := *originalImplementation.SignIn
 					originalSignUp := *originalImplementation.SignUp
 
-					// override the sign in up function
 					(*originalImplementation.SignIn) = func(email, password, tenantId string, userContext supertokens.UserContext) (epmodels.SignInResponse, error) {
-						// First we call the original implementation of SignIn.
 						response, err := originalSignIn(email, password, tenantId, userContext)
 						if err != nil {
 							return epmodels.SignInResponse{}, err
@@ -208,6 +421,9 @@ func (uc *authUsecase) InitializeSupertoken() error {
 	}
 
 	err := supertokens.Init(supertokens.TypeInput{
+		OnSuperTokensAPIError: func(err error, req *http.Request, res http.ResponseWriter) {
+			uc.Log.Error(err.Error())
+		},
 		Supertokens: supertokenConnectionInfo,
 		AppInfo:     supertokenAppInfo,
 		RecipeList:  supertokenRecipeList,
