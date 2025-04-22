@@ -20,6 +20,7 @@ type App struct {
 	Address                                        string `mapstructure:"address"`
 	BaseUrl                                        string `mapstructure:"base_url"`
 	Timezone                                       string `mapstructure:"timezone"`
+	FrontendDomain                                 string `mapstructure:"frontend_domain"`
 	EndpointPrefix                                 string `mapstructure:"endpoint_prefix"`
 	ResetPasswordUrl                               string `mapstructure:"reset_password_url"`
 	MaxRequests                                    int    `mapstructure:"max_requests"`

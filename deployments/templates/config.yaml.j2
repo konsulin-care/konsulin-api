@@ -6,6 +6,7 @@ internal_config:
     address: {{ internal_config.app.address | default('') }}
     base_url: {{ internal_config.app.base_url | default('') }}
     timezone: {{ internal_config.app.timezone | default('') }}
+    frontend_domain: {{ internal_config.app.frontend_domain | default('') }}
     endpoint_prefix: {{ internal_config.app.endpoint_prefix | default('') }}
     reset_password_url: "{{ internal_config.app.reset_password_url | default('') }}"
     max_requests: {{ internal_config.app.max_requests | default('') }}
