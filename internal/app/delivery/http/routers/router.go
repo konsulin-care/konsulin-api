@@ -5,6 +5,8 @@ import (
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/delivery/http/controllers"
 	"konsulin-service/internal/app/delivery/http/middlewares"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -34,7 +36,15 @@ func SetupRoutes(
 	journalController *controllers.JournalController,
 ) {
 	corsOptions := cors.Options{
-		AllowedOrigins:   []string{internalConfig.App.FrontendDomain},
+		AllowOriginFunc: func(r *http.Request, origin string) bool {
+			if strings.HasPrefix(origin, "http://localhost:") || strings.HasPrefix(origin, "http://127.0.0.1:") {
+				return true
+			}
+			if origin == internalConfig.App.FrontendDomain {
+				return true
+			}
+			return false
+		},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   append([]string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"}, supertokens.GetAllCORSHeaders()...),
 		ExposedHeaders:   []string{"Link"},
