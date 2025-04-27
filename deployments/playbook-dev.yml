@@ -64,7 +64,7 @@
           66313035346265636131663231343235663236356532633839613839383432633335
         exp_time_in_hour: 1
       mailer:
-        email_sender: "funlab.ardihikaru@gmail.com"
+        email_sender: "konsulin.care@gmail.com"
       minio:
         profile_picture_max_upload_size_in_mb: 2
         bucket_name: "konsulin-dev"
