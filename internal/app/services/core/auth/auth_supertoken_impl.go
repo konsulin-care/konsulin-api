@@ -16,6 +16,7 @@ import (
 	"github.com/supertokens/supertokens-golang/ingredients/smsdelivery"
 	"github.com/supertokens/supertokens-golang/recipe/emailpassword"
 	"github.com/supertokens/supertokens-golang/recipe/emailpassword/epmodels"
+	"github.com/supertokens/supertokens-golang/recipe/emailverification"
 	"github.com/supertokens/supertokens-golang/recipe/passwordless"
 	"github.com/supertokens/supertokens-golang/recipe/passwordless/plessmodels"
 	"github.com/supertokens/supertokens-golang/recipe/session"
@@ -211,6 +212,38 @@ func (uc *authUsecase) InitializeSupertoken() error {
 							return plessmodels.ConsumeCodePOSTResponse{}, nil
 						}
 
+						user := response.OK.User
+
+						if user.Email != nil {
+							evInstance := emailverification.GetRecipeInstance()
+							if evInstance != nil {
+								tokenResponse, err := (*evInstance.RecipeImpl.CreateEmailVerificationToken)(user.ID, *user.Email, tenantId, userContext)
+								if err != nil {
+									uc.Log.Error("authUsecase.SupertokenCreateCode error while do func supertoken evInstance.RecipeImpl.CreateEmailVerificationToken")
+									err = exceptions.ErrSupertoken(err)
+									utils.BuildErrorResponse(uc.Log, options.Res, err)
+									return plessmodels.ConsumeCodePOSTResponse{}, nil
+								}
+								if tokenResponse.OK != nil {
+									_, err := (*evInstance.RecipeImpl.VerifyEmailUsingToken)(tokenResponse.OK.Token, tenantId, userContext)
+									if err != nil {
+										uc.Log.Error("authUsecase.SupertokenCreateCode error while do func supertoken evInstance.RecipeImpl.VerifyEmailUsingToken")
+										err = exceptions.ErrSupertoken(err)
+										utils.BuildErrorResponse(uc.Log, options.Res, err)
+										return plessmodels.ConsumeCodePOSTResponse{}, nil
+									}
+								}
+							}
+						}
+
+						session, err := session.CreateNewSession(options.Req, options.Res, tenantId, user.ID, map[string]interface{}{}, map[string]interface{}{}, userContext)
+						if err != nil {
+							uc.Log.Error("authUsecase.SupertokenCreateCode error while do func supertoken session.CreateNewSession")
+							err = exceptions.ErrSupertoken(err)
+							utils.BuildErrorResponse(uc.Log, options.Res, err)
+							return plessmodels.ConsumeCodePOSTResponse{}, nil
+						}
+
 						options.Res.Header().Set("Content-Type", "application/json; charset=utf-8")
 						options.Res.WriteHeader(200)
 
@@ -222,6 +255,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 								TenantIds:  response.OK.User.TenantIds,
 							},
 							CreatedNewUser: response.OK.CreatedNewUser,
+							Session:        session,
 						}
 
 						responseJson := responses.ResponseDTO{

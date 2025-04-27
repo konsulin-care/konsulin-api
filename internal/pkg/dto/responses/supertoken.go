@@ -1,5 +1,9 @@
 package responses
 
+import (
+	"github.com/supertokens/supertokens-golang/recipe/session/sessmodels"
+)
+
 type SupertokenCreateCode struct {
 	CodeID           string `json:"code_id"`
 	DeviceID         string `json:"device_id"`
@@ -17,4 +21,5 @@ type SupertokenPlessUser struct {
 type SupertokenConsumeCode struct {
 	User           SupertokenPlessUser `json:"user"`
 	CreatedNewUser bool                `json:"created_new_user"`
+	Session        sessmodels.SessionContainer
 }
