@@ -35,7 +35,7 @@
         address: "0.0.0.0"
         base_url: "https://dev-api.konsulin.care/"
         timezone: "Asia/Jakarta"
-        frontend_domain: "https://dev-api.konsulin.care"
+        frontend_domain: "https://dev-app.konsulin.care"
         endpoint_prefix: "api"
         reset_password_url: "https://dev-app.konsulin.care/reset-password-form?token="
         max_requests: 15
