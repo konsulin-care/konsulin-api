@@ -98,6 +98,7 @@
         base_url: "https://api-stg.oyindonesia.com/api/"
       supertoken:
         magiclink_base_url: "https://dev-app.konsulin.care/auth/verify"
+        konsulin_dashboard_admin_email: "konsulin.care@gmail.com"
         konsulin_tenant_id: "public"
     driver_config:
       mongodb:
