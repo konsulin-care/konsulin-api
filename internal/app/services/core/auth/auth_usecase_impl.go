@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/supertokens/supertokens-golang/ingredients/emaildelivery"
 	"github.com/supertokens/supertokens-golang/recipe/passwordless"
 	"github.com/supertokens/supertokens-golang/recipe/userroles"
 	"go.uber.org/zap"
@@ -1141,18 +1142,32 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Su
 		uc.Log.Info("authUsecase.CreateMagicLink user already have role")
 	}
 
-	emailPayload := utils.BuildPasswordlessMagicLinkEmailPayload(uc.InternalConfig.Mailer.EmailSender, request.Email, inviteLink)
+	emailData := emaildelivery.EmailType{
+		PasswordlessLogin: &emaildelivery.PasswordlessLoginType{
+			Email:           request.Email,
+			UrlWithLinkCode: &inviteLink,
+		},
+	}
 
-	err = uc.MailerService.SendEmail(ctx, emailPayload)
+	err = passwordless.SendEmail(emailData)
 	if err != nil {
-		uc.Log.Error("authUsecase.CreateMagicLink error sending the magic link via email",
+		uc.Log.Error("authUsecase.CreateMagicLink supertokens error send email",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
 		return err
 	}
 
-	fmt.Println(inviteLink)
+	// emailPayload := utils.BuildPasswordlessMagicLinkEmailPayload(uc.InternalConfig.Mailer.EmailSender, request.Email, inviteLink)
+
+	// err = uc.MailerService.SendEmail(ctx, emailPayload)
+	// if err != nil {
+	// 	uc.Log.Error("authUsecase.CreateMagicLink error sending the magic link via email",
+	// 		zap.String(constvars.LoggingRequestIDKey, requestID),
+	// 		zap.Error(err),
+	// 	)
+	// 	return err
+	// }
 
 	uc.Log.Info("authUsecase.CreateMagicLink succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
