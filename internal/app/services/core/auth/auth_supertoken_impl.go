@@ -14,6 +14,8 @@ import (
 
 	"github.com/supertokens/supertokens-golang/ingredients/emaildelivery"
 	"github.com/supertokens/supertokens-golang/ingredients/smsdelivery"
+	"github.com/supertokens/supertokens-golang/recipe/dashboard"
+	"github.com/supertokens/supertokens-golang/recipe/dashboard/dashboardmodels"
 	"github.com/supertokens/supertokens-golang/recipe/emailpassword"
 	"github.com/supertokens/supertokens-golang/recipe/emailpassword/epmodels"
 	"github.com/supertokens/supertokens-golang/recipe/emailverification"
@@ -29,6 +31,11 @@ import (
 func (uc *authUsecase) InitializeSupertoken() error {
 	apiBasePath := fmt.Sprintf("%s/%s%s", uc.InternalConfig.App.EndpointPrefix, uc.InternalConfig.App.Version, uc.DriverConfig.Supertoken.ApiBasePath)
 	websiteBasePath := uc.DriverConfig.Supertoken.WebsiteBasePath
+	cookieSameSite := constvars.CookieSameSiteStrictMode
+
+	if uc.InternalConfig.App.Env == "local" || uc.InternalConfig.App.Env == "development" {
+		cookieSameSite = constvars.CookieSameSiteNoneMode
+	}
 
 	supertokenConnectionInfo := &supertokens.ConnectionInfo{
 		ConnectionURI: uc.DriverConfig.Supertoken.ConnectionURI,
@@ -43,36 +50,6 @@ func (uc *authUsecase) InitializeSupertoken() error {
 	}
 
 	supertokenRecipeList := []supertokens.Recipe{
-		// Uncomment to actvivate the feature & ensure to do testing first on dev env
-
-		// thirdparty.Init(&tpmodels.TypeInput{
-		// 	SignInAndUpFeature: tpmodels.TypeInputSignInAndUp{
-		// 		Providers: []tpmodels.ProviderInput{
-		// 			{
-		// 				Config: tpmodels.ProviderConfig{
-		// 					ThirdPartyId: "google",
-		// 					Clients: []tpmodels.ProviderClientConfig{
-		// 						{
-		// 							ClientID:     "1060725074195-kmeum4crr01uirfl2op9kd5acmi9jutn.apps.googleusercontent.com",
-		// 							ClientSecret: "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",
-		// 						},
-		// 					},
-		// 				},
-		// 			},
-		// 			{
-		// 				Config: tpmodels.ProviderConfig{
-		// 					ThirdPartyId: "github",
-		// 					Clients: []tpmodels.ProviderClientConfig{
-		// 						{
-		// 							ClientID:     "467101b197249757c71f",
-		// 							ClientSecret: "e97051221f4b6426e8fe8d51486396703012f5bd",
-		// 						},
-		// 					},
-		// 				},
-		// 			},
-		// 		},
-		// 	},
-		// }),
 		passwordless.Init(plessmodels.TypeInput{
 			Override: &plessmodels.OverrideStruct{
 				APIs: func(originalImplementation plessmodels.APIInterface) plessmodels.APIInterface {
@@ -316,19 +293,6 @@ func (uc *authUsecase) InitializeSupertoken() error {
 						}
 						return response, nil
 					}
-
-					// originalCreateCode := *originalImplementation.CreateCode
-					// (*originalImplementation.CreateCode) = func(email *string, phoneNumber *string, userInputCode *string, tenantId string, userContext supertokens.UserContext) (plessmodels.CreateCodeResponse, error) {
-					// 	response, err := originalCreateCode(email, phoneNumber, userInputCode, tenantId, userContext)
-					// 	if err != nil {
-					// 		uc.Log.Error("authUsecase.SupertokenCreateCode error while do func originalCreateCode",
-					// 			zap.Error(err),
-					// 		)
-					// 		return plessmodels.CreateCodeResponse{}, exceptions.ErrSupertoken(err)
-					// 	}
-					// 	return response, nil
-					// }
-
 					return originalImplementation
 				},
 			},
@@ -385,26 +349,6 @@ func (uc *authUsecase) InitializeSupertoken() error {
 					return nil
 				},
 			},
-			// ContactMethodEmail: plessmodels.ContactMethodEmailConfig{
-			// 	Enabled: true,
-			// 	ValidateEmailAddress: func(email interface{}, tenantId string) *string {
-			// 		emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
-			// 		emailStr, ok := email.(string)
-			// 		if !ok {
-			// 			message := "email must be a string"
-			// 			return &message
-			// 		}
-
-			// 		emailStr = strings.TrimSpace(emailStr)
-
-			// 		if emailRegex.MatchString(emailStr) {
-			// 			return nil
-			// 		}
-
-			// 		message := "invalid email address"
-			// 		return &message
-			// 	},
-			// },
 		}),
 		emailpassword.Init(&epmodels.TypeInput{
 			SignUpFeature: &epmodels.TypeInputSignUp{
@@ -451,7 +395,14 @@ func (uc *authUsecase) InitializeSupertoken() error {
 			},
 		}),
 		userroles.Init(nil),
-		session.Init(nil),
+		session.Init(&sessmodels.TypeInput{
+			CookieSameSite: &cookieSameSite,
+		}),
+		dashboard.Init(&dashboardmodels.TypeInput{
+			Admins: &[]string{
+				uc.InternalConfig.Supertoken.KonsulinDasboardAdminEmail,
+			},
+		}),
 	}
 
 	err := supertokens.Init(supertokens.TypeInput{

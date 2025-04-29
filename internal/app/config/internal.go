@@ -72,8 +72,9 @@ type AppKonsulin struct {
 }
 
 type AppSupertoken struct {
-	MagiclinkBaseUrl string `mapstructure:"magiclink_base_url"`
-	KonsulinTenantID string `mapstructure:"konsulin_tenant_id"`
+	MagiclinkBaseUrl           string `mapstructure:"magiclink_base_url"`
+	KonsulinTenantID           string `mapstructure:"konsulin_tenant_id"`
+	KonsulinDasboardAdminEmail string `mapstructure:"konsulin_dashboard_admin_email"`
 }
 type AppPaymentGateway struct {
 	Username string `mapstructure:"username"`

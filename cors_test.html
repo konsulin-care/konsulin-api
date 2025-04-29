@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CORS Tester</title>
+</head>
+<body>
+    <h1>CORS Test Page</h1>
+    <button id="testBtn">Test CORS Request</button>
+
+    <pre id="result"></pre>
+
+    <script>
+        document.getElementById('testBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('http://localhost:3000/api/v1/auth/passwordless/email/exists?email=abrampurnomo@gmail.com', {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const text = await response.text();
+                document.getElementById('result').textContent =
+                    `Status: ${response.status}\n\nHeaders:\n${Array.from(response.headers.entries()).map(([k, v]) => `${k}: ${v}`).join('\n')}\n\nBody:\n${text}`;
+            } catch (error) {
+                document.getElementById('result').textContent = `Error: ${error.message}`;
+            }
+        });
+    </script>
+</body>
+</html>

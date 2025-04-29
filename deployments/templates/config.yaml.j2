@@ -57,6 +57,7 @@ internal_config:
   
   supertoken:
     magiclink_base_url: {{ internal_config.supertoken.magiclink_base_url | default('') }}
+    konsulin_dashboard_admin_email: {{ internal_config.supertoken.konsulin_dashboard_admin_email | default('') }}
     konsulin_tenant_id: {{ internal_config.supertoken.konsulin_tenant_id | default('') }}
 
 driver_config:
