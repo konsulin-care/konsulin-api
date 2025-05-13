@@ -56,19 +56,24 @@ func SetupRoutes(
 	router.Use(middlewares.Logging(logger))
 	router.Use(cors.Handler(corsOptions))
 	router.Use(supertokens.Middleware)
+	router.Use(middlewares.SessionOptional)
+	router.Use(middlewares.Auth)
 
 	// Rate limiting pake httprate
 	rateLimiter := httprate.LimitByIP(internalConfig.App.MaxRequests, time.Second)
 	router.Use(rateLimiter)
 
-	// router.Use(middlewares.Logging(logger))
 	router.Use(middlewares.ErrorHandler)
+	router.Mount("/fhir", middlewares.Bridge(internalConfig.FHIR.BaseUrl))
 
 	endpointPrefix := fmt.Sprintf("/%s", internalConfig.App.EndpointPrefix)
 	versionPrefix := fmt.Sprintf("/%s", internalConfig.App.Version)
 
 	router.Route(endpointPrefix, func(r chi.Router) {
 		r.Route(versionPrefix, func(r chi.Router) {
+			r.Route("/fhir", func(r chi.Router) {
+				attachFhirRoutes(r, middlewares, authController)
+			})
 			r.Route("/auth", func(r chi.Router) {
 				attachAuthRoutes(r, middlewares, authController)
 			})

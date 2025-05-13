@@ -276,6 +276,91 @@ func (c *practitionerFhirClient) UpdatePractitioner(ctx context.Context, request
 	return practitionerFhir, nil
 }
 
+func (c *practitionerFhirClient) FindPractitionerByIdentifier(ctx context.Context, system, value string) ([]fhir_dto.Practitioner, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	c.Log.Info("practitionerFhirClient.FindPractitionerByIdentifier called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
+	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet,
+		fmt.Sprintf("%s?identifier=%s|%s", c.BaseUrl, system, value), nil)
+	if err != nil {
+		c.Log.Error("practitionerFhirClient.FindPractitionerByIdentifier error creating HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrCreateHTTPRequest(err)
+	}
+	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		c.Log.Error("practitionerFhirClient.FindPractitionerByIdentifier error sending HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrSendHTTPRequest(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != constvars.StatusOK {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			c.Log.Error("practitionerFhirClient.FindPractitionerByIdentifier error reading response body",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePractitioner)
+		}
+		var outcome fhir_dto.OperationOutcome
+		err = json.Unmarshal(bodyBytes, &outcome)
+		if err != nil {
+			c.Log.Error("practitionerFhirClient.FindPractitionerByIdentifier error unmarshaling outcome",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePractitioner)
+		}
+		if len(outcome.Issue) > 0 {
+			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			c.Log.Error("practitionerFhirClient.FindPractitionerByIdentifier FHIR error",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(fhirErrorIssue),
+			)
+			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourcePractitioner)
+		}
+	}
+
+	var result struct {
+		Total        int    `json:"total"`
+		ResourceType string `json:"resourceType"`
+		Entry        []struct {
+			FullUrl  string                `json:"fullUrl"`
+			Resource fhir_dto.Practitioner `json:"resource"`
+		} `json:"entry"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	if err != nil {
+		c.Log.Error("practitionerFhirClient.FindPractitionerByIdentifier error decoding response",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePractitioner)
+	}
+
+	practitioners := make([]fhir_dto.Practitioner, len(result.Entry))
+	for i, entry := range result.Entry {
+		practitioners[i] = entry.Resource
+	}
+
+	c.Log.Info("practitionerFhirClient.FindPractitionerByIdentifier succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.Int(constvars.LoggingPractitionerRoleCountKey, len(practitioners)),
+	)
+	return practitioners, nil
+}
+
 func (c *practitionerFhirClient) PatchPractitioner(ctx context.Context, request *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	c.Log.Info("practitionerFhirClient.PatchPractitioner called",

@@ -56,12 +56,12 @@ func (uc *roleUsecase) initializeData(ctx context.Context) {
 	}
 
 	if !resp.OK.CreatedNewRole {
-		uc.Log.Info("roleUsecase.initializeData role PATIENT already exists",
+		uc.Log.Info("roleUsecase.initializeData role Patient already exists",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 		)
 	}
 
-	resp, err = userroles.CreateNewRoleOrAddPermissions(constvars.KonsulinRoleClinician, []string{
+	resp, err = userroles.CreateNewRoleOrAddPermissions(constvars.KonsulinRolePractitioner, []string{
 		"read", "write",
 	}, nil)
 
@@ -73,8 +73,64 @@ func (uc *roleUsecase) initializeData(ctx context.Context) {
 	}
 
 	if !resp.OK.CreatedNewRole {
-		uc.Log.Info("roleUsecase.initializeData role CLINICIAN already exists",
+		uc.Log.Info("roleUsecase.initializeData role Practitioner already exists",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
+	}
+	resp, err = userroles.CreateNewRoleOrAddPermissions(constvars.KonsulinRoleResearcher, []string{
+		"read", "write",
+	}, nil)
+
+	if err != nil {
+		uc.Log.Error("roleUsecase.initializeData error CreateNewRoleOrAddPermissions with supertokens",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+	}
+
+	if !resp.OK.CreatedNewRole {
+		uc.Log.Info("roleUsecase.initializeData role Researcher already exists",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
+	}
+	resp, err = userroles.CreateNewRoleOrAddPermissions(constvars.KonsulinRoleClinicAdmin, []string{
+		"read", "write",
+	}, nil)
+
+	if err != nil {
+		uc.Log.Error("roleUsecase.initializeData error CreateNewRoleOrAddPermissions with supertokens",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+	}
+
+	if !resp.OK.CreatedNewRole {
+		uc.Log.Info("roleUsecase.initializeData role Clinic Admin already exists",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
+	}
+	resp, err = userroles.CreateNewRoleOrAddPermissions(constvars.KonsulinRoleSuperadmin, []string{
+		"read", "write",
+	}, nil)
+
+	if err != nil {
+		uc.Log.Error("roleUsecase.initializeData error CreateNewRoleOrAddPermissions with supertokens",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+	}
+
+	if !resp.OK.CreatedNewRole {
+		uc.Log.Info("roleUsecase.initializeData role Superadmin already exists",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
+	}
+
+	_, err = userroles.DeleteRole(constvars.KonsulinRoleClinician, nil)
+	if err != nil {
+		uc.Log.Error("roleUsecase.initializeData error DeleteRole with supertokens",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
 		)
 	}
 

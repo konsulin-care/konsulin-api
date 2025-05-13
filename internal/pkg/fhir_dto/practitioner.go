@@ -10,4 +10,5 @@ type Practitioner struct {
 	BirthDate    string         `json:"birthDate,omitempty"`
 	Address      []Address      `json:"address,omitempty"`
 	Extension    []Extension    `json:"extension,omitempty"`
+	Identifier   []Identifier   `json:"identifier"`
 }
