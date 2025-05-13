@@ -23,6 +23,7 @@ const (
 	ResourceOrganization          = "Organization"
 	ResourceQuestionnaire         = "Questionnaire"
 	ResourceQuestionnaireResponse = "QuestionnaireResponse"
+	ResourceResearchStudy         = "ResearchStudy"
 	ResourceDevice                = "Device"
 	ResourceLocation              = "Location"
 	ResourceHealthcareService     = "HealthcareService"
@@ -90,4 +91,8 @@ const (
 	DEFAULT_CLINICIAN_PRACTICE_END_TIME_PARAMS   = "23:59:59"
 
 	DEFAULT_CLINICIAN_DESIRED_DAYS_PARAMS = "sun,mon,tue,wed,thu,fri,sat"
+)
+
+const (
+	FhirSupertokenSystemIdentifier = "https://login.konsulin.care/userid"
 )

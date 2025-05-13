@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
@@ -1104,6 +1105,34 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Su
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
 
+	user, err := passwordless.GetUserByEmail(uc.InternalConfig.Supertoken.KonsulinTenantID, request.Email)
+	if err != nil {
+		uc.Log.Error("authUsecase.CreateMagicLink supertokens error get user by tenantID & Email",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return err
+	}
+
+	if user != nil {
+		userRoles, err := userroles.GetRolesForUser(uc.InternalConfig.Supertoken.KonsulinTenantID, user.ID)
+		if err != nil {
+			uc.Log.Error("authUsecase.CreateMagicLink supertokens error get roles for user by tenantID & UserID",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
+			return err
+		}
+
+		if len(userRoles.OK.Roles) == 1 && userRoles.OK.Roles[0] == constvars.KonsulinRolePatient {
+			uc.Log.Error("authUsecase.CreateMagicLink supertokens error while check user eligibility",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
+			return errors.New("user is registered as patient first. You can't invite this user via magic link")
+		}
+	}
+
 	plessResponse, err := passwordless.SignInUpByEmail(uc.InternalConfig.Supertoken.KonsulinTenantID, request.Email)
 	if err != nil {
 		uc.Log.Error("authUsecase.CreateMagicLink supertokens error create user by tenantID & Email",
@@ -1122,10 +1151,11 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Su
 		return err
 	}
 
-	uc.Log.Info("authUsecase.InitializeSupertoken assigning Patient Clinician to CreatedNewUser")
-	response, err := userroles.AddRoleToUser(uc.InternalConfig.Supertoken.KonsulinTenantID, plessResponse.User.ID, constvars.KonsulinRoleClinician, nil)
+	uc.Log.Info("authUsecase.InitializeSupertoken assigning Patient Practitioner roles to CreatedNewUser")
+	response, err := userroles.AddRoleToUser(uc.InternalConfig.Supertoken.KonsulinTenantID, plessResponse.User.ID, constvars.KonsulinRolePractitioner, nil)
 	if err != nil {
 		uc.Log.Error("authUsecase.CreateMagicLink error userroles.AddRoleToUser",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
 		return err
@@ -1133,13 +1163,16 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Su
 
 	if response.UnknownRoleError != nil {
 		uc.Log.Error("authUsecase.CreateMagicLink error unknown role",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
-		return fmt.Errorf("unknown role found when assign role: %v", response.UnknownRoleError)
+		return fmt.Errorf("unknown role found when assigning role: %v", response.UnknownRoleError)
 	}
 
 	if response.OK.DidUserAlreadyHaveRole {
-		uc.Log.Info("authUsecase.CreateMagicLink user already have role")
+		uc.Log.Info("authUsecase.CreateMagicLink user already have role",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
 	}
 
 	emailData := emaildelivery.EmailType{

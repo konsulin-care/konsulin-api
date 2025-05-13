@@ -2,12 +2,15 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
+	"konsulin-service/internal/pkg/fhir_dto"
 	"log"
 	"net/http"
 	"regexp"
+	"slices"
 
 	"github.com/supertokens/supertokens-golang/ingredients/emaildelivery"
 	"github.com/supertokens/supertokens-golang/ingredients/smsdelivery"
@@ -51,7 +54,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 					(*originalImplementation.ConsumeCode) = func(userInput *plessmodels.UserInputCodeWithDeviceID, linkCode *string, preAuthSessionID string, tenantId string, userContext supertokens.UserContext) (plessmodels.ConsumeCodeResponse, error) {
 						response, err := originalConsumeCode(userInput, linkCode, preAuthSessionID, tenantId, userContext)
 						if err != nil {
-							uc.Log.Error("authUsecase.ConsumeCode error while do func originalConsumeCode",
+							uc.Log.Error("authUsecase.SupertokenConsumeCode error while do func originalConsumeCode",
 								zap.Error(err),
 							)
 							return plessmodels.ConsumeCodeResponse{}, err
@@ -59,28 +62,71 @@ func (uc *authUsecase) InitializeSupertoken() error {
 
 						if response.OK != nil {
 							user := response.OK.User
-							if response.OK.CreatedNewUser {
-								uc.Log.Info("authUsecase.SupertokenConsumeCode assigning Patient Role to CreatedNewUser")
-								response, err := userroles.AddRoleToUser(uc.InternalConfig.Supertoken.KonsulinTenantID, user.ID, constvars.KonsulinRolePatient, nil)
-								if err != nil {
-									uc.Log.Error("authUsecase.SupertokenConsumeCode error userroles.AddRoleToUser",
+							userRoles, err := userroles.GetRolesForUser(uc.InternalConfig.Supertoken.KonsulinTenantID, user.ID)
+							if err != nil {
+								uc.Log.Error("authUsecase.SupertokenConsumeCode supertokens error get roles for user by tenantID & UserID",
+									zap.Error(err),
+								)
+								return plessmodels.ConsumeCodeResponse{}, err
+							}
+
+							if slices.Contains(userRoles.OK.Roles, constvars.KonsulinRolePractitioner) {
+								ctx := context.Background()
+								fhirPractitioners, err := uc.PractitionerFhirClient.FindPractitionerByIdentifier(ctx, constvars.FhirSupertokenSystemIdentifier, user.ID)
+								if len(fhirPractitioners) > 1 {
+									uc.Log.Error("authUsecase.SupertokenConsumeCode supertokens error get roles for user by tenantID & UserID",
 										zap.Error(err),
 									)
-									return plessmodels.ConsumeCodeResponse{}, err
+									return plessmodels.ConsumeCodeResponse{}, errors.New(constvars.ErrClientCannotProcessRequest)
 								}
+								if len(fhirPractitioners) == 0 {
+									fhirPractitionerRequest := &fhir_dto.Practitioner{
+										ResourceType: constvars.ResourcePractitioner,
+										Active:       true,
+										Identifier: []fhir_dto.Identifier{
+											{
+												System: "https://login.konsulin.care/userid",
+												Value:  user.ID,
+											},
+										},
+										Telecom: []fhir_dto.ContactPoint{
+											{
+												System: "email",
+												Value:  *user.Email,
+												Use:    "work",
+											},
+										},
+									}
+									_, err = uc.PractitionerFhirClient.CreatePractitioner(ctx, fhirPractitionerRequest)
+									if err != nil {
+										uc.Log.Error("authUsecase.SupertokenConsumeCode supertokens error create practitioner for user by UserID & email",
+											zap.Error(err),
+										)
+										return plessmodels.ConsumeCodeResponse{}, err
+									}
+								}
+							}
 
-								if response.UnknownRoleError != nil {
-									uc.Log.Error("authUsecase.SupertokenConsumeCode error unknown role",
-										zap.Error(err),
-									)
-									return plessmodels.ConsumeCodeResponse{
-										RestartFlowError: &struct{}{},
-									}, nil
-								}
+							uc.Log.Info("authUsecase.SupertokenConsumeCode assigning Patient Role to User")
+							response, err := userroles.AddRoleToUser(uc.InternalConfig.Supertoken.KonsulinTenantID, user.ID, constvars.KonsulinRolePatient, nil)
+							if err != nil {
+								uc.Log.Error("authUsecase.SupertokenConsumeCode error userroles.AddRoleToUser",
+									zap.Error(err),
+								)
+								return plessmodels.ConsumeCodeResponse{}, err
+							}
 
-								if response.OK.DidUserAlreadyHaveRole {
-									uc.Log.Info("authUsecase.SupertokenConsumeCode user already have role")
-								}
+							if response.UnknownRoleError != nil {
+								uc.Log.Error("authUsecase.SupertokenConsumeCode error unknown role",
+									zap.Error(err),
+								)
+								return plessmodels.ConsumeCodeResponse{
+									RestartFlowError: &struct{}{},
+								}, nil
+							}
+
+							if response.OK.DidUserAlreadyHaveRole {
+								uc.Log.Info("authUsecase.SupertokenConsumeCode user already have role")
 							}
 						}
 						return response, nil
@@ -155,6 +201,19 @@ func (uc *authUsecase) InitializeSupertoken() error {
 		}),
 		userroles.Init(nil),
 		session.Init(&sessmodels.TypeInput{
+			Override: &sessmodels.OverrideStruct{
+				Functions: func(originalImplementation sessmodels.RecipeInterface) sessmodels.RecipeInterface {
+					originalCreateNewSession := *originalImplementation.CreateNewSession
+
+					(*originalImplementation.CreateNewSession) = func(userID string, accessTokenPayload, sessionDataInDatabase map[string]interface{}, disableAntiCsrf *bool, tenantId string, userContext supertokens.UserContext) (sessmodels.SessionContainer, error) {
+						fmt.Println(userID, userContext)
+						// or call the default behaviour as show below
+						return originalCreateNewSession(userID, accessTokenPayload, sessionDataInDatabase, disableAntiCsrf, tenantId, userContext)
+					}
+
+					return originalImplementation
+				},
+			},
 			CookieSameSite: &cookieSameSite,
 		}),
 		dashboard.Init(&dashboardmodels.TypeInput{
