@@ -57,43 +57,36 @@ func SetupRoutes(
 	router.Use(cors.Handler(corsOptions))
 	router.Use(supertokens.Middleware)
 	router.Use(middlewares.SessionOptional)
-	router.Use(middlewares.Auth)
+	// router.Use(middlewares.Auth)
 
 	// Rate limiting pake httprate
 	rateLimiter := httprate.LimitByIP(internalConfig.App.MaxRequests, time.Second)
 	router.Use(rateLimiter)
 
 	router.Use(middlewares.ErrorHandler)
-	router.Mount("/fhir", middlewares.Bridge(internalConfig.FHIR.BaseUrl))
+	router.With(middlewares.Auth).
+		Mount("/fhir", middlewares.Bridge(internalConfig.FHIR.BaseUrl))
 
 	endpointPrefix := fmt.Sprintf("/%s", internalConfig.App.EndpointPrefix)
 	versionPrefix := fmt.Sprintf("/%s", internalConfig.App.Version)
 
 	router.Route(endpointPrefix, func(r chi.Router) {
 		r.Route(versionPrefix, func(r chi.Router) {
-			r.Route("/fhir", func(r chi.Router) {
-				attachFhirRoutes(r, middlewares, authController)
-			})
 			r.Route("/auth", func(r chi.Router) {
 				attachAuthRoutes(r, middlewares, authController)
 			})
-
 			r.Route("/users", func(r chi.Router) {
 				attachUserRoutes(r, middlewares, userController)
 			})
-
 			r.Route("/education-levels", func(r chi.Router) {
 				attachEducationLevelRoutes(r, middlewares, educationLevelController)
 			})
-
 			r.Route("/cities", func(r chi.Router) {
 				attachCityRoutes(r, middlewares, cityController)
 			})
-
 			r.Route("/genders", func(r chi.Router) {
 				attachGenderRoutes(r, middlewares, genderController)
 			})
-
 			r.Route("/clinics", func(r chi.Router) {
 				attachClinicRoutes(r, middlewares, clinicController)
 			})
