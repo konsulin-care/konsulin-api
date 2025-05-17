@@ -64,8 +64,6 @@ func SetupRoutes(
 	router.Use(rateLimiter)
 
 	router.Use(middlewares.ErrorHandler)
-	router.With(middlewares.Auth).
-		Mount("/fhir", middlewares.Bridge(internalConfig.FHIR.BaseUrl))
 
 	endpointPrefix := fmt.Sprintf("/%s", internalConfig.App.EndpointPrefix)
 	versionPrefix := fmt.Sprintf("/%s", internalConfig.App.Version)
@@ -113,4 +111,6 @@ func SetupRoutes(
 			})
 		})
 	})
+	router.With(middlewares.Auth).
+		Mount("/fhir", middlewares.Bridge(internalConfig.FHIR.BaseUrl))
 }
