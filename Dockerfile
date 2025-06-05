@@ -55,7 +55,6 @@ ADD cmd/http ./cmd/http
 #ADD cmd/example ./cmd/example
 ADD internal ./internal
 ADD pkg ./pkg
-ADD migration ./migration
 
 # updates vendor
 RUN go mod tidy && go mod vendor
