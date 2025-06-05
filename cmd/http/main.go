@@ -13,17 +13,8 @@ import (
 	"konsulin-service/internal/app/drivers/storage"
 	"konsulin-service/internal/app/services/core/auth"
 	"konsulin-service/internal/app/services/core/session"
-	fhir_appointments "konsulin-service/internal/app/services/fhir_spark/appointments"
-	"konsulin-service/internal/app/services/fhir_spark/charge_item_definitions"
-	"konsulin-service/internal/app/services/fhir_spark/observations"
-	"konsulin-service/internal/app/services/fhir_spark/organizations"
 	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
-	practitionerRoles "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
-	questionnairesFhir "konsulin-service/internal/app/services/fhir_spark/questionnaires"
-	questionnaireResponsesFhir "konsulin-service/internal/app/services/fhir_spark/questionnaires_responses"
-	"konsulin-service/internal/app/services/fhir_spark/schedules"
-	"konsulin-service/internal/app/services/fhir_spark/slots"
 	"konsulin-service/internal/app/services/shared/locker"
 	"konsulin-service/internal/app/services/shared/mailer"
 	"konsulin-service/internal/app/services/shared/payment_gateway"
@@ -182,15 +173,6 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	// Initialize FHIR clients
 	patientFhirClient := patientsFhir.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
-	_ = organizations.NewOrganizationFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
-	practitionerRoleFhirClient := practitionerRoles.NewPractitionerRoleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
-	_ = schedules.NewScheduleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
-	_ = slots.NewSlotFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
-	_ = fhir_appointments.NewAppointmentFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
-	_ = charge_item_definitions.NewChargeItemDefinitionFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
-	_ = questionnairesFhir.NewQuestionnaireFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
-	questionnaireResponseFhirClient := questionnaireResponsesFhir.NewQuestionnaireResponseFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
-	_ = observations.NewObservationFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 
 	// Initialize Auth usecase with dependencies
 	authUseCase, err := auth.NewAuthUsecase(
@@ -198,8 +180,6 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 		sessionService,
 		patientFhirClient,
 		practitionerFhirClient,
-		practitionerRoleFhirClient,
-		questionnaireResponseFhirClient,
 		mailerService,
 		whatsAppService,
 		minioStorage,
