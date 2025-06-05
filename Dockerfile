@@ -69,6 +69,5 @@ FROM base AS release
 
 COPY --from=gobuild /go/src/github.com/konsulin-id/be-konsulin/api-service .
 COPY --from=gobuild /go/src/github.com/konsulin-id/be-konsulin/RELEASE ./RELEASE
-COPY --from=gobuild /go/src/github.com/konsulin-id/be-konsulin/migration ./migration
 
 ENTRYPOINT ["./api-service"]
