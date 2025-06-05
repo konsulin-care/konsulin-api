@@ -61,12 +61,6 @@ internal_config:
     konsulin_tenant_id: {{ internal_config.supertoken.konsulin_tenant_id | default('') }}
 
 driver_config:
-  mongodb:
-    port: {{ driver_config.mongodb.port | default('') }}
-    host: {{ driver_config.mongodb.host | default('') }}
-    username: {{ driver_config.mongodb.username | default('') }}
-    password: {{ driver_config.mongodb.password | default('') }}
-  
   supertoken:
     api_base_path: {{ driver_config.supertoken.api_base_path | default('') }}
     website_base_path: {{ driver_config.supertoken.website_base_path | default('') }}
@@ -97,13 +91,6 @@ driver_config:
     username: {{ driver_config.minio.username | default('') }}
     password: {{ driver_config.minio.password | default('') }}
     use_ssl: {{ driver_config.minio.use_ssl | default('') }}
-
-  postgres:
-    host: {{ driver_config.postgres.host | default('') }}
-    port: {{ driver_config.postgres.port | default('') }}
-    username: {{ driver_config.postgres.username | default('') }}
-    password: {{ driver_config.postgres.password | default('') }}
-    dbname: {{ driver_config.postgres.dbname | default('') }}
     
   kafka:
     host: {{ driver_config.kafka.host | default('') }}

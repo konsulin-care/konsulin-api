@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"konsulin-service/cmd/migration"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/delivery/http/controllers"
 	"konsulin-service/internal/app/delivery/http/middlewares"
@@ -12,33 +11,10 @@ import (
 	"konsulin-service/internal/app/drivers/logger"
 	"konsulin-service/internal/app/drivers/messaging"
 	"konsulin-service/internal/app/drivers/storage"
-	"konsulin-service/internal/app/services/core/appointments"
-	assessmentResponses "konsulin-service/internal/app/services/core/assessment_responses"
-	"konsulin-service/internal/app/services/core/assessments"
 	"konsulin-service/internal/app/services/core/auth"
-	"konsulin-service/internal/app/services/core/cities"
-	"konsulin-service/internal/app/services/core/clinicians"
-	"konsulin-service/internal/app/services/core/clinics"
-	educationLevels "konsulin-service/internal/app/services/core/education_levels"
-	"konsulin-service/internal/app/services/core/genders"
-	"konsulin-service/internal/app/services/core/journals"
-	"konsulin-service/internal/app/services/core/patients"
-	"konsulin-service/internal/app/services/core/payments"
-	"konsulin-service/internal/app/services/core/roles"
 	"konsulin-service/internal/app/services/core/session"
-	"konsulin-service/internal/app/services/core/transactions"
-	"konsulin-service/internal/app/services/core/users"
-	fhir_appointments "konsulin-service/internal/app/services/fhir_spark/appointments"
-	"konsulin-service/internal/app/services/fhir_spark/charge_item_definitions"
-	"konsulin-service/internal/app/services/fhir_spark/observations"
-	"konsulin-service/internal/app/services/fhir_spark/organizations"
 	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
-	practitionerRoles "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
-	questionnairesFhir "konsulin-service/internal/app/services/fhir_spark/questionnaires"
-	questionnaireResponsesFhir "konsulin-service/internal/app/services/fhir_spark/questionnaires_responses"
-	"konsulin-service/internal/app/services/fhir_spark/schedules"
-	"konsulin-service/internal/app/services/fhir_spark/slots"
 	"konsulin-service/internal/app/services/shared/locker"
 	"konsulin-service/internal/app/services/shared/mailer"
 	"konsulin-service/internal/app/services/shared/payment_gateway"
@@ -79,11 +55,6 @@ func main() {
 	time.Local = location
 	log.Printf("Successfully set time base to %s", internalConfig.App.Timezone)
 
-	// Initialize MongoDB connection
-	postgresDB := database.NewPostgresDB(driverConfig)
-
-	migration.Run(postgresDB)
-
 	// Initialize Redis connection
 	redis := database.NewRedisClient(driverConfig)
 
@@ -99,7 +70,6 @@ func main() {
 	// Bundle all initialized components into a Bootstrap struct
 	bootstrap := config.Bootstrap{
 		Router:         chiRouter,
-		PostgresDB:     postgresDB,
 		Redis:          redis,
 		Logger:         logger,
 		Minio:          minio,
@@ -189,7 +159,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	}
 
 	// Initialize oy service
-	oyService := payment_gateway.NewOyService(bootstrap.InternalConfig, bootstrap.Logger)
+	_ = payment_gateway.NewOyService(bootstrap.InternalConfig, bootstrap.Logger)
 
 	// Initialize Minio storage
 	minioStorage := storageKonsulin.NewMinioStorage(bootstrap.Minio)
@@ -198,86 +168,18 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	sessionService := session.NewSessionService(redisRepository, bootstrap.Logger)
 
 	// Initialize session service with Redis repository
-	lockService := locker.NewLockService(redisRepository, bootstrap.Logger)
+	_ = locker.NewLockService(redisRepository, bootstrap.Logger)
 
 	// Initialize FHIR clients
 	patientFhirClient := patientsFhir.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
-	organizationFhirClient := organizations.NewOrganizationFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
-	practitionerRoleFhirClient := practitionerRoles.NewPractitionerRoleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
-	scheduleFhirClient := schedules.NewScheduleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
-	slotFhirClient := slots.NewSlotFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
-	appointmentFhirClient := fhir_appointments.NewAppointmentFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
-	chargeItemDefinitionFhirClient := charge_item_definitions.NewChargeItemDefinitionFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
-	questionnaireFhirClient := questionnairesFhir.NewQuestionnaireFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
-	questionnaireResponseFhirClient := questionnaireResponsesFhir.NewQuestionnaireResponseFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
-	observationFhirClient := observations.NewObservationFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
-
-	// Initialize Users dependencies
-	userPostgresRepository := users.NewUserPostgresRepository(bootstrap.PostgresDB, bootstrap.Logger)
-	userUseCase := users.NewUserUsecase(userPostgresRepository, patientFhirClient, practitionerFhirClient, practitionerRoleFhirClient, organizationFhirClient, redisRepository, sessionService, minioStorage, bootstrap.InternalConfig, bootstrap.Logger)
-	userController := controllers.NewUserController(bootstrap.Logger, userUseCase, bootstrap.InternalConfig)
-
-	// Initialize Education Level dependencies
-	educationLevelPostgresRepository := educationLevels.NewEducationLevelPostgresRepository(bootstrap.PostgresDB, bootstrap.Logger)
-	educationLevelUseCase, err := educationLevels.NewEducationLevelUsecase(educationLevelPostgresRepository, redisRepository, bootstrap.Logger)
-	if err != nil {
-		return err
-	}
-	educationLevelController := controllers.NewEducationLevelController(bootstrap.Logger, educationLevelUseCase)
-
-	// Initialize Gender dependencies
-	genderPostgresRepository := genders.NewGenderPostgresRepository(bootstrap.PostgresDB, bootstrap.Logger)
-	genderUseCase, err := genders.NewGenderUsecase(genderPostgresRepository, redisRepository, bootstrap.Logger)
-	if err != nil {
-		return err
-	}
-	genderController := controllers.NewGenderController(bootstrap.Logger, genderUseCase)
-
-	// Initialize Role repository with MongoDB
-	rolePostgresRepository := roles.NewRolePostgresRepository(bootstrap.PostgresDB, bootstrap.Logger)
-
-	// Initialize Transaction repository with MongoDB
-	transactionPostgresRepository := transactions.NewTransactionPostgresRepository(bootstrap.PostgresDB, bootstrap.Logger)
-
-	// Initialize Clinic dependencies
-	clinicUsecase := clinics.NewClinicUsecase(organizationFhirClient, practitionerRoleFhirClient, practitionerFhirClient, scheduleFhirClient, chargeItemDefinitionFhirClient, redisRepository, bootstrap.InternalConfig, bootstrap.Logger)
-	clinicController := controllers.NewClinicController(bootstrap.Logger, clinicUsecase)
-
-	// Initialize Clinic dependencies
-	clinicianUsecase := clinicians.NewClinicianUsecase(practitionerFhirClient, practitionerRoleFhirClient, organizationFhirClient, scheduleFhirClient, slotFhirClient, appointmentFhirClient, chargeItemDefinitionFhirClient, sessionService, bootstrap.Logger)
-	clinicianController := controllers.NewClinicianController(bootstrap.Logger, clinicianUsecase)
-
-	// Initialize Clinic dependencies
-	patientUsecase := patients.NewPatientUsecase(practitionerFhirClient, practitionerRoleFhirClient, scheduleFhirClient, slotFhirClient, appointmentFhirClient, sessionService, oyService, bootstrap.InternalConfig, bootstrap.Logger)
-	patientController := controllers.NewPatientController(bootstrap.Logger, patientUsecase)
-
-	// Initialize Assessment dependencies
-	assessmentUsecase := assessments.NewAssessmentUsecase(questionnaireFhirClient, sessionService, bootstrap.Logger)
-	assessmentController := controllers.NewAssessmentController(bootstrap.Logger, assessmentUsecase)
-
-	// Initialize Assessment Response dependencies
-	assessmentResponseUsecase := assessmentResponses.NewAssessmentResponseUsecase(questionnaireResponseFhirClient, questionnaireFhirClient, patientFhirClient, sessionService, redisRepository, bootstrap.InternalConfig, bootstrap.Logger)
-	assessmentResponseController := controllers.NewAssessmentResponseController(bootstrap.Logger, assessmentResponseUsecase)
-
-	// Initialize Journal dependencies
-	journalUsecase := journals.NewJournalUsecase(sessionService, observationFhirClient, redisRepository, bootstrap.InternalConfig, bootstrap.Logger)
-	journalController := controllers.NewJournalController(bootstrap.Logger, journalUsecase)
-
-	// Initialize Assessment Response dependencies
-	appointmentUsecase := appointments.NewAppointmentUsecase(transactionPostgresRepository, clinicianUsecase, appointmentFhirClient, patientFhirClient, practitionerFhirClient, slotFhirClient, redisRepository, sessionService, oyService, lockService, bootstrap.InternalConfig, bootstrap.Logger)
-	appointmentController := controllers.NewAppointmentController(bootstrap.Logger, appointmentUsecase)
 
 	// Initialize Auth usecase with dependencies
 	authUseCase, err := auth.NewAuthUsecase(
-		userPostgresRepository,
 		redisRepository,
 		sessionService,
-		rolePostgresRepository,
 		patientFhirClient,
 		practitionerFhirClient,
-		practitionerRoleFhirClient,
-		questionnaireResponseFhirClient,
 		mailerService,
 		whatsAppService,
 		minioStorage,
@@ -290,17 +192,6 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	}
 	authController := controllers.NewAuthController(bootstrap.Logger, authUseCase)
 
-	// Initialize Education Level dependencies
-	cityPostgresRepository := cities.NewCityPostgresRepository(bootstrap.PostgresDB, bootstrap.Logger)
-	cityUseCase, err := cities.NewCityUsecase(cityPostgresRepository, redisRepository, bootstrap.Logger)
-	if err != nil {
-		return err
-	}
-	cityController := controllers.NewCityController(bootstrap.Logger, cityUseCase)
-
-	paymentUsecase := payments.NewPaymentUsecase(transactionPostgresRepository, appointmentFhirClient, bootstrap.InternalConfig, bootstrap.Logger)
-	paymentController := controllers.NewPaymentController(bootstrap.Logger, paymentUsecase)
-
 	// Initialize middlewares with logger, session service, and auth usecase
 	middlewares := middlewares.NewMiddlewares(bootstrap.Logger, sessionService, authUseCase, bootstrap.InternalConfig)
 
@@ -310,27 +201,13 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 		log.Fatalf("Error initializing supertokens: %v", err)
 	}
 
-	_ = roles.NewRoleUsecase(rolePostgresRepository, bootstrap.Logger)
-
 	// Setup routes with the router, configuration, middlewares, and controllers
 	routers.SetupRoutes(
 		bootstrap.Router,
 		bootstrap.InternalConfig,
 		bootstrap.Logger,
 		middlewares,
-		userController,
 		authController,
-		clinicController,
-		clinicianController,
-		patientController,
-		educationLevelController,
-		cityController,
-		genderController,
-		assessmentController,
-		assessmentResponseController,
-		appointmentController,
-		paymentController,
-		journalController,
 	)
 
 	return nil

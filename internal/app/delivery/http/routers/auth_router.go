@@ -8,16 +8,6 @@ import (
 )
 
 func attachAuthRoutes(router chi.Router, middlewares *middlewares.Middlewares, authController *controllers.AuthController) {
-	router.Post("/register/patient", authController.RegisterPatient)
-	router.Post("/register/clinician", authController.RegisterClinician)
-	router.Post("/register/whatsapp", authController.RegisterViaWhatsApp)
-	router.Post("/register/whatsapp/verify", authController.VerifyRegisterWhatsAppOTP)
-	router.Post("/login/whatsapp", authController.LoginViaWhatsApp)
-	router.Post("/login/whatsapp/verify", authController.VerifyLoginWhatsAppOTP)
-	router.Post("/login/patient", authController.LoginPatient)
-	router.Post("/login/clinician", authController.LoginClinician)
-	router.Post("/forgot-password", authController.ForgotPassword)
-	router.Post("/reset-password", authController.ResetPassword)
 	router.Post("/magiclink", authController.CreateMagicLink)
 	router.With(middlewares.Authenticate).Post("/logout", authController.Logout)
 }
