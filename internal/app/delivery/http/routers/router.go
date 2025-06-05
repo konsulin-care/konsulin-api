@@ -21,19 +21,7 @@ func SetupRoutes(
 	internalConfig *config.InternalConfig,
 	logger *zap.Logger,
 	middlewares *middlewares.Middlewares,
-	userController *controllers.UserController,
 	authController *controllers.AuthController,
-	clinicController *controllers.ClinicController,
-	clinicianController *controllers.ClinicianController,
-	patientController *controllers.PatientController,
-	educationLevelController *controllers.EducationLevelController,
-	cityController *controllers.CityController,
-	genderController *controllers.GenderController,
-	assessmentController *controllers.AssessmentController,
-	assessmentResponseController *controllers.AssessmentResponseController,
-	appointmentController *controllers.AppointmentController,
-	paymentController *controllers.PaymentController,
-	journalController *controllers.JournalController,
 ) {
 	corsOptions := cors.Options{
 		AllowOriginFunc: func(r *http.Request, origin string) bool {
@@ -73,44 +61,9 @@ func SetupRoutes(
 			r.Route("/auth", func(r chi.Router) {
 				attachAuthRoutes(r, middlewares, authController)
 			})
-			r.Route("/users", func(r chi.Router) {
-				attachUserRoutes(r, middlewares, userController)
-			})
-			r.Route("/education-levels", func(r chi.Router) {
-				attachEducationLevelRoutes(r, middlewares, educationLevelController)
-			})
-			r.Route("/cities", func(r chi.Router) {
-				attachCityRoutes(r, middlewares, cityController)
-			})
-			r.Route("/genders", func(r chi.Router) {
-				attachGenderRoutes(r, middlewares, genderController)
-			})
-			r.Route("/clinics", func(r chi.Router) {
-				attachClinicRoutes(r, middlewares, clinicController)
-			})
-			r.Route("/clinicians", func(r chi.Router) {
-				attachClinicianRouter(r, middlewares, clinicianController)
-			})
-			r.Route("/patients", func(r chi.Router) {
-				attachPatientRouter(r, middlewares, patientController)
-			})
-			r.Route("/assessment-responses", func(r chi.Router) {
-				attachQuestionnaireResponseRouter(r, middlewares, assessmentResponseController)
-			})
-			r.Route("/assessments", func(r chi.Router) {
-				attachQuestionnaireRouter(r, middlewares, assessmentController)
-			})
-			r.Route("/appointments", func(r chi.Router) {
-				attachAppointmentRoutes(r, middlewares, appointmentController)
-			})
-			r.Route("/payments", func(r chi.Router) {
-				attachPaymentRouter(r, middlewares, paymentController)
-			})
-			r.Route("/journals", func(r chi.Router) {
-				attachJournalRouter(r, middlewares, journalController)
-			})
 		})
 	})
+
 	router.With(middlewares.Auth).
 		Mount("/fhir", middlewares.Bridge(internalConfig.FHIR.BaseUrl))
 }

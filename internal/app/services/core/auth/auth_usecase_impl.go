@@ -49,10 +49,8 @@ var (
 )
 
 func NewAuthUsecase(
-	userRepository contracts.UserRepository,
 	redisRepository contracts.RedisRepository,
 	sessionService contracts.SessionService,
-	rolesRepository contracts.RoleRepository,
 	patientFhirClient contracts.PatientFhirClient,
 	practitionerFhirClient contracts.PractitionerFhirClient,
 	practitionerRoleFhirClient contracts.PractitionerRoleFhirClient,
@@ -66,10 +64,8 @@ func NewAuthUsecase(
 ) (contracts.AuthUsecase, error) {
 	onceAuthUsecase.Do(func() {
 		instance := &authUsecase{
-			UserRepository:                  userRepository,
 			RedisRepository:                 redisRepository,
 			SessionService:                  sessionService,
-			RoleRepository:                  rolesRepository,
 			PatientFhirClient:               patientFhirClient,
 			PractitionerFhirClient:          practitionerFhirClient,
 			PractitionerRoleFhirClient:      practitionerRoleFhirClient,

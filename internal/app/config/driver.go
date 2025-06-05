@@ -1,29 +1,12 @@
 package config
 
 type DriverConfig struct {
-	MongoDB    MongoDB    `mapstructure:"mongodb"`
-	PostgresDB PostgresDB `mapstructure:"postgres"`
 	Redis      Redis      `mapstructure:"redis"`
 	Logger     Logger     `mapstructure:"logger"`
 	RabbitMQ   RabbitMQ   `mapstructure:"rabbitmq"`
 	Minio      Minio      `mapstructure:"minio"`
 	Supertoken Supertoken `mapstructure:"supertoken"`
 }
-
-type MongoDB struct {
-	Port     string `mapstructure:"port"`
-	Host     string `mapstructure:"host"`
-	Username string `mapstructure:"username"`
-	Password string `mapstructure:"password"`
-}
-type PostgresDB struct {
-	Port     string `mapstructure:"port"`
-	Host     string `mapstructure:"host"`
-	Username string `mapstructure:"username"`
-	Password string `mapstructure:"password"`
-	DBName   string `mapstructure:"dbname"`
-}
-
 type Redis struct {
 	Host     string `mapstructure:"host"`
 	Port     string `mapstructure:"port"`
