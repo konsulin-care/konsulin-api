@@ -38,12 +38,6 @@ func init() {
 	}
 }
 
-func debugDump() {
-	fmt.Println("🔎 internal_config.app.env =", viper.Get("internal_config.app.env"))
-	fmt.Println("🔎 driver_config.redis.host =", viper.Get("driver_config.redis.host"))
-	fmt.Printf("🔎 ALL SETTINGS: %+v\n", viper.AllSettings())
-}
-
 func loadViperConfig(env string) error {
 	viper.SetConfigName(fmt.Sprintf("config.%s", env))
 	viper.SetConfigType("yaml")
