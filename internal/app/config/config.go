@@ -2,11 +2,18 @@ package config
 
 import (
 	"fmt"
+	"konsulin-service/internal/pkg/utils"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
+)
+
+var (
+	internalCfg *InternalConfig
+	driverCfg   *DriverConfig
 )
 
 func init() {
@@ -20,40 +27,159 @@ func init() {
 		env = "local"
 	}
 
-	err = loadConfig(env)
+	err = loadViperConfig(env)
 	if err != nil {
-		log.Fatalf("Failed to load configuration for %s environment: %s", env, err.Error())
+		log.Printf("YAML config not found, falling back to environment variables: %s", err)
+		internalCfg = loadInternalConfigWithEnv()
+		driverCfg = loadDriverConfigWithEnv()
+	} else {
+		internalCfg = loadInternalConfigWithYAML()
+		driverCfg = loadDriverConfigWithYAML()
 	}
-
 }
 
-func loadConfig(env string) error {
+func loadViperConfig(env string) error {
 	viper.SetConfigName(fmt.Sprintf("config.%s", env))
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
-
-	err := viper.ReadInConfig()
-	if err != nil {
-		log.Fatalf("error reading config file: %s", err.Error())
-	}
-
-	return nil
+	return viper.ReadInConfig()
 }
 
-func NewInternalConfig() *InternalConfig {
+func loadInternalConfigWithYAML() *InternalConfig {
 	var config InternalConfig
 	err := viper.UnmarshalKey("internal_config", &config)
 	if err != nil {
-		log.Fatalf("unable to decode into internalConfig struct: %s", err.Error())
+		log.Fatalf("unable to decode into InternalConfig: %s", err)
 	}
 	return &config
 }
 
-func NewDriverConfig() *DriverConfig {
+func loadInternalConfigWithEnv() *InternalConfig {
+	return &InternalConfig{
+		App: App{
+			Env:                                      utils.GetEnvString("APP_ENV", ""),
+			Port:                                     utils.GetEnvString("APP_PORT", ""),
+			Version:                                  utils.GetEnvString("APP_VERSION", ""),
+			Address:                                  utils.GetEnvString("APP_ADDRESS", ""),
+			BaseUrl:                                  utils.GetEnvString("APP_BASE_URL", ""),
+			Timezone:                                 utils.GetEnvString("APP_TIMEZONE", ""),
+			FrontendDomain:                           utils.GetEnvString("APP_FRONTEND_DOMAIN", ""),
+			EndpointPrefix:                           utils.GetEnvString("APP_ENDPOINT_PREFIX", ""),
+			ResetPasswordUrl:                         utils.GetEnvString("APP_RESET_PASSWORD_URL", ""),
+			MaxRequests:                              utils.GetEnvInt("APP_MAX_REQUESTS", 0),
+			ShutdownTimeoutInSeconds:                 utils.GetEnvInt("APP_SHUTDOWN_TIMEOUT_IN_SECONDS", 0),
+			MaxTimeRequestsPerSeconds:                utils.GetEnvInt("APP_MAX_TIME_REQUESTS_PER_SECONDS", 0),
+			SessionMultiplierInMinutes:               utils.GetEnvInt("APP_SESSION_MULTIPLIER_IN_MINUTES", 0),
+			RequestBodyLimitInMegabyte:               utils.GetEnvInt("APP_REQUEST_BODY_LIMIT_IN_MEGABYTE", 0),
+			PaymentExpiredTimeInMinutes:              utils.GetEnvInt("APP_PAYMENT_EXPIRED_TIME_IN_MINUTES", 0),
+			AccountDeactivationAgeInDays:             utils.GetEnvInt("APP_ACCOUNT_DEACTIVATION_AGE_IN_DAYS", 0),
+			LoginSessionExpiredTimeInHours:           utils.GetEnvInt("APP_LOGIN_SESSION_EXPIRED_TIME_IN_HOURS", 0),
+			WhatsAppOTPExpiredTimeInMinutes:          utils.GetEnvInt("APP_WHATSAPP_OTP_EXPIRED_TIME_IN_MINUTES", 0),
+			ForgotPasswordTokenExpiredTimeInMinutes:  utils.GetEnvInt("APP_FORGOT_PASSWORD_TOKEN_EXPIRED_TIME_IN_MINUTES", 0),
+			MinioPreSignedUrlObjectExpiryTimeInHours: utils.GetEnvInt("APP_MINIO_PRE_SIGNED_URL_OBJECT_EXPIRY_TIME_IN_HOURS", 0),
+			QuestionnaireGuestResponseExpiredTimeInMinutes: utils.GetEnvInt("APP_QUESTIONNAIRE_GUEST_RESPONSE_EXPIRED_TIME_IN_MINUTES", 0),
+		},
+		FHIR: AppFHIR{
+			BaseUrl: utils.GetEnvString("FHIR_BASE_URL", ""),
+		},
+		JWT: AppJWT{
+			Secret:        utils.GetEnvString("JWT_SECRET", ""),
+			ExpTimeInHour: utils.GetEnvInt("JWT_EXP_TIME_IN_HOUR", 0),
+		},
+		Mailer: AppMailer{
+			EmailSender: utils.GetEnvString("MAILER_EMAIL_SENDER", ""),
+		},
+		Minio: AppMinio{
+			ProfilePictureMaxUploadSizeInMB: utils.GetEnvInt("MINIO_PROFILE_PICTURE_MAX_UPLOAD_SIZE_IN_MB", 0),
+			BucketName:                      utils.GetEnvString("MINIO_BUCKET_NAME", ""),
+		},
+		RabbitMQ: AppRabbitMQ{
+			MailerQueue:   utils.GetEnvString("RABBITMQ_MAILER_QUEUE", ""),
+			WhatsAppQueue: utils.GetEnvString("RABBITMQ_WHATSAPP_QUEUE", ""),
+		},
+		MongoDB: AppMongoDB{
+			FhirDBName:     utils.GetEnvString("MONGODB_FHIR_DB_NAME", ""),
+			KonsulinDBName: utils.GetEnvString("MONGODB_KONSULIN_DB_NAME", ""),
+		},
+		Konsulin: AppKonsulin{
+			BankCode:           utils.GetEnvString("KONSULIN_BANK_CODE", ""),
+			BankAccountNumber:  utils.GetEnvString("KONSULIN_BANK_ACCOUNT_NUMBER", ""),
+			FinanceEmail:       utils.GetEnvString("KONSULIN_FINANCE_EMAIL", ""),
+			PaymentDisplayName: utils.GetEnvString("KONSULIN_PAYMENT_DISPLAY_NAME", ""),
+		},
+		Supertoken: AppSupertoken{
+			MagiclinkBaseUrl:           utils.GetEnvString("SUPERTOKEN_MAGICLINK_BASE_URL", ""),
+			KonsulinTenantID:           utils.GetEnvString("SUPERTOKEN_KONSULIN_TENANT_ID", ""),
+			KonsulinDasboardAdminEmail: utils.GetEnvString("SUPERTOKEN_KONSULIN_DASHBOARD_ADMIN_EMAIL", ""),
+		},
+		PaymentGateway: AppPaymentGateway{
+			Username: utils.GetEnvString("PAYMENT_GATEWAY_USERNAME", ""),
+			ApiKey:   utils.GetEnvString("PAYMENT_GATEWAY_API_KEY", ""),
+			BaseUrl:  utils.GetEnvString("PAYMENT_GATEWAY_BASE_URL", ""),
+		},
+	}
+}
+
+func loadDriverConfigWithYAML() *DriverConfig {
 	var config DriverConfig
 	err := viper.UnmarshalKey("driver_config", &config)
 	if err != nil {
-		log.Fatalf("unable to decode into driverConfig struct: %s", err.Error())
+		log.Fatalf("unable to decode into DriverConfig: %s", err)
 	}
 	return &config
+}
+
+func loadDriverConfigWithEnv() *DriverConfig {
+	return &DriverConfig{
+		Redis: Redis{
+			Host:     utils.GetEnvString("REDIS_HOST", "localhost"),
+			Port:     utils.GetEnvString("REDIS_PORT", "6379"),
+			Password: utils.GetEnvString("REDIS_PASSWORD", ""),
+		},
+		Logger: Logger{
+			Level:               utils.GetEnvString("LOGGER_LEVEL", "info"),
+			OutputFileName:      utils.GetEnvString("LOGGER_OUTPUT_FILE_NAME", "app.log"),
+			OutputErrorFileName: utils.GetEnvString("LOGGER_OUTPUT_ERROR_FILE_NAME", "error.log"),
+		},
+		RabbitMQ: RabbitMQ{
+			Host:     utils.GetEnvString("RABBITMQ_HOST", "localhost"),
+			Port:     utils.GetEnvString("RABBITMQ_PORT", "5672"),
+			Username: utils.GetEnvString("RABBITMQ_USERNAME", "guest"),
+			Password: utils.GetEnvString("RABBITMQ_PASSWORD", "guest"),
+		},
+		Minio: Minio{
+			Host:     utils.GetEnvString("MINIO_HOST", "localhost"),
+			Port:     utils.GetEnvString("MINIO_PORT", "9000"),
+			Username: utils.GetEnvString("MINIO_USERNAME", "minioadmin"),
+			Password: utils.GetEnvString("MINIO_PASSWORD", "minioadmin"),
+			UseSSL:   utils.GetEnvBool("MINIO_USE_SSL", false),
+		},
+		Supertoken: Supertoken{
+			ApiBasePath:     utils.GetEnvString("SUPERTOKEN_API_BASE_PATH", "/auth"),
+			WebsiteBasePath: utils.GetEnvString("SUPERTOKEN_WEBSITE_BASE_PATH", "/"),
+			ConnectionURI:   utils.GetEnvString("SUPERTOKEN_CONNECTION_URI", ""),
+			AppName:         utils.GetEnvString("SUPERTOKEN_APP_NAME", "MyApp"),
+			ApiDomain:       utils.GetEnvString("SUPERTOKEN_API_DOMAIN", "http://localhost:3000"),
+			WebsiteDomain:   utils.GetEnvString("SUPERTOKEN_WEBSITE_DOMAIN", "http://localhost:3001"),
+		},
+	}
+}
+
+func NewInternalConfig() *InternalConfig {
+	return internalCfg
+}
+
+func NewDriverConfig() *DriverConfig {
+	return driverCfg
+}
+
+func toSnakeCase(str string) string {
+	var sb strings.Builder
+	for i, r := range str {
+		if i > 0 && r >= 'A' && r <= 'Z' {
+			sb.WriteRune('_')
+		}
+		sb.WriteRune(r)
+	}
+	return strings.ToLower(sb.String())
 }

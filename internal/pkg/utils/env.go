@@ -10,8 +10,7 @@ import (
 func getEnv(key string, defaultValue interface{}) interface{} {
 	value, exists := os.LookupEnv(key)
 	if !exists {
-		log.Printf(constvars.ErrEnvKeyNotExist, key)
-		return defaultValue
+		log.Fatalf(constvars.ErrEnvKeyNotExist, key)
 	}
 
 	switch defaultValue.(type) {
@@ -20,70 +19,70 @@ func getEnv(key string, defaultValue interface{}) interface{} {
 	case int:
 		intValue, err := strconv.Atoi(value)
 		if err != nil {
-			log.Printf(constvars.ErrEnvParsing, key, err)
+			log.Fatalf(constvars.ErrEnvParsing, key, err)
 			return defaultValue
 		}
 		return intValue
 	case int64:
 		int64Value, err := strconv.ParseInt(value, 10, 64)
 		if err != nil {
-			log.Printf(constvars.ErrEnvParsing, key, err)
+			log.Fatalf(constvars.ErrEnvParsing, key, err)
 			return defaultValue
 		}
 		return int64Value
 	case int32:
 		int32Value, err := strconv.ParseInt(value, 10, 32)
 		if err != nil {
-			log.Printf(constvars.ErrEnvParsing, key, err)
+			log.Fatalf(constvars.ErrEnvParsing, key, err)
 			return defaultValue
 		}
 		return int32(int32Value)
 	case uint:
 		uintValue, err := strconv.ParseUint(value, 10, 0)
 		if err != nil {
-			log.Printf(constvars.ErrEnvParsing, key, err)
+			log.Fatalf(constvars.ErrEnvParsing, key, err)
 			return defaultValue
 		}
 		return uint(uintValue)
 	case uint64:
 		uint64Value, err := strconv.ParseUint(value, 10, 64)
 		if err != nil {
-			log.Printf(constvars.ErrEnvParsing, key, err)
+			log.Fatalf(constvars.ErrEnvParsing, key, err)
 			return defaultValue
 		}
 		return uint64Value
 	case uint32:
 		uint32Value, err := strconv.ParseUint(value, 10, 32)
 		if err != nil {
-			log.Printf(constvars.ErrEnvParsing, key, err)
+			log.Fatalf(constvars.ErrEnvParsing, key, err)
 			return defaultValue
 		}
 		return uint32(uint32Value)
 	case uint16:
 		uint16Value, err := strconv.ParseUint(value, 10, 16)
 		if err != nil {
-			log.Printf(constvars.ErrEnvParsing, key, err)
+			log.Fatalf(constvars.ErrEnvParsing, key, err)
 			return defaultValue
 		}
 		return uint16(uint16Value)
 	case uint8:
 		uint8Value, err := strconv.ParseUint(value, 10, 8)
 		if err != nil {
-			log.Printf(constvars.ErrEnvParsing, key, err)
+			log.Fatalf(constvars.ErrEnvParsing, key, err)
 			return defaultValue
 		}
 		return uint8(uint8Value)
 	case bool:
 		boolValue, err := strconv.ParseBool(value)
 		if err != nil {
-			log.Printf(constvars.ErrEnvParsing, key, err)
+			log.Fatalf(constvars.ErrEnvParsing, key, err)
 			return defaultValue
 		}
 		return boolValue
 	case float64:
 		floatValue, err := strconv.ParseFloat(value, 64)
 		if err != nil {
-			log.Printf(constvars.ErrEnvParsing, key, err)
+			log.Fatalf(constvars.ErrEnvParsing, key, err)
 			return defaultValue
 		}
 		return floatValue
