@@ -40,10 +40,6 @@ internal_config:
     mailer_queue: {{ internal_config.rabbitmq.mailer_queue | default('') }}
     whatsapp_queue: {{ internal_config.rabbitmq.whatsapp_queue | default('') }}
 
-  mongodb:
-    fhir_db_name: {{ internal_config.mongodb.fhir_db_name | default('') }}
-    konsulin_db_name: {{ internal_config.mongodb.konsulin_db_name | default('') }}
-
   konsulin:
     bank_code: {{ internal_config.konsulin.bank_code | default('') }}
     bank_account_number: {{ internal_config.konsulin.bank_account_number | default('') }}
@@ -90,8 +86,4 @@ driver_config:
     host: {{ driver_config.minio.host | default('') }}
     username: {{ driver_config.minio.username | default('') }}
     password: {{ driver_config.minio.password | default('') }}
-    use_ssl: {{ driver_config.minio.use_ssl | default('') }}
-    
-  kafka:
-    host: {{ driver_config.kafka.host | default('') }}
-    password: {{ driver_config.kafka.password | default('') }}
+    use_ssl: {{ driver_config.minio.use_ssl | default('') }}  
