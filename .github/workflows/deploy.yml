@@ -1,52 +1,39 @@
-name: Deploy
+name: Deploy Trigger Coolify Workflow
+
 on:
   workflow_call:
-    inputs:
-      ENVIRONMENT:
-        type: string
-        required: true
-      SERVICE_NAME:
-        type: string
-        required: true
     secrets:
-        SSH_HOST:
-            required: true
-        SSH_USERNAME:
-            required: true
-        SSH_KEY:
-            required: true
-        SSH_PORT:
-            required: true
-        DOCKER_USERNAME:
-            required: true
-        DOCKER_PASSWORD:
-            required: true
+      SSH_HOST:
+        required: true
+      SSH_USERNAME:
+        required: true
+      SSH_PRIVATE_KEY:
+        required: true
+      COOLIFY_TRIGGER_URL:
+        required: false
+      COOLIFY_TOKEN:
+        required: false
 
 jobs:
-  #---------------------------------------------------------------------------------------------------------------------
-  # Deploy
-  #---------------------------------------------------------------------------------------------------------------------
   deploy:
-    name: Deployment
     runs-on: ubuntu-latest
     steps:
-    - name: Get sha short
-      id: tags
-      run: |
-        echo "SHORT_SHA=`echo ${GITHUB_SHA} | cut -c1-8`" >> $GITHUB_ENV
+      - name: SSH Check Konsulin API Container Status 1
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            echo "Check Konsulin API Container Status..."
+            docker ps -a | grep "konsulin-api" || echo "Container not found or SSH failed"
 
-    - name: Get Branch
-      run: echo "BRANCH=${GITHUB_REF##*/}" >> $GITHUB_ENV
-
-    - name: executing remote ssh commands using password
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.SSH_HOST }}
-        username: ${{ secrets.SSH_USERNAME }}
-        key: ${{ secrets.SSH_KEY }}
-        port: ${{ secrets.SSH_PORT }}
-        script: |
-          cd /home/${{ secrets.SSH_USERNAME }}/infrastructure/${{ inputs.ENVIRONMENT }}/konsulin-app &&
-          docker login --username=${{ secrets.DOCKER_USERNAME }} --password=${{ secrets.DOCKER_PASSWORD }} repository.konsulin.care &&
-          COMMIT_HASH=sha-${{ env.BRANCH }}-${{ env.SHORT_SHA }} docker compose -f docker-compose-cd.yml pull ${{ inputs.SERVICE_NAME }}
-          COMMIT_HASH=sha-${{ env.BRANCH }}-${{ env.SHORT_SHA }} docker compose -f docker-compose-cd.yml up -d ${{ inputs.SERVICE_NAME }}
+      - name: Trigger Coolify Deploy
+        run: |
+          if [ -n "${{ secrets.COOLIFY_TRIGGER_URL }}" ] && [ -n "${{ secrets.COOLIFY_TOKEN }}" ]; then
+            echo "Triggering Coolify deployment..."
+            curl "${{ secrets.COOLIFY_TRIGGER_URL }}" \
+              --header "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}"
+          else
+            echo "Coolify secrets not provided. Skipping deployment trigger."
+            exit 0
