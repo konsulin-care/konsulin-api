@@ -7,7 +7,7 @@ on:
         required: true
       SSH_USERNAME:
         required: true
-      SSH_PRIVATE_KEY:
+      SSH_KEY:
         required: true
       COOLIFY_TRIGGER_URL:
         required: false
@@ -23,7 +23,7 @@ jobs:
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          key: ${{ secrets.SSH_KEY }}
           script: |
             echo "Check Konsulin API Container Status..."
             docker ps -a | grep "konsulin-api" || echo "Container not found or SSH failed"
