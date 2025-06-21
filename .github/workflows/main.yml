@@ -29,15 +29,31 @@ jobs:
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
 
   # Deploy to appropriate environment
-  deploy:
-    name: Deploy Application
+  deploy-dev:
+    name: Deploy to Dev (Coolify)
     needs: docker
-    if: ${{ github.ref_name == 'develop' || startsWith(github.ref, 'refs/tags/v') }}
+    if: ${{ github.ref_name == 'develop' }}
+    uses: ./.github/workflows/trigger-coolify.yml
+    secrets:
+      COOLIFY_TRIGGER_URL: ${{ secrets.COOLIFY_TRIGGER_URL_DEV }}
+      COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN_DEV }}
+
+  deploy-prod:
+    name: Deploy to Prod (Coolify)
+    needs: docker
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    uses: ./.github/workflows/trigger-coolify.yml
+    secrets:
+      COOLIFY_TRIGGER_URL: ${{ secrets.COOLIFY_TRIGGER_URL_PROD }}
+      COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN_PROD }}
+  
+  deploy-check:
+    name: Check Konsulin API Container Status
+    needs: [deploy-dev, deploy-prod]
+    if: ${{ always() }}
     uses: ./.github/workflows/deploy.yml
     secrets:
       SSH_HOST: ${{ secrets.SSH_HOST }}
       SSH_USERNAME: ${{ secrets.SSH_USERNAME }}
       SSH_KEY: ${{ secrets.SSH_KEY }}
-      COOLIFY_TRIGGER_URL: ${{ secrets.COOLIFY_TRIGGER_URL }}
-      COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
 

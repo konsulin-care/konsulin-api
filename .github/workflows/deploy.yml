@@ -27,13 +27,3 @@ jobs:
           script: |
             echo "Check Konsulin API Container Status..."
             docker ps -a | grep "konsulin-api" || echo "Container not found or SSH failed"
-
-      - name: Trigger Coolify Deploy
-        run: |
-          if [ -n "${{ secrets.COOLIFY_TRIGGER_URL }}" ] && [ -n "${{ secrets.COOLIFY_TOKEN }}" ]; then
-            echo "Triggering Coolify deployment..."
-            curl "${{ secrets.COOLIFY_TRIGGER_URL }}" \
-              --header "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}"
-          else
-            echo "Coolify secrets not provided. Skipping deployment trigger."
-            exit 0
