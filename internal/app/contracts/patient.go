@@ -16,6 +16,7 @@ type PatientFhirClient interface {
 	UpdatePatient(ctx context.Context, request *fhir_dto.Patient) (*fhir_dto.Patient, error)
 	PatchPatient(ctx context.Context, request *fhir_dto.Patient) (*fhir_dto.Patient, error)
 	FindPatientByID(ctx context.Context, patientID string) (*fhir_dto.Patient, error)
+	FindPatientByIdentifier(ctx context.Context, system, value string) ([]fhir_dto.Patient, error)
 }
 
 type PatientRepository interface{}

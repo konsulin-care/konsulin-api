@@ -5,7 +5,6 @@ import (
 	"konsulin-service/internal/pkg/utils"
 	"log"
 	"os"
-	"strings"
 
 	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
@@ -173,13 +172,9 @@ func NewDriverConfig() *DriverConfig {
 	return driverCfg
 }
 
-func toSnakeCase(str string) string {
-	var sb strings.Builder
-	for i, r := range str {
-		if i > 0 && r >= 'A' && r <= 'Z' {
-			sb.WriteRune('_')
-		}
-		sb.WriteRune(r)
-	}
-	return strings.ToLower(sb.String())
+func GetInternalConfig() *InternalConfig {
+	return internalCfg
+}
+func GetDriverConfig() *DriverConfig {
+	return driverCfg
 }

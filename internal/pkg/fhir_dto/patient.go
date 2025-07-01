@@ -10,4 +10,5 @@ type Patient struct {
 	BirthDate    string         `json:"birthDate,omitempty"`
 	Extension    []Extension    `json:"extension,omitempty"`
 	Address      []Address      `json:"address,omitempty"`
+	Identifier   []Identifier   `json:"identifier"`
 }
