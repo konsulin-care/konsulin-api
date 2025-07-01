@@ -8,21 +8,32 @@ import (
 	"go.uber.org/zap"
 )
 
-func NewMiddlewares(logger *zap.Logger, sessionService contracts.SessionService, authUsecase contracts.AuthUsecase, internalConfig *config.InternalConfig) *Middlewares {
+func NewMiddlewares(
+	logger *zap.Logger,
+	sessionService contracts.SessionService,
+	authUsecase contracts.AuthUsecase,
+	internalConfig *config.InternalConfig,
+	practitionerFhirClient contracts.PractitionerFhirClient,
+	patientFhirClient contracts.PatientFhirClient,
+) *Middlewares {
 	return &Middlewares{
-		Log:            logger,
-		SessionService: sessionService,
-		AuthUsecase:    authUsecase,
-		InternalConfig: internalConfig,
+		Log:                    logger,
+		SessionService:         sessionService,
+		AuthUsecase:            authUsecase,
+		InternalConfig:         internalConfig,
+		PractitionerFhirClient: practitionerFhirClient,
+		PatientFhirClient:      patientFhirClient,
 	}
 }
 
 type ContextKey string
 type Middlewares struct {
-	Log            *zap.Logger
-	AuthUsecase    contracts.AuthUsecase
-	SessionService contracts.SessionService
-	InternalConfig *config.InternalConfig
+	Log                    *zap.Logger
+	AuthUsecase            contracts.AuthUsecase
+	SessionService         contracts.SessionService
+	InternalConfig         *config.InternalConfig
+	PractitionerFhirClient contracts.PractitionerFhirClient
+	PatientFhirClient      contracts.PatientFhirClient
 }
 
 type User struct {

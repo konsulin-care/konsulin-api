@@ -93,6 +93,7 @@ const (
 )
 
 const (
+	LoggingPatientCountKey          = "patients_count"
 	LoggingPractitionerRoleIDKey    = "practitioner_role_id"
 	LoggingPractitionerRoleCountKey = "practitioner_roles_count"
 )

@@ -10,6 +10,8 @@ import (
 )
 
 const (
+	keyFHIRRole                               = "fhirRole"
+	keyFHIRID                                 = "fhirID"
 	keyRoles                                  = "roles"
 	keyUID                                    = "uid"
 	supertokenAccessTokenPayloadRolesKey      = "st-role"

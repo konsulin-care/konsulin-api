@@ -62,7 +62,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 
 						if response.OK != nil {
 							user := response.OK.User
-							userRoles, err := userroles.GetRolesForUser(uc.InternalConfig.Supertoken.KonsulinTenantID, user.ID)
+							rolesResp, err := userroles.GetRolesForUser(uc.InternalConfig.Supertoken.KonsulinTenantID, user.ID)
 							if err != nil {
 								uc.Log.Error("authUsecase.SupertokenConsumeCode supertokens error get roles for user by tenantID & UserID",
 									zap.Error(err),
@@ -70,7 +70,14 @@ func (uc *authUsecase) InitializeSupertoken() error {
 								return plessmodels.ConsumeCodeResponse{}, err
 							}
 
-							if slices.Contains(userRoles.OK.Roles, constvars.KonsulinRolePractitioner) {
+							userRoles := rolesResp.OK.Roles
+							hasPract := slices.Contains(userRoles, constvars.KonsulinRolePractitioner)
+							hasPat := slices.Contains(userRoles, constvars.KonsulinRolePatient)
+
+							mainRole := ""
+							fhirID := ""
+
+							if hasPract {
 								ctx := context.Background()
 								fhirPractitioners, err := uc.PractitionerFhirClient.FindPractitionerByIdentifier(ctx, constvars.FhirSupertokenSystemIdentifier, user.ID)
 								if len(fhirPractitioners) > 1 {
@@ -85,7 +92,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 										Active:       true,
 										Identifier: []fhir_dto.Identifier{
 											{
-												System: "https://login.konsulin.care/userid",
+												System: constvars.FhirSupertokenSystemIdentifier,
 												Value:  user.ID,
 											},
 										},
@@ -97,64 +104,118 @@ func (uc *authUsecase) InitializeSupertoken() error {
 											},
 										},
 									}
-									_, err = uc.PractitionerFhirClient.CreatePractitioner(ctx, fhirPractitionerRequest)
+									created, err := uc.PractitionerFhirClient.CreatePractitioner(ctx, fhirPractitionerRequest)
 									if err != nil {
 										uc.Log.Error("authUsecase.SupertokenConsumeCode supertokens error create practitioner for user by UserID & email",
 											zap.Error(err),
 										)
 										return plessmodels.ConsumeCodeResponse{}, err
 									}
+									fhirID = created.ID
+								} else {
+									fhirID = fhirPractitioners[0].ID
+								}
+
+								uc.Log.Info("authUsecase.SupertokenConsumeCode assigning Patient Role to User")
+								response, err := userroles.AddRoleToUser(uc.InternalConfig.Supertoken.KonsulinTenantID, user.ID, constvars.KonsulinRolePatient, nil)
+								if err != nil {
+									uc.Log.Error("authUsecase.SupertokenConsumeCode error userroles.AddRoleToUser",
+										zap.Error(err),
+									)
+									return plessmodels.ConsumeCodeResponse{}, err
+								}
+
+								if response.UnknownRoleError != nil {
+									uc.Log.Error("authUsecase.SupertokenConsumeCode error unknown role",
+										zap.Error(err),
+									)
+									return plessmodels.ConsumeCodeResponse{
+										RestartFlowError: &struct{}{},
+									}, nil
+								}
+
+								if response.OK.DidUserAlreadyHaveRole {
+									uc.Log.Info("authUsecase.SupertokenConsumeCode user already have role")
+								}
+							} else {
+								if !hasPat {
+									addResp, err := userroles.AddRoleToUser(
+										uc.InternalConfig.Supertoken.KonsulinTenantID,
+										user.ID,
+										constvars.KonsulinRolePatient,
+										nil,
+									)
+									if err != nil {
+										uc.Log.Error("consumeCode: add Patient role", zap.Error(err))
+										return plessmodels.ConsumeCodeResponse{}, err
+									}
+									if addResp.UnknownRoleError != nil {
+										uc.Log.Error("consumeCode: unknown Patient role")
+										return plessmodels.ConsumeCodeResponse{
+											RestartFlowError: &struct{}{},
+										}, nil
+									}
+									if addResp.OK.DidUserAlreadyHaveRole {
+										uc.Log.Info("consumeCode: user already Patient")
+									}
+								}
+
+								mainRole = constvars.KonsulinRolePatient
+
+								ctx := context.Background()
+								list, err := uc.PatientFhirClient.FindPatientByIdentifier(
+									ctx, constvars.FhirSystemSupertokenIdentifier, user.ID)
+								if err != nil {
+									uc.Log.Error("consumeCode: find patient", zap.Error(err))
+									return plessmodels.ConsumeCodeResponse{}, err
+								}
+								if len(list) > 1 {
+									uc.Log.Error("consumeCode: more than 1 patient for uid",
+										zap.String("uid", user.ID))
+									return plessmodels.ConsumeCodeResponse{}, errors.New(constvars.ErrClientCannotProcessRequest)
+								}
+								if len(list) == 0 {
+									newPatient := &fhir_dto.Patient{
+										ResourceType: constvars.ResourcePatient,
+										Active:       true,
+										Identifier: []fhir_dto.Identifier{{
+											System: constvars.FhirSystemSupertokenIdentifier,
+											Value:  user.ID,
+										}},
+										Telecom: []fhir_dto.ContactPoint{{
+											System: "email",
+											Value:  *user.Email,
+											Use:    "home",
+										}},
+									}
+									created, err := uc.PatientFhirClient.CreatePatient(ctx, newPatient)
+									if err != nil {
+										uc.Log.Error("consumeCode: create patient", zap.Error(err))
+										return plessmodels.ConsumeCodeResponse{}, err
+									}
+									fhirID = created.ID
+								} else {
+									fhirID = list[0].ID
 								}
 							}
-
-							uc.Log.Info("authUsecase.SupertokenConsumeCode assigning Patient Role to User")
-							response, err := userroles.AddRoleToUser(uc.InternalConfig.Supertoken.KonsulinTenantID, user.ID, constvars.KonsulinRolePatient, nil)
 							if err != nil {
-								uc.Log.Error("authUsecase.SupertokenConsumeCode error userroles.AddRoleToUser",
-									zap.Error(err),
-								)
+								uc.Log.Error("consumeCode: update token payload", zap.Error(err))
 								return plessmodels.ConsumeCodeResponse{}, err
 							}
 
-							if response.UnknownRoleError != nil {
-								uc.Log.Error("authUsecase.SupertokenConsumeCode error unknown role",
-									zap.Error(err),
-								)
-								return plessmodels.ConsumeCodeResponse{
-									RestartFlowError: &struct{}{},
-								}, nil
-							}
-
-							if response.OK.DidUserAlreadyHaveRole {
-								uc.Log.Info("authUsecase.SupertokenConsumeCode user already have role")
-							}
+							uc.Log.Info("consumeCode: login OK",
+								zap.String("uid", user.ID),
+								zap.String("role", mainRole),
+								zap.String("fhir_id", fhirID),
+							)
+							return response, nil
 						}
 						return response, nil
 					}
 					return originalImplementation
 				},
 			},
-			EmailDelivery: &emaildelivery.TypeInput{
-				// Override: func(originalImplementation emaildelivery.EmailDeliveryInterface) emaildelivery.EmailDeliveryInterface {
-				// 	(*originalImplementation.SendEmail) = func(input emaildelivery.EmailType, userContext supertokens.UserContext) error {
-				// 		emailPayload := utils.BuildPasswordlessMagicLinkEmailPayload(
-				// 			uc.InternalConfig.Mailer.EmailSender,
-				// 			input.PasswordlessLogin.Email,
-				// 			*input.PasswordlessLogin.UrlWithLinkCode,
-				// 		)
-
-				// 		ctx := context.Background()
-				// 		err := uc.MailerService.SendEmail(ctx, emailPayload)
-				// 		if err != nil {
-				// 			return err
-				// 		}
-
-				// 		return nil
-				// 	}
-
-				// 	return originalImplementation
-				// },
-			},
+			EmailDelivery: &emaildelivery.TypeInput{},
 			SmsDelivery: &smsdelivery.TypeInput{
 				Override: func(originalImplementation smsdelivery.SmsDeliveryInterface) smsdelivery.SmsDeliveryInterface {
 					(*originalImplementation.SendSms) = func(input smsdelivery.SmsType, userContext supertokens.UserContext) error {
@@ -175,7 +236,6 @@ func (uc *authUsecase) InitializeSupertoken() error {
 
 						return nil
 					}
-
 					return originalImplementation
 				},
 			},
@@ -206,7 +266,6 @@ func (uc *authUsecase) InitializeSupertoken() error {
 					originalCreateNewSession := *originalImplementation.CreateNewSession
 
 					(*originalImplementation.CreateNewSession) = func(userID string, accessTokenPayload, sessionDataInDatabase map[string]interface{}, disableAntiCsrf *bool, tenantId string, userContext supertokens.UserContext) (sessmodels.SessionContainer, error) {
-						fmt.Println(userID, userContext)
 						// or call the default behaviour as show below
 						return originalCreateNewSession(userID, accessTokenPayload, sessionDataInDatabase, disableAntiCsrf, tenantId, userContext)
 					}

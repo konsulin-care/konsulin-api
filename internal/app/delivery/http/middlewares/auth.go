@@ -9,12 +9,14 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"slices"
 
 	"github.com/tidwall/gjson"
+	"go.uber.org/zap"
 )
 
 func (m *Middlewares) OptionalAuthenticate(next http.Handler) http.Handler {
@@ -81,15 +83,27 @@ func (m *Middlewares) Authenticate(next http.Handler) http.Handler {
 
 func (m *Middlewares) Auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-		roles := ctx.Value(keyRoles).([]string)
-		uid := ctx.Value(keyUID).(string)
+		ctxIface := r.Context()
+		roles, _ := ctxIface.Value(keyRoles).([]string)
+		uid, _ := ctxIface.Value(keyUID).(string)
+
+		fhirRole, fhirID, err := m.resolveFHIRIdentity(ctxIface, uid)
+
+		if err != nil {
+			m.Log.Error("Auth.resolveFHIRIdentity", zap.Error(err))
+			utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
+			return
+		}
+
+		ctx := context.WithValue(ctxIface, keyFHIRRole, fhirRole)
+		ctx = context.WithValue(ctx, keyFHIRID, fhirID)
+		r = r.WithContext(ctx)
 
 		if isBundle(r) {
 			body, _ := io.ReadAll(r.Body)
 			r.Body.Close()
 
-			if err := scanBundle(ctx, body, roles, uid); err != nil {
+			if err := scanBundle(ctx, body, roles, fhirID); err != nil {
 				utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
 				return
 			}
@@ -98,12 +112,49 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 			return
 		}
 
-		if err := checkSingle(ctx, r.Method, r.URL.Path, roles, uid); err != nil {
+		fullURL := r.URL.RequestURI()
+		if err := checkSingle(ctx, r.Method, fullURL, roles, fhirID); err != nil {
 			utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (m *Middlewares) resolveFHIRIdentity(ctx context.Context, uid string) (role string, id string, err error) {
+	pracs, err := m.PractitionerFhirClient.FindPractitionerByIdentifier(
+		ctx,
+		constvars.FhirSupertokenSystemIdentifier,
+		uid,
+	)
+
+	if err != nil {
+		return "", "", err
+	}
+
+	if len(pracs) > 0 {
+		if len(pracs) > 1 {
+			return "", "", fmt.Errorf("multiple Practitioner resources for uid %s", uid)
+		}
+		return "practitioner", pracs[0].ID, nil
+	}
+
+	pats, err := m.PatientFhirClient.FindPatientByIdentifier(
+		ctx,
+		constvars.FhirSupertokenSystemIdentifier,
+		uid,
+	)
+
+	if err != nil {
+		return "", "", err
+	}
+	if len(pats) == 0 {
+		return "", "", fmt.Errorf("no Practitioner/Patient found for uid %s", uid)
+	}
+	if len(pats) > 1 {
+		return "", "", fmt.Errorf("multiple Patient resources for uid %s", uid)
+	}
+	return "patient", pats[0].ID, nil
 }
 
 func scanBundle(ctx context.Context, raw []byte, roles []string, uid string) error {
@@ -124,15 +175,17 @@ func scanBundle(ctx context.Context, raw []byte, roles []string, uid string) err
 func checkSingle(ctx context.Context, method, url string, roles []string, uid string) error {
 	res := firstSeg(url)
 
-	if contains(roles, "Patient") && res == "Patient" && !ownsPatient(uid, url) {
-		return fmt.Errorf("patient cannot access other patients' data")
-	}
-
 	for _, role := range roles {
 		if allowed(role, res, method) {
+			if role == constvars.KonsulinRolePatient || role == constvars.KonsulinRolePractitioner {
+				if !ownsResource(uid, url, role) {
+					return fmt.Errorf("%s cannot access other %s resources", role, role)
+				}
+			}
 			return nil
 		}
 	}
+
 	return fmt.Errorf("forbidden")
 }
 
@@ -140,11 +193,12 @@ func allowed(role, res, verb string) bool {
 	verbs := rolePerms[role][res]
 	return slices.Contains(verbs, verb)
 }
+func firstSeg(raw string) string {
+	path := strings.SplitN(raw, "?", 2)[0]
 
-func firstSeg(path string) string {
 	path = strings.TrimPrefix(path, "/fhir/")
 	parts := strings.Split(path, "/")
-	if len(parts) > 0 {
+	if len(parts) > 0 && parts[0] != "" {
 		return parts[0]
 	}
 	return ""
@@ -158,17 +212,45 @@ func contains(s []string, target string) bool {
 	}
 	return false
 }
-
-func ownsPatient(uid, path string) bool {
-	if uid == "" {
+func ownsResource(uid, rawURL, role string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
 		return false
 	}
-	parts := strings.Split(strings.Trim(path, "/"), "/")
-	return len(parts) >= 2 && parts[1] == uid
+
+	parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
+	if len(parts) >= 2 {
+		res, id := parts[0], parts[1]
+		switch role {
+		case constvars.KonsulinRolePatient:
+			if res == constvars.ResourcePatient && id == uid {
+				return true
+			}
+		case constvars.KonsulinRolePractitioner:
+			if res == constvars.ResourcePractitioner && id == uid {
+				return true
+			}
+		}
+	}
+
+	q := u.Query()
+	switch role {
+	case constvars.KonsulinRolePatient:
+		if p := q.Get("patient"); p != "" {
+			id := strings.TrimPrefix(p, "Patient/")
+			return id == uid
+		}
+	case constvars.KonsulinRolePractitioner:
+		if p := q.Get("practitioner"); p != "" {
+			id := strings.TrimPrefix(p, "Practitioner/")
+			return id == uid
+		}
+	}
+	return false
 }
 
 func isBundle(r *http.Request) bool {
-	if r.Method != http.MethodPost {
+	if r.Method != http.MethodPost && r.Method != http.MethodPut && r.Method != http.MethodPatch && r.Header.Get("Content-Type") != "application/fhir+json" {
 		return false
 	}
 	var peek [512]byte

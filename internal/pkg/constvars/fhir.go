@@ -3,6 +3,10 @@ package constvars
 type ResourceType string
 
 const (
+	FhirSystemSupertokenIdentifier = "https://login.konsulin.care/userid"
+)
+
+const (
 	ResourcePatient               = "Patient"
 	ResourceClinician             = "Clinician"
 	ResourceObservation           = "Observation"
