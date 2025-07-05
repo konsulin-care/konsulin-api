@@ -79,42 +79,42 @@ func loadInternalConfigWithEnv() *InternalConfig {
 			QuestionnaireGuestResponseExpiredTimeInMinutes: utils.GetEnvInt("APP_QUESTIONNAIRE_GUEST_RESPONSE_EXPIRED_TIME_IN_MINUTES", 0),
 		},
 		FHIR: AppFHIR{
-			BaseUrl: utils.GetEnvString("FHIR_BASE_URL", ""),
+			BaseUrl: utils.GetEnvString("APP_FHIR_BASE_URL", ""),
 		},
 		JWT: AppJWT{
-			Secret:        utils.GetEnvString("JWT_SECRET", ""),
-			ExpTimeInHour: utils.GetEnvInt("JWT_EXP_TIME_IN_HOUR", 0),
+			Secret:        utils.GetEnvString("APP_JWT_SECRET", ""),
+			ExpTimeInHour: utils.GetEnvInt("APP_JWT_EXP_TIME_IN_HOUR", 0),
 		},
 		Mailer: AppMailer{
-			EmailSender: utils.GetEnvString("MAILER_EMAIL_SENDER", ""),
+			EmailSender: utils.GetEnvString("APP_MAILER_EMAIL_SENDER", ""),
 		},
 		Minio: AppMinio{
-			ProfilePictureMaxUploadSizeInMB: utils.GetEnvInt("MINIO_PROFILE_PICTURE_MAX_UPLOAD_SIZE_IN_MB", 0),
-			BucketName:                      utils.GetEnvString("MINIO_BUCKET_NAME", ""),
+			ProfilePictureMaxUploadSizeInMB: utils.GetEnvInt("APP_MINIO_PROFILE_PICTURE_MAX_UPLOAD_SIZE_IN_MB", 0),
+			BucketName:                      utils.GetEnvString("APP_MINIO_BUCKET_NAME", ""),
 		},
 		RabbitMQ: AppRabbitMQ{
-			MailerQueue:   utils.GetEnvString("RABBITMQ_MAILER_QUEUE", ""),
-			WhatsAppQueue: utils.GetEnvString("RABBITMQ_WHATSAPP_QUEUE", ""),
+			MailerQueue:   utils.GetEnvString("APP_RABBITMQ_MAILER_QUEUE", ""),
+			WhatsAppQueue: utils.GetEnvString("APP_RABBITMQ_WHATSAPP_QUEUE", ""),
 		},
 		MongoDB: AppMongoDB{
-			FhirDBName:     utils.GetEnvString("MONGODB_FHIR_DB_NAME", ""),
-			KonsulinDBName: utils.GetEnvString("MONGODB_KONSULIN_DB_NAME", ""),
+			FhirDBName:     utils.GetEnvString("APP_MONGODB_FHIR_DB_NAME", ""),
+			KonsulinDBName: utils.GetEnvString("APP_MONGODB_KONSULIN_DB_NAME", ""),
 		},
 		Konsulin: AppKonsulin{
-			BankCode:           utils.GetEnvString("KONSULIN_BANK_CODE", ""),
-			BankAccountNumber:  utils.GetEnvString("KONSULIN_BANK_ACCOUNT_NUMBER", ""),
-			FinanceEmail:       utils.GetEnvString("KONSULIN_FINANCE_EMAIL", ""),
-			PaymentDisplayName: utils.GetEnvString("KONSULIN_PAYMENT_DISPLAY_NAME", ""),
+			BankCode:           utils.GetEnvString("APP_KONSULIN_BANK_CODE", ""),
+			BankAccountNumber:  utils.GetEnvString("APP_KONSULIN_BANK_ACCOUNT_NUMBER", ""),
+			FinanceEmail:       utils.GetEnvString("APP_KONSULIN_FINANCE_EMAIL", ""),
+			PaymentDisplayName: utils.GetEnvString("APP_KONSULIN_PAYMENT_DISPLAY_NAME", ""),
 		},
 		Supertoken: AppSupertoken{
-			MagiclinkBaseUrl:           utils.GetEnvString("SUPERTOKEN_MAGICLINK_BASE_URL", ""),
-			KonsulinTenantID:           utils.GetEnvString("SUPERTOKEN_KONSULIN_TENANT_ID", ""),
-			KonsulinDasboardAdminEmail: utils.GetEnvString("SUPERTOKEN_KONSULIN_DASHBOARD_ADMIN_EMAIL", ""),
+			MagiclinkBaseUrl:           utils.GetEnvString("APP_SUPERTOKEN_MAGICLINK_BASE_URL", ""),
+			KonsulinTenantID:           utils.GetEnvString("APP_SUPERTOKEN_KONSULIN_TENANT_ID", ""),
+			KonsulinDasboardAdminEmail: utils.GetEnvString("APP_SUPERTOKEN_KONSULIN_DASHBOARD_ADMIN_EMAIL", ""),
 		},
 		PaymentGateway: AppPaymentGateway{
-			Username: utils.GetEnvString("PAYMENT_GATEWAY_USERNAME", ""),
-			ApiKey:   utils.GetEnvString("PAYMENT_GATEWAY_API_KEY", ""),
-			BaseUrl:  utils.GetEnvString("PAYMENT_GATEWAY_BASE_URL", ""),
+			Username: utils.GetEnvString("APP_PAYMENT_GATEWAY_USERNAME", ""),
+			ApiKey:   utils.GetEnvString("APP_PAYMENT_GATEWAY_API_KEY", ""),
+			BaseUrl:  utils.GetEnvString("APP_PAYMENT_GATEWAY_BASE_URL", ""),
 		},
 	}
 }
