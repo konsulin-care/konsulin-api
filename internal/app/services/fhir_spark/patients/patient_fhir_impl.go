@@ -223,7 +223,7 @@ func (c *patientFhirClient) FindPatientByIdentifier(ctx context.Context, system,
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != constvars.StatusOK {
+	if resp.StatusCode != constvars.StatusOK && resp.StatusCode != constvars.StatusNotFound {
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
 			c.Log.Error("patientFhirClient.FindPatientByIdentifier error reading response body",
