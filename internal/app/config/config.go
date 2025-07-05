@@ -29,11 +29,11 @@ func init() {
 	// err = loadViperConfig(env)
 	// if err != nil {
 	// 	log.Printf("YAML config not found, falling back to environment variables: %s", err)
-	// 	internalCfg = loadInternalConfigWithEnv()
-	// 	driverCfg = loadDriverConfigWithEnv()
+	internalCfg = loadInternalConfigWithEnv()
+	driverCfg = loadDriverConfigWithEnv()
 	// } else {
-	internalCfg = loadInternalConfigWithYAML()
-	driverCfg = loadDriverConfigWithYAML()
+	// internalCfg = loadInternalConfigWithYAML()
+	// driverCfg = loadDriverConfigWithYAML()
 	// }
 }
 
