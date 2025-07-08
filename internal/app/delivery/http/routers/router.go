@@ -6,6 +6,7 @@ import (
 	"konsulin-service/internal/app/delivery/http/controllers"
 	"konsulin-service/internal/app/delivery/http/middlewares"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -28,7 +29,10 @@ func SetupRoutes(
 			if strings.HasPrefix(origin, "http://localhost:") || strings.HasPrefix(origin, "http://127.0.0.1:") {
 				return true
 			}
-			if origin == internalConfig.App.FrontendDomain {
+			if strings.HasPrefix(origin, "https://localhost:") || strings.HasPrefix(origin, "https://127.0.0.1:") {
+				return true
+			}
+			if isAllowedOrigin(internalConfig.App.FrontendDomain, origin) {
 				return true
 			}
 			return false
@@ -66,4 +70,28 @@ func SetupRoutes(
 
 	router.With(middlewares.Auth).
 		Mount("/fhir", middlewares.Bridge(internalConfig.FHIR.BaseUrl))
+}
+
+func isAllowedOrigin(allowedDomain, origin string) bool {
+	allowedDomain = strings.TrimSuffix(allowedDomain, "/")
+	origin = strings.TrimSuffix(origin, "/")
+
+	if allowedDomain == "" || origin == "" {
+		return false
+	}
+
+	allowedURL, err := url.Parse(allowedDomain)
+	if err != nil {
+		allowedURL = &url.URL{Host: allowedDomain}
+	}
+
+	originURL, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+
+	if strings.EqualFold(allowedURL.Hostname(), originURL.Hostname()) {
+		return true
+	}
+	return false
 }
