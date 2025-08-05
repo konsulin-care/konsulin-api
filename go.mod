@@ -16,6 +16,7 @@ require (
         github.com/supertokens/supertokens-golang v0.25.1
         go.uber.org/zap v1.27.0
         golang.org/x/crypto v0.24.0
+        github.com/fsnotify/fsnotify v1.7.0
 )
 
 require (
@@ -27,7 +28,6 @@ require (
 	github.com/derekstavis/go-qs v0.0.0-20180720192143-9eef69e6c4e7 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/go-gorp/gorp/v3 v3.1.0 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
