@@ -5,6 +5,7 @@ import (
 	"konsulin-service/internal/app/contracts"
 
 	"github.com/casbin/casbin/v2"
+	"github.com/fsnotify/fsnotify"
 	"go.uber.org/zap"
 )
 
@@ -21,9 +22,36 @@ func NewMiddlewares(
 		logger.Fatal("failed to load RBAC policies", zap.Error(err))
 	}
 
-	enforcer.AddFunction("owner", func(args ...interface{}) (interface{}, error) {
-		return false, nil
-	})
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		logger.Fatal("failed to create policy watcher", zap.Error(err))
+	}
+	policyFile := "resources/rbac_policy.csv"
+	go func() {
+		for {
+			select {
+			case event, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
+				if event.Op&fsnotify.Write == fsnotify.Write {
+					if err := enforcer.LoadPolicy(); err != nil {
+						logger.Error("failed to reload RBAC policy", zap.Error(err))
+					} else {
+						logger.Info("RBAC policy reloaded", zap.String("file", event.Name))
+					}
+				}
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					return
+				}
+				logger.Error("policy watcher error", zap.Error(err))
+			}
+		}
+	}()
+	if err := watcher.Add(policyFile); err != nil {
+		logger.Error("failed to watch policy file", zap.Error(err))
+	}
 
 	return &Middlewares{
 		Log:                    logger,

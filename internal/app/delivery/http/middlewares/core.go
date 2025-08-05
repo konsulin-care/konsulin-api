@@ -80,10 +80,16 @@ func (m *Middlewares) RequestIDMiddleware(next http.Handler) http.Handler {
 
 func (m *Middlewares) RequirePermission(resource, action string) func([]claims.SessionClaimValidator, sessmodels.SessionContainer, supertokens.UserContext) ([]claims.SessionClaimValidator, error) {
 	return func(globalClaimValidators []claims.SessionClaimValidator, sessionContainer sessmodels.SessionContainer, userContext supertokens.UserContext) ([]claims.SessionClaimValidator, error) {
-		for role, res := range rolePerms {
-			if actions, ok := res[resource]; ok && contains(actions, action) {
-				globalClaimValidators = append(globalClaimValidators, userrolesclaims.UserRoleClaimValidators.Includes(role, nil, nil))
+		policies, err := m.Enforcer.GetFilteredPolicy(1, resource, action)
+		if err != nil {
+			return globalClaimValidators, err
+		}
+		for _, p := range policies {
+			if len(p) < 3 {
+				continue
 			}
+			role := p[0]
+			globalClaimValidators = append(globalClaimValidators, userrolesclaims.UserRoleClaimValidators.Includes(role, nil, nil))
 		}
 		return globalClaimValidators, nil
 	}

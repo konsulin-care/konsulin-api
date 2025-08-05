@@ -206,14 +206,6 @@ func firstSeg(raw string) string {
 	return ""
 }
 
-func contains(s []string, target string) bool {
-	for _, v := range s {
-		if v == target {
-			return true
-		}
-	}
-	return false
-}
 func ownsResource(uid, rawURL, role string) bool {
 	u, err := url.Parse(rawURL)
 	if err != nil {

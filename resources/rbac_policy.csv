@@ -5,6 +5,7 @@ p, clinic_admin, PractitionerRole, POST
 p, clinic_admin, PractitionerRole, PUT
 p, clinic_admin, Schedule, POST
 p, clinic_admin, Slot, GET
+p, clinic_admin, , POST
 p, guest, Organization, GET
 p, guest, PractitionerRole, GET
 p, guest, Questionnaire, GET
@@ -23,6 +24,7 @@ p, patient, Questionnaire, GET
 p, patient, QuestionnaireResponse, GET
 p, patient, QuestionnaireResponse, POST
 p, patient, ResearchStudy, GET
+p, patient, , POST
 p, patient, Slot, GET
 p, practitioner, Appointment, GET
 p, practitioner, Practitioner, DELETE
@@ -34,6 +36,7 @@ p, practitioner, Questionnaire, GET
 p, practitioner, Questionnaire, POST
 p, practitioner, QuestionnaireResponse, PUT
 p, practitioner, ResearchStudy, GET
+p, practitioner, , POST
 p, practitioner, Slot, GET
 p, superadmin, Person, POST
 p, superadmin, Practitioner, GET
