@@ -13,8 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"slices"
-
+	"github.com/casbin/casbin/v2"
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
@@ -103,7 +102,7 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 			body, _ := io.ReadAll(r.Body)
 			r.Body.Close()
 
-			if err := scanBundle(ctx, body, roles, fhirID); err != nil {
+			if err := scanBundle(ctx, m.Enforcer, body, roles, fhirID); err != nil {
 				utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
 				return
 			}
@@ -113,7 +112,7 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 		}
 
 		fullURL := r.URL.RequestURI()
-		if err := checkSingle(ctx, r.Method, fullURL, roles, fhirID); err != nil {
+		if err := checkSingle(ctx, m.Enforcer, r.Method, fullURL, roles, fhirID); err != nil {
 			utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
 			return
 		}
@@ -157,26 +156,26 @@ func (m *Middlewares) resolveFHIRIdentity(ctx context.Context, uid string) (role
 	return "patient", pats[0].ID, nil
 }
 
-func scanBundle(ctx context.Context, raw []byte, roles []string, uid string) error {
+func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []string, uid string) error {
 	if gjson.GetBytes(raw, "resourceType").String() != "Bundle" {
 		return fmt.Errorf("invalid bundle")
 	}
 	entries := gjson.GetBytes(raw, "entry").Array()
-	for _, e := range entries {
-		method := e.Get("request.method").String()
-		url := e.Get("request.url").String()
-		if err := checkSingle(ctx, method, url, roles, uid); err != nil {
+	for _, entry := range entries {
+		method := entry.Get("request.method").String()
+		url := entry.Get("request.url").String()
+		if err := checkSingle(ctx, e, method, url, roles, uid); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func checkSingle(ctx context.Context, method, url string, roles []string, uid string) error {
+func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, roles []string, uid string) error {
 	res := firstSeg(url)
 
 	for _, role := range roles {
-		if allowed(role, res, method) {
+		if allowed(e, role, res, method) {
 			if role == constvars.KonsulinRolePatient || role == constvars.KonsulinRolePractitioner {
 				if !ownsResource(uid, url, role) {
 					return fmt.Errorf("%s cannot access other %s resources", role, role)
@@ -189,9 +188,12 @@ func checkSingle(ctx context.Context, method, url string, roles []string, uid st
 	return fmt.Errorf("forbidden")
 }
 
-func allowed(role, res, verb string) bool {
-	verbs := rolePerms[role][res]
-	return slices.Contains(verbs, verb)
+func allowed(e *casbin.Enforcer, role, res, verb string) bool {
+	ok, err := e.Enforce(role, res, verb)
+	if err != nil {
+		return false
+	}
+	return ok
 }
 func firstSeg(raw string) string {
 	path := strings.SplitN(raw, "?", 2)[0]
