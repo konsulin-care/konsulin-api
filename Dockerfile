@@ -6,7 +6,7 @@ ARG TAG
 ARG BUILD_TIME
 ARG RUN_NUMBER
 
-FROM debian:stable-slim AS base
+FROM uzie17/debian:stable-Jakarta AS base
 LABEL maintainer="Muhammad Febrian Ardiansyah <mfardiansyah.id@gmail.com>"
 WORKDIR /app
 
