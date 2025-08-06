@@ -49,6 +49,7 @@ RUN echo "Set ARG value of [TAG] as $TAG"
 ARG RELEASE_NOTE="author=$AUTHOR \nversion=$VERSION \ncommit=${GIT_COMMIT} \ntag=$TAG \nbuild time=$BUILD_TIME \nrun number=$RUN_NUMBER"
 RUN echo "${RELEASE_NOTE}" > /go/src/github.com/konsulin-id/be-konsulin/RELEASE
 
+ADD . ./
 ADD go.mod go.sum ./
 ADD cmd ./cmd
 ADD cmd/http ./cmd/http
