@@ -6,7 +6,7 @@ ARG TAG
 ARG BUILD_TIME
 ARG RUN_NUMBER
 
-FROM debian:buster-slim AS base
+FROM debian:stable-slim AS base
 LABEL maintainer="Muhammad Febrian Ardiansyah <mfardiansyah.id@gmail.com>"
 WORKDIR /app
 
