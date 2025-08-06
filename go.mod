@@ -3,31 +3,31 @@ module konsulin-service
 go 1.22.3
 
 require (
-	github.com/go-chi/chi/v5 v5.1.0
-	github.com/go-chi/cors v1.2.1
-	github.com/joho/godotenv v1.5.1
-	github.com/lib/pq v1.10.9
-	github.com/minio/minio-go/v7 v7.0.74
-	github.com/rabbitmq/amqp091-go v1.10.0
-	github.com/rubenv/sql-migrate v1.7.0
-	github.com/sirupsen/logrus v1.9.3
-	github.com/spf13/viper v1.19.0
-	github.com/supertokens/supertokens-golang v0.25.1
-	go.uber.org/zap v1.27.0
-	golang.org/x/crypto v0.24.0
+        github.com/casbin/casbin/v2 v2.108.0
+        github.com/go-chi/chi/v5 v5.1.0
+        github.com/go-chi/cors v1.2.1
+        github.com/joho/godotenv v1.5.1
+        github.com/lib/pq v1.10.9
+        github.com/minio/minio-go/v7 v7.0.74
+        github.com/rabbitmq/amqp091-go v1.10.0
+        github.com/rubenv/sql-migrate v1.7.0
+        github.com/sirupsen/logrus v1.9.3
+        github.com/spf13/viper v1.19.0
+        github.com/supertokens/supertokens-golang v0.25.1
+        go.uber.org/zap v1.27.0
+        golang.org/x/crypto v0.24.0
+        github.com/fsnotify/fsnotify v1.7.0
 )
 
 require (
 	github.com/MicahParks/keyfunc/v2 v2.1.0 // indirect
-	github.com/bmatcuk/doublestar/v4 v4.6.1 // indirect
-	github.com/casbin/casbin/v2 v2.108.0 // indirect
-	github.com/casbin/govaluate v1.3.0 // indirect
+        github.com/bmatcuk/doublestar/v4 v4.6.1 // indirect
+        github.com/casbin/govaluate v1.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/derekstavis/go-qs v0.0.0-20180720192143-9eef69e6c4e7 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/go-gorp/gorp/v3 v3.1.0 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect

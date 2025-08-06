@@ -5,7 +5,11 @@ import (
 	"konsulin-service/internal/app/models"
 )
 
-type RoleUsecase interface{}
+type RoleUsecase interface {
+	ListRoles(ctx context.Context) ([]string, error)
+	AddPermission(ctx context.Context, role, obj, act string) error
+	RemovePermission(ctx context.Context, role, obj, act string) error
+}
 
 type RoleRepository interface {
 	FindAll(ctx context.Context) ([]models.Role, error)

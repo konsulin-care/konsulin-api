@@ -7,34 +7,19 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/supertokens/supertokens-golang/recipe/session"
-	"github.com/supertokens/supertokens-golang/recipe/session/claims"
 	"github.com/supertokens/supertokens-golang/recipe/session/sessmodels"
-	"github.com/supertokens/supertokens-golang/recipe/userroles/userrolesclaims"
-	"github.com/supertokens/supertokens-golang/supertokens"
 )
 
 func attachUserRoutes(router chi.Router, middlewares *middlewares.Middlewares, userController *controllers.UserController) {
 	router.Get("/profile", session.VerifySession(&sessmodels.VerifySessionOptions{
-		OverrideGlobalClaimValidators: func(globalClaimValidators []claims.SessionClaimValidator, sessionContainer sessmodels.SessionContainer, userContext supertokens.UserContext) ([]claims.SessionClaimValidator, error) {
-			globalClaimValidators = append(globalClaimValidators, userrolesclaims.UserRoleClaimValidators.Includes(constvars.RoleTypePatient, nil, nil))
-			globalClaimValidators = append(globalClaimValidators, userrolesclaims.UserRoleClaimValidators.Includes(constvars.RoleTypePractitioner, nil, nil))
-			return globalClaimValidators, nil
-		},
+		OverrideGlobalClaimValidators: middlewares.RequirePermission(constvars.ResourcePatient, constvars.MethodGet),
 	}, userController.GetUserProfileBySession))
 
 	router.Put("/profile", session.VerifySession(&sessmodels.VerifySessionOptions{
-		OverrideGlobalClaimValidators: func(globalClaimValidators []claims.SessionClaimValidator, sessionContainer sessmodels.SessionContainer, userContext supertokens.UserContext) ([]claims.SessionClaimValidator, error) {
-			globalClaimValidators = append(globalClaimValidators, userrolesclaims.UserRoleClaimValidators.Includes(constvars.RoleTypePatient, nil, nil))
-			globalClaimValidators = append(globalClaimValidators, userrolesclaims.UserRoleClaimValidators.Includes(constvars.RoleTypePractitioner, nil, nil))
-			return globalClaimValidators, nil
-		},
+		OverrideGlobalClaimValidators: middlewares.RequirePermission(constvars.ResourcePatient, constvars.MethodPut),
 	}, userController.UpdateUserBySession))
 
 	router.Delete("/me", session.VerifySession(&sessmodels.VerifySessionOptions{
-		OverrideGlobalClaimValidators: func(globalClaimValidators []claims.SessionClaimValidator, sessionContainer sessmodels.SessionContainer, userContext supertokens.UserContext) ([]claims.SessionClaimValidator, error) {
-			globalClaimValidators = append(globalClaimValidators, userrolesclaims.UserRoleClaimValidators.Includes(constvars.RoleTypePatient, nil, nil))
-			globalClaimValidators = append(globalClaimValidators, userrolesclaims.UserRoleClaimValidators.Includes(constvars.RoleTypePractitioner, nil, nil))
-			return globalClaimValidators, nil
-		},
+		OverrideGlobalClaimValidators: middlewares.RequirePermission(constvars.ResourcePatient, constvars.MethodDelete),
 	}, userController.DeactivateUserBySession))
 }

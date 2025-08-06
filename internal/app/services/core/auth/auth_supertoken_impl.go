@@ -54,7 +54,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 					(*originalImplementation.ConsumeCode) = func(userInput *plessmodels.UserInputCodeWithDeviceID, linkCode *string, preAuthSessionID string, tenantId string, userContext supertokens.UserContext) (plessmodels.ConsumeCodeResponse, error) {
 						response, err := originalConsumeCode(userInput, linkCode, preAuthSessionID, tenantId, userContext)
 						if err != nil {
-							uc.Log.Error("authUsecase.SupertokenConsumeCode error while do func originalConsumeCode",
+							log.Println("authUsecase.SupertokenConsumeCode error while do func originalConsumeCode",
 								zap.Error(err),
 							)
 							return plessmodels.ConsumeCodeResponse{}, err
@@ -64,7 +64,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 							user := response.OK.User
 							rolesResp, err := userroles.GetRolesForUser(uc.InternalConfig.Supertoken.KonsulinTenantID, user.ID)
 							if err != nil {
-								uc.Log.Error("authUsecase.SupertokenConsumeCode supertokens error get roles for user by tenantID & UserID",
+								log.Println("authUsecase.SupertokenConsumeCode supertokens error get roles for user by tenantID & UserID",
 									zap.Error(err),
 								)
 								return plessmodels.ConsumeCodeResponse{}, err
@@ -81,7 +81,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 								ctx := context.Background()
 								fhirPractitioners, err := uc.PractitionerFhirClient.FindPractitionerByIdentifier(ctx, constvars.FhirSupertokenSystemIdentifier, user.ID)
 								if len(fhirPractitioners) > 1 {
-									uc.Log.Error("authUsecase.SupertokenConsumeCode supertokens error get roles for user by tenantID & UserID",
+									log.Println("authUsecase.SupertokenConsumeCode supertokens error get roles for user by tenantID & UserID",
 										zap.Error(err),
 									)
 									return plessmodels.ConsumeCodeResponse{}, errors.New(constvars.ErrClientCannotProcessRequest)
@@ -106,7 +106,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 									}
 									created, err := uc.PractitionerFhirClient.CreatePractitioner(ctx, fhirPractitionerRequest)
 									if err != nil {
-										uc.Log.Error("authUsecase.SupertokenConsumeCode supertokens error create practitioner for user by UserID & email",
+										log.Println("authUsecase.SupertokenConsumeCode supertokens error create practitioner for user by UserID & email",
 											zap.Error(err),
 										)
 										return plessmodels.ConsumeCodeResponse{}, err
@@ -135,7 +135,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 								}
 
 								if response.OK.DidUserAlreadyHaveRole {
-									uc.Log.Info("authUsecase.SupertokenConsumeCode user already have role")
+									uc.Log.Error("authUsecase.SupertokenConsumeCode user already have role")
 								}
 							} else {
 								if !hasPat {
@@ -146,17 +146,17 @@ func (uc *authUsecase) InitializeSupertoken() error {
 										nil,
 									)
 									if err != nil {
-										uc.Log.Error("consumeCode: add Patient role", zap.Error(err))
+										log.Println("consumeCode: add Patient role", zap.Error(err))
 										return plessmodels.ConsumeCodeResponse{}, err
 									}
 									if addResp.UnknownRoleError != nil {
-										uc.Log.Error("consumeCode: unknown Patient role")
+										log.Println("consumeCode: unknown Patient role")
 										return plessmodels.ConsumeCodeResponse{
 											RestartFlowError: &struct{}{},
 										}, nil
 									}
 									if addResp.OK.DidUserAlreadyHaveRole {
-										uc.Log.Info("consumeCode: user already Patient")
+										log.Println("consumeCode: user already Patient")
 									}
 								}
 
@@ -166,11 +166,11 @@ func (uc *authUsecase) InitializeSupertoken() error {
 								list, err := uc.PatientFhirClient.FindPatientByIdentifier(
 									ctx, constvars.FhirSystemSupertokenIdentifier, user.ID)
 								if err != nil {
-									uc.Log.Error("consumeCode: find patient", zap.Error(err))
+									log.Println("consumeCode: find patient", zap.Error(err))
 									return plessmodels.ConsumeCodeResponse{}, err
 								}
 								if len(list) > 1 {
-									uc.Log.Error("consumeCode: more than 1 patient for uid",
+									log.Println("consumeCode: more than 1 patient for uid",
 										zap.String("uid", user.ID))
 									return plessmodels.ConsumeCodeResponse{}, errors.New(constvars.ErrClientCannotProcessRequest)
 								}
@@ -197,10 +197,6 @@ func (uc *authUsecase) InitializeSupertoken() error {
 								} else {
 									fhirID = list[0].ID
 								}
-							}
-							if err != nil {
-								uc.Log.Error("consumeCode: update token payload", zap.Error(err))
-								return plessmodels.ConsumeCodeResponse{}, err
 							}
 
 							uc.Log.Info("consumeCode: login OK",
@@ -284,7 +280,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 
 	err := supertokens.Init(supertokens.TypeInput{
 		OnSuperTokensAPIError: func(err error, req *http.Request, res http.ResponseWriter) {
-			uc.Log.Error(err.Error())
+			log.Println(err.Error())
 		},
 		Supertokens: supertokenConnectionInfo,
 		AppInfo:     supertokenAppInfo,
@@ -293,6 +289,55 @@ func (uc *authUsecase) InitializeSupertoken() error {
 	if err != nil {
 		return err
 	}
+
+	resp, err := userroles.CreateNewRoleOrAddPermissions(constvars.KonsulinRolePatient, []string{}, nil)
+	if err != nil {
+		log.Println("Error creating KonsulinRolePatient role", zap.Error(err))
+	}
+	if !resp.OK.CreatedNewRole {
+		log.Println("KonsulinRolePatient role already exists")
+	}
+
+	resp, err = userroles.CreateNewRoleOrAddPermissions(constvars.KonsulinRoleGuest, []string{}, nil)
+	if err != nil {
+		log.Println("Error creating KonsulinRolePatient role", zap.Error(err))
+	}
+	if !resp.OK.CreatedNewRole {
+		log.Println("KonsulinRolePatient role already exists")
+	}
+
+	resp, err = userroles.CreateNewRoleOrAddPermissions(constvars.KonsulinRoleClinicAdmin, []string{}, nil)
+	if err != nil {
+		log.Println("Error creating KonsulinRoleClinicAdmin role", zap.Error(err))
+	}
+	if !resp.OK.CreatedNewRole {
+		log.Println("KonsulinRoleClinicAdmin role already exists")
+	}
+
+	resp, err = userroles.CreateNewRoleOrAddPermissions(constvars.KonsulinRolePractitioner, []string{}, nil)
+	if err != nil {
+		log.Println("Error creating KonsulinRolePractitioner role", zap.Error(err))
+	}
+	if !resp.OK.CreatedNewRole {
+		log.Println("KonsulinRolePractitioner role already exists")
+	}
+
+	resp, err = userroles.CreateNewRoleOrAddPermissions(constvars.KonsulinRoleResearcher, []string{}, nil)
+	if err != nil {
+		log.Println("Error creating KonsulinRoleResearcher role", zap.Error(err))
+	}
+	if !resp.OK.CreatedNewRole {
+		log.Println("KonsulinRoleResearcher role already exists")
+	}
+
+	resp, err = userroles.CreateNewRoleOrAddPermissions(constvars.KonsulinRoleSuperadmin, []string{}, nil)
+	if err != nil {
+		log.Println("Error creating KonsulinRoleSuperadmin role", zap.Error(err))
+	}
+	if !resp.OK.CreatedNewRole {
+		log.Println("KonsulinRoleSuperadmin role already exists")
+	}
+
 	log.Println("Successfully initialized supertokens SDK")
 	return nil
 }

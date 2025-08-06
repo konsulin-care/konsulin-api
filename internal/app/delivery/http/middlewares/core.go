@@ -7,6 +7,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/supertokens/supertokens-golang/recipe/session/claims"
+	"github.com/supertokens/supertokens-golang/recipe/session/sessmodels"
+	"github.com/supertokens/supertokens-golang/recipe/userroles/userrolesclaims"
+	"github.com/supertokens/supertokens-golang/supertokens"
 	"go.uber.org/zap"
 )
 
@@ -72,4 +76,21 @@ func (m *Middlewares) RequestIDMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func (m *Middlewares) RequirePermission(resource, action string) func([]claims.SessionClaimValidator, sessmodels.SessionContainer, supertokens.UserContext) ([]claims.SessionClaimValidator, error) {
+	return func(globalClaimValidators []claims.SessionClaimValidator, sessionContainer sessmodels.SessionContainer, userContext supertokens.UserContext) ([]claims.SessionClaimValidator, error) {
+		policies, err := m.Enforcer.GetFilteredPolicy(1, resource, action)
+		if err != nil {
+			return globalClaimValidators, err
+		}
+		for _, p := range policies {
+			if len(p) < 3 {
+				continue
+			}
+			role := p[0]
+			globalClaimValidators = append(globalClaimValidators, userrolesclaims.UserRoleClaimValidators.Includes(role, nil, nil))
+		}
+		return globalClaimValidators, nil
+	}
 }

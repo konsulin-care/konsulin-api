@@ -3,8 +3,9 @@ package middlewares
 import (
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/pkg/constvars"
 
+	"github.com/casbin/casbin/v2"
+	"github.com/fsnotify/fsnotify"
 	"go.uber.org/zap"
 )
 
@@ -16,6 +17,42 @@ func NewMiddlewares(
 	practitionerFhirClient contracts.PractitionerFhirClient,
 	patientFhirClient contracts.PatientFhirClient,
 ) *Middlewares {
+	enforcer, err := casbin.NewEnforcer("resources/rbac_model.conf", "resources/rbac_policy.csv")
+	if err != nil {
+		logger.Fatal("failed to load RBAC policies", zap.Error(err))
+	}
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		logger.Fatal("failed to create policy watcher", zap.Error(err))
+	}
+	policyFile := "resources/rbac_policy.csv"
+	go func() {
+		for {
+			select {
+			case event, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
+				if event.Op&fsnotify.Write == fsnotify.Write {
+					if err := enforcer.LoadPolicy(); err != nil {
+						logger.Error("failed to reload RBAC policy", zap.Error(err))
+					} else {
+						logger.Info("RBAC policy reloaded", zap.String("file", event.Name))
+					}
+				}
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					return
+				}
+				logger.Error("policy watcher error", zap.Error(err))
+			}
+		}
+	}()
+	if err := watcher.Add(policyFile); err != nil {
+		logger.Error("failed to watch policy file", zap.Error(err))
+	}
+
 	return &Middlewares{
 		Log:                    logger,
 		SessionService:         sessionService,
@@ -23,6 +60,7 @@ func NewMiddlewares(
 		InternalConfig:         internalConfig,
 		PractitionerFhirClient: practitionerFhirClient,
 		PatientFhirClient:      patientFhirClient,
+		Enforcer:               enforcer,
 	}
 }
 
@@ -34,6 +72,7 @@ type Middlewares struct {
 	InternalConfig         *config.InternalConfig
 	PractitionerFhirClient contracts.PractitionerFhirClient
 	PatientFhirClient      contracts.PatientFhirClient
+	Enforcer               *casbin.Enforcer
 }
 
 type User struct {
@@ -42,49 +81,3 @@ type User struct {
 }
 
 const UserContextKey ContextKey = "user_context"
-
-var rolePerms = map[string]map[string][]string{
-	constvars.KonsulinRoleClinicAdmin: {
-		constvars.ResourceOrganization:     {constvars.MethodGet},
-		constvars.ResourcePractitioner:     {constvars.MethodGet},
-		constvars.ResourcePractitionerRole: {constvars.MethodGet, constvars.MethodPost, constvars.MethodPut},
-		constvars.ResourceSchedule:         {constvars.MethodPost},
-		constvars.ResourceSlot:             {constvars.MethodGet},
-	},
-	constvars.KonsulinRoleGuest: {
-		constvars.ResourceOrganization:          {constvars.MethodGet},
-		constvars.ResourcePractitionerRole:      {constvars.MethodGet},
-		constvars.ResourceQuestionnaire:         {constvars.MethodGet},
-		constvars.ResourceQuestionnaireResponse: {constvars.MethodPost},
-		constvars.ResourceResearchStudy:         {constvars.MethodGet},
-		constvars.ResourceSlot:                  {constvars.MethodGet},
-	},
-	constvars.KonsulinRolePatient: {
-		constvars.ResourceAppointment:           {constvars.MethodGet},
-		constvars.ResourceObservation:           {constvars.MethodPost, constvars.MethodPut},
-		constvars.ResourceOrganization:          {constvars.MethodGet},
-		constvars.ResourcePatient:               {constvars.MethodDelete, constvars.MethodPost, constvars.MethodPut},
-		constvars.ResourcePractitionerRole:      {constvars.MethodGet},
-		constvars.ResourceQuestionnaire:         {constvars.MethodGet},
-		constvars.ResourceQuestionnaireResponse: {constvars.MethodGet, constvars.MethodPost},
-		constvars.ResourceResearchStudy:         {constvars.MethodGet},
-		constvars.ResourceSlot:                  {constvars.MethodGet},
-	},
-	constvars.KonsulinRolePractitioner: {
-		constvars.ResourceAppointment:           {constvars.MethodGet},
-		constvars.ResourcePractitioner:          {constvars.MethodDelete, constvars.MethodPost, constvars.MethodPut},
-		constvars.ResourcePractitionerRole:      {constvars.MethodGet, constvars.MethodPut},
-		constvars.ResourceQuestionnaire:         {constvars.MethodGet, constvars.MethodPost},
-		constvars.ResourceQuestionnaireResponse: {constvars.MethodPut},
-		constvars.ResourceResearchStudy:         {constvars.MethodGet},
-		constvars.ResourceSlot:                  {constvars.MethodGet},
-	},
-	constvars.KonsulinRoleSuperadmin: {
-		constvars.ResourcePerson:                {constvars.MethodPost},
-		constvars.ResourcePractitioner:          {constvars.MethodGet},
-		constvars.ResourcePractitionerRole:      {constvars.MethodPost, constvars.MethodPut},
-		constvars.ResourceQuestionnaire:         {constvars.MethodGet, constvars.MethodPost},
-		constvars.ResourceQuestionnaireResponse: {constvars.MethodGet},
-		constvars.ResourceSchedule:              {constvars.MethodPost},
-	},
-}
