@@ -68,7 +68,8 @@ RUN go build -o api-service \
 
 FROM base AS release
 
-COPY --from=gobuild /go/src/github.com/konsulin-id/be-konsulin/api-service .
-COPY --from=gobuild /go/src/github.com/konsulin-id/be-konsulin/RELEASE ./RELEASE
+COPY --from=gobuild /go/src/github.com/konsulin-id/be-konsulin/ .
+# COPY --from=gobuild /go/src/github.com/konsulin-id/be-konsulin/api-service .
+# COPY --from=gobuild /go/src/github.com/konsulin-id/be-konsulin/RELEASE ./RELEASE
 
 ENTRYPOINT ["./api-service"]
