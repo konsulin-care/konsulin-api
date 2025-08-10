@@ -171,13 +171,13 @@ func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []str
 	return nil
 }
 
-func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, roles []string, uid string) error {
+func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, roles []string, fhirID string) error {
 	res := firstSeg(url)
 
 	for _, role := range roles {
 		if allowed(e, role, res, method) {
 			if role == constvars.KonsulinRolePatient || role == constvars.KonsulinRolePractitioner {
-				if !ownsResource(uid, url, role) {
+				if !ownsResource(fhirID, url, role) {
 					return fmt.Errorf("%s cannot access other %s resources", role, role)
 				}
 			}
@@ -206,7 +206,7 @@ func firstSeg(raw string) string {
 	return ""
 }
 
-func ownsResource(uid, rawURL, role string) bool {
+func ownsResource(fhirID, rawURL, role string) bool {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return false
@@ -214,14 +214,14 @@ func ownsResource(uid, rawURL, role string) bool {
 
 	parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
 	if len(parts) >= 2 {
-		res, id := parts[0], parts[1]
+		res, id := parts[1], parts[2]
 		switch role {
 		case constvars.KonsulinRolePatient:
-			if res == constvars.ResourcePatient && id == uid {
+			if res == constvars.ResourcePatient && id == fhirID {
 				return true
 			}
 		case constvars.KonsulinRolePractitioner:
-			if res == constvars.ResourcePractitioner && id == uid {
+			if res == constvars.ResourcePractitioner && id == fhirID {
 				return true
 			}
 		}
@@ -232,12 +232,12 @@ func ownsResource(uid, rawURL, role string) bool {
 	case constvars.KonsulinRolePatient:
 		if p := q.Get("patient"); p != "" {
 			id := strings.TrimPrefix(p, "Patient/")
-			return id == uid
+			return id == fhirID
 		}
 	case constvars.KonsulinRolePractitioner:
 		if p := q.Get("practitioner"); p != "" {
 			id := strings.TrimPrefix(p, "Practitioner/")
-			return id == uid
+			return id == fhirID
 		}
 	}
 	return false
