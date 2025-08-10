@@ -16,6 +16,7 @@ p, patient, Appointment, GET
 p, patient, Observation, POST
 p, patient, Observation, PUT
 p, patient, Organization, GET
+p, patient, Patient, GET
 p, patient, Patient, DELETE
 p, patient, Patient, POST
 p, patient, Patient, PUT

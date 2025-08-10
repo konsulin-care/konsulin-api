@@ -171,13 +171,13 @@ func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []str
 	return nil
 }
 
-func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, roles []string, uid string) error {
+func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, roles []string, fhirID string) error {
 	res := firstSeg(url)
 
 	for _, role := range roles {
 		if allowed(e, role, res, method) {
 			if role == constvars.KonsulinRolePatient || role == constvars.KonsulinRolePractitioner {
-				if !ownsResource(uid, url, role) {
+				if !ownsResource(fhirID, url, role) {
 					return fmt.Errorf("%s cannot access other %s resources", role, role)
 				}
 			}

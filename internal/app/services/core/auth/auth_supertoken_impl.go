@@ -292,50 +292,50 @@ func (uc *authUsecase) InitializeSupertoken() error {
 
 	resp, err := userroles.CreateNewRoleOrAddPermissions(constvars.KonsulinRolePatient, []string{}, nil)
 	if err != nil {
-		log.Println("Error creating KonsulinRolePatient role", zap.Error(err))
+		log.Println("Error creating 'patient' role", zap.Error(err))
 	}
 	if !resp.OK.CreatedNewRole {
-		log.Println("KonsulinRolePatient role already exists")
+		log.Println("'patient' role already exists")
 	}
 
 	resp, err = userroles.CreateNewRoleOrAddPermissions(constvars.KonsulinRoleGuest, []string{}, nil)
 	if err != nil {
-		log.Println("Error creating KonsulinRolePatient role", zap.Error(err))
+		log.Println("Error creating 'guest' role", zap.Error(err))
 	}
 	if !resp.OK.CreatedNewRole {
-		log.Println("KonsulinRolePatient role already exists")
+		log.Println("'guest' role already exists")
 	}
 
 	resp, err = userroles.CreateNewRoleOrAddPermissions(constvars.KonsulinRoleClinicAdmin, []string{}, nil)
 	if err != nil {
-		log.Println("Error creating KonsulinRoleClinicAdmin role", zap.Error(err))
+		log.Println("Error creating 'clinic_admin' role", zap.Error(err))
 	}
 	if !resp.OK.CreatedNewRole {
-		log.Println("KonsulinRoleClinicAdmin role already exists")
+		log.Println("'clinic_admin' role already exists")
 	}
 
 	resp, err = userroles.CreateNewRoleOrAddPermissions(constvars.KonsulinRolePractitioner, []string{}, nil)
 	if err != nil {
-		log.Println("Error creating KonsulinRolePractitioner role", zap.Error(err))
+		log.Println("Error creating 'practitioner' role", zap.Error(err))
 	}
 	if !resp.OK.CreatedNewRole {
-		log.Println("KonsulinRolePractitioner role already exists")
+		log.Println("'practitioner' role already exists")
 	}
 
 	resp, err = userroles.CreateNewRoleOrAddPermissions(constvars.KonsulinRoleResearcher, []string{}, nil)
 	if err != nil {
-		log.Println("Error creating KonsulinRoleResearcher role", zap.Error(err))
+		log.Println("Error creating 'researcher' role", zap.Error(err))
 	}
 	if !resp.OK.CreatedNewRole {
-		log.Println("KonsulinRoleResearcher role already exists")
+		log.Println("'researcher' role already exists")
 	}
 
 	resp, err = userroles.CreateNewRoleOrAddPermissions(constvars.KonsulinRoleSuperadmin, []string{}, nil)
 	if err != nil {
-		log.Println("Error creating KonsulinRoleSuperadmin role", zap.Error(err))
+		log.Println("Error creating 'superadmin' role", zap.Error(err))
 	}
 	if !resp.OK.CreatedNewRole {
-		log.Println("KonsulinRoleSuperadmin role already exists")
+		log.Println("'superadmin' role already exists")
 	}
 
 	log.Println("Successfully initialized supertokens SDK")
