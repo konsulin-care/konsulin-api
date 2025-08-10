@@ -1,8 +1,3 @@
-# Project Authorship 
-Author: Abraham Purnomo  
-Email: [abrahampurnomo144@gmail.com](mailto:abrahampurnomo144@gmail.com)  
-GitHub: [bsr144](https://github.com/bsr144)
-
 # Konsulin Backend Service
 
 Welcome to the **Konsulin** backend service repository. This service is designed to support the Konsulin digital health platform, enhancing well-being through self-paced exercises and various psychological tools. This README provides an overview of the service, its features, and how to use it.
