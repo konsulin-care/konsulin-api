@@ -16,5 +16,6 @@ ADD go.mod go.sum ./
 ADD cmd ./cmd
 ADD cmd/http ./cmd/http
 ADD internal ./internal
+ADD resources ./resources
 ADD pkg ./pkg
 RUN go mod download
