@@ -82,27 +82,34 @@ func (m *Middlewares) Authenticate(next http.Handler) http.Handler {
 
 func (m *Middlewares) Auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var fhirRole, fhirID string
+		var err error
 		ctxIface := r.Context()
 		roles, _ := ctxIface.Value(keyRoles).([]string)
 		uid, _ := ctxIface.Value(keyUID).(string)
 
-		fhirRole, fhirID, err := m.resolveFHIRIdentity(ctxIface, uid)
-
-		if err != nil {
-			m.Log.Error("Auth.resolveFHIRIdentity", zap.Error(err))
-			utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
-			return
+		if !isOnlyGuest(roles) {
+			fhirRole, fhirID, err = m.resolveFHIRIdentity(ctxIface, uid)
+			if err != nil {
+				m.Log.Error("Auth.resolveFHIRIdentity", zap.Error(err))
+				utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
+				return
+			}
+		} else {
+			fhirRole = constvars.KonsulinRoleGuest
+			fhirID = ""
 		}
 
-		ctx := context.WithValue(ctxIface, keyFHIRRole, fhirRole)
-		ctx = context.WithValue(ctx, keyFHIRID, fhirID)
-		r = r.WithContext(ctx)
+		ctxIface = context.WithValue(ctxIface, keyFHIRRole, fhirRole)
+		ctxIface = context.WithValue(ctxIface, keyFHIRID, fhirID)
+
+		r = r.WithContext(ctxIface)
 
 		if isBundle(r) {
 			body, _ := io.ReadAll(r.Body)
 			r.Body.Close()
 
-			if err := scanBundle(ctx, m.Enforcer, body, roles, fhirID); err != nil {
+			if err := scanBundle(ctxIface, m.Enforcer, body, roles, ctxIface.Value(keyFHIRID).(string)); err != nil {
 				utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
 				return
 			}
@@ -112,12 +119,19 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 		}
 
 		fullURL := r.URL.RequestURI()
-		if err := checkSingle(ctx, m.Enforcer, r.Method, fullURL, roles, fhirID); err != nil {
+		if err := checkSingle(ctxIface, m.Enforcer, r.Method, fullURL, roles, ctxIface.Value(keyFHIRID).(string)); err != nil {
 			utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func isOnlyGuest(roles []string) bool {
+	if len(roles) != 1 {
+		return false
+	}
+	return strings.EqualFold(roles[0], constvars.KonsulinRoleGuest)
 }
 
 func (m *Middlewares) resolveFHIRIdentity(ctx context.Context, uid string) (role string, id string, err error) {
@@ -135,7 +149,7 @@ func (m *Middlewares) resolveFHIRIdentity(ctx context.Context, uid string) (role
 		if len(pracs) > 1 {
 			return "", "", fmt.Errorf("multiple Practitioner resources for uid %s", uid)
 		}
-		return "practitioner", pracs[0].ID, nil
+		return constvars.KonsulinRolePractitioner, pracs[0].ID, nil
 	}
 
 	pats, err := m.PatientFhirClient.FindPatientByIdentifier(
@@ -153,7 +167,7 @@ func (m *Middlewares) resolveFHIRIdentity(ctx context.Context, uid string) (role
 	if len(pats) > 1 {
 		return "", "", fmt.Errorf("multiple Patient resources for uid %s", uid)
 	}
-	return "patient", pats[0].ID, nil
+	return constvars.KonsulinRolePatient, pats[0].ID, nil
 }
 
 func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []string, uid string) error {
