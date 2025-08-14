@@ -1,52 +1,67 @@
-version: "3"  
-services:  
-  spark:
-    container_name: spark
-    restart: always
-    image: alysivji0jasper/sparkfhir-arm:r4-latest
-    environment:
-      - StoreSettings__ConnectionString=mongodb://konsulindb:konsulintophealthservices@mongodb:27017/spark?authSource=admin
-      - SparkSettings__Endpoint=http://localhost:5555/fhir
-    ports:
-      - "5555:80"
-    depends_on:
-      - mongodb
+version: "3.9"
 
-  mongodb:
-    container_name: mongodb
-    image: sparkfhir/mongo:r4-latest
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: konsulindb
-      MONGO_INITDB_ROOT_PASSWORD: konsulintophealthservices
+name: core-konsulin-stacks
+
+services:
+  postgres-core-konsulin:
+    image: postgres:16.5-alpine
+    container_name: postgres-core-konsulin
+    restart: unless-stopped
     ports:
-      - "17017:27017"
+      - "7500:5432"
+    environment:
+      POSTGRES_USER: supertokens
+      POSTGRES_PASSWORD: supertokens
+      POSTGRES_DB: supertokens
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
     volumes:
-      - r4-latest-develop-data-volume:/data/db
+      - postgres_data:/var/lib/postgresql/data
 
-  redis:
-    container_name: redis
-    image: redis:latest
-    environment:
-      REDIS_PASSWORD: customredis77
+  redis-core-konsulin:
+    image: bitnami/redis:latest
+    container_name: redis-core-konsulin
+    restart: unless-stopped
     ports:
       - "6379:6379"
-    command: ["redis-server", "--requirepass", "customredis77"]
-    volumes:
-      - redis-data:/data
-
-  rabbitmq:
-    container_name: rabbitmq
-    image: rabbitmq:3-management
     environment:
-      RABBITMQ_DEFAULT_USER: user
-      RABBITMQ_DEFAULT_PASS: password
-    ports:
-      - "15672:15672" 
-      - "5672:5672"   
+      ALLOW_EMPTY_PASSWORD: "no"
+      REDIS_PASSWORD: redispass
+    command: ["/opt/bitnami/scripts/redis/run.sh"]
     volumes:
-      - rabbitmq-data:/var/lib/rabbitmq
+      - redis_data:/bitnami/redis/data
+
+  blaze-core-konsulin:
+    image: samply/blaze:latest
+    container_name: blaze-core-konsulin
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      BASE_URL: "http://localhost:8080"
+      CONTEXT_PATH: "/fhir"
+    volumes:
+      - blaze_data:/app/data
+
+  supertokens-core-konsulin:
+    image: registry.supertokens.io/supertokens/supertokens-postgresql:latest
+    container_name: supertokens-core-konsulin
+    restart: unless-stopped
+    depends_on:
+      postgres-core-konsulin:
+        condition: service_healthy
+    ports:
+      - "3567:3567"
+    environment:
+      POSTGRESQL_CONNECTION_URI: "postgresql://supertokens:supertokens@postgres-core-konsulin:5432/supertokens"
+    # volumes:
+    #   - supertokens_data:/usr/lib/supertokens
 
 volumes:
-  r4-latest-develop-data-volume:
-  redis-data:
-  rabbitmq-data:
+  postgres_data:
+  redis_data:
+  blaze_data:
+  # supertokens_data:
