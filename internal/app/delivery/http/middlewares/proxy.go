@@ -1,6 +1,7 @@
 package middlewares
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
@@ -26,7 +27,13 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 			fullURL += "?" + r.URL.RawQuery
 		}
 
-		req, err := http.NewRequestWithContext(r.Context(), r.Method, fullURL, r.Body)
+		bodyBytes, err := io.ReadAll(r.Body)
+		if err != nil {
+			utils.BuildErrorResponse(m.Log, w, exceptions.ErrReadBody(err))
+			return
+		}
+
+		req, err := http.NewRequestWithContext(r.Context(), r.Method, fullURL, bytes.NewReader(bodyBytes))
 		if err != nil {
 			utils.BuildErrorResponse(m.Log, w, exceptions.ErrCreateHTTPRequest(err))
 			return
