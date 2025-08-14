@@ -46,6 +46,7 @@ func SetupRoutes(
 
 	router.Use(middlewares.RequestIDMiddleware)
 	router.Use(middlewares.Logging(logger))
+	router.Use(middlewares.BodyBuffer)
 	router.Use(cors.Handler(corsOptions))
 	router.Use(supertokens.Middleware)
 	router.Use(middlewares.SessionOptional)

@@ -52,6 +52,7 @@ const (
 	CONTEXT_SESSION_DATA_KEY         ContextKey = "session_data"
 	CONTEXT_IS_CLIENT_REQUEST_ID_KEY ContextKey = "is_client_request_id"
 	CONTEXT_STEPS_KEY                ContextKey = "steps"
+	CONTEXT_RAW_BODY                 ContextKey = "raw_body"
 )
 
 const (

@@ -27,10 +27,9 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 			fullURL += "?" + r.URL.RawQuery
 		}
 
-		bodyBytes, err := io.ReadAll(r.Body)
-		if err != nil {
-			utils.BuildErrorResponse(m.Log, w, exceptions.ErrReadBody(err))
-			return
+		bodyBytes, _ := r.Context().Value(constvars.CONTEXT_RAW_BODY).([]byte)
+		if bodyBytes == nil {
+			bodyBytes = []byte{}
 		}
 
 		req, err := http.NewRequestWithContext(r.Context(), r.Method, fullURL, bytes.NewReader(bodyBytes))
