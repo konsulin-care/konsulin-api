@@ -1,10 +1,15 @@
 package middlewares
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"time"
+
+	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/utils"
 )
 
 func (m *Middlewares) Bridge(target string) http.Handler {
@@ -23,17 +28,29 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 
 		req, err := http.NewRequestWithContext(r.Context(), r.Method, fullURL, r.Body)
 		if err != nil {
-			http.Error(w, "error creating request", http.StatusInternalServerError)
+			utils.BuildErrorResponse(m.Log, w, exceptions.ErrCreateHTTPRequest(err))
 			return
 		}
 		req.Header = r.Header.Clone()
 
 		resp, err := client.Do(req)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadGateway)
+			utils.BuildErrorResponse(m.Log, w, exceptions.ErrSendHTTPRequest(err))
 			return
 		}
 		defer resp.Body.Close()
+
+		if resp.StatusCode >= http.StatusBadRequest {
+			body, readErr := io.ReadAll(resp.Body)
+			if readErr != nil {
+				utils.BuildErrorResponse(m.Log, w, exceptions.ErrReadBody(readErr))
+				return
+			}
+
+			fhirErr := exceptions.BuildNewCustomError(fmt.Errorf(string(body)), resp.StatusCode, string(body), constvars.ErrDevServerProcess)
+			utils.BuildErrorResponse(m.Log, w, fhirErr)
+			return
+		}
 
 		for k, v := range resp.Header {
 			w.Header()[k] = v
