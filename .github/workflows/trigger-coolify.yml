@@ -1,4 +1,4 @@
-name: Trigger Coolify Deploy
+name: Triggering Coolify deployment
 
 on:
   workflow_call:
