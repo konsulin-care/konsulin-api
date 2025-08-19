@@ -242,7 +242,16 @@ func ownsResource(fhirID, rawURL, role string) bool {
 
 	parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
 	if len(parts) >= 2 {
-		res, id := parts[1], parts[2]
+		var res, id string
+		// Support both "/fhir/Resource/ID" and "/Resource/ID" shapes
+		if strings.EqualFold(parts[0], "fhir") {
+			if len(parts) >= 3 {
+				res, id = parts[1], parts[2]
+			}
+		} else {
+			res, id = parts[0], parts[1]
+		}
+
 		switch role {
 		case constvars.KonsulinRolePatient:
 			if res == constvars.ResourcePatient && id == fhirID {
