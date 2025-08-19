@@ -44,7 +44,6 @@ p, superadmin, Organization, GET
 p, superadmin, Practitioner, GET
 p, superadmin, PractitionerRole, GET
 p, superadmin, Slot, GET
-p, superadmin, , POST
 p, superadmin, ResearchStudy, GET
 p, superadmin, Person, POST
 p, superadmin, PractitionerRole, POST
@@ -53,3 +52,4 @@ p, superadmin, PractitionerRole, PUT
 p, superadmin, Questionnaire, POST
 p, superadmin, ResearchStudy, POST
 p, superadmin, QuestionnaireResponse, GET
+p, superadmin, Observation, GET
