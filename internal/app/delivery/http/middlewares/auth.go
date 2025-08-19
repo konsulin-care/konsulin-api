@@ -88,7 +88,12 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 		roles, _ := ctxIface.Value(keyRoles).([]string)
 		uid, _ := ctxIface.Value(keyUID).(string)
 
-		if !isOnlyGuest(roles) {
+		// Check if this is API key authenticated superadmin
+		if len(roles) == 1 && roles[0] == constvars.KonsulinRoleSuperadmin && uid == "api-key-superadmin" {
+			// API key authenticated superadmin - skip FHIR identity resolution
+			fhirRole = constvars.KonsulinRoleSuperadmin
+			fhirID = "" // Superadmin has no specific FHIR ID
+		} else if !isOnlyGuest(roles) {
 			fhirRole, fhirID, err = m.resolveFHIRIdentity(ctxIface, uid)
 			if err != nil {
 				m.Log.Error("Auth.resolveFHIRIdentity", zap.Error(err))
