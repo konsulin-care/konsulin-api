@@ -193,6 +193,10 @@ func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []str
 func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, roles []string, fhirID string) error {
 	res := firstSeg(url)
 
+	if res == "" {
+		return fmt.Errorf("invalid or empty resource in request")
+	}
+
 	for _, role := range roles {
 		if allowed(e, role, res, method) {
 			if role == constvars.KonsulinRolePatient || role == constvars.KonsulinRolePractitioner {
