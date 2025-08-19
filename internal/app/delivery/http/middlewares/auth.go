@@ -88,7 +88,12 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 		roles, _ := ctxIface.Value(keyRoles).([]string)
 		uid, _ := ctxIface.Value(keyUID).(string)
 
-		if !isOnlyGuest(roles) {
+		// Check if this is API key authenticated superadmin
+		if len(roles) == 1 && roles[0] == constvars.KonsulinRoleSuperadmin && uid == "api-key-superadmin" {
+			// API key authenticated superadmin - skip FHIR identity resolution
+			fhirRole = constvars.KonsulinRoleSuperadmin
+			fhirID = "" // Superadmin has no specific FHIR ID
+		} else if !isOnlyGuest(roles) {
 			fhirRole, fhirID, err = m.resolveFHIRIdentity(ctxIface, uid)
 			if err != nil {
 				m.Log.Error("Auth.resolveFHIRIdentity", zap.Error(err))
@@ -188,6 +193,10 @@ func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []str
 func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, roles []string, fhirID string) error {
 	res := firstSeg(url)
 
+	if res == "" {
+		return fmt.Errorf("invalid or empty resource in request")
+	}
+
 	for _, role := range roles {
 		if allowed(e, role, res, method) {
 			if role == constvars.KonsulinRolePatient || role == constvars.KonsulinRolePractitioner {
@@ -212,7 +221,12 @@ func allowed(e *casbin.Enforcer, role, res, verb string) bool {
 func firstSeg(raw string) string {
 	path := strings.SplitN(raw, "?", 2)[0]
 
-	path = strings.TrimPrefix(path, "/fhir/")
+	// Normalize leading slash and optional fhir prefix so that
+	// paths like "/Observation", "Observation", "/fhir/Observation", "fhir/Observation" all work
+	path = strings.TrimPrefix(path, "/")
+	path = strings.TrimPrefix(path, "fhir/")
+	path = strings.TrimPrefix(path, "/")
+
 	parts := strings.Split(path, "/")
 	if len(parts) > 0 && parts[0] != "" {
 		return parts[0]
@@ -228,7 +242,16 @@ func ownsResource(fhirID, rawURL, role string) bool {
 
 	parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
 	if len(parts) >= 2 {
-		res, id := parts[1], parts[2]
+		var res, id string
+		// Support both "/fhir/Resource/ID" and "/Resource/ID" shapes
+		if strings.EqualFold(parts[0], "fhir") {
+			if len(parts) >= 3 {
+				res, id = parts[1], parts[2]
+			}
+		} else {
+			res, id = parts[0], parts[1]
+		}
+
 		switch role {
 		case constvars.KonsulinRolePatient:
 			if res == constvars.ResourcePatient && id == fhirID {
@@ -258,12 +281,18 @@ func ownsResource(fhirID, rawURL, role string) bool {
 }
 
 func isBundle(r *http.Request) bool {
-	if r.Method != http.MethodPost && r.Method != http.MethodPut && r.Method != http.MethodPatch && r.Header.Get("Content-Type") != "application/fhir+json" {
+	if r.Method != http.MethodPost && r.Method != http.MethodPut && r.Method != http.MethodPatch {
 		return false
 	}
-	var peek [512]byte
+
+	// Prefer raw body from context if available
+	if bodyBytes, ok := r.Context().Value(constvars.CONTEXT_RAW_BODY).([]byte); ok && len(bodyBytes) > 0 {
+		return strings.EqualFold(gjson.GetBytes(bodyBytes, "resourceType").String(), "Bundle")
+	}
+
+	// Fallback: peek into request body and parse resourceType using gjson
+	var peek [2048]byte
 	n, _ := r.Body.Read(peek[:])
-	r.Body.Close()
 	r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(peek[:n]), r.Body))
-	return bytes.Contains(peek[:n], []byte(`"resourceType":"Bundle"`))
+	return strings.EqualFold(gjson.GetBytes(peek[:n], "resourceType").String(), "Bundle")
 }

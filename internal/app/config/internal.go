@@ -35,6 +35,8 @@ type App struct {
 	ForgotPasswordTokenExpiredTimeInMinutes        int    `mapstructure:"forgot_password_token_expired_time_in_minutes"`
 	MinioPreSignedUrlObjectExpiryTimeInHours       int    `mapstructure:"minio_pre_signed_url_object_expiry_time_in_hours"`
 	QuestionnaireGuestResponseExpiredTimeInMinutes int    `mapstructure:"questionnaire_guest_response_expired_time_in_minutes"`
+	SuperadminAPIKey                               string `mapstructure:"superadmin_api_key"`
+	SuperadminAPIKeyRateLimit                      int    `mapstructure:"superadmin_api_key_rate_limit"`
 }
 
 type AppFHIR struct {

@@ -8,11 +8,9 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
-	"github.com/go-chi/httprate"
 	"github.com/supertokens/supertokens-golang/supertokens"
 	"go.uber.org/zap"
 )
@@ -49,12 +47,13 @@ func SetupRoutes(
 	router.Use(middlewares.BodyBuffer)
 	router.Use(cors.Handler(corsOptions))
 	router.Use(supertokens.Middleware)
+	router.Use(middlewares.APIKeyAuth)
 	router.Use(middlewares.SessionOptional)
 	// router.Use(middlewares.Auth)
 
-	// Rate limiting pake httprate
-	rateLimiter := httprate.LimitByIP(internalConfig.App.MaxRequests, time.Second)
-	router.Use(rateLimiter)
+	// Conditional rate limiting based on authentication method
+	normalLimiter, apiKeyLimiter := middlewares.CreateRateLimiters()
+	router.Use(middlewares.ConditionalRateLimit(normalLimiter, apiKeyLimiter))
 
 	router.Use(middlewares.ErrorHandler)
 
