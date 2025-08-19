@@ -221,7 +221,12 @@ func allowed(e *casbin.Enforcer, role, res, verb string) bool {
 func firstSeg(raw string) string {
 	path := strings.SplitN(raw, "?", 2)[0]
 
-	path = strings.TrimPrefix(path, "/fhir/")
+	// Normalize leading slash and optional fhir prefix so that
+	// paths like "/Observation", "Observation", "/fhir/Observation", "fhir/Observation" all work
+	path = strings.TrimPrefix(path, "/")
+	path = strings.TrimPrefix(path, "fhir/")
+	path = strings.TrimPrefix(path, "/")
+
 	parts := strings.Split(path, "/")
 	if len(parts) > 0 && parts[0] != "" {
 		return parts[0]
