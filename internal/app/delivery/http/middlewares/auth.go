@@ -281,12 +281,18 @@ func ownsResource(fhirID, rawURL, role string) bool {
 }
 
 func isBundle(r *http.Request) bool {
-	if r.Method != http.MethodPost && r.Method != http.MethodPut && r.Method != http.MethodPatch && r.Header.Get("Content-Type") != "application/fhir+json" {
+	if r.Method != http.MethodPost && r.Method != http.MethodPut && r.Method != http.MethodPatch {
 		return false
 	}
-	var peek [512]byte
+
+	// Prefer raw body from context if available
+	if bodyBytes, ok := r.Context().Value(constvars.CONTEXT_RAW_BODY).([]byte); ok && len(bodyBytes) > 0 {
+		return strings.EqualFold(gjson.GetBytes(bodyBytes, "resourceType").String(), "Bundle")
+	}
+
+	// Fallback: peek into request body and parse resourceType using gjson
+	var peek [2048]byte
 	n, _ := r.Body.Read(peek[:])
-	r.Body.Close()
 	r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(peek[:n]), r.Body))
-	return bytes.Contains(peek[:n], []byte(`"resourceType":"Bundle"`))
+	return strings.EqualFold(gjson.GetBytes(peek[:n], "resourceType").String(), "Bundle")
 }
