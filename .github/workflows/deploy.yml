@@ -1,4 +1,4 @@
-name: Deploy Trigger Coolify Workflow
+name: Check Container Status
 
 on:
   workflow_call:
