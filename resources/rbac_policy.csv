@@ -52,4 +52,6 @@ p, superadmin, PractitionerRole, PUT
 p, superadmin, Questionnaire, POST
 p, superadmin, ResearchStudy, POST
 p, superadmin, QuestionnaireResponse, GET
-p, superadmin, Observation, GET
+p, superadmin, Condition, PUT
+p, superadmin, Slot, PUT
+p, superadmin, Appointment, POST
