@@ -29,6 +29,7 @@ type App struct {
 	SessionMultiplierInMinutes                     int    `mapstructure:"session_multiplier_in_minutes"`
 	RequestBodyLimitInMegabyte                     int    `mapstructure:"request_body_limit_in_megabyte"`
 	PaymentExpiredTimeInMinutes                    int    `mapstructure:"payment_expired_time_in_minutes"`
+	PaymentGatewayRequestTimeoutInSeconds          int    `mapstructure:"payment_gateway_request_timeout_in_seconds"`
 	AccountDeactivationAgeInDays                   int    `mapstructure:"account_deactivation_age_in_days"`
 	LoginSessionExpiredTimeInHours                 int    `mapstructure:"login_session_expired_time_in_hours"`
 	WhatsAppOTPExpiredTimeInMinutes                int    `mapstructure:"whatsapp_otp_expired_time_in_minutes"`
@@ -79,7 +80,9 @@ type AppSupertoken struct {
 	KonsulinDasboardAdminEmail string `mapstructure:"konsulin_dashboard_admin_email"`
 }
 type AppPaymentGateway struct {
-	Username string `mapstructure:"username"`
-	ApiKey   string `mapstructure:"api_key"`
-	BaseUrl  string `mapstructure:"base_url"`
+	Username                string `mapstructure:"username"`
+	ApiKey                  string `mapstructure:"api_key"`
+	BaseUrl                 string `mapstructure:"base_url"`
+	ListEnablePaymentMethod string `mapstructure:"list_enable_payment_method"`
+	ListEnableSOF           string `mapstructure:"list_enable_sof"`
 }
