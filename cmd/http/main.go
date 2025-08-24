@@ -12,9 +12,12 @@ import (
 	"konsulin-service/internal/app/drivers/messaging"
 	"konsulin-service/internal/app/drivers/storage"
 	"konsulin-service/internal/app/services/core/auth"
+	"konsulin-service/internal/app/services/core/payments"
 	"konsulin-service/internal/app/services/core/session"
+	"konsulin-service/internal/app/services/core/transactions"
 	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
+	"konsulin-service/internal/app/services/fhir_spark/service_requests"
 	"konsulin-service/internal/app/services/shared/locker"
 	"konsulin-service/internal/app/services/shared/mailer"
 	"konsulin-service/internal/app/services/shared/payment_gateway"
@@ -173,6 +176,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	// Initialize FHIR clients
 	patientFhirClient := patientsFhir.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	serviceRequestFhirClient := service_requests.NewServiceRequestFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 
 	// Initialize Auth usecase with dependencies
 	authUseCase, err := auth.NewAuthUsecase(
@@ -201,6 +205,18 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 		log.Fatalf("Error initializing supertokens: %v", err)
 	}
 
+	// Initialize payment usecase and controller
+	serviceRequestStorage := storageKonsulin.NewServiceRequestStorage(serviceRequestFhirClient, bootstrap.Logger)
+	paymentUsecase := payments.NewPaymentUsecase(
+		transactions.NewTransactionPostgresRepository(nil, bootstrap.Logger),
+		bootstrap.InternalConfig,
+		patientFhirClient,
+		serviceRequestStorage,
+		payment_gateway.NewOyService(bootstrap.InternalConfig, bootstrap.Logger),
+		bootstrap.Logger,
+	)
+	paymentController := controllers.NewPaymentController(bootstrap.Logger, paymentUsecase)
+
 	// Setup routes with the router, configuration, middlewares, and controllers
 	routers.SetupRoutes(
 		bootstrap.Router,
@@ -208,6 +224,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 		bootstrap.Logger,
 		middlewares,
 		authController,
+		paymentController,
 	)
 
 	return nil
