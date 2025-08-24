@@ -31,6 +31,7 @@ const (
 	ResourceDevice                = "Device"
 	ResourceLocation              = "Location"
 	ResourceHealthcareService     = "HealthcareService"
+	ResourceServiceRequest        = "ServiceRequest"
 )
 
 const (
