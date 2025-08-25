@@ -152,13 +152,21 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 	amount := req.TotalItem * basePrice
 
 	// 7) Prepare OY payment request
+	loc := time.FixedZone("UTC+7", 7*60*60) // Force UTC+7 because OY is in UTC+7
+	expiration := time.Now().In(loc).Add(time.Duration(uc.InternalConfig.App.PaymentExpiredTimeInMinutes) * time.Minute).Format("2006-01-02 15:04:05")
+
+	uc.Log.Info("paymentUsecase.CreatePay expiration",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("expiration", expiration),
+	)
+
 	oyReq := &requests.PaymentRequestDTO{
 		PartnerUserID:           uid,
 		UseLinkedAccount:        false,
 		PartnerTransactionID:    partnerTrxID,
 		NeedFrontend:            true,
 		SenderEmail:             email,
-		PaymentExpirationTime:   fmt.Sprintf("%dm", uc.InternalConfig.App.PaymentExpiredTimeInMinutes),
+		PaymentExpirationTime:   expiration,
 		ReceiveAmount:           amount,
 		ListEnablePaymentMethod: uc.InternalConfig.PaymentGateway.ListEnablePaymentMethod,
 		ListEnableSOF:           uc.InternalConfig.PaymentGateway.ListEnableSOF,
