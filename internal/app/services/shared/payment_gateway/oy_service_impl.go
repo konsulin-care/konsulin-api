@@ -57,7 +57,7 @@ func (c *oyService) CreatePaymentRouting(ctx context.Context, request *requests.
 		return nil, exceptions.ErrCannotMarshalJSON(err)
 	}
 
-	url := fmt.Sprintf("%s%s", c.BaseUrl, "payment-routing/create-transaction")
+	url := fmt.Sprintf("%s%s", c.BaseUrl, "/api/payment-routing/create-transaction")
 	c.Log.Info("oyService.CreatePaymentRouting built URL",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String("url", url),
