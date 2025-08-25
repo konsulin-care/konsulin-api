@@ -4,6 +4,7 @@ type PaymentRequestDTO struct {
 	PartnerUserID           string           `json:"partner_user_id" validate:"required"`
 	UseLinkedAccount        bool             `json:"use_linked_account" validate:"required"`
 	PartnerTransactionID    string           `json:"partner_trx_id" validate:"required"`
+	FullName                string           `json:"full_name"`
 	NeedFrontend            bool             `json:"need_frontend" validate:"required"`
 	SenderEmail             string           `json:"sender_email" validate:"required,email"`
 	PaymentExpirationTime   string           `json:"trx_expiration_time"`
