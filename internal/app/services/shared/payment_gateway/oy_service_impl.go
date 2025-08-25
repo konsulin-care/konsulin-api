@@ -96,6 +96,16 @@ func (c *oyService) CreatePaymentRouting(ctx context.Context, request *requests.
 		return nil, exceptions.ErrDecodeResponse(err, constvars.OyPaymentRoutingResource)
 	}
 
+	successStatusCode := "000"
+	if paymentResponse.Status.Code != successStatusCode {
+		c.Log.Error("oyService.CreatePaymentRouting received non success status code on create payment routing",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("status", paymentResponse.Status.Code),
+			zap.String("message", paymentResponse.Status.Message),
+		)
+		return nil, exceptions.ErrClientCustomMessage(fmt.Errorf("received non success status code: %s", paymentResponse.Status.Code))
+	}
+
 	c.Log.Info("oyService.CreatePaymentRouting succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String(constvars.LoggingOyPaymentID, paymentResponse.TrxID),
