@@ -19,6 +19,12 @@ type PaymentRoutingStatus struct {
 	PartnerTransactionID string `json:"partner_trx_id"`
 }
 
+// OYCheckPaymentRoutingStatusRequest is the request body for OY check-status API
+type OYCheckPaymentRoutingStatusRequest struct {
+	PartnerTrxID string `json:"partner_trx_id" validate:"required"`
+	SendCallback bool   `json:"send_callback"`
+}
+
 type PaymentRequest struct {
 	PartnerUserID           string           `json:"partner_user_id" validate:"required"`
 	UseLinkedAccount        bool             `json:"use_linked_account" validate:"required"`
