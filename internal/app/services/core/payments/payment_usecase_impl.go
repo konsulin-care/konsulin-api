@@ -127,7 +127,9 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 	if len(patients) == 0 {
 		return nil, exceptions.ErrUserNotExist(fmt.Errorf("no patient found"))
 	}
+
 	patientID := patients[0].ID
+	patientFullName := patients[0].FullName()
 
 	// 5) Build instantiateUri and store in ServiceRequest note
 	instantiateURI := fmt.Sprintf("%s/hook/%s", strings.TrimRight(uc.InternalConfig.App.BaseUrl, "/"), req.Service)
@@ -166,6 +168,7 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 		PartnerTransactionID:    partnerTrxID,
 		NeedFrontend:            true,
 		SenderEmail:             email,
+		FullName:                patientFullName,
 		PaymentExpirationTime:   expiration,
 		ReceiveAmount:           amount,
 		ListEnablePaymentMethod: uc.InternalConfig.PaymentGateway.ListEnablePaymentMethod,
