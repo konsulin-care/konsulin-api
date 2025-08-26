@@ -21,3 +21,16 @@ type CreateServiceRequestOutput struct {
 	OccurrenceDateTime string       `json:"occurrenceDateTime,omitempty"`
 	Note               []Annotation `json:"note,omitempty"`
 }
+
+// GetServiceRequestOutput represents the response when fetching a specific version
+// of a ServiceRequest resource from FHIR.
+type GetServiceRequestOutput struct {
+	ResourceType       string       `json:"resourceType"`
+	ID                 string       `json:"id,omitempty"`
+	Meta               Meta         `json:"meta,omitempty"`
+	Status             string       `json:"status,omitempty"`
+	Intent             string       `json:"intent,omitempty"`
+	Requester          Reference    `json:"requester,omitempty"`
+	OccurrenceDateTime string       `json:"occurrenceDateTime,omitempty"`
+	Note               []Annotation `json:"note,omitempty"`
+}

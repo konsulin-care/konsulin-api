@@ -27,3 +27,9 @@ type CreateServiceRequestStorageOutput struct {
 	ServiceRequestVersion string `json:"serviceRequestVersion"`
 	PartnerTrxID          string `json:"partnerTrxId"`
 }
+
+// GetServiceRequestVersionInput identifies a specific version of a ServiceRequest
+type GetServiceRequestVersionInput struct {
+	ID      string `json:"id" validate:"required"`
+	Version string `json:"version" validate:"required"`
+}

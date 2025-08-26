@@ -1,5 +1,7 @@
 package responses
 
+import "encoding/json"
+
 type Status struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
@@ -54,4 +56,32 @@ type PaymentRoutingStatus struct {
 	PaymentMethod    string `json:"payment_method"`
 	SenderBank       string `json:"sender_bank"`
 	UseLinkedAccount bool   `json:"use_linked_account"`
+}
+
+// OYCheckPaymentRoutingStatusResponse is a specialized response model for OY check-status API
+// Includes required fields + raw JSON body for less-used attributes
+type OYCheckPaymentRoutingStatusResponse struct {
+	Status struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	} `json:"status"`
+	TrxID             string `json:"trx_id"`
+	PartnerUserID     string `json:"partner_user_id"`
+	PartnerTrxID      string `json:"partner_trx_id"`
+	RequestAmount     int    `json:"request_amount"`
+	ReceivedAmount    int    `json:"received_amount"`
+	PaymentStatus     string `json:"payment_status"`
+	TrxExpirationTime string `json:"trx_expiration_time"`
+	NeedFrontend      bool   `json:"need_frontend"`
+	PaymentMethod     string `json:"payment_method"`
+	SenderBank        string `json:"sender_bank"`
+	PaymentRouting    []struct {
+		RecipientBank        string  `json:"recipient_bank"`
+		RecipientAccount     string  `json:"recipient_account"`
+		RecipientAccountName string  `json:"recipient_account_name"`
+		RecipientAmount      float64 `json:"recipient_amount"`
+		DisbursementTrxID    string  `json:"disbursement_trx_id"`
+		TrxStatus            string  `json:"trx_status"`
+	} `json:"payment_routing"`
+	RawBody json.RawMessage `json:"-"` // store entire raw body for less-used fields
 }

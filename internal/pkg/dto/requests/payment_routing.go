@@ -19,6 +19,12 @@ type PaymentRoutingStatus struct {
 	PartnerTransactionID string `json:"partner_trx_id"`
 }
 
+// OYCheckPaymentRoutingStatusRequest is the request body for OY check-status API
+type OYCheckPaymentRoutingStatusRequest struct {
+	PartnerTrxID string `json:"partner_trx_id" validate:"required"`
+	SendCallback bool   `json:"send_callback"`
+}
+
 type PaymentRequest struct {
 	PartnerUserID           string           `json:"partner_user_id" validate:"required"`
 	UseLinkedAccount        bool             `json:"use_linked_account" validate:"required"`
@@ -57,14 +63,14 @@ type PaymentRoutingToCallback struct {
 
 // Transaction represents the overall structure of the JSON response.
 type PaymentRoutingCallback struct {
-	TrxID          string                     `json:"trx_id"`
+	TrxID          string                     `json:"trx_id" validate:"required"`
 	PartnerUserID  string                     `json:"partner_user_id"`
-	PartnerTrxID   string                     `json:"partner_trx_id"`
+	PartnerTrxID   string                     `json:"partner_trx_id" validate:"required"`
 	ReceiveAmount  int                        `json:"receive_amount"`
-	PaymentStatus  string                     `json:"payment_status"`
+	PaymentStatus  string                     `json:"payment_status" validate:"required"`
 	NeedFrontend   bool                       `json:"need_frontend"`
 	PaymentMethod  string                     `json:"payment_method"`
 	SenderBank     string                     `json:"sender_bank"`
 	PaymentInfo    PaymentInfo                `json:"payment_info"`
-	PaymentRouting []PaymentRoutingToCallback `json:"payment_routing"`
+	PaymentRouting []PaymentRoutingToCallback `json:"payment_routing" validate:"required,dive"`
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
@@ -113,7 +114,7 @@ func (c *oyService) CreatePaymentRouting(ctx context.Context, request *requests.
 	return paymentResponse, nil
 }
 
-func (c *oyService) CheckPaymentRoutingStatus(ctx context.Context, request *requests.PaymentRoutingStatus) (*responses.PaymentRoutingStatus, error) {
+func (c *oyService) CheckPaymentRoutingStatus(ctx context.Context, request *requests.OYCheckPaymentRoutingStatusRequest) (*responses.OYCheckPaymentRoutingStatusResponse, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	c.Log.Info("oyService.CheckPaymentRoutingStatus called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -128,7 +129,7 @@ func (c *oyService) CheckPaymentRoutingStatus(ctx context.Context, request *requ
 		return nil, exceptions.ErrCannotMarshalJSON(err)
 	}
 
-	url := fmt.Sprintf("%s%s", c.BaseUrl, "payment-routing/check-status")
+	url := fmt.Sprintf("%s%s", c.BaseUrl, "/api/payment-routing/check-status")
 	c.Log.Info("oyService.CheckPaymentRoutingStatus built URL",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String(constvars.LoggingOyUrlKey, url),
@@ -157,8 +158,27 @@ func (c *oyService) CheckPaymentRoutingStatus(ctx context.Context, request *requ
 	}
 	defer resp.Body.Close()
 
-	paymentRoutingStatusResponse := new(responses.PaymentRoutingStatus)
-	err = json.NewDecoder(resp.Body).Decode(&paymentRoutingStatusResponse)
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		c.Log.Error("oyService.CheckPaymentRoutingStatus error reading response body",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrDecodeResponse(err, constvars.OyPaymentRoutingResource)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		c.Log.Error("oyService.CheckPaymentRoutingStatus received non success status code on check payment routing status",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Int("status_code", resp.StatusCode),
+			zap.String("error_body", string(bodyBytes)),
+		)
+
+		return nil, exceptions.ErrClientCustomMessage(fmt.Errorf("received non success status code: %d", resp.StatusCode))
+	}
+
+	paymentRoutingStatusResponse := new(responses.OYCheckPaymentRoutingStatusResponse)
+	err = json.Unmarshal(bodyBytes, &paymentRoutingStatusResponse)
 	if err != nil {
 		c.Log.Error("oyService.CheckPaymentRoutingStatus error decoding response",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -166,6 +186,8 @@ func (c *oyService) CheckPaymentRoutingStatus(ctx context.Context, request *requ
 		)
 		return nil, exceptions.ErrDecodeResponse(err, constvars.OyPaymentRoutingResource)
 	}
+
+	paymentRoutingStatusResponse.RawBody = bodyBytes
 
 	c.Log.Info("oyService.CheckPaymentRoutingStatus succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
