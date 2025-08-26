@@ -20,23 +20,19 @@ func (m *Middlewares) APIKeyAuth(next http.Handler) http.Handler {
 		apiKey := r.Header.Get(HeaderAPIKey)
 
 		if apiKey == "" {
-			// No API key, continue with normal flow
 			next.ServeHTTP(w, r)
 			return
 		}
 
-		// Validate API key
 		if apiKey != m.InternalConfig.App.SuperadminAPIKey {
 			utils.BuildErrorResponse(m.Log, w, exceptions.ErrInvalidAPIKey(nil))
 			return
 		}
 
-		// Set superadmin context
 		ctx := context.WithValue(r.Context(), ContextAPIKeyAuth, true)
 		ctx = context.WithValue(ctx, keyRoles, []string{constvars.KonsulinRoleSuperadmin})
 		ctx = context.WithValue(ctx, keyUID, "api-key-superadmin")
 
-		// Add audit logging
 		m.Log.Info("API Key authentication successful",
 			zap.String("ip", r.RemoteAddr),
 			zap.String("endpoint", r.URL.Path),

@@ -25,6 +25,11 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	supertokenAccessTokenPayloadRolesKey      = "st-role"
+	supertokenAccessTokenPayloadRolesValueKey = "v"
+)
+
 func (uc *authUsecase) InitializeSupertoken() error {
 	apiBasePath := fmt.Sprintf("%s/%s%s", uc.InternalConfig.App.EndpointPrefix, uc.InternalConfig.App.Version, uc.DriverConfig.Supertoken.ApiBasePath)
 	websiteBasePath := uc.DriverConfig.Supertoken.WebsiteBasePath
@@ -262,7 +267,16 @@ func (uc *authUsecase) InitializeSupertoken() error {
 					originalCreateNewSession := *originalImplementation.CreateNewSession
 
 					(*originalImplementation.CreateNewSession) = func(userID string, accessTokenPayload, sessionDataInDatabase map[string]interface{}, disableAntiCsrf *bool, tenantId string, userContext supertokens.UserContext) (sessmodels.SessionContainer, error) {
-						// or call the default behaviour as show below
+						if userID == "" {
+							if accessTokenPayload == nil {
+								accessTokenPayload = make(map[string]interface{})
+							}
+
+							accessTokenPayload[supertokenAccessTokenPayloadRolesKey] = map[string]interface{}{
+								supertokenAccessTokenPayloadRolesValueKey: []interface{}{constvars.KonsulinRoleGuest},
+							}
+						}
+
 						return originalCreateNewSession(userID, accessTokenPayload, sessionDataInDatabase, disableAntiCsrf, tenantId, userContext)
 					}
 
