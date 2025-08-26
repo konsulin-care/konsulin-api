@@ -1,9 +1,11 @@
 package payments
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/services/shared/storage"
@@ -11,6 +13,8 @@ import (
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/fhir_dto"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -61,32 +65,74 @@ func (uc *paymentUsecase) PaymentRoutingCallback(ctx context.Context, request *r
 		zap.Any(constvars.LoggingRequestKey, request),
 	)
 
-	transaction, err := uc.TransactionRepository.FindByID(ctx, request.PartnerTrxID)
+	// 1) Early exit if status is not COMPLETE
+	if constvars.OYPaymentRoutingStatus(request.PaymentStatus) != constvars.OYPaymentRoutingStatusComplete {
+		uc.Log.Info("paymentUsecase.PaymentRoutingCallback non-complete status; ignoring",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("payment_status", request.PaymentStatus),
+		)
+		return nil
+	}
+
+	// 2) Verify with OY (source of truth)
+	verifyReq := &requests.OYCheckPaymentRoutingStatusRequest{PartnerTrxID: request.PartnerTrxID, SendCallback: false}
+	ctxVerify, cancelVerify := context.WithTimeout(ctx, time.Duration(uc.InternalConfig.App.PaymentGatewayRequestTimeoutInSeconds)*time.Second)
+	defer cancelVerify()
+	verifyResp, err := uc.PaymentGateway.CheckPaymentRoutingStatus(ctxVerify, verifyReq)
 	if err != nil {
-		uc.Log.Error("paymentUsecase.PaymentRoutingCallback error fetching transaction",
+		uc.Log.Error("paymentUsecase.PaymentRoutingCallback OY verify failed",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
-		return err
+		return nil
+	}
+	if constvars.OYPaymentRoutingStatus(verifyResp.PaymentStatus) != constvars.OYPaymentRoutingStatusComplete {
+		uc.Log.Warn("paymentUsecase.PaymentRoutingCallback OY verify not complete; ignoring",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingOyPaymentStatusKey, verifyResp.PaymentStatus),
+		)
+		return nil
 	}
 
-	uc.Log.Info("paymentUsecase.PaymentRoutingCallback fetched transaction",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingTransactionIDKey, transaction.ID),
-	)
+	// 3) Parse partner_trx_id into id-version
+	id, version, parseErr := parsePartnerTrxID(request.PartnerTrxID)
+	if parseErr != nil {
+		uc.Log.Error("paymentUsecase.PaymentRoutingCallback invalid partner_trx_id format",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("partner_trx_id", request.PartnerTrxID),
+			zap.Error(parseErr),
+		)
+		return nil
+	}
 
-	updatedTransaction, err := uc.TransactionRepository.UpdateTransaction(ctx, transaction)
+	// 4) Fetch ServiceRequest specific version
+	sr, err := uc.Storage.FhirClient.GetServiceRequestByIDAndVersion(ctx, id, version)
 	if err != nil {
-		uc.Log.Error("paymentUsecase.PaymentRoutingCallback error updating transaction",
+		uc.Log.Error("paymentUsecase.PaymentRoutingCallback failed fetching ServiceRequest",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
-		return err
+		return nil
 	}
-	uc.Log.Info("paymentUsecase.PaymentRoutingCallback updated transaction",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingTransactionIDKey, updatedTransaction.ID),
-	)
+
+	// 5) Parse note.text -> NoteStorage
+	note, err := extractNoteStorage(sr)
+	if err != nil {
+		uc.Log.Error("paymentUsecase.PaymentRoutingCallback failed parsing stored note",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil
+	}
+
+	// 6) POST instantiateURI with RawBody
+	if err := callInstantiateURI(ctx, uc.Log, note.InstantiateURI, note.RawBody); err != nil {
+		uc.Log.Error("paymentUsecase.PaymentRoutingCallback failed calling instantiate URI",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil
+	}
 
 	uc.Log.Info("paymentUsecase.PaymentRoutingCallback completed successfully",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -219,4 +265,51 @@ func (uc *paymentUsecase) getBasePriceFromRoles(roles []string) (int, error) {
 		}
 	}
 	return 0, fmt.Errorf("unsupported role for pricing")
+}
+
+func parsePartnerTrxID(partnerTrxID string) (string, string, error) {
+	parts := strings.Split(partnerTrxID, "-")
+	if len(parts) < 2 {
+		return "", "", fmt.Errorf("invalid partner_trx_id format")
+	}
+	version := parts[len(parts)-1]
+	id := strings.Join(parts[:len(parts)-1], "-")
+	if strings.TrimSpace(id) == "" || strings.TrimSpace(version) == "" {
+		return "", "", fmt.Errorf("invalid partner_trx_id components")
+	}
+	return id, version, nil
+}
+
+func extractNoteStorage(sr *fhir_dto.GetServiceRequestOutput) (*requests.NoteStorage, error) {
+	if sr == nil || len(sr.Note) == 0 || strings.TrimSpace(sr.Note[0].Text) == "" {
+		return nil, fmt.Errorf("missing note storage payload")
+	}
+	var note requests.NoteStorage
+	if err := json.Unmarshal([]byte(sr.Note[0].Text), &note); err != nil {
+		return nil, err
+	}
+	return &note, nil
+}
+
+func callInstantiateURI(ctx context.Context, log *zap.Logger, url string, body json.RawMessage) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationJSON)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		log.Error("instantiate URI returned non-200",
+			zap.Int("status_code", resp.StatusCode),
+			zap.String("body", string(b)),
+		)
+		return fmt.Errorf("non-200 from instantiate uri: %d", resp.StatusCode)
+	}
+	return nil
 }

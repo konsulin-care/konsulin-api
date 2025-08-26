@@ -12,13 +12,16 @@ const (
 	OY_MOCK_ACCOUNT_NUMBER_PENDING_FORCE_CREDIT = "1234567894"
 )
 
+// OYPaymentRoutingStatus is a typed payment status returned by OY
+type OYPaymentRoutingStatus string
+
 const (
-	OY_PAYMENT_CREATED_STATUS      = "CREATED"
-	OY_WAITING_PAYMENT_STATUS      = "WAITING_PAYMENT"
-	OY_PAYMENT_IN_PROGRESS_STATUS  = "PAYMENT_IN_PROGRESS"
-	OY_DISBURSE_IN_PROGRESS_STATUS = "DISBURSE_IN_PROGRESS"
-	OY_COMPLETE_STATUS             = "COMPLETE"
-	OY_INCOMPLETE_STATUS           = "INCOMPLETE"
-	OY_EXPIRED_STATUS              = "EXPIRED"
-	OY_PAYMENT_FAILED_STATUS       = "PAYMENT_FAILED"
+	OYPaymentRoutingStatusCreated            OYPaymentRoutingStatus = "CREATED"
+	OYPaymentRoutingStatusWaitingPayment     OYPaymentRoutingStatus = "WAITING_PAYMENT"
+	OYPaymentRoutingStatusPaymentInProgress  OYPaymentRoutingStatus = "PAYMENT_IN_PROGRESS"
+	OYPaymentRoutingStatusDisburseInProgress OYPaymentRoutingStatus = "DISBURSE_IN_PROGRESS"
+	OYPaymentRoutingStatusComplete           OYPaymentRoutingStatus = "COMPLETE"
+	OYPaymentRoutingStatusIncomplete         OYPaymentRoutingStatus = "INCOMPLETE"
+	OYPaymentRoutingStatusExpired            OYPaymentRoutingStatus = "EXPIRED"
+	OYPaymentRoutingStatusFailed             OYPaymentRoutingStatus = "PAYMENT_FAILED"
 )
