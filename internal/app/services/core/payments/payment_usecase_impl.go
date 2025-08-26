@@ -292,6 +292,10 @@ func extractNoteStorage(sr *fhir_dto.GetServiceRequestOutput) (*requests.NoteSto
 }
 
 func callInstantiateURI(ctx context.Context, log *zap.Logger, url string, body json.RawMessage) error {
+	log.Info("paymentUsecase.callInstantiateURI request",
+		zap.String("instantiate_uri", url),
+		zap.String("body", string(body)),
+	)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(body))
 	if err != nil {
 		return err
