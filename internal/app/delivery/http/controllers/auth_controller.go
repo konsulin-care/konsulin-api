@@ -128,3 +128,43 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 	)
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.MagicLinkSuccessMessage, nil)
 }
+
+func (ctrl *AuthController) CreateAnonymousSession(w http.ResponseWriter, r *http.Request) {
+	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	if !ok || requestID == "" {
+		ctrl.Log.Error("AuthController.CreateAnonymousSession requestID not found in context")
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingRequestID(nil))
+		return
+	}
+	ctrl.Log.Info("AuthController.CreateAnonymousSession called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	sessionHandle, err := ctrl.AuthUsecase.CreateAnonymousSession(ctx)
+	if err != nil {
+		ctrl.Log.Error("AuthController.CreateAnonymousSession error from usecase",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		if err == context.DeadlineExceeded {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	response := map[string]interface{}{
+		"session_handle": sessionHandle,
+		"role":           "guest",
+	}
+
+	ctrl.Log.Info("AuthController.CreateAnonymousSession succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("session_handle", sessionHandle),
+	)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, "Anonymous session created successfully", response)
+}

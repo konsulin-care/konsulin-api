@@ -10,6 +10,7 @@ import (
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"sync"
+	"time"
 
 	"github.com/supertokens/supertokens-golang/ingredients/emaildelivery"
 	"github.com/supertokens/supertokens-golang/recipe/passwordless"
@@ -198,4 +199,21 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Su
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
 	return nil
+}
+
+func (uc *authUsecase) CreateAnonymousSession(ctx context.Context) (string, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	uc.Log.Info("authUsecase.CreateAnonymousSession called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
+	sessionID := fmt.Sprintf("anonymous_%s_%d", requestID, time.Now().UnixNano())
+
+	uc.Log.Info("authUsecase.CreateAnonymousSession succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("session_id", sessionID),
+		zap.String("role", constvars.KonsulinRoleGuest),
+	)
+
+	return sessionID, nil
 }
