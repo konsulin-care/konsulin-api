@@ -71,6 +71,7 @@ func loadInternalConfigWithEnv() *InternalConfig {
 			SessionMultiplierInMinutes:               utils.GetEnvInt("APP_SESSION_MULTIPLIER_IN_MINUTES", 0),
 			RequestBodyLimitInMegabyte:               utils.GetEnvInt("APP_REQUEST_BODY_LIMIT_IN_MEGABYTE", 0),
 			PaymentExpiredTimeInMinutes:              utils.GetEnvInt("APP_PAYMENT_EXPIRED_TIME_IN_MINUTES", 0),
+			PaymentGatewayRequestTimeoutInSeconds:    utils.GetEnvInt("APP_PAYMENT_GATEWAY_REQUEST_TIMEOUT_IN_SECONDS", 60),
 			AccountDeactivationAgeInDays:             utils.GetEnvInt("APP_ACCOUNT_DEACTIVATION_AGE_IN_DAYS", 0),
 			LoginSessionExpiredTimeInHours:           utils.GetEnvInt("APP_LOGIN_SESSION_EXPIRED_TIME_IN_HOURS", 0),
 			WhatsAppOTPExpiredTimeInMinutes:          utils.GetEnvInt("APP_WHATSAPP_OTP_EXPIRED_TIME_IN_MINUTES", 0),
@@ -114,9 +115,19 @@ func loadInternalConfigWithEnv() *InternalConfig {
 			KonsulinDasboardAdminEmail: utils.GetEnvString("APP_SUPERTOKEN_KONSULIN_DASHBOARD_ADMIN_EMAIL", ""),
 		},
 		PaymentGateway: AppPaymentGateway{
-			Username: utils.GetEnvString("APP_PAYMENT_GATEWAY_USERNAME", ""),
-			ApiKey:   utils.GetEnvString("APP_PAYMENT_GATEWAY_API_KEY", ""),
-			BaseUrl:  utils.GetEnvString("APP_PAYMENT_GATEWAY_BASE_URL", ""),
+			Username:                utils.GetEnvString("APP_PAYMENT_GATEWAY_USERNAME", ""),
+			ApiKey:                  utils.GetEnvString("APP_PAYMENT_GATEWAY_API_KEY", ""),
+			BaseUrl:                 utils.GetEnvString("APP_PAYMENT_GATEWAY_BASE_URL", ""),
+			ListEnablePaymentMethod: utils.GetEnvString("OY_LIST_ENABLE_PAYMENT_METHOD", ""),
+			ListEnableSOF:           utils.GetEnvString("OY_LIST_ENABLE_SOF", ""),
+		},
+		Pricing: AppPricing{
+			PatientBasePrice:      utils.GetEnvInt("PATIENT_BASE_PRICE", 0),
+			PractitionerBasePrice: utils.GetEnvInt("PRACTITIONER_BASE_PRICE", 0),
+			ClinicianBasePrice:    utils.GetEnvInt("CLINICIAN_BASE_PRICE", 0),
+			ResearcherBasePrice:   utils.GetEnvInt("RESEARCHER_BASE_PRICE", 0),
+			ClinicAdminBasePrice:  utils.GetEnvInt("CLINIC_ADMIN_BASE_PRICE", 0),
+			SuperadminBasePrice:   utils.GetEnvInt("SUPERADMIN_BASE_PRICE", 0),
 		},
 	}
 }

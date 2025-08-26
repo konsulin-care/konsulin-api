@@ -445,3 +445,89 @@ func (c *patientFhirClient) PatchPatient(ctx context.Context, request *fhir_dto.
 	)
 	return patientFhir, nil
 }
+
+// FindPatientByEmail queries Patient by email search parameter.
+func (c *patientFhirClient) FindPatientByEmail(ctx context.Context, email string) ([]fhir_dto.Patient, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	c.Log.Info("patientFhirClient.FindPatientByEmail called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
+	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet,
+		fmt.Sprintf("%s?email=%s", c.BaseUrl, email), nil)
+	if err != nil {
+		c.Log.Error("patientFhirClient.FindPatientByEmail error creating HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrCreateHTTPRequest(err)
+	}
+	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		c.Log.Error("patientFhirClient.FindPatientByEmail error sending HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrSendHTTPRequest(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != constvars.StatusOK && resp.StatusCode != constvars.StatusNotFound {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			c.Log.Error("patientFhirClient.FindPatientByEmail error reading response body",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePatient)
+		}
+		var outcome fhir_dto.OperationOutcome
+		err = json.Unmarshal(bodyBytes, &outcome)
+		if err != nil {
+			c.Log.Error("patientFhirClient.FindPatientByEmail error unmarshaling outcome",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePatient)
+		}
+		if len(outcome.Issue) > 0 {
+			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			c.Log.Error("patientFhirClient.FindPatientByEmail FHIR error",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(fhirErrorIssue),
+			)
+			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourcePatient)
+		}
+	}
+
+	var result struct {
+		Total        int    `json:"total"`
+		ResourceType string `json:"resourceType"`
+		Entry        []struct {
+			FullUrl  string           `json:"fullUrl"`
+			Resource fhir_dto.Patient `json:"resource"`
+		} `json:"entry"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	if err != nil {
+		c.Log.Error("patientFhirClient.FindPatientByEmail error decoding response",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePatient)
+	}
+
+	patients := make([]fhir_dto.Patient, len(result.Entry))
+	for i, entry := range result.Entry {
+		patients[i] = entry.Resource
+	}
+
+	c.Log.Info("patientFhirClient.FindPatientByEmail succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.Int(constvars.LoggingPatientCountKey, len(patients)),
+	)
+	return patients, nil
+}

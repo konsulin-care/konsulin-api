@@ -57,7 +57,7 @@ func (c *oyService) CreatePaymentRouting(ctx context.Context, request *requests.
 		return nil, exceptions.ErrCannotMarshalJSON(err)
 	}
 
-	url := fmt.Sprintf("%s%s", c.BaseUrl, "payment-routing/create-transaction")
+	url := fmt.Sprintf("%s%s", c.BaseUrl, "/api/payment-routing/create-transaction")
 	c.Log.Info("oyService.CreatePaymentRouting built URL",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String("url", url),
@@ -94,6 +94,16 @@ func (c *oyService) CreatePaymentRouting(ctx context.Context, request *requests.
 			zap.Error(err),
 		)
 		return nil, exceptions.ErrDecodeResponse(err, constvars.OyPaymentRoutingResource)
+	}
+
+	successStatusCode := "000"
+	if paymentResponse.Status.Code != successStatusCode {
+		c.Log.Error("oyService.CreatePaymentRouting received non success status code on create payment routing",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("status", paymentResponse.Status.Code),
+			zap.String("message", paymentResponse.Status.Message),
+		)
+		return nil, exceptions.ErrClientCustomMessage(fmt.Errorf("received non success status code: %s", paymentResponse.Status.Code))
 	}
 
 	c.Log.Info("oyService.CreatePaymentRouting succeeded",

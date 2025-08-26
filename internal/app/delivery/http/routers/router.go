@@ -21,6 +21,7 @@ func SetupRoutes(
 	logger *zap.Logger,
 	middlewares *middlewares.Middlewares,
 	authController *controllers.AuthController,
+	paymentController *controllers.PaymentController,
 ) {
 	corsOptions := cors.Options{
 		AllowOriginFunc: func(r *http.Request, origin string) bool {
@@ -67,6 +68,9 @@ func SetupRoutes(
 			})
 		})
 	})
+
+	// Payment routes at root level (no version prefix)
+	attachPaymentRouter(router, middlewares, paymentController)
 
 	router.With(middlewares.Auth).
 		Mount("/fhir", middlewares.Bridge(internalConfig.FHIR.BaseUrl))

@@ -81,3 +81,54 @@ func (ctrl *PaymentController) PaymentRoutingCallback(w http.ResponseWriter, r *
 	)
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.PaymentRoutingCallbackSuccessfullyCalled, request.PaymentStatus)
 }
+
+func (ctrl *PaymentController) CreatePay(w http.ResponseWriter, r *http.Request) {
+	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	if !ok || requestID == "" {
+		ctrl.Log.Error("PaymentController.CreatePay requestID not found in context")
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingRequestID(nil))
+		return
+	}
+	ctrl.Log.Info("PaymentController.CreatePay called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
+	roles, _ := r.Context().Value("roles").([]string)
+	if len(roles) == 0 || (len(roles) == 1 && roles[0] == constvars.KonsulinRoleGuest) {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrAuthInvalidRole(nil))
+		return
+	}
+
+	req := new(requests.CreatePayRequest)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		ctrl.Log.Error("PaymentController.CreatePay error decoding JSON",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	resp, err := ctrl.PaymentUsecase.CreatePay(ctx, req)
+	if err != nil {
+		ctrl.Log.Error("PaymentController.CreatePay error from usecase",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		if err == context.DeadlineExceeded {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	ctrl.Log.Info("PaymentController.CreatePay succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("partner_trx_id", resp.PartnerTrxID),
+	)
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.ResponseSuccess, resp)
+}
