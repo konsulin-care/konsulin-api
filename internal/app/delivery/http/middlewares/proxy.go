@@ -2,6 +2,7 @@ package middlewares
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +16,8 @@ import (
 	"konsulin-service/internal/pkg/utils"
 
 	"go.uber.org/zap"
+
+	"github.com/andybalholm/brotli"
 )
 
 func (m *Middlewares) Bridge(target string) http.Handler {
@@ -152,20 +155,83 @@ func determineFilteringRole(roles []string) string {
 // If the response is not a Bundle or JSON cannot be parsed, it returns the original body unchanged.
 // It returns the possibly filtered body and the count of removed entries.
 func (m *Middlewares) filterResponseResourceAgainsRBAC(body []byte, roles []string) ([]byte, int, error) {
-	// Quick check: parse resourceType
-	var envelope struct {
-		ResourceType string `json:"resourceType"`
+	// 1) Early role-based check: filter only for superadmin (extendable later)
+	shouldFilter := false
+	for _, role := range roles {
+		if strings.EqualFold(role, constvars.KonsulinRoleSuperadmin) {
+			shouldFilter = true
+			break
+		}
 	}
-	if err := json.Unmarshal(body, &envelope); err != nil {
-		return body, 0, nil // Non-JSON or unknown format; leave untouched
-	}
-
-	if !strings.EqualFold(envelope.ResourceType, "Bundle") {
-		// For now, we do not alter singular resources
+	if !shouldFilter {
 		return body, 0, nil
 	}
 
-	// Minimal Bundle structure focusing on entries
+	// 2) Determine original encoding by attempting JSON first, then br, then gzip
+	type originalEncoding string
+	const (
+		encodingIdentity originalEncoding = "identity"
+		encodingBrotli   originalEncoding = "br"
+		encodingGzip     originalEncoding = "gzip"
+	)
+
+	bodyForFiltering := body
+	encDetected := encodingIdentity
+
+	// Helper: try unmarshal to detect JSON quickly
+	tryUnmarshal := func(b []byte, v any) error { return json.Unmarshal(b, v) }
+
+	var envelope struct {
+		ResourceType string `json:"resourceType"`
+	}
+	if err := tryUnmarshal(bodyForFiltering, &envelope); err != nil {
+		// Try brotli
+		if brReader := brotli.NewReader(bytes.NewReader(body)); brReader != nil {
+			if decompressed, derr := io.ReadAll(brReader); derr == nil {
+				if jerr := tryUnmarshal(decompressed, &envelope); jerr == nil {
+					bodyForFiltering = decompressed
+					encDetected = encodingBrotli
+				} else {
+					// Try gzip next
+					if gr, gerr := gzip.NewReader(bytes.NewReader(body)); gerr == nil {
+						decompressedGz, rerr := io.ReadAll(gr)
+						_ = gr.Close()
+						if rerr == nil && tryUnmarshal(decompressedGz, &envelope) == nil {
+							bodyForFiltering = decompressedGz
+							encDetected = encodingGzip
+						} else {
+							// Could not parse as JSON even after attempts; pass through
+							return body, 0, nil
+						}
+					} else {
+						// Not gzip either; pass through
+						return body, 0, nil
+					}
+				}
+			} else {
+				// Brotli read failed; try gzip directly
+				if gr, gerr := gzip.NewReader(bytes.NewReader(body)); gerr == nil {
+					decompressedGz, rerr := io.ReadAll(gr)
+					_ = gr.Close()
+					if rerr == nil && tryUnmarshal(decompressedGz, &envelope) == nil {
+						bodyForFiltering = decompressedGz
+						encDetected = encodingGzip
+					} else {
+						return body, 0, nil
+					}
+				} else {
+					return body, 0, nil
+				}
+			}
+		}
+	}
+
+	// Only filter Bundles
+	if !strings.EqualFold(envelope.ResourceType, "Bundle") {
+		return body, 0, nil
+	}
+
+	// 3) Parse Bundle and filter entries by RBAC
 	type entry struct {
 		FullURL  string          `json:"fullUrl,omitempty"`
 		Resource json.RawMessage `json:"resource"`
@@ -180,29 +246,25 @@ func (m *Middlewares) filterResponseResourceAgainsRBAC(body []byte, roles []stri
 		Entry        []entry `json:"entry"`
 	}
 
-	if err := json.Unmarshal(body, &bundle); err != nil {
+	if err := json.Unmarshal(bodyForFiltering, &bundle); err != nil {
 		return body, 0, nil // Malformed JSON; do not risk altering
 	}
 
 	removed := 0
 	filtered := make([]entry, 0, len(bundle.Entry))
 	for _, e := range bundle.Entry {
-		// Identify the resourceType inside entry.resource
 		var resEnv struct {
 			ResourceType string `json:"resourceType"`
 		}
 		if err := json.Unmarshal(e.Resource, &resEnv); err != nil {
-			// If cannot determine type, keep entry to avoid accidental data loss
 			filtered = append(filtered, e)
 			continue
 		}
-
 		if resEnv.ResourceType == "" {
 			filtered = append(filtered, e)
 			continue
 		}
 
-		// Check RBAC: allow if any role permits GET on this resource type
 		allowedForAnyRole := false
 		for _, role := range roles {
 			if allowed(m.Enforcer, role, resEnv.ResourceType, http.MethodGet) {
@@ -217,17 +279,44 @@ func (m *Middlewares) filterResponseResourceAgainsRBAC(body []byte, roles []stri
 		}
 	}
 
-	// If nothing was removed, return original body to minimize header churn
 	if removed == 0 {
+		// Return original upstream body to avoid header inconsistencies
 		return body, 0, nil
 	}
 
-	// Update entries only; keep other fields intact
+	// 4) Re-marshal and re-encode with the original encoding
 	bundle.Entry = filtered
-	filteredBody, err := json.Marshal(bundle)
+	filteredJSON, err := json.Marshal(bundle)
 	if err != nil {
 		return body, 0, err
 	}
 
-	return filteredBody, removed, nil
+	switch encDetected {
+	case encodingIdentity:
+		return filteredJSON, removed, nil
+	case encodingBrotli:
+		var buf bytes.Buffer
+		bw := brotli.NewWriterLevel(&buf, brotli.BestCompression)
+		if _, err := bw.Write(filteredJSON); err != nil {
+			_ = bw.Close()
+			return body, 0, err
+		}
+		if err := bw.Close(); err != nil {
+			return body, 0, err
+		}
+		return buf.Bytes(), removed, nil
+	case encodingGzip:
+		var buf bytes.Buffer
+		gw := gzip.NewWriter(&buf)
+		if _, err := gw.Write(filteredJSON); err != nil {
+			_ = gw.Close()
+			return body, 0, err
+		}
+		if err := gw.Close(); err != nil {
+			return body, 0, err
+		}
+		return buf.Bytes(), removed, nil
+	default:
+		return filteredJSON, removed, nil
+	}
 }
