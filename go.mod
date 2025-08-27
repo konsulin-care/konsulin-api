@@ -3,6 +3,7 @@ module konsulin-service
 go 1.22.3
 
 require (
+	github.com/andybalholm/brotli v1.2.0
 	github.com/casbin/casbin/v2 v2.108.0
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/go-chi/chi/v5 v5.1.0
