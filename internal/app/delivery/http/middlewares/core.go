@@ -78,9 +78,9 @@ func (m *Middlewares) RequestIDMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func (m *Middlewares) RequirePermission(resource, action string) func([]claims.SessionClaimValidator, sessmodels.SessionContainer, supertokens.UserContext) ([]claims.SessionClaimValidator, error) {
+func (m *Middlewares) RequirePermission(method, path string) func([]claims.SessionClaimValidator, sessmodels.SessionContainer, supertokens.UserContext) ([]claims.SessionClaimValidator, error) {
 	return func(globalClaimValidators []claims.SessionClaimValidator, sessionContainer sessmodels.SessionContainer, userContext supertokens.UserContext) ([]claims.SessionClaimValidator, error) {
-		policies, err := m.Enforcer.GetFilteredPolicy(1, resource, action)
+		policies, err := m.Enforcer.GetFilteredPolicy(1, method, path)
 		if err != nil {
 			return globalClaimValidators, err
 		}

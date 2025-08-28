@@ -7,8 +7,8 @@ import (
 
 type RoleUsecase interface {
 	ListRoles(ctx context.Context) ([]string, error)
-	AddPermission(ctx context.Context, role, obj, act string) error
-	RemovePermission(ctx context.Context, role, obj, act string) error
+	AddPermission(ctx context.Context, role, method, path string) error
+	RemovePermission(ctx context.Context, role, method, path string) error
 }
 
 type RoleRepository interface {

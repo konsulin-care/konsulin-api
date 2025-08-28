@@ -3,6 +3,7 @@ package middlewares
 import (
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
+	"konsulin-service/internal/pkg/utils"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/fsnotify/fsnotify"
@@ -21,6 +22,18 @@ func NewMiddlewares(
 	if err != nil {
 		logger.Fatal("failed to load RBAC policies", zap.Error(err))
 	}
+
+	enforcer.AddFunction("pathMatch", func(args ...interface{}) (interface{}, error) {
+		if len(args) != 2 {
+			return false, nil
+		}
+		requestPath, ok1 := args[0].(string)
+		policyPath, ok2 := args[1].(string)
+		if !ok1 || !ok2 {
+			return false, nil
+		}
+		return utils.PathMatch(requestPath, policyPath), nil
+	})
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
