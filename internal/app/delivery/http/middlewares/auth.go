@@ -88,11 +88,10 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 		roles, _ := ctxIface.Value(keyRoles).([]string)
 		uid, _ := ctxIface.Value(keyUID).(string)
 
-		// Check if this is API key authenticated superadmin
 		if len(roles) == 1 && roles[0] == constvars.KonsulinRoleSuperadmin && uid == "api-key-superadmin" {
-			// API key authenticated superadmin - skip FHIR identity resolution
+
 			fhirRole = constvars.KonsulinRoleSuperadmin
-			fhirID = "" // Superadmin has no specific FHIR ID
+			fhirID = ""
 		} else if !isOnlyGuest(roles) {
 			fhirRole, fhirID, err = m.resolveFHIRIdentity(ctxIface, uid)
 			if err != nil {
@@ -191,17 +190,15 @@ func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []str
 }
 
 func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, roles []string, fhirID string) error {
-	res := firstSeg(url)
 
-	if res == "" {
-		return fmt.Errorf("invalid or empty resource in request")
-	}
+	normalizedPath := normalizePath(url)
 
 	for _, role := range roles {
-		if allowed(e, role, res, method) {
+		if allowed(e, role, method, normalizedPath) {
+
 			if role == constvars.KonsulinRolePatient || role == constvars.KonsulinRolePractitioner {
 				if !ownsResource(fhirID, url, role) {
-					return fmt.Errorf("%s cannot access other %s resources", role, role)
+					return fmt.Errorf("%s is trying to access resource that don't belong to him/her", role)
 				}
 			}
 			return nil
@@ -211,18 +208,20 @@ func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, ro
 	return fmt.Errorf("forbidden")
 }
 
-func allowed(e *casbin.Enforcer, role, res, verb string) bool {
-	ok, err := e.Enforce(role, res, verb)
+func allowed(e *casbin.Enforcer, role, method, path string) bool {
+	ok, err := e.Enforce(role, method, path)
 	if err != nil {
 		return false
 	}
 	return ok
 }
+
+func normalizePath(rawURL string) string {
+	return utils.NormalizePath(rawURL)
+}
 func firstSeg(raw string) string {
 	path := strings.SplitN(raw, "?", 2)[0]
 
-	// Normalize leading slash and optional fhir prefix so that
-	// paths like "/Observation", "Observation", "/fhir/Observation", "fhir/Observation" all work
 	path = strings.TrimPrefix(path, "/")
 	path = strings.TrimPrefix(path, "fhir/")
 	path = strings.TrimPrefix(path, "/")
@@ -240,43 +239,114 @@ func ownsResource(fhirID, rawURL, role string) bool {
 		return false
 	}
 
-	parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
-	if len(parts) >= 2 {
-		var res, id string
-		// Support both "/fhir/Resource/ID" and "/Resource/ID" shapes
-		if strings.EqualFold(parts[0], "fhir") {
-			if len(parts) >= 3 {
-				res, id = parts[1], parts[2]
-			}
-		} else {
-			res, id = parts[0], parts[1]
+	resourceType := utils.ExtractResourceTypeFromPath(u.Path)
+
+	if role == constvars.KonsulinRolePatient {
+
+		if utils.IsPublicResource(resourceType) {
+			return true
 		}
 
-		switch role {
-		case constvars.KonsulinRolePatient:
-			if res == constvars.ResourcePatient && id == fhirID {
+		if utils.RequiresPatientOwnership(resourceType) {
+
+			parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
+			if len(parts) >= 2 {
+				var res, id string
+
+				if strings.EqualFold(parts[0], "fhir") {
+					if len(parts) >= 3 {
+						res, id = parts[1], parts[2]
+					}
+				} else {
+					res, id = parts[0], parts[1]
+				}
+
+				if res == "Patient" && id == fhirID {
+					return true
+				}
+			}
+
+			q := u.Query()
+
+			if p := q.Get("patient"); p != "" {
+				id := strings.TrimPrefix(p, "Patient/")
+				return id == fhirID
+			}
+
+			if s := q.Get("subject"); s != "" {
+				id := strings.TrimPrefix(s, "Patient/")
+				return id == fhirID
+			}
+
+			if a := q.Get("actor"); a != "" {
+				id := strings.TrimPrefix(a, "Patient/")
+				return id == fhirID
+			}
+
+			if qr := q.Get("questionnaire"); qr != "" {
+
 				return true
 			}
-		case constvars.KonsulinRolePractitioner:
-			if res == constvars.ResourcePractitioner && id == fhirID {
-				return true
-			}
+
+			return false
 		}
+
+		return false
 	}
 
-	q := u.Query()
-	switch role {
-	case constvars.KonsulinRolePatient:
-		if p := q.Get("patient"); p != "" {
-			id := strings.TrimPrefix(p, "Patient/")
-			return id == fhirID
+	if role == constvars.KonsulinRolePractitioner {
+
+		if utils.IsPublicResource(resourceType) {
+			return true
 		}
-	case constvars.KonsulinRolePractitioner:
-		if p := q.Get("practitioner"); p != "" {
-			id := strings.TrimPrefix(p, "Practitioner/")
-			return id == fhirID
+
+		if utils.RequiresPractitionerOwnership(resourceType) {
+
+			parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
+			if len(parts) >= 2 {
+				var res, id string
+				if strings.EqualFold(parts[0], "fhir") {
+					if len(parts) >= 3 {
+						res, id = parts[1], parts[2]
+					}
+				} else {
+					res, id = parts[0], parts[1]
+				}
+
+				if res == "Practitioner" && id == fhirID {
+					return true
+				}
+			}
+
+			q := u.Query()
+
+			if p := q.Get("practitioner"); p != "" {
+				id := strings.TrimPrefix(p, "Practitioner/")
+				return id == fhirID
+			}
+
+			if a := q.Get("actor"); a != "" {
+				id := strings.TrimPrefix(a, "Practitioner/")
+				return id == fhirID
+			}
+
+			for key, values := range q {
+				if strings.HasPrefix(key, "_has") && strings.Contains(key, "practitioner") {
+
+					for _, value := range values {
+						if value == fhirID {
+							return true
+						}
+					}
+				}
+			}
+
+			return false
 		}
+
+		return false
 	}
+
 	return false
 }
 
@@ -285,12 +355,10 @@ func isBundle(r *http.Request) bool {
 		return false
 	}
 
-	// Prefer raw body from context if available
 	if bodyBytes, ok := r.Context().Value(constvars.CONTEXT_RAW_BODY).([]byte); ok && len(bodyBytes) > 0 {
 		return strings.EqualFold(gjson.GetBytes(bodyBytes, "resourceType").String(), "Bundle")
 	}
 
-	// Fallback: peek into request body and parse resourceType using gjson
 	var peek [2048]byte
 	n, _ := r.Body.Read(peek[:])
 	r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(peek[:n]), r.Body))

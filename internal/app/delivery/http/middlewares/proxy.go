@@ -65,20 +65,17 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 			return
 		}
 
-		// Read the entire response body for potential filtering
 		respBody, readErr := io.ReadAll(resp.Body)
 		if readErr != nil {
 			utils.BuildErrorResponse(m.Log, w, exceptions.ErrReadBody(readErr))
 			return
 		}
 
-		// Determine if we should filter based on roles
 		roles, _ := r.Context().Value(keyRoles).([]string)
 		filteringRole := determineFilteringRole(roles)
 
-		// Early return for non-filtered responses
 		if filteringRole == "" {
-			// No filtering needed - return response immediately
+
 			for k, v := range resp.Header {
 				w.Header()[k] = v
 			}
@@ -89,7 +86,6 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 			return
 		}
 
-		// Apply filtering for superadmin (and future roles)
 		var filteredBody []byte
 		var removedCount int
 		var filtered bool
@@ -102,12 +98,12 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 				}
 				filteredBody = b
 			} else {
-				// If filtering fails, fall back to original body
+
 				m.Log.Warn("response filtering failed; returning original body", zap.Error(err))
 				filteredBody = respBody
 			}
 		default:
-			// This shouldn't happen given our early return, but safety first
+
 			filteredBody = respBody
 		}
 
@@ -120,15 +116,14 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 			)
 		}
 
-		// Copy headers, but recalculate Content-Length if body changed
 		for k, v := range resp.Header {
-			// We'll set Content-Length ourselves
+
 			if strings.EqualFold(k, "Content-Length") {
 				continue
 			}
 			w.Header()[k] = v
 		}
-		// Remove ETag if body has been modified to avoid inconsistencies
+
 		if filtered {
 			w.Header().Del("ETag")
 		}
@@ -140,8 +135,6 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 	})
 }
 
-// determineFilteringRole returns the primary role for which response filtering should apply.
-// For now, we only filter for superadmin requests. When empty string return, it means no filtering should be applied.
 func determineFilteringRole(roles []string) string {
 	for _, role := range roles {
 		if strings.EqualFold(role, constvars.KonsulinRoleSuperadmin) {
@@ -151,11 +144,8 @@ func determineFilteringRole(roles []string) string {
 	return ""
 }
 
-// filterResponseResourceAgainsRBAC removes any Bundle.entry resources that are not allowed by RBAC.
-// If the response is not a Bundle or JSON cannot be parsed, it returns the original body unchanged.
-// It returns the possibly filtered body and the count of removed entries.
 func (m *Middlewares) filterResponseResourceAgainsRBAC(body []byte, roles []string) ([]byte, int, error) {
-	// 1) Early role-based check: filter only for superadmin (extendable later)
+
 	shouldFilter := false
 	for _, role := range roles {
 		if strings.EqualFold(role, constvars.KonsulinRoleSuperadmin) {
@@ -167,7 +157,6 @@ func (m *Middlewares) filterResponseResourceAgainsRBAC(body []byte, roles []stri
 		return body, 0, nil
 	}
 
-	// 2) Determine original encoding by attempting JSON first, then br, then gzip
 	type originalEncoding string
 	const (
 		encodingIdentity originalEncoding = "identity"
@@ -178,21 +167,20 @@ func (m *Middlewares) filterResponseResourceAgainsRBAC(body []byte, roles []stri
 	bodyForFiltering := body
 	encDetected := encodingIdentity
 
-	// Helper: try unmarshal to detect JSON quickly
 	tryUnmarshal := func(b []byte, v any) error { return json.Unmarshal(b, v) }
 
 	var envelope struct {
 		ResourceType string `json:"resourceType"`
 	}
 	if err := tryUnmarshal(bodyForFiltering, &envelope); err != nil {
-		// Try brotli
+
 		if brReader := brotli.NewReader(bytes.NewReader(body)); brReader != nil {
 			if decompressed, derr := io.ReadAll(brReader); derr == nil {
 				if jerr := tryUnmarshal(decompressed, &envelope); jerr == nil {
 					bodyForFiltering = decompressed
 					encDetected = encodingBrotli
 				} else {
-					// Try gzip next
+
 					if gr, gerr := gzip.NewReader(bytes.NewReader(body)); gerr == nil {
 						decompressedGz, rerr := io.ReadAll(gr)
 						_ = gr.Close()
@@ -200,16 +188,16 @@ func (m *Middlewares) filterResponseResourceAgainsRBAC(body []byte, roles []stri
 							bodyForFiltering = decompressedGz
 							encDetected = encodingGzip
 						} else {
-							// Could not parse as JSON even after attempts; pass through
+
 							return body, 0, nil
 						}
 					} else {
-						// Not gzip either; pass through
+
 						return body, 0, nil
 					}
 				}
 			} else {
-				// Brotli read failed; try gzip directly
+
 				if gr, gerr := gzip.NewReader(bytes.NewReader(body)); gerr == nil {
 					decompressedGz, rerr := io.ReadAll(gr)
 					_ = gr.Close()
@@ -226,12 +214,10 @@ func (m *Middlewares) filterResponseResourceAgainsRBAC(body []byte, roles []stri
 		}
 	}
 
-	// Only filter Bundles
 	if !strings.EqualFold(envelope.ResourceType, "Bundle") {
 		return body, 0, nil
 	}
 
-	// 3) Parse Bundle and filter entries by RBAC
 	type entry struct {
 		FullURL  string          `json:"fullUrl,omitempty"`
 		Resource json.RawMessage `json:"resource"`
@@ -247,7 +233,7 @@ func (m *Middlewares) filterResponseResourceAgainsRBAC(body []byte, roles []stri
 	}
 
 	if err := json.Unmarshal(bodyForFiltering, &bundle); err != nil {
-		return body, 0, nil // Malformed JSON; do not risk altering
+		return body, 0, nil
 	}
 
 	removed := 0
@@ -267,7 +253,8 @@ func (m *Middlewares) filterResponseResourceAgainsRBAC(body []byte, roles []stri
 
 		allowedForAnyRole := false
 		for _, role := range roles {
-			if allowed(m.Enforcer, role, resEnv.ResourceType, http.MethodGet) {
+
+			if allowed(m.Enforcer, role, http.MethodGet, "/fhir/"+resEnv.ResourceType) {
 				allowedForAnyRole = true
 				break
 			}
@@ -280,11 +267,10 @@ func (m *Middlewares) filterResponseResourceAgainsRBAC(body []byte, roles []stri
 	}
 
 	if removed == 0 {
-		// Return original upstream body to avoid header inconsistencies
+
 		return body, 0, nil
 	}
 
-	// 4) Re-marshal and re-encode with the original encoding
 	bundle.Entry = filtered
 	filteredJSON, err := json.Marshal(bundle)
 	if err != nil {

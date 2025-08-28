@@ -60,11 +60,11 @@ const (
 )
 
 const (
-	KonsulinRoleGuest        = "guest"
-	KonsulinRolePatient      = "patient"
-	KonsulinRoleClinician    = "clinician"
-	KonsulinRoleResearcher   = "researcher"
-	KonsulinRoleSuperadmin   = "superadmin"
-	KonsulinRoleClinicAdmin  = "clinic_admin"
-	KonsulinRolePractitioner = "practitioner"
+	KonsulinRoleGuest        = "Guest"
+	KonsulinRolePatient      = "Patient"
+	KonsulinRoleClinician    = "Clinician"
+	KonsulinRoleResearcher   = "Researcher"
+	KonsulinRoleSuperadmin   = "Superadmin"
+	KonsulinRoleClinicAdmin  = "Clinic Admin"
+	KonsulinRolePractitioner = "Practitioner"
 )
