@@ -23,12 +23,14 @@ import (
 )
 
 type paymentUsecase struct {
-	TransactionRepository contracts.TransactionRepository
-	InternalConfig        *config.InternalConfig
-	Log                   *zap.Logger
-	PatientFhirClient     contracts.PatientFhirClient
-	Storage               *storage.ServiceRequestStorage
-	PaymentGateway        contracts.PaymentGatewayService
+	TransactionRepository  contracts.TransactionRepository
+	InternalConfig         *config.InternalConfig
+	Log                    *zap.Logger
+	PatientFhirClient      contracts.PatientFhirClient
+	PractitionerFhirClient contracts.PractitionerFhirClient
+	PersonFhirClient       contracts.PersonFhirClient
+	Storage                *storage.ServiceRequestStorage
+	PaymentGateway         contracts.PaymentGatewayService
 }
 
 var (
@@ -40,18 +42,22 @@ func NewPaymentUsecase(
 	transactionRepository contracts.TransactionRepository,
 	internalConfig *config.InternalConfig,
 	patientFhirClient contracts.PatientFhirClient,
+	practitionerFhirClient contracts.PractitionerFhirClient,
+	personFhirClient contracts.PersonFhirClient,
 	storageService *storage.ServiceRequestStorage,
 	paymentGateway contracts.PaymentGatewayService,
 	logger *zap.Logger,
 ) contracts.PaymentUsecase {
 	oncePaymentUsecase.Do(func() {
 		instance := &paymentUsecase{
-			TransactionRepository: transactionRepository,
-			InternalConfig:        internalConfig,
-			Log:                   logger,
-			PatientFhirClient:     patientFhirClient,
-			Storage:               storageService,
-			PaymentGateway:        paymentGateway,
+			TransactionRepository:  transactionRepository,
+			InternalConfig:         internalConfig,
+			Log:                    logger,
+			PatientFhirClient:      patientFhirClient,
+			PractitionerFhirClient: practitionerFhirClient,
+			PersonFhirClient:       personFhirClient,
+			Storage:                storageService,
+			PaymentGateway:         paymentGateway,
 		}
 		paymentUsecaseInstance = instance
 	})
@@ -152,6 +158,17 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 		return nil, exceptions.ErrAuthInvalidRole(fmt.Errorf("guest not allowed"))
 	}
 
+	// 1a) Validate and normalize service value (do not mutate request)
+	requestedService, err := normalizeService(req.Service)
+	if err != nil {
+		return nil, err
+	}
+
+	// 1b) Enforce service access rule
+	if !isServicePurchaseAllowed(requestedService, roles) {
+		return nil, exceptions.ErrAuthInvalidRole(fmt.Errorf("role(s) not allowed to purchase service: %s", requestedService))
+	}
+
 	// 2) Extract uid from context
 	uid, _ := ctx.Value("uid").(string)
 
@@ -165,20 +182,15 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 		return nil, exceptions.ErrClientCustomMessage(fmt.Errorf("email is required in body"))
 	}
 
-	// 4) Lookup Patient by email; if none, 404
-	patients, err := uc.PatientFhirClient.FindPatientByEmail(ctx, email)
+	// 4) Lookup identity by service (encapsulated)
+	patientID, displayFullName, err := uc.lookupIdentityByService(ctx, requestedService, email)
 	if err != nil {
 		return nil, err
 	}
-	if len(patients) == 0 {
-		return nil, exceptions.ErrUserNotExist(fmt.Errorf("no patient found"))
-	}
-
-	patientID := patients[0].ID
-	patientFullName := patients[0].FullName()
+	partnerUserID := uid
 
 	// 5) Build instantiateUri and store in ServiceRequest note
-	instantiateURI := fmt.Sprintf("%s/hook/%s", strings.TrimRight(uc.InternalConfig.App.BaseUrl, "/"), req.Service)
+	instantiateURI := fmt.Sprintf("%s/hook/%s", strings.TrimRight(uc.InternalConfig.App.BaseUrl, "/"), requestedService)
 	occurrence := time.Now().Format("2006-01-02T15:04:05-07:00")
 	storageOutput, err := uc.Storage.Create(ctx, &requests.CreateServiceRequestStorageInput{
 		UID:            uid,
@@ -192,12 +204,11 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 	}
 	partnerTrxID := storageOutput.PartnerTrxID
 
-	// 6) Compute amount using safe switch on role
-	basePrice, err := uc.getBasePriceFromRoles(roles)
+	// 6) Compute amount using service-based calculator
+	amount, err := uc.calculateAmount(requestedService, req.TotalItem)
 	if err != nil {
-		return nil, exceptions.ErrClientCustomMessage(err)
+		return nil, err
 	}
-	amount := req.TotalItem * basePrice
 
 	// 7) Prepare OY payment request
 	loc := time.FixedZone("UTC+7", 7*60*60) // Force UTC+7 because OY is in UTC+7
@@ -209,12 +220,12 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 	)
 
 	oyReq := &requests.PaymentRequestDTO{
-		PartnerUserID:           uid,
+		PartnerUserID:           partnerUserID,
 		UseLinkedAccount:        false,
 		PartnerTransactionID:    partnerTrxID,
 		NeedFrontend:            true,
 		SenderEmail:             email,
-		FullName:                patientFullName,
+		FullName:                displayFullName,
 		PaymentExpirationTime:   expiration,
 		ReceiveAmount:           amount,
 		ListEnablePaymentMethod: uc.InternalConfig.PaymentGateway.ListEnablePaymentMethod,
@@ -247,26 +258,6 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 	}, nil
 }
 
-func (uc *paymentUsecase) getBasePriceFromRoles(roles []string) (int, error) {
-	for _, r := range roles {
-		switch strings.ToLower(r) {
-		case constvars.KonsulinRolePatient:
-			return uc.InternalConfig.Pricing.PatientBasePrice, nil
-		case constvars.KonsulinRolePractitioner:
-			return uc.InternalConfig.Pricing.PractitionerBasePrice, nil
-		case constvars.KonsulinRoleClinician:
-			return uc.InternalConfig.Pricing.ClinicianBasePrice, nil
-		case constvars.KonsulinRoleResearcher:
-			return uc.InternalConfig.Pricing.ResearcherBasePrice, nil
-		case constvars.KonsulinRoleClinicAdmin:
-			return uc.InternalConfig.Pricing.ClinicAdminBasePrice, nil
-		case constvars.KonsulinRoleSuperadmin:
-			return uc.InternalConfig.Pricing.SuperadminBasePrice, nil
-		}
-	}
-	return 0, fmt.Errorf("unsupported role for pricing")
-}
-
 func parsePartnerTrxID(partnerTrxID string) (string, string, error) {
 	parts := strings.Split(partnerTrxID, "-")
 	if len(parts) < 2 {
@@ -289,6 +280,92 @@ func extractNoteStorage(sr *fhir_dto.GetServiceRequestOutput) (*requests.NoteSto
 		return nil, err
 	}
 	return &note, nil
+}
+
+func isServicePurchaseAllowed(service string, requesterRoles []string) bool {
+	// Superadmin can purchase any service
+	if hasRole(requesterRoles, constvars.KonsulinRoleSuperadmin) {
+		return true
+	}
+	normalized := strings.ToLower(service)
+	switch normalized {
+	case string(constvars.ServiceAnalyze):
+		return hasAnyRole(requesterRoles, []string{constvars.KonsulinRolePatient})
+	case string(constvars.ServiceReport):
+		return hasAnyRole(requesterRoles, []string{constvars.KonsulinRolePractitioner})
+	case string(constvars.ServicePerformanceReport):
+		return hasAnyRole(requesterRoles, []string{constvars.KonsulinRoleClinicAdmin})
+	case string(constvars.ServiceAccessDataset):
+		return hasAnyRole(requesterRoles, []string{constvars.KonsulinRoleResearcher})
+	default:
+		return false
+	}
+}
+
+func hasAnyRole(roles []string, targets []string) bool {
+	for _, t := range targets {
+		if hasRole(roles, t) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasRole(roles []string, target string) bool {
+	for _, r := range roles {
+		if strings.EqualFold(r, target) {
+			return true
+		}
+	}
+	return false
+}
+
+// normalizeService validates the service and returns its canonical value or an error (400-style) if invalid.
+func normalizeService(service string) (string, error) {
+	for _, known := range constvars.KnownServices {
+		if strings.EqualFold(service, string(known)) {
+			return string(known), nil
+		}
+	}
+	return "", exceptions.ErrClientCustomMessage(fmt.Errorf("invalid service value: %s", service))
+}
+
+// calculateAmount validates service and totalItem against business rules and returns basePrice(service) * totalItem.
+func (uc *paymentUsecase) calculateAmount(service string, totalItem int) (int, error) {
+	serviceName := strings.ToLower(service)
+
+	var (
+		serviceType constvars.ServiceType
+		basePrice   int
+	)
+
+	switch serviceName {
+	case string(constvars.ServiceAnalyze):
+		serviceType = constvars.ServiceAnalyze
+		basePrice = uc.InternalConfig.ServicePricing.AnalyzeBasePrice
+	case string(constvars.ServiceReport):
+		serviceType = constvars.ServiceReport
+		basePrice = uc.InternalConfig.ServicePricing.ReportBasePrice
+	case string(constvars.ServicePerformanceReport):
+		serviceType = constvars.ServicePerformanceReport
+		basePrice = uc.InternalConfig.ServicePricing.PerformanceReportBasePrice
+	case string(constvars.ServiceAccessDataset):
+		serviceType = constvars.ServiceAccessDataset
+		basePrice = uc.InternalConfig.ServicePricing.AccessDatasetBasePrice
+	default:
+		return 0, exceptions.ErrClientCustomMessage(fmt.Errorf("invalid service: %s", service))
+	}
+
+	minQty, ok := constvars.ServiceToMinQuantity[serviceType]
+	if !ok {
+		return 0, exceptions.ErrClientCustomMessage(fmt.Errorf("unsupported service: %s", service))
+	}
+	if totalItem < int(minQty) {
+		return 0, exceptions.ErrClientCustomMessage(fmt.Errorf("total_item must be >= %d for service %s", int(minQty), serviceName))
+	}
+
+	amount := basePrice * totalItem
+	return amount, nil
 }
 
 func callInstantiateURI(ctx context.Context, log *zap.Logger, url string, body json.RawMessage) error {
@@ -316,4 +393,40 @@ func callInstantiateURI(ctx context.Context, log *zap.Logger, url string, body j
 		return fmt.Errorf("non-200 from instantiate uri: %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// lookupIdentityByService fetches identity based on the service and returns (patientID, fullName).
+// patientID is only set for analyze (Patient), otherwise empty.
+func (uc *paymentUsecase) lookupIdentityByService(ctx context.Context, service string, email string) (string, string, error) {
+	switch service {
+	case string(constvars.ServiceAnalyze):
+		patients, err := uc.PatientFhirClient.FindPatientByEmail(ctx, email)
+		if err != nil {
+			return "", "", err
+		}
+		if len(patients) == 0 {
+			return "", "", exceptions.ErrUserNotExist(fmt.Errorf("no patient found"))
+		}
+		return patients[0].ID, patients[0].FullName(), nil
+	case string(constvars.ServiceReport):
+		practitioners, err := uc.PractitionerFhirClient.FindPractitionerByEmail(ctx, email)
+		if err != nil {
+			return "", "", err
+		}
+		if len(practitioners) == 0 {
+			return "", "", exceptions.ErrUserNotExist(fmt.Errorf("no practitioner found"))
+		}
+		return "", practitioners[0].FullName(), nil
+	case string(constvars.ServicePerformanceReport), string(constvars.ServiceAccessDataset):
+		people, err := uc.PersonFhirClient.FindPersonByEmail(ctx, email)
+		if err != nil {
+			return "", "", err
+		}
+		if len(people) == 0 {
+			return "", "", exceptions.ErrUserNotExist(fmt.Errorf("no person found"))
+		}
+		return "", people[0].FullName(), nil
+	default:
+		return "", "", exceptions.ErrClientCustomMessage(fmt.Errorf("unsupported service: %s", service))
+	}
 }
