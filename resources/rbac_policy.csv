@@ -1,4 +1,5 @@
 p, Patient, GET, /fhir/QuestionnaireResponse
+p, Patient, POST, /fhir/QuestionnaireResponse
 p, Patient, GET, /fhir/Questionnaire
 p, Patient, POST, /fhir/Observation
 p, Patient, POST, /fhir/
@@ -35,6 +36,7 @@ p, Practitioner, POST, /fhir/Observation
 p, Practitioner, GET, /fhir/Appointment
 p, Practitioner, PUT, /fhir/Observation/journal-id
 p, Practitioner, GET, /fhir/QuestionnaireResponse
+p, Practitioner, POST, /fhir/QuestionnaireResponse
 p, Practitioner, PUT, /fhir/QuestionnaireResponse/SOAP-note-id
 p, Practitioner, GET, /fhir/Questionnaire/Questionnaire-id
 p, Practitioner, POST, /fhir/
