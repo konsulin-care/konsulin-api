@@ -47,7 +47,7 @@ func loadInternalConfigWithYAML() *InternalConfig {
 }
 
 func loadInternalConfigWithEnv() *InternalConfig {
-	return &InternalConfig{
+	cfg := &InternalConfig{
 		App: App{
 			Env:                                      utils.GetEnvString("APP_ENV", ""),
 			Port:                                     utils.GetEnvString("APP_PORT", ""),
@@ -122,7 +122,25 @@ func loadInternalConfigWithEnv() *InternalConfig {
 			ClinicAdminBasePrice:  utils.GetEnvInt("CLINIC_ADMIN_BASE_PRICE", 0),
 			SuperadminBasePrice:   utils.GetEnvInt("SUPERADMIN_BASE_PRICE", 0),
 		},
+		ServicePricing: AppServicePricing{
+			AnalyzeBasePrice:           utils.GetEnvInt("BASE_PRICE_ANALYZE", 0),
+			ReportBasePrice:            utils.GetEnvInt("BASE_PRICE_REPORT", 0),
+			PerformanceReportBasePrice: utils.GetEnvInt("BASE_PRICE_PERFORMANCE_REPORT", 0),
+			AccessDatasetBasePrice:     utils.GetEnvInt("BASE_PRICE_ACCESS_DATASET", 0),
+		},
 	}
+
+	// this is a safe guard to ensure that no base price is left unset
+	// this must be prevented because it will trigger failed payment
+	// if the amount calculation resulting in 0
+	if cfg.ServicePricing.AnalyzeBasePrice <= 0 ||
+		cfg.ServicePricing.ReportBasePrice <= 0 ||
+		cfg.ServicePricing.PerformanceReportBasePrice <= 0 ||
+		cfg.ServicePricing.AccessDatasetBasePrice <= 0 {
+		log.Fatalf("invalid service base price configuration: all BASE_PRICE_* must be > 0")
+	}
+
+	return cfg
 }
 
 func loadDriverConfigWithYAML() *DriverConfig {
