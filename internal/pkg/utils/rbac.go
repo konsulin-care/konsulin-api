@@ -73,13 +73,9 @@ func RequiresPatientOwnership(resourceType string) bool {
 }
 
 func RequiresPractitionerOwnership(resourceType string) bool {
-
 	practitionerSpecificResources := map[string]bool{
 		"Practitioner":                true,
-		"PractitionerRole":            true,
-		"Appointment":                 true,
 		"Schedule":                    true,
-		"Slot":                        true,
 		"Encounter":                   true,
 		"Observation":                 true,
 		"DiagnosticReport":            true,
@@ -115,6 +111,8 @@ func IsPublicResource(resourceType string) bool {
 		"Organization":            true,
 		"Location":                true,
 		"HealthcareService":       true,
+		"PractitionerRole":        true,
+		"Slot":                    true,
 		"CodeSystem":              true,
 		"ValueSet":                true,
 		"ConceptMap":              true,
