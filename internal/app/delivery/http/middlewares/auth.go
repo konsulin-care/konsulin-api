@@ -284,7 +284,6 @@ func ownsResource(fhirID, rawURL, role string) bool {
 			}
 
 			if qr := q.Get("questionnaire"); qr != "" {
-
 				return true
 			}
 
@@ -297,7 +296,62 @@ func ownsResource(fhirID, rawURL, role string) bool {
 	if role == constvars.KonsulinRolePractitioner {
 
 		if utils.IsPublicResource(resourceType) {
-			return true
+
+			q := u.Query()
+			hasOwnershipParams := false
+
+			if q.Get("practitioner") != "" || q.Get("actor") != "" {
+				hasOwnershipParams = true
+			}
+
+			for key := range q {
+				if strings.HasPrefix(key, "_has") && strings.Contains(key, "practitioner") {
+					hasOwnershipParams = true
+					break
+				}
+			}
+
+			if !hasOwnershipParams {
+				return true
+			}
+
+			parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
+			if len(parts) >= 2 {
+				var res, id string
+				if strings.EqualFold(parts[0], "fhir") {
+					if len(parts) >= 3 {
+						res, id = parts[1], parts[2]
+					}
+				} else {
+					res, id = parts[0], parts[1]
+				}
+
+				if res == "Practitioner" && id == fhirID {
+					return true
+				}
+			}
+
+			if p := q.Get("practitioner"); p != "" {
+				id := strings.TrimPrefix(p, "Practitioner/")
+				return id == fhirID
+			}
+
+			if a := q.Get("actor"); a != "" {
+				id := strings.TrimPrefix(a, "Practitioner/")
+				return id == fhirID
+			}
+
+			for key, values := range q {
+				if strings.HasPrefix(key, "_has") && strings.Contains(key, "practitioner") {
+					for _, value := range values {
+						if value == fhirID {
+							return true
+						}
+					}
+				}
+			}
+
+			return false
 		}
 
 		if utils.RequiresPractitionerOwnership(resourceType) {
@@ -332,13 +386,28 @@ func ownsResource(fhirID, rawURL, role string) bool {
 
 			for key, values := range q {
 				if strings.HasPrefix(key, "_has") && strings.Contains(key, "practitioner") {
-
 					for _, value := range values {
 						if value == fhirID {
 							return true
 						}
 					}
 				}
+			}
+
+			return false
+		}
+
+		if resourceType == "Appointment" {
+			q := u.Query()
+
+			if p := q.Get("practitioner"); p != "" {
+				id := strings.TrimPrefix(p, "Practitioner/")
+				return id == fhirID
+			}
+
+			if a := q.Get("actor"); a != "" {
+				id := strings.TrimPrefix(a, "Practitioner/")
+				return id == fhirID
 			}
 
 			return false
