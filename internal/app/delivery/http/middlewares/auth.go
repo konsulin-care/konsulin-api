@@ -197,7 +197,7 @@ func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, ro
 		if allowed(e, role, method, normalizedPath) {
 
 			if role == constvars.KonsulinRolePatient || role == constvars.KonsulinRolePractitioner {
-				if !ownsResource(fhirID, url, role) {
+				if !ownsResource(fhirID, url, role, method) {
 					return fmt.Errorf("%s is trying to access resource that don't belong to him/her", role)
 				}
 			}
@@ -233,13 +233,17 @@ func firstSeg(raw string) string {
 	return ""
 }
 
-func ownsResource(fhirID, rawURL, role string) bool {
+func ownsResource(fhirID, rawURL, role, method string) bool {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return false
 	}
 
 	resourceType := utils.ExtractResourceTypeFromPath(u.Path)
+
+	if method == "POST" {
+		return true
+	}
 
 	if role == constvars.KonsulinRolePatient {
 

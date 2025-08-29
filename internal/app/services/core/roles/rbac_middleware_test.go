@@ -15,55 +15,55 @@ func TestOwnsResourceFunction(t *testing.T) {
 
 	t.Run("Patient Role Public Resources", func(t *testing.T) {
 
-		owns := ownsResource("patient-123", "/fhir/Questionnaire?_elements=title,description&subject-type=Person,Patient&status=active&context=popular", constvars.KonsulinRolePatient)
+		owns := ownsResource("patient-123", "/fhir/Questionnaire?_elements=title,description&subject-type=Person,Patient&status=active&context=popular", constvars.KonsulinRolePatient, "GET")
 		assert.True(t, owns, "Patient should be able to access public questionnaires")
 
-		owns = ownsResource("patient-123", "/fhir/ResearchStudy?date=ge2025-04-14&_revinclude=List:item", constvars.KonsulinRolePatient)
+		owns = ownsResource("patient-123", "/fhir/ResearchStudy?date=ge2025-04-14&_revinclude=List:item", constvars.KonsulinRolePatient, "GET")
 		assert.True(t, owns, "Patient should be able to access public research studies")
 
-		owns = ownsResource("patient-123", "/fhir/Organization?_elements=name,address", constvars.KonsulinRolePatient)
+		owns = ownsResource("patient-123", "/fhir/Organization?_elements=name,address", constvars.KonsulinRolePatient, "GET")
 		assert.True(t, owns, "Patient should be able to access public organization info")
 
-		owns = ownsResource("patient-123", "/fhir/Location?status=active", constvars.KonsulinRolePatient)
+		owns = ownsResource("patient-123", "/fhir/Location?status=active", constvars.KonsulinRolePatient, "GET")
 		assert.True(t, owns, "Patient should be able to access public locations")
 
-		owns = ownsResource("patient-123", "/fhir/HealthcareService?active=true", constvars.KonsulinRolePatient)
+		owns = ownsResource("patient-123", "/fhir/HealthcareService?active=true", constvars.KonsulinRolePatient, "GET")
 		assert.True(t, owns, "Patient should be able to access public healthcare services")
 
-		owns = ownsResource("patient-123", "/fhir/PractitionerRole?active=true", constvars.KonsulinRolePatient)
+		owns = ownsResource("patient-123", "/fhir/PractitionerRole?active=true", constvars.KonsulinRolePatient, "GET")
 		assert.True(t, owns, "Patient should be able to access public practitioner roles")
 
-		owns = ownsResource("patient-123", "/fhir/Slot?status=free", constvars.KonsulinRolePatient)
+		owns = ownsResource("patient-123", "/fhir/Slot?status=free", constvars.KonsulinRolePatient, "GET")
 		assert.True(t, owns, "Patient should be able to access public slots")
 	})
 
 	t.Run("Patient Role Protected Resources", func(t *testing.T) {
 
-		owns := ownsResource("patient-123", "/fhir/Patient/patient-123", constvars.KonsulinRolePatient)
+		owns := ownsResource("patient-123", "/fhir/Patient/patient-123", constvars.KonsulinRolePatient, "GET")
 		assert.True(t, owns, "Patient should be able to access their own patient resource")
 
-		owns = ownsResource("patient-123", "/fhir/Patient/other-patient-456", constvars.KonsulinRolePatient)
+		owns = ownsResource("patient-123", "/fhir/Patient/other-patient-456", constvars.KonsulinRolePatient, "GET")
 		assert.False(t, owns, "Patient should not be able to access other patients' resources")
 
-		owns = ownsResource("patient-123", "/fhir/Appointment?actor=Patient/patient-123", constvars.KonsulinRolePatient)
+		owns = ownsResource("patient-123", "/fhir/Appointment?actor=Patient/patient-123", constvars.KonsulinRolePatient, "GET")
 		assert.True(t, owns, "Patient should be able to access their own appointments")
 
-		owns = ownsResource("patient-123", "/fhir/Appointment?actor=Patient/other-patient-456", constvars.KonsulinRolePatient)
+		owns = ownsResource("patient-123", "/fhir/Appointment?actor=Patient/other-patient-456", constvars.KonsulinRolePatient, "GET")
 		assert.False(t, owns, "Patient should not be able to access other patients' appointments")
 
-		owns = ownsResource("patient-123", "/fhir/Observation?subject=Patient/patient-123", constvars.KonsulinRolePatient)
+		owns = ownsResource("patient-123", "/fhir/Observation?subject=Patient/patient-123", constvars.KonsulinRolePatient, "GET")
 		assert.True(t, owns, "Patient should be able to access their own observations")
 
-		owns = ownsResource("patient-123", "/fhir/Observation?subject=Patient/other-patient-456", constvars.KonsulinRolePatient)
+		owns = ownsResource("patient-123", "/fhir/Observation?subject=Patient/other-patient-456", constvars.KonsulinRolePatient, "GET")
 		assert.False(t, owns, "Patient should not be able to access other patients' observations")
 	})
 
 	t.Run("Patient Role Complex Appointment Queries", func(t *testing.T) {
 
-		owns := ownsResource("patient-123", "/fhir/Appointment?actor=Patient/patient-123&slot.start=ge2025-01-01T00:00:00+00:00&_include=Appointment:actor:PractitionerRole&_include:iterate=PractitionerRole:practitioner&_include=Appointment:slot", constvars.KonsulinRolePatient)
+		owns := ownsResource("patient-123", "/fhir/Appointment?actor=Patient/patient-123&slot.start=ge2025-01-01T00:00:00+00:00&_include=Appointment:actor:PractitionerRole&_include:iterate=PractitionerRole:practitioner&_include=Appointment:slot", constvars.KonsulinRolePatient, "GET")
 		assert.True(t, owns, "Patient should be able to access their own appointments with complex query")
 
-		owns = ownsResource("patient-123", "/fhir/Appointment?actor=Patient/other-patient-456&slot.start=ge2025-01-01T00:00:00+00:00&_include=Appointment:actor:PractitionerRole&_include:iterate=PractitionerRole:practitioner&_include=Appointment:slot", constvars.KonsulinRolePatient)
+		owns = ownsResource("patient-123", "/fhir/Appointment?actor=Patient/other-patient-456&slot.start=ge2025-01-01T00:00:00+00:00&_include=Appointment:actor:PractitionerRole&_include:iterate=PractitionerRole:practitioner&_include=Appointment:slot", constvars.KonsulinRolePatient, "GET")
 		assert.False(t, owns, "Patient should not be able to access other patients' appointments with complex query")
 	})
 
@@ -132,63 +132,82 @@ func TestOwnsResourceFunction(t *testing.T) {
 
 	t.Run("Practitioner Role Public Resources", func(t *testing.T) {
 
-		owns := ownsResource("practitioner-123", "/fhir/Organization?_elements=name,address", constvars.KonsulinRolePractitioner)
+		owns := ownsResource("practitioner-123", "/fhir/Organization?_elements=name,address", constvars.KonsulinRolePractitioner, "GET")
 		assert.True(t, owns, "Practitioner should be able to access public organization info")
 
-		owns = ownsResource("practitioner-123", "/fhir/Questionnaire?_elements=title,description", constvars.KonsulinRolePractitioner)
+		owns = ownsResource("practitioner-123", "/fhir/Questionnaire?_elements=title,description", constvars.KonsulinRolePractitioner, "GET")
 		assert.True(t, owns, "Practitioner should be able to access public questionnaires")
 
-		owns = ownsResource("practitioner-123", "/fhir/ResearchStudy?date=ge2025-01-01", constvars.KonsulinRolePractitioner)
+		owns = ownsResource("practitioner-123", "/fhir/ResearchStudy?date=ge2025-01-01", constvars.KonsulinRolePractitioner, "GET")
 		assert.True(t, owns, "Practitioner should be able to access public research studies")
 	})
 
 	t.Run("Practitioner Role Protected Resources", func(t *testing.T) {
 
-		owns := ownsResource("practitioner-123", "/fhir/Practitioner/practitioner-123", constvars.KonsulinRolePractitioner)
+		owns := ownsResource("practitioner-123", "/fhir/Practitioner/practitioner-123", constvars.KonsulinRolePractitioner, "GET")
 		assert.True(t, owns, "Practitioner should be able to access their own practitioner resource")
 
-		owns = ownsResource("practitioner-123", "/fhir/Practitioner/other-practitioner-456", constvars.KonsulinRolePractitioner)
+		owns = ownsResource("practitioner-123", "/fhir/Practitioner/other-practitioner-456", constvars.KonsulinRolePractitioner, "GET")
 		assert.False(t, owns, "Practitioner should not be able to access other practitioners' resources")
 
-		owns = ownsResource("practitioner-123", "/fhir/PractitionerRole?practitioner=Practitioner/practitioner-123&_include=PractitionerRole:organization", constvars.KonsulinRolePractitioner)
+		owns = ownsResource("practitioner-123", "/fhir/PractitionerRole?practitioner=Practitioner/practitioner-123&_include=PractitionerRole:organization", constvars.KonsulinRolePractitioner, "GET")
 		assert.True(t, owns, "Practitioner should be able to access their own practitioner roles")
 
-		owns = ownsResource("practitioner-123", "/fhir/PractitionerRole?practitioner=Practitioner/other-practitioner-456&_include=PractitionerRole:organization", constvars.KonsulinRolePractitioner)
+		owns = ownsResource("practitioner-123", "/fhir/PractitionerRole?practitioner=Practitioner/other-practitioner-456&_include=PractitionerRole:organization", constvars.KonsulinRolePractitioner, "GET")
 		assert.False(t, owns, "Practitioner should not be able to access other practitioners' roles")
 
-		owns = ownsResource("practitioner-123", "/fhir/Slot?_has:Appointment:slot:practitioner=practitioner-123&start=ge2025-01-01&start=le2025-01-08", constvars.KonsulinRolePractitioner)
+		owns = ownsResource("practitioner-123", "/fhir/Slot?_has:Appointment:slot:practitioner=practitioner-123&start=ge2025-01-01&start=le2025-01-08", constvars.KonsulinRolePractitioner, "GET")
 		assert.True(t, owns, "Practitioner should be able to access their own slots")
 
-		owns = ownsResource("practitioner-123", "/fhir/Slot?_has:Appointment:slot:practitioner=other-practitioner-456&start=ge2025-01-01&start=le2025-01-08", constvars.KonsulinRolePractitioner)
+		owns = ownsResource("practitioner-123", "/fhir/Slot?_has:Appointment:slot:practitioner=other-practitioner-456&start=ge2025-01-01&start=le2025-01-08", constvars.KonsulinRolePractitioner, "GET")
 		assert.False(t, owns, "Practitioner should not be able to access other practitioners' slots")
 
-		owns = ownsResource("practitioner-123", "/fhir/Appointment?_elements=appointmentType,participant,slot&practitioner=practitioner-123&slot.start=ge2025-01-01&slot.start=le2025-01-08&_include=Appointment:patient&_include=Appointment:slot", constvars.KonsulinRolePractitioner)
+		owns = ownsResource("practitioner-123", "/fhir/Appointment?_elements=appointmentType,participant,slot&practitioner=practitioner-123&slot.start=ge2025-01-01&slot.start=le2025-01-08&_include=Appointment:patient&_include=Appointment:slot", constvars.KonsulinRolePractitioner, "GET")
 		assert.True(t, owns, "Practitioner should be able to access their own appointments")
 
-		owns = ownsResource("practitioner-123", "/fhir/Appointment?_elements=appointmentType,participant,slot&practitioner=other-practitioner-456&slot.start=ge2025-01-01&slot.start=le2025-01-08&_include=Appointment:patient&_include=Appointment:slot", constvars.KonsulinRolePractitioner)
+		owns = ownsResource("practitioner-123", "/fhir/Appointment?_elements=appointmentType,participant,slot&practitioner=other-practitioner-456&slot.start=ge2025-01-01&slot.start=le2025-01-08&_include=Appointment:patient&_include=Appointment:slot", constvars.KonsulinRolePractitioner, "GET")
 		assert.False(t, owns, "Practitioner should not be able to access other practitioners' appointments")
 	})
 
 	t.Run("Other Roles", func(t *testing.T) {
 
-		owns := ownsResource("guest-123", "/fhir/Organization", constvars.KonsulinRoleGuest)
+		owns := ownsResource("guest-123", "/fhir/Organization", constvars.KonsulinRoleGuest, "GET")
 		assert.False(t, owns, "Guest role should not have ownership restrictions")
 
-		owns = ownsResource("admin-123", "/fhir/Organization", constvars.KonsulinRoleClinicAdmin)
+		owns = ownsResource("admin-123", "/fhir/Organization", constvars.KonsulinRoleClinicAdmin, "GET")
 		assert.False(t, owns, "Clinic Admin role should not have ownership restrictions")
 
-		owns = ownsResource("superadmin-123", "/fhir/Organization", constvars.KonsulinRoleSuperadmin)
+		owns = ownsResource("superadmin-123", "/fhir/Organization", constvars.KonsulinRoleSuperadmin, "GET")
 		assert.False(t, owns, "Superadmin role should not have ownership restrictions")
+	})
+
+	t.Run("POST Request Access", func(t *testing.T) {
+
+		owns := ownsResource("patient-123", "/fhir/QuestionnaireResponse", constvars.KonsulinRolePatient, "POST")
+		assert.True(t, owns, "Patient should be able to POST new QuestionnaireResponse")
+
+		owns = ownsResource("practitioner-123", "/fhir/QuestionnaireResponse", constvars.KonsulinRolePractitioner, "POST")
+		assert.True(t, owns, "Practitioner should be able to POST new QuestionnaireResponse")
+
+		owns = ownsResource("patient-123", "/fhir/Observation", constvars.KonsulinRolePatient, "POST")
+		assert.True(t, owns, "Patient should be able to POST new Observation")
+
+		owns = ownsResource("practitioner-123", "/fhir/Observation", constvars.KonsulinRolePractitioner, "POST")
+		assert.True(t, owns, "Practitioner should be able to POST new Observation")
 	})
 }
 
-func ownsResource(fhirID, rawURL, role string) bool {
+func ownsResource(fhirID, rawURL, role, method string) bool {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return false
 	}
 
 	resourceType := utils.ExtractResourceTypeFromPath(u.Path)
+
+	if method == "POST" {
+		return true
+	}
 
 	if role == constvars.KonsulinRolePatient {
 
