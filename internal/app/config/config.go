@@ -114,14 +114,6 @@ func loadInternalConfigWithEnv() *InternalConfig {
 			ListEnablePaymentMethod: utils.GetEnvString("OY_LIST_ENABLE_PAYMENT_METHOD", ""),
 			ListEnableSOF:           utils.GetEnvString("OY_LIST_ENABLE_SOF", ""),
 		},
-		Pricing: AppPricing{
-			PatientBasePrice:      utils.GetEnvInt("PATIENT_BASE_PRICE", 0),
-			PractitionerBasePrice: utils.GetEnvInt("PRACTITIONER_BASE_PRICE", 0),
-			ClinicianBasePrice:    utils.GetEnvInt("CLINICIAN_BASE_PRICE", 0),
-			ResearcherBasePrice:   utils.GetEnvInt("RESEARCHER_BASE_PRICE", 0),
-			ClinicAdminBasePrice:  utils.GetEnvInt("CLINIC_ADMIN_BASE_PRICE", 0),
-			SuperadminBasePrice:   utils.GetEnvInt("SUPERADMIN_BASE_PRICE", 0),
-		},
 		ServicePricing: AppServicePricing{
 			AnalyzeBasePrice:           utils.GetEnvInt("BASE_PRICE_ANALYZE", 0),
 			ReportBasePrice:            utils.GetEnvInt("BASE_PRICE_REPORT", 0),
