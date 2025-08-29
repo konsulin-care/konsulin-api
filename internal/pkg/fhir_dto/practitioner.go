@@ -1,5 +1,7 @@
 package fhir_dto
 
+import "strings"
+
 type Practitioner struct {
 	ResourceType string         `json:"resourceType"`
 	ID           string         `json:"id,omitempty"`
@@ -11,4 +13,41 @@ type Practitioner struct {
 	Address      []Address      `json:"address,omitempty"`
 	Extension    []Extension    `json:"extension,omitempty"`
 	Identifier   []Identifier   `json:"identifier"`
+}
+
+// FullName returns a best-effort display name for the practitioner.
+// Preference: official > usual > first; prefer Text, else Prefix+Given+Family.
+func (p Practitioner) FullName() string {
+	if len(p.Name) == 0 {
+		return ""
+	}
+	chosen := p.Name[0]
+	for _, n := range p.Name {
+		if strings.EqualFold(n.Use, "official") {
+			chosen = n
+			break
+		}
+	}
+	if !strings.EqualFold(chosen.Use, "official") {
+		for _, n := range p.Name {
+			if strings.EqualFold(n.Use, "usual") {
+				chosen = n
+				break
+			}
+		}
+	}
+	if s := strings.TrimSpace(chosen.Text); s != "" {
+		return s
+	}
+	parts := []string{}
+	if len(chosen.Prefix) > 0 {
+		parts = append(parts, strings.Join(chosen.Prefix, " "))
+	}
+	if len(chosen.Given) > 0 {
+		parts = append(parts, strings.Join(chosen.Given, " "))
+	}
+	if s := strings.TrimSpace(chosen.Family); s != "" {
+		parts = append(parts, s)
+	}
+	return strings.TrimSpace(strings.Join(parts, " "))
 }
