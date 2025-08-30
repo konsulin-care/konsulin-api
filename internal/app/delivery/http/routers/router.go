@@ -66,11 +66,10 @@ func SetupRoutes(
 			r.Route("/auth", func(r chi.Router) {
 				attachAuthRoutes(r, middlewares, authController)
 			})
+
+			attachPaymentRouter(r, middlewares, paymentController)
 		})
 	})
-
-	// Payment routes at root level (no version prefix)
-	attachPaymentRouter(router, middlewares, paymentController)
 
 	router.With(middlewares.Auth).
 		Mount("/fhir", middlewares.Bridge(internalConfig.FHIR.BaseUrl))
