@@ -11,4 +11,5 @@ type PractitionerFhirClient interface {
 	PatchPractitioner(ctx context.Context, request *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error)
 	FindPractitionerByID(ctx context.Context, PractitionerID string) (*fhir_dto.Practitioner, error)
 	FindPractitionerByIdentifier(ctx context.Context, system, value string) ([]fhir_dto.Practitioner, error)
+	FindPractitionerByEmail(ctx context.Context, email string) ([]fhir_dto.Practitioner, error)
 }

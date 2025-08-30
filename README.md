@@ -78,6 +78,28 @@ This backend service is built using Golang and provides RESTful APIs to interact
     docker run -d -p 8080:8080 --env-file .env konsulin-backend
     ```
 
+### Payments
+
+- Services (case-insensitive): `analyze`, `report`, `performance-report`, `access-dataset`
+- Min quantities are default to:
+  - analyze: 10
+  - report: 1
+  - performance-report: 1
+  - access-dataset: 1
+- Request body (example):
+    ```json
+    {
+      "total_item": 3,
+      "service": "analyze",
+      "body": { "email": "user@email.com", "...": "..." }
+    }
+    ```
+- Access rules (any matching role grants access; superadmin allowed for all):
+  - analyze → patient
+  - report → practitioner
+  - performance-report → clinic_admin
+  - access-dataset → researcher
+
 ### API Endpoints
 Please see `/docs` directory to get your Konsulin Postman Collection or contact [CEO](aly.lamuri8@gmail.com) or [Software Engineer](abrahampurnomo144@gmail.com)
 

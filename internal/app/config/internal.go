@@ -11,7 +11,7 @@ type InternalConfig struct {
 	Konsulin       AppKonsulin       `mapstructure:"konsulin"`
 	Supertoken     AppSupertoken     `mapstructure:"supertoken"`
 	PaymentGateway AppPaymentGateway `mapstructure:"payment_gateway"`
-	Pricing        AppPricing        `mapstructure:"pricing"`
+	ServicePricing AppServicePricing `mapstructure:"service_pricing"`
 }
 
 type App struct {
@@ -90,11 +90,10 @@ type AppPaymentGateway struct {
 	ListEnableSOF           string `mapstructure:"list_enable_sof"`
 }
 
-type AppPricing struct {
-	PatientBasePrice      int `mapstructure:"patient_base_price"`
-	PractitionerBasePrice int `mapstructure:"practitioner_base_price"`
-	ClinicianBasePrice    int `mapstructure:"clinician_base_price"`
-	ResearcherBasePrice   int `mapstructure:"researcher_base_price"`
-	ClinicAdminBasePrice  int `mapstructure:"clinic_admin_base_price"`
-	SuperadminBasePrice   int `mapstructure:"superadmin_base_price"`
+// AppServicePricing represents per-service base prices for service-based payments.
+type AppServicePricing struct {
+	AnalyzeBasePrice           int `mapstructure:"analyze_base_price"`
+	ReportBasePrice            int `mapstructure:"report_base_price"`
+	PerformanceReportBasePrice int `mapstructure:"performance_report_base_price"`
+	AccessDatasetBasePrice     int `mapstructure:"access_dataset_base_price"`
 }

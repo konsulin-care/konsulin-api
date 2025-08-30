@@ -16,6 +16,7 @@ import (
 	"konsulin-service/internal/app/services/core/session"
 	"konsulin-service/internal/app/services/core/transactions"
 	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
+	"konsulin-service/internal/app/services/fhir_spark/persons"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
 	"konsulin-service/internal/app/services/fhir_spark/service_requests"
 	"konsulin-service/internal/app/services/shared/locker"
@@ -176,6 +177,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	// Initialize FHIR clients
 	patientFhirClient := patientsFhir.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	personFhirClient := persons.NewPersonFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	serviceRequestFhirClient := service_requests.NewServiceRequestFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 
 	// Initialize Auth usecase with dependencies
@@ -211,6 +213,8 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 		transactions.NewTransactionPostgresRepository(nil, bootstrap.Logger),
 		bootstrap.InternalConfig,
 		patientFhirClient,
+		practitionerFhirClient,
+		personFhirClient,
 		serviceRequestStorage,
 		payment_gateway.NewOyService(bootstrap.InternalConfig, bootstrap.Logger),
 		bootstrap.Logger,

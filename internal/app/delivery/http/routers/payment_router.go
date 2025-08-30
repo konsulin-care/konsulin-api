@@ -9,5 +9,5 @@ import (
 
 func attachPaymentRouter(router chi.Router, middlewares *middlewares.Middlewares, paymentController *controllers.PaymentController) {
 	router.Post("/payment-routing/callback", paymentController.PaymentRoutingCallback)
-	router.Post("/pay", paymentController.CreatePay)
+	router.Post("/pay/service", paymentController.CreatePay)
 }

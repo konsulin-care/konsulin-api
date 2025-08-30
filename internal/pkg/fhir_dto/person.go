@@ -2,7 +2,7 @@ package fhir_dto
 
 import "strings"
 
-type Practitioner struct {
+type Person struct {
 	ResourceType string         `json:"resourceType"`
 	ID           string         `json:"id,omitempty"`
 	Active       bool           `json:"active,omitempty"`
@@ -10,14 +10,13 @@ type Practitioner struct {
 	Telecom      []ContactPoint `json:"telecom,omitempty"`
 	Gender       string         `json:"gender,omitempty"`
 	BirthDate    string         `json:"birthDate,omitempty"`
-	Address      []Address      `json:"address,omitempty"`
-	Extension    []Extension    `json:"extension,omitempty"`
+	Photo        *Attachment    `json:"photo,omitempty"`
 	Identifier   []Identifier   `json:"identifier"`
 }
 
-// FullName returns a best-effort display name for the practitioner.
+// FullName returns a best-effort display name for the person.
 // Preference: official > usual > first; prefer Text, else Prefix+Given+Family.
-func (p Practitioner) FullName() string {
+func (p Person) FullName() string {
 	if len(p.Name) == 0 {
 		return ""
 	}

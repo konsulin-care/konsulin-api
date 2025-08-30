@@ -93,12 +93,6 @@ func (ctrl *PaymentController) CreatePay(w http.ResponseWriter, r *http.Request)
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
 
-	roles, _ := r.Context().Value("roles").([]string)
-	if len(roles) == 0 || (len(roles) == 1 && roles[0] == constvars.KonsulinRoleGuest) {
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrAuthInvalidRole(nil))
-		return
-	}
-
 	req := new(requests.CreatePayRequest)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		ctrl.Log.Error("PaymentController.CreatePay error decoding JSON",

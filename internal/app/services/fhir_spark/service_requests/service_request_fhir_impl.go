@@ -90,3 +90,54 @@ func (c *serviceRequestFhirClient) CreateServiceRequest(ctx context.Context, req
 	)
 	return serviceRequest, nil
 }
+
+func (c *serviceRequestFhirClient) GetServiceRequestByIDAndVersion(ctx context.Context, id string, version string) (*fhir_dto.GetServiceRequestOutput, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	c.Log.Info("serviceRequestFhirClient.GetServiceRequestVersion called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("id", id),
+		zap.String("version", version),
+	)
+
+	url := c.BaseUrl + "/" + id + "/_history/" + version
+	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, url, nil)
+	if err != nil {
+		c.Log.Error("serviceRequestFhirClient.GetServiceRequestVersion error creating HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrCreateHTTPRequest(err)
+	}
+	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		c.Log.Error("serviceRequestFhirClient.GetServiceRequestVersion error sending HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrSendHTTPRequest(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != constvars.StatusOK {
+		return nil, exceptions.ErrGetFHIRResource(nil, constvars.ResourceServiceRequest)
+	}
+
+	out := new(fhir_dto.GetServiceRequestOutput)
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		c.Log.Error("serviceRequestFhirClient.GetServiceRequestVersion error decoding response",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourceServiceRequest)
+	}
+
+	c.Log.Info("serviceRequestFhirClient.GetServiceRequestVersion succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("service_request_id", out.ID),
+		zap.String("version", out.Meta.VersionId),
+	)
+	return out, nil
+}
