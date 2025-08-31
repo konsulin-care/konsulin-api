@@ -369,7 +369,7 @@ func (c *practitionerFhirClient) FindPractitionerByEmail(ctx context.Context, em
 	)
 
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet,
-		fmt.Sprintf("%s?email=%s", c.BaseUrl, email), nil)
+		fmt.Sprintf("%s?email=%s&_sort=-_lastUpdated", c.BaseUrl, email), nil)
 	if err != nil {
 		c.Log.Error("practitionerFhirClient.FindPractitionerByEmail error creating HTTP request",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -378,6 +378,11 @@ func (c *practitionerFhirClient) FindPractitionerByEmail(ctx context.Context, em
 		return nil, exceptions.ErrCreateHTTPRequest(err)
 	}
 	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
+
+	c.Log.Info("practitionerFhirClient.FindPractitionerByEmail built URL",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingFhirUrlKey, req.URL.String()),
+	)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
