@@ -454,7 +454,7 @@ func (c *patientFhirClient) FindPatientByEmail(ctx context.Context, email string
 	)
 
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet,
-		fmt.Sprintf("%s?email=%s", c.BaseUrl, email), nil)
+		fmt.Sprintf("%s?email=%s&_sort=-_lastUpdated", c.BaseUrl, email), nil)
 	if err != nil {
 		c.Log.Error("patientFhirClient.FindPatientByEmail error creating HTTP request",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
