@@ -267,13 +267,28 @@ func (uc *authUsecase) InitializeSupertoken() error {
 					originalCreateNewSession := *originalImplementation.CreateNewSession
 
 					(*originalImplementation.CreateNewSession) = func(userID string, accessTokenPayload, sessionDataInDatabase map[string]interface{}, disableAntiCsrf *bool, tenantId string, userContext supertokens.UserContext) (sessmodels.SessionContainer, error) {
-						if userID == "" {
-							if accessTokenPayload == nil {
-								accessTokenPayload = make(map[string]interface{})
-							}
+						if accessTokenPayload == nil {
+							accessTokenPayload = make(map[string]interface{})
+						}
 
+						if userID == "" {
 							accessTokenPayload[supertokenAccessTokenPayloadRolesKey] = map[string]interface{}{
 								supertokenAccessTokenPayloadRolesValueKey: []interface{}{constvars.KonsulinRoleGuest},
+							}
+						} else {
+							rolesResp, err := userroles.GetRolesForUser(tenantId, userID)
+							if err == nil && rolesResp.OK != nil {
+								roles := make([]interface{}, len(rolesResp.OK.Roles))
+								for i, role := range rolesResp.OK.Roles {
+									roles[i] = role
+								}
+								accessTokenPayload[supertokenAccessTokenPayloadRolesKey] = map[string]interface{}{
+									supertokenAccessTokenPayloadRolesValueKey: roles,
+								}
+							} else {
+								accessTokenPayload[supertokenAccessTokenPayloadRolesKey] = map[string]interface{}{
+									supertokenAccessTokenPayloadRolesValueKey: []interface{}{constvars.KonsulinRoleGuest},
+								}
 							}
 						}
 
