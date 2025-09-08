@@ -46,6 +46,11 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 		}
 		req.Header = r.Header.Clone()
 
+		if r.Method == "POST" || r.Method == "PUT" || r.Method == "PATCH" {
+			req.Header.Set("Content-Type", "application/fhir+json")
+		}
+		req.Header.Set("Accept", "application/fhir+json")
+
 		resp, err := client.Do(req)
 		if err != nil {
 			utils.BuildErrorResponse(m.Log, w, exceptions.ErrSendHTTPRequest(err))
