@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
@@ -88,6 +89,8 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 		roles, _ := ctxIface.Value(keyRoles).([]string)
 		uid, _ := ctxIface.Value(keyUID).(string)
 
+		fmt.Println(uid)
+
 		if len(roles) == 1 && roles[0] == constvars.KonsulinRoleSuperadmin && uid == "api-key-superadmin" {
 
 			fhirRole = constvars.KonsulinRoleSuperadmin
@@ -109,6 +112,18 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 
 		r = r.WithContext(ctxIface)
 
+		if r.Method == "POST" {
+			body, _ := io.ReadAll(r.Body)
+			r.Body.Close()
+
+			if err := m.validatePostRequestBody(ctxIface, body, fhirRole, fhirID); err != nil {
+				utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
+				return
+			}
+
+			r.Body = io.NopCloser(bytes.NewReader(body))
+		}
+
 		if isBundle(r) {
 			body, _ := io.ReadAll(r.Body)
 			r.Body.Close()
@@ -123,7 +138,7 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 		}
 
 		fullURL := r.URL.RequestURI()
-		if err := checkSingle(ctxIface, m.Enforcer, r.Method, fullURL, roles, ctxIface.Value(keyFHIRID).(string)); err != nil {
+		if err := checkSingle(ctxIface, m.Enforcer, r.Method, fullURL, roles, ctxIface.Value(keyFHIRID).(string), m.PatientFhirClient); err != nil {
 			utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
 			return
 		}
@@ -136,6 +151,95 @@ func isOnlyGuest(roles []string) bool {
 		return false
 	}
 	return strings.EqualFold(roles[0], constvars.KonsulinRoleGuest)
+}
+
+func (m *Middlewares) validatePostRequestBody(ctx context.Context, body []byte, fhirRole, fhirID string) error {
+	if fhirRole == constvars.KonsulinRoleSuperadmin || fhirRole == constvars.KonsulinRoleGuest {
+		return nil
+	}
+
+	resourceType := gjson.GetBytes(body, "resourceType").String()
+	if resourceType == "" {
+		return nil
+	}
+
+	resourceTypeFromPath := utils.ExtractResourceTypeFromPath("/fhir/" + resourceType)
+
+	if utils.RequiresPatientOwnership(resourceTypeFromPath) && fhirRole == constvars.KonsulinRolePatient {
+		return m.validatePatientOwnershipInBody(body, fhirID)
+	}
+
+	if utils.RequiresPractitionerOwnership(resourceTypeFromPath) && fhirRole == constvars.KonsulinRolePractitioner {
+		return m.validatePractitionerOwnershipInBody(body, fhirID)
+	}
+
+	return nil
+}
+
+func (m *Middlewares) validatePatientOwnershipInBody(body []byte, patientID string) error {
+	if subject := gjson.GetBytes(body, "subject.reference").String(); subject != "" {
+		if !strings.HasPrefix(subject, "Patient/") {
+			return fmt.Errorf("invalid subject reference format: %s", subject)
+		}
+		subjectID := strings.TrimPrefix(subject, "Patient/")
+		if subjectID != patientID {
+			return fmt.Errorf("patient %s is trying to create resource for different patient %s", patientID, subjectID)
+		}
+	}
+
+	performers := gjson.GetBytes(body, "performer").Array()
+	for _, performer := range performers {
+		if ref := performer.Get("reference").String(); ref != "" {
+			if strings.HasPrefix(ref, "Patient/") {
+				performerID := strings.TrimPrefix(ref, "Patient/")
+				if performerID != patientID {
+					return fmt.Errorf("patient %s is trying to create resource with different patient performer %s", patientID, performerID)
+				}
+			}
+		}
+	}
+
+	actors := gjson.GetBytes(body, "actor").Array()
+	for _, actor := range actors {
+		if ref := actor.Get("reference").String(); ref != "" {
+			if strings.HasPrefix(ref, "Patient/") {
+				actorID := strings.TrimPrefix(ref, "Patient/")
+				if actorID != patientID {
+					return fmt.Errorf("patient %s is trying to create resource with different patient actor %s", patientID, actorID)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func (m *Middlewares) validatePractitionerOwnershipInBody(body []byte, practitionerID string) error {
+	performers := gjson.GetBytes(body, "performer").Array()
+	for _, performer := range performers {
+		if ref := performer.Get("reference").String(); ref != "" {
+			if strings.HasPrefix(ref, "Practitioner/") {
+				performerID := strings.TrimPrefix(ref, "Practitioner/")
+				if performerID != practitionerID {
+					return fmt.Errorf("practitioner %s is trying to create resource with different practitioner performer %s", practitionerID, performerID)
+				}
+			}
+		}
+	}
+
+	actors := gjson.GetBytes(body, "actor").Array()
+	for _, actor := range actors {
+		if ref := actor.Get("reference").String(); ref != "" {
+			if strings.HasPrefix(ref, "Practitioner/") {
+				actorID := strings.TrimPrefix(ref, "Practitioner/")
+				if actorID != practitionerID {
+					return fmt.Errorf("practitioner %s is trying to create resource with different practitioner actor %s", practitionerID, actorID)
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 func (m *Middlewares) resolveFHIRIdentity(ctx context.Context, uid string) (role string, id string, err error) {
@@ -174,6 +278,39 @@ func (m *Middlewares) resolveFHIRIdentity(ctx context.Context, uid string) (role
 	return constvars.KonsulinRolePatient, pats[0].ID, nil
 }
 
+func resolveIdentifierToPatientID(ctx context.Context, identifier string, patientClient contracts.PatientFhirClient) (string, error) {
+	var system, value string
+	if strings.Contains(identifier, "|") {
+		parts := strings.SplitN(identifier, "|", 2)
+		system = parts[0]
+		value = parts[1]
+		fmt.Printf("Debug: Parsed identifier with system: system=%s, value=%s\n", system, value)
+	} else {
+		value = identifier
+		system = ""
+		fmt.Printf("Debug: Parsed identifier without system: system=%s, value=%s\n", system, value)
+	}
+
+	fmt.Printf("Debug: Calling FindPatientByIdentifier with system=%s, value=%s\n", system, value)
+	patients, err := patientClient.FindPatientByIdentifier(ctx, system, value)
+	if err != nil {
+		fmt.Printf("Debug: FindPatientByIdentifier failed: %v\n", err)
+		return "", fmt.Errorf("failed to search patients by identifier: %w", err)
+	}
+
+	fmt.Printf("Debug: Found %d patients with identifier %s\n", len(patients), identifier)
+	if len(patients) == 0 {
+		return "", fmt.Errorf("no patient found with identifier %s", identifier)
+	}
+
+	if len(patients) > 1 {
+		return "", fmt.Errorf("multiple patients found with identifier %s", identifier)
+	}
+
+	fmt.Printf("Debug: Returning patient ID: %s\n", patients[0].ID)
+	return patients[0].ID, nil
+}
+
 func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []string, uid string) error {
 	if gjson.GetBytes(raw, "resourceType").String() != "Bundle" {
 		return fmt.Errorf("invalid bundle")
@@ -182,14 +319,14 @@ func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []str
 	for _, entry := range entries {
 		method := entry.Get("request.method").String()
 		url := entry.Get("request.url").String()
-		if err := checkSingle(ctx, e, method, url, roles, uid); err != nil {
+		if err := checkSingle(ctx, e, method, url, roles, uid, nil); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, roles []string, fhirID string) error {
+func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, roles []string, fhirID string, patientClient contracts.PatientFhirClient) error {
 
 	normalizedPath := normalizePath(url)
 
@@ -197,7 +334,7 @@ func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, ro
 		if allowed(e, role, method, normalizedPath) {
 
 			if role == constvars.KonsulinRolePatient || role == constvars.KonsulinRolePractitioner {
-				if !ownsResource(fhirID, url, role, method) {
+				if !ownsResource(ctx, fhirID, url, role, method, patientClient) {
 					return fmt.Errorf("%s is trying to access resource that don't belong to him/her", role)
 				}
 			}
@@ -233,7 +370,7 @@ func firstSeg(raw string) string {
 	return ""
 }
 
-func ownsResource(fhirID, rawURL, role, method string) bool {
+func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, patientClient contracts.PatientFhirClient) bool {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return false
@@ -289,6 +426,19 @@ func ownsResource(fhirID, rawURL, role, method string) bool {
 
 			if qr := q.Get("questionnaire"); qr != "" {
 				return true
+			}
+
+			if identifier := q.Get("identifier"); identifier != "" {
+				fmt.Printf("Debug: Checking identifier %s for patient fhirID %s\n", identifier, fhirID)
+
+				patientID, err := resolveIdentifierToPatientID(ctx, identifier, patientClient)
+				if err != nil {
+					fmt.Printf("Debug: Failed to resolve identifier %s: %v\n", identifier, err)
+					return false
+				}
+
+				fmt.Printf("Debug: Resolved identifier %s to patientID %s, comparing with fhirID %s\n", identifier, patientID, fhirID)
+				return patientID == fhirID
 			}
 
 			return false

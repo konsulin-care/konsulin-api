@@ -9,6 +9,7 @@ p, Guest, GET, /fhir/Media
 p, Guest, GET, /fhir/Organization
 p, Guest, GET, /fhir/PractitionerRole
 p, Guest, GET, /fhir/Questionnaire
+p, Guest, GET, /fhir/QuestionnaireResponse
 p, Guest, POST, /fhir/QuestionnaireResponse
 p, Guest, GET, /fhir/ResearchStudy
 p, Guest, GET, /fhir/Slot
@@ -16,6 +17,7 @@ p, Guest, GET, /fhir/metadata
 p, Patient, GET, /fhir/Appointment
 p, Patient, POST, /fhir/Condition
 p, Patient, GET, /fhir/Media
+p, Patient, GET, /fhir/Observation
 p, Patient, POST, /fhir/Observation
 p, Patient, PUT, /fhir/Observation
 p, Patient, GET, /fhir/Organization
