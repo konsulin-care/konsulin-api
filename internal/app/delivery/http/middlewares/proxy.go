@@ -29,7 +29,17 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/fhir/")
 
-		fullURL := target + path
+		if path == "/fhir" {
+			path = ""
+		}
+
+		fullURL := target
+		if path != "" {
+			if !strings.HasSuffix(target, "/") && !strings.HasPrefix(path, "/") {
+				fullURL += "/"
+			}
+			fullURL += path
+		}
 		if r.URL.RawQuery != "" {
 			fullURL += "?" + r.URL.RawQuery
 		}

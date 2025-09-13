@@ -82,7 +82,6 @@ p, Superadmin, PUT, /fhir/PractitionerRole
 p, Superadmin, GET, /fhir/Questionnaire
 p, Superadmin, POST, /fhir/Questionnaire
 p, Superadmin, PUT, /fhir/Questionnaire
-p, Superadmin, GET, /fhir/QuestionnaireResponse
 p, Superadmin, GET, /fhir/ResearchStudy
 p, Superadmin, POST, /fhir/ResearchStudy
 p, Superadmin, PUT, /fhir/ResearchStudy
