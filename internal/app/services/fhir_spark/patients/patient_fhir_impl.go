@@ -273,9 +273,6 @@ func (c *patientFhirClient) FindPatientByIdentifier(ctx context.Context, system,
 		patients[i] = entry.Resource
 	}
 
-	fmt.Println(patients)
-	fmt.Println("============")
-
 	c.Log.Info("patientFhirClient.FindPatientByIdentifier succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.Int(constvars.LoggingPatientCountKey, len(patients)),
