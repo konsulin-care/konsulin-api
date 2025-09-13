@@ -15,9 +15,19 @@ func PathMatch(requestPath, policyPath string) bool {
 	if err != nil {
 		return false
 	}
-
-	if requestURL.Path != policyURL.Path {
+	if !strings.HasPrefix(requestURL.Path, policyURL.Path) {
 		return false
+	}
+	if strings.HasSuffix(policyURL.Path, "/") {
+		if requestURL.Path != policyURL.Path {
+			return false
+		}
+	} else {
+		if len(requestURL.Path) > len(policyURL.Path) {
+			if requestURL.Path[len(policyURL.Path)] != '/' {
+				return false
+			}
+		}
 	}
 
 	if len(policyURL.RawQuery) == 0 {
@@ -107,7 +117,6 @@ func RequiresPractitionerOwnership(resourceType string) bool {
 func IsPublicResource(resourceType string) bool {
 	publicResources := map[string]bool{
 		"Questionnaire":           true,
-		"QuestionnaireResponse":   true,
 		"ResearchStudy":           true,
 		"Organization":            true,
 		"Location":                true,

@@ -211,6 +211,42 @@ func TestRBACIntegration(t *testing.T) {
 				policyPath:  "/fhir/Slot",
 				expected:    true,
 			},
+			{
+				name:        "Resource ID sub-path match",
+				requestPath: "/fhir/PractitionerRole/DGKAVBCXVMWT6UOE",
+				policyPath:  "/fhir/PractitionerRole",
+				expected:    true,
+			},
+			{
+				name:        "Resource ID sub-path match with query",
+				requestPath: "/fhir/PractitionerRole/DGKAVBCXVMWT6UOE?_elements=id,active",
+				policyPath:  "/fhir/PractitionerRole",
+				expected:    true,
+			},
+			{
+				name:        "Patient resource ID sub-path match",
+				requestPath: "/fhir/Patient/ABC123",
+				policyPath:  "/fhir/Patient",
+				expected:    true,
+			},
+			{
+				name:        "False positive prevention - similar prefix",
+				requestPath: "/fhir/PractitionerRoleABC",
+				policyPath:  "/fhir/PractitionerRole",
+				expected:    false,
+			},
+			{
+				name:        "Policy path with trailing slash - exact match required",
+				requestPath: "/fhir/Organization/",
+				policyPath:  "/fhir/Organization/",
+				expected:    true,
+			},
+			{
+				name:        "Policy path with trailing slash - sub-path not allowed",
+				requestPath: "/fhir/Organization/123",
+				policyPath:  "/fhir/Organization/",
+				expected:    false,
+			},
 		}
 
 		for _, tc := range testCases {
