@@ -15,6 +15,7 @@ p, Guest, GET, /fhir/ResearchStudy
 p, Guest, GET, /fhir/Slot
 p, Guest, GET, /fhir/metadata
 p, Patient, GET, /fhir/Appointment
+p, Patient, POST, /fhir/Appointment
 p, Patient, POST, /fhir/Condition
 p, Patient, GET, /fhir/Media
 p, Patient, GET, /fhir/Observation
@@ -32,6 +33,7 @@ p, Patient, POST, /fhir/QuestionnaireResponse
 p, Patient, GET, /fhir/ResearchStudy
 p, Patient, GET, /fhir/Slot
 p, Patient, PUT, /fhir/Slot
+p, Patient, PUT, /fhir/Condition
 p, Practitioner, GET, /fhir/Appointment
 p, Practitioner, GET, /fhir/Condition
 p, Practitioner, GET, /fhir/Invoice

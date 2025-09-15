@@ -136,7 +136,7 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 		}
 
 		fullURL := r.URL.RequestURI()
-		if err := checkSingle(ctxIface, m.Enforcer, r.Method, fullURL, roles, ctxIface.Value(keyFHIRID).(string), m.PatientFhirClient); err != nil {
+		if err := checkSingle(ctxIface, m.Enforcer, r.Method, fullURL, roles, ctxIface.Value(keyFHIRID).(string), m.PatientFhirClient, nil); err != nil {
 			utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
 			return
 		}
@@ -282,21 +282,14 @@ func resolveIdentifierToPatientID(ctx context.Context, identifier string, patien
 		parts := strings.SplitN(identifier, "|", 2)
 		system = parts[0]
 		value = parts[1]
-		fmt.Printf("Debug: Parsed identifier with system: system=%s, value=%s\n", system, value)
 	} else {
 		value = identifier
 		system = ""
-		fmt.Printf("Debug: Parsed identifier without system: system=%s, value=%s\n", system, value)
 	}
-
-	fmt.Printf("Debug: Calling FindPatientByIdentifier with system=%s, value=%s\n", system, value)
 	patients, err := patientClient.FindPatientByIdentifier(ctx, system, value)
 	if err != nil {
-		fmt.Printf("Debug: FindPatientByIdentifier failed: %v\n", err)
 		return "", fmt.Errorf("failed to search patients by identifier: %w", err)
 	}
-
-	fmt.Printf("Debug: Found %d patients with identifier %s\n", len(patients), identifier)
 	if len(patients) == 0 {
 		return "", fmt.Errorf("no patient found with identifier %s", identifier)
 	}
@@ -304,8 +297,6 @@ func resolveIdentifierToPatientID(ctx context.Context, identifier string, patien
 	if len(patients) > 1 {
 		return "", fmt.Errorf("multiple patients found with identifier %s", identifier)
 	}
-
-	fmt.Printf("Debug: Returning patient ID: %s\n", patients[0].ID)
 	return patients[0].ID, nil
 }
 
@@ -317,22 +308,22 @@ func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []str
 	for _, entry := range entries {
 		method := entry.Get("request.method").String()
 		url := entry.Get("request.url").String()
-		if err := checkSingle(ctx, e, method, url, roles, uid, nil); err != nil {
+		resource := entry.Get("resource").Raw
+		if err := checkSingle(ctx, e, method, url, roles, uid, nil, []byte(resource)); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, roles []string, fhirID string, patientClient contracts.PatientFhirClient) error {
-
+func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, roles []string, fhirID string, patientClient contracts.PatientFhirClient, resource []byte) error {
 	normalizedPath := normalizePath(url)
 
 	for _, role := range roles {
 		if allowed(e, role, method, normalizedPath) {
 
 			if role == constvars.KonsulinRolePatient || role == constvars.KonsulinRolePractitioner {
-				if !ownsResource(ctx, fhirID, url, role, method, patientClient) {
+				if !ownsResource(ctx, fhirID, url, role, method, patientClient, resource) {
 					return fmt.Errorf("%s is trying to access resource that don't belong to him/her", role)
 				}
 			}
@@ -367,8 +358,78 @@ func firstSeg(raw string) string {
 	}
 	return ""
 }
+func validateResourceOwnership(ctx context.Context, fhirID, role, resourceType string, resource []byte, patientClient contracts.PatientFhirClient) bool {
+	if role == constvars.KonsulinRolePatient {
+		resourceStr := string(resource)
 
-func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, patientClient contracts.PatientFhirClient) bool {
+		if resourceType == "Condition" {
+			subjectRef := gjson.Get(resourceStr, "subject.reference").String()
+			if strings.HasPrefix(subjectRef, "Patient/") {
+				patientID := strings.TrimPrefix(subjectRef, "Patient/")
+				return patientID == fhirID
+			}
+		}
+
+		if resourceType == "Appointment" {
+			participants := gjson.Get(resourceStr, "participant").Array()
+			for _, participant := range participants {
+				actorRef := participant.Get("actor.reference").String()
+				if strings.HasPrefix(actorRef, "Patient/") {
+					patientID := strings.TrimPrefix(actorRef, "Patient/")
+					if patientID == fhirID {
+						return true
+					}
+				}
+			}
+		}
+
+		if resourceType == "Slot" {
+			status := gjson.Get(resourceStr, "status").String()
+
+			if status == "busy" || status == "busy-unavailable" {
+				return true
+			}
+		}
+
+		patientRefs := []string{
+			gjson.Get(resourceStr, "subject.reference").String(),
+			gjson.Get(resourceStr, "patient.reference").String(),
+			gjson.Get(resourceStr, "actor.reference").String(),
+		}
+
+		for _, ref := range patientRefs {
+			if strings.HasPrefix(ref, "Patient/") {
+				patientID := strings.TrimPrefix(ref, "Patient/")
+				if patientID == fhirID {
+					return true
+				}
+			}
+		}
+	}
+
+	if role == constvars.KonsulinRolePractitioner {
+		resourceStr := string(resource)
+
+		practitionerRefs := []string{
+			gjson.Get(resourceStr, "practitioner.reference").String(),
+			gjson.Get(resourceStr, "actor.reference").String(),
+			gjson.Get(resourceStr, "performer.reference").String(),
+		}
+
+		for _, ref := range practitionerRefs {
+			if strings.HasPrefix(ref, "Practitioner/") {
+				practitionerID := strings.TrimPrefix(ref, "Practitioner/")
+				if practitionerID == fhirID {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, patientClient contracts.PatientFhirClient, resource []byte) bool {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return false
@@ -378,6 +439,10 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 
 	if method == "POST" {
 		return true
+	}
+
+	if method == "PUT" && len(resource) > 0 {
+		return validateResourceOwnership(ctx, fhirID, role, resourceType, resource, patientClient)
 	}
 
 	if role == constvars.KonsulinRolePatient {
@@ -427,15 +492,13 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 			}
 
 			if identifier := q.Get("identifier"); identifier != "" {
-				fmt.Printf("Debug: Checking identifier %s for patient fhirID %s\n", identifier, fhirID)
 
 				patientID, err := resolveIdentifierToPatientID(ctx, identifier, patientClient)
 				if err != nil {
-					fmt.Printf("Debug: Failed to resolve identifier %s: %v\n", identifier, err)
+
 					return false
 				}
 
-				fmt.Printf("Debug: Resolved identifier %s to patientID %s, comparing with fhirID %s\n", identifier, patientID, fhirID)
 				return patientID == fhirID
 			}
 
