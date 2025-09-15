@@ -52,6 +52,7 @@ p, Practitioner, GET, /fhir/Questionnaire
 p, Practitioner, POST, /fhir/Questionnaire
 p, Practitioner, POST, /fhir/QuestionnaireResponse
 p, Practitioner, PUT, /fhir/QuestionnaireResponse
+p, Practitioner, GET, /fhir/QuestionnaireResponse
 p, Practitioner, GET, /fhir/ResearchStudy
 p, Practitioner, GET, /fhir/Slot
 p, Researcher, GET, /fhir/PlanDefinition

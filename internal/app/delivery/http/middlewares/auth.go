@@ -136,7 +136,16 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 		}
 
 		fullURL := r.URL.RequestURI()
-		if err := checkSingle(ctxIface, m.Enforcer, r.Method, fullURL, roles, ctxIface.Value(keyFHIRID).(string), m.PatientFhirClient, nil); err != nil {
+
+		var resourceBody []byte
+		if r.Method == "PUT" || r.Method == "POST" {
+			body, _ := io.ReadAll(r.Body)
+			r.Body.Close()
+			resourceBody = body
+			r.Body = io.NopCloser(bytes.NewReader(body))
+		}
+
+		if err := checkSingle(ctxIface, m.Enforcer, r.Method, fullURL, roles, ctxIface.Value(keyFHIRID).(string), m.PatientFhirClient, resourceBody); err != nil {
 			utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
 			return
 		}
@@ -318,19 +327,18 @@ func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []str
 
 func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, roles []string, fhirID string, patientClient contracts.PatientFhirClient, resource []byte) error {
 	normalizedPath := normalizePath(url)
-
 	for _, role := range roles {
 		if allowed(e, role, method, normalizedPath) {
 
 			if role == constvars.KonsulinRolePatient || role == constvars.KonsulinRolePractitioner {
-				if !ownsResource(ctx, fhirID, url, role, method, patientClient, resource) {
-					return fmt.Errorf("%s is trying to access resource that don't belong to him/her", role)
+				if ownsResource(ctx, fhirID, url, role, method, patientClient, resource) {
+					return nil
 				}
+				continue
 			}
 			return nil
 		}
 	}
-
 	return fmt.Errorf("forbidden")
 }
 
@@ -409,6 +417,21 @@ func validateResourceOwnership(ctx context.Context, fhirID, role, resourceType s
 
 	if role == constvars.KonsulinRolePractitioner {
 		resourceStr := string(resource)
+		if resourceType == "Invoice" {
+			participants := gjson.Get(resourceStr, "participant").Array()
+			for _, participant := range participants {
+				actorRef := participant.Get("actor.reference").String()
+				if strings.HasPrefix(actorRef, "PractitionerRole/") {
+					return true
+				}
+				if strings.HasPrefix(actorRef, "Practitioner/") {
+					practitionerID := strings.TrimPrefix(actorRef, "Practitioner/")
+					if practitionerID == fhirID {
+						return true
+					}
+				}
+			}
+		}
 
 		practitionerRefs := []string{
 			gjson.Get(resourceStr, "practitioner.reference").String(),
@@ -511,7 +534,6 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 	if role == constvars.KonsulinRolePractitioner {
 
 		if utils.IsPublicResource(resourceType) {
-
 			q := u.Query()
 			hasOwnershipParams := false
 
@@ -556,6 +578,16 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 				return id == fhirID
 			}
 
+			if patient := q.Get("patient"); patient != "" {
+				return true
+			}
+
+			if subject := q.Get("subject"); subject != "" {
+				if strings.HasPrefix(subject, "Patient/") {
+					return true
+				}
+			}
+
 			for key, values := range q {
 				if strings.HasPrefix(key, "_has") && strings.Contains(key, "practitioner") {
 					for _, value := range values {
@@ -597,6 +629,26 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 			if a := q.Get("actor"); a != "" {
 				id := strings.TrimPrefix(a, "Practitioner/")
 				return id == fhirID
+			}
+
+			if patient := q.Get("patient"); patient != "" {
+				return true
+			}
+
+			if subject := q.Get("subject"); subject != "" {
+				if strings.HasPrefix(subject, "Patient/") {
+					return true
+				}
+			}
+
+			if participant := q.Get("participant"); participant != "" {
+				if strings.HasPrefix(participant, "PractitionerRole/") {
+					return true
+				}
+				if strings.HasPrefix(participant, "Practitioner/") {
+					id := strings.TrimPrefix(participant, "Practitioner/")
+					return id == fhirID
+				}
 			}
 
 			for key, values := range q {
