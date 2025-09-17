@@ -169,7 +169,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 
 								ctx := context.Background()
 								list, err := uc.PatientFhirClient.FindPatientByIdentifier(
-									ctx, constvars.FhirSystemSupertokenIdentifier, user.ID)
+									ctx, fmt.Sprintf("%s|%s", constvars.FhirSystemSupertokenIdentifier, user.ID))
 								if err != nil {
 									log.Println("consumeCode: find patient", zap.Error(err))
 									return plessmodels.ConsumeCodeResponse{}, err

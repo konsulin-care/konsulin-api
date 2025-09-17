@@ -269,8 +269,7 @@ func (m *Middlewares) resolveFHIRIdentity(ctx context.Context, uid string) (role
 
 	pats, err := m.PatientFhirClient.FindPatientByIdentifier(
 		ctx,
-		constvars.FhirSupertokenSystemIdentifier,
-		uid,
+		fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, uid),
 	)
 
 	if err != nil {
@@ -286,16 +285,7 @@ func (m *Middlewares) resolveFHIRIdentity(ctx context.Context, uid string) (role
 }
 
 func resolveIdentifierToPatientID(ctx context.Context, identifier string, patientClient contracts.PatientFhirClient) (string, error) {
-	var system, value string
-	if strings.Contains(identifier, "|") {
-		parts := strings.SplitN(identifier, "|", 2)
-		system = parts[0]
-		value = parts[1]
-	} else {
-		value = identifier
-		system = ""
-	}
-	patients, err := patientClient.FindPatientByIdentifier(ctx, system, value)
+	patients, err := patientClient.FindPatientByIdentifier(ctx, identifier)
 	if err != nil {
 		return "", fmt.Errorf("failed to search patients by identifier: %w", err)
 	}

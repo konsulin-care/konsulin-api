@@ -11,6 +11,7 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"net/http"
+	"net/url"
 	"sync"
 
 	"go.uber.org/zap"
@@ -195,14 +196,14 @@ func (c *patientFhirClient) FindPatientByID(ctx context.Context, patientID strin
 	return patientFhir, nil
 }
 
-func (c *patientFhirClient) FindPatientByIdentifier(ctx context.Context, system, value string) ([]fhir_dto.Patient, error) {
+func (c *patientFhirClient) FindPatientByIdentifier(ctx context.Context, identifier string) ([]fhir_dto.Patient, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	c.Log.Info("patientFhirClient.FindPatientByIdentifier called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
 
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet,
-		fmt.Sprintf("%s?identifier=%s|%s", c.BaseUrl, system, value), nil)
+		fmt.Sprintf("%s?identifier=%s", c.BaseUrl, url.QueryEscape(identifier)), nil)
 	if err != nil {
 		c.Log.Error("patientFhirClient.FindPatientByIdentifier error creating HTTP request",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
