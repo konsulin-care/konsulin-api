@@ -214,8 +214,4 @@ We welcome contributions from team members. Please follow the established coding
 
 ## License
 
-This project is licensed under the MIT License.
-
----
-
-Thank you for using Konsulin. For more information, visit our [website](#) or contact us at [email](#).
+Commercial licenses are available for organizations that wish to use this software without AGPL obligations. Contact us at [hello@konsulin.care](mailto:hello@konsulin.care) to obtain a commercial license.
