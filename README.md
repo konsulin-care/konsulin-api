@@ -1,146 +1,219 @@
 # Konsulin Backend Service
 
-Welcome to the **Konsulin** backend service repository. This service is designed to support the Konsulin digital health platform, enhancing well-being through self-paced exercises and various psychological tools. This README provides an overview of the service, its features, and how to use it.
+Welcome to the **Konsulin** backend service repository. This service serves as the API Gateway for the Konsulin digital health platform, enhancing mental well-being through self-paced exercises and various psychological tools. This README provides an overview of the service architecture, features, and how to set up the development environment.
 
 ## Overview
 
-Konsulin is a digital health platform that offers self-paced exercises to improve mental health. Key features of the platform include psychological assessments, digital interventions, appointment management, payment processing, and an integrated health record system.
+Konsulin is a digital health platform that offers self-paced exercises to improve mental health. The backend serves as a centralized API Gateway that routes requests to appropriate internal and external services, providing authentication, authorization, and secure access to healthcare data.
+
+## Architecture
+
+The backend aims for a **Clean Architecture** pattern with **API Gateway** design, serving as the entry point for all client applications (frontend, mobile apps, external integrators). Key architectural components:
+
+- **API Gateway**: Central request router with authentication and authorization
+- **FHIR Integration**: Blaze FHIR server for healthcare data storage (FHIR R4 compliant)
+- **Authentication**: SuperTokens with magic link authentication
+- **Authorization**: Role-based access control (RBAC) using Casbin
+- **Payment Processing**: OY! Indonesia payment gateway integration
+- **Session Management**: Redis-based session storage
 
 ## Features
 
-- **Psychological Instruments**: Access to various psychometric tools and assessments.
-- **Digital Interventions**: Evidence-based exercises aimed at improving self-compassion, mindfulness, and overall mental health.
-- **Appointment Management**: Schedule and manage appointments with psychologists.
-- **Payment Gateway**: Secure and integrated payment processing for services.
-- **Integrated Health Records**: Maintain comprehensive health records for users.
+- **Psychological Instruments**: Access to various psychometric tools and assessments
+- **Digital Interventions**: Evidence-based exercises for self-compassion, mindfulness, and mental health
+- **Appointment Management**: Schedule and manage appointments with psychologists
+- **Payment Gateway**: Secure payment processing for healthcare services
+- **FHIR-Compliant Health Records**: Comprehensive health record management using FHIR R4 standards
+- **Role-Based Access Control**: Fine-grained permissions system with multiple user roles
 
-## Subscription Tiers
+## Technology Stack
 
-- **Free**: Access to all psychometric instruments, psychologist appointments, and limited psychological exercises.
-- **Essential**: Full access to all psychological exercises.
-- **Premium**: Includes all Essential features plus discounted psychologist appointments.
-- **Elite**: Includes all Premium features plus home care consultations.
+### Core Technologies
+- **Language**: Go 1.22.3
+- **HTTP Router**: Chi v5
+- **Architecture**: Clean Architecture with API Gateway pattern
 
-## Usage
+### Data Storage
+- **Primary Data**: Blaze FHIR Server (FHIR R4 compliant)
+- **Sessions & Cache**: Redis
+- **Authentication Database**: PostgreSQL (SuperTokens only)
 
-This backend service is built using Golang and provides RESTful APIs to interact with the Konsulin platform. Below are the steps to set up and run the service.
+### Authentication & Authorization
+- **Authentication**: SuperTokens (passwordless magic link)
+- **Authorization**: Casbin RBAC
+- **Session Management**: Redis-based sessions
+- **API Keys**: Custom implementation for superadmin access
 
-### Prerequisites
+### External Integrations
+- **Payment Gateway**: OY! Indonesia
+- **Messaging**: RabbitMQ (email, WhatsApp notifications)
 
-- Go 1.16 or later
-- PostgreSQL database
-- [Docker](https://www.docker.com/) (optional for containerization)
+## Prerequisites
 
-### Installation
+- Go 1.22.3 or later
+- Docker & Docker Compose
+- Git
 
-1. **Clone the repository**:
-    ```sh
-    git clone https://github.com/yourusername/be-konsulin.git
-    cd be-konsulin
-    ```
+## Local Development Setup
 
-2. **Install dependencies**:
-    ```sh
-    go mod tidy
-    ```
+### 1. Clone the Repository
+```bash
+git clone https://github.com/yourusername/be-konsulin.git
+cd be-konsulin
+```
 
-3. **Configure environment variables**:
-    Create a `.env` file in the root directory with the following variables (or see .env.example):
-    ```env
-    DB_HOST=your_db_host
-    DB_USER=your_db_user
-    DB_PASSWORD=your_db_password
-    DB_NAME=your_db_name
-    JWT_SECRET=your_jwt_secret
-    SMTP_SERVER=smtp_server
-    SMTP_PORT=smtp_port
-    SMTP_USER=smtp_user
-    SMTP_PASSWORD=smtp_password
-    ```
+### 2. Install Dependencies
+```bash
+go mod tidy
+```
 
-4. **Ask fellow Engineers for .env credentials**
+### 3. Configure Environment
+Create a `.env` file in the root directory using `.env.example` as a template:
+```bash
+cp .env.example .env
+```
 
-### Running the Service
-1. **Run containers**:
-    ```sh
-    docker-compose up -d --build
-    ```
+**Ask fellow Engineers for .env credentials**
 
-2. **Start the server**:
-    ```sh
-    go run cmd/http/main.go
-    ```
+### 4. Start Development Services
+Start the required services (PostgreSQL for SuperTokens, Redis, Blaze FHIR server, SuperTokens):
+```bash
+docker-compose up -d
+```
 
-3. **Docker**:
-    Alternatively, you can use Docker to run the service:
-    ```sh
-    docker build -t konsulin-backend .
-    docker run -d -p 8080:8080 --env-file .env konsulin-backend
-    ```
+This will start:
+- `postgres-core-konsulin`: PostgreSQL database for SuperTokens (port 7500)
+- `redis-core-konsulin`: Redis for sessions and caching (port 6379)
+- `blaze-core-konsulin`: Blaze FHIR server for healthcare data (port 8080)
+- `supertokens-core-konsulin`: SuperTokens authentication service (port 3567)
 
-### Payments
+### 5. Run the Backend Service
+```bash
+go run cmd/http/main.go
+```
 
-- Services (case-insensitive): `analyze`, `report`, `performance-report`, `access-dataset`
-- Min quantities are default to:
-  - analyze: 10
-  - report: 1
-  - performance-report: 1
-  - access-dataset: 1
-- Request body (example):
-    ```json
-    {
-      "total_item": 3,
-      "service": "analyze",
-      "body": { "email": "user@email.com", "...": "..." }
-    }
-    ```
-- Access rules (any matching role grants access; superadmin allowed for all):
-  - analyze → patient
-  - report → practitioner
-  - performance-report → clinic_admin
-  - access-dataset → researcher
+The API Gateway will be available at the configured port (default: check your `.env` file).
 
-### API Endpoints
-Please see `/docs` directory to get your Konsulin Postman Collection or contact [CEO](aly.lamuri8@gmail.com) or [Software Engineer](abrahampurnomo144@gmail.com)
+## API Architecture
 
-## Dockerization
+### Request Flow
+```
+Client Request → API Gateway → Authentication → Authorization → Service Routing → Response
+```
 
-* Build docker image
-```shell
+### Route Patterns
+- `/auth/*` - Authentication and user management (SuperTokens)
+- `/fhir/*` - FHIR resources (proxied to Blaze server with RBAC filtering)
+- `/pay/*` - Payment processing (OY! Indonesia integration)
+- `/hook/*` - Webhook handling (internal and external)
+
+### Authentication & Authorization
+The system uses SuperTokens for authentication with magic link login. Authorization is handled through Casbin RBAC with the following roles:
+
+- **Guest**: Unauthenticated users with limited access
+- **Patient**: Healthcare consumers
+- **Practitioner**: Healthcare providers
+- **Clinic Admin**: Healthcare facility administrators
+- **Researcher**: Data analysts with access to anonymized datasets
+- **Superadmin**: System administrators with full access
+
+For detailed role permissions, see [`resources/rbac_policy.csv`](resources/rbac_policy.csv).
+
+## Payment Services
+
+The platform supports service-based pricing through OY! Indonesia payment gateway:
+
+### Available Services
+- `analyze`: Patient data analysis (min quantity: 10)
+- `report`: Practitioner reports (min quantity: 1)
+- `performance-report`: Performance analytics (min quantity: 1)
+- `access-dataset`: Research dataset access (min quantity: 1)
+
+### Access Rules
+- `analyze` → patient role
+- `report` → practitioner role
+- `performance-report` → clinic_admin role
+- `access-dataset` → researcher role
+- All services → superadmin role
+
+### Request Format
+```json
+{
+  "total_item": 3,
+  "service": "analyze",
+  "body": { 
+    "email": "user@email.com",
+    "additional_data": "..."
+  }
+}
+```
+
+## Docker Deployment
+
+### Build Vendor Dependencies
+```bash
 bash build-vendor.sh
 ```
-* Run the app with a docker container
-  * format
-    ```shell
-    bash build.sh -a '<author name>' -e <author email> -v <deployment type>
-    ```
-    * argument `-a` represents the **author's name** 
-    * argument `-e` represents the **author's email** 
-    * argument `-v` represents the **deployment version**; expected value: `develop`, `staging`, or `production` 
-  * command with a compact version
-    ```shell
-    bash build.sh -a ardi
-    ```
-  * command with a complete arguments
-    ```shell
-    bash build.sh -a 'Muhammad Febrian Ardiansyah' -e mfardiansyah.id@gmail.com -v develop
-    ```
-* Test running docker
-  * comment out the last line
-    ```shell
-    ...
-    #ENTRYPOINT ["./api-service"]
-    ...
-    ```
-  * run docker command:
-    ```shell
-    docker run --rm -it konsulin/api-service:0.0.1 bash
-    ```
 
-## Contribution
-We welcome contributions! But only if you are part of the team >_< .
+### Build and Deploy
+```bash
+# Basic build
+bash build.sh -a 'Your Name'
+
+# Complete build with all parameters
+bash build.sh -a 'Your Full Name' -e your.email@example.com -v develop
+```
+
+Parameters:
+- `-a`: Author name
+- `-e`: Author email
+- `-v`: Deployment version (`develop`, `staging`, or `production`)
+
+### Test Docker Build
+```bash
+# Comment out ENTRYPOINT in Dockerfile, then:
+docker run --rm -it konsulin/api-service:0.0.1 bash
+```
+
+## API Documentation
+
+Please see the `/docs` directory for Postman collections and API documentation, or contact the development team for access.
+
+## Health Checks
+
+The service provides health check endpoints for monitoring:
+- Redis connectivity
+- FHIR server availability
+- Service status
+
+## Development Guidelines
+
+### Code Structure
+The project follows Clean Architecture principles:
+- `cmd/`: Application entry points
+- `internal/app/delivery/`: HTTP handlers and middleware
+- `internal/app/services/`: Business logic and use cases
+- `internal/app/contracts/`: Interface definitions
+- `internal/app/drivers/`: External service drivers
+
+### Key Middleware Chain
+Request processing follows this middleware order:
+1. Request ID generation
+2. Structured logging
+3. Body buffering
+4. CORS handling
+5. SuperTokens authentication
+6. API key validation
+7. Session management
+8. Rate limiting
+9. Error handling
+
+## Contributing
+
+We welcome contributions from team members. Please follow the established coding standards and architecture patterns.
 
 ## License
+
 This project is licensed under the MIT License.
 
 ---
