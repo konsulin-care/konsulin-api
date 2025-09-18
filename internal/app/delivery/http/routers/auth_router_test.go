@@ -71,6 +71,7 @@ func TestAuthRouter_MagicLinkEndpoint(t *testing.T) {
 
 		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
 			Email: "test@example.com",
+			Roles: []string{"Practitioner"},
 		}
 		jsonBody, _ := json.Marshal(requestBody)
 
@@ -90,6 +91,7 @@ func TestAuthRouter_MagicLinkEndpoint(t *testing.T) {
 
 		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
 			Email: "test@example.com",
+			Roles: []string{"Practitioner"},
 		}
 		jsonBody, _ := json.Marshal(requestBody)
 
@@ -109,6 +111,7 @@ func TestAuthRouter_MagicLinkEndpoint(t *testing.T) {
 
 		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
 			Email: "test@example.com",
+			Roles: []string{"Practitioner"},
 		}
 		jsonBody, _ := json.Marshal(requestBody)
 
@@ -129,6 +132,7 @@ func TestAuthRouter_MagicLinkEndpoint(t *testing.T) {
 
 		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
 			Email: "test@example.com",
+			Roles: []string{"Practitioner"},
 		}
 		jsonBody, _ := json.Marshal(requestBody)
 
@@ -206,6 +210,7 @@ func TestAuthRouter_ContextPropagation(t *testing.T) {
 
 		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
 			Email: "test@example.com",
+			Roles: []string{"Practitioner"},
 		}
 		jsonBody, _ := json.Marshal(requestBody)
 
@@ -261,7 +266,9 @@ func TestAuthRouter_ErrorHandling(t *testing.T) {
 
 	t.Run("Missing Email Field", func(t *testing.T) {
 
-		requestBody := map[string]interface{}{}
+		requestBody := map[string]interface{}{
+			"roles": []string{"Practitioner"},
+		}
 		jsonBody, _ := json.Marshal(requestBody)
 
 		req := httptest.NewRequest("POST", "/magiclink", bytes.NewBuffer(jsonBody))
@@ -275,5 +282,147 @@ func TestAuthRouter_ErrorHandling(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, rr.Code, "should return 400 Bad Request for missing email")
 
 		mockAuthUsecase.AssertNotCalled(t, "CreateMagicLink")
+	})
+
+	t.Run("Missing Roles Field", func(t *testing.T) {
+
+		requestBody := map[string]interface{}{
+			"email": "test@example.com",
+		}
+		jsonBody, _ := json.Marshal(requestBody)
+
+		req := httptest.NewRequest("POST", "/magiclink", bytes.NewBuffer(jsonBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-api-key", testAPIKey)
+
+		rr := httptest.NewRecorder()
+
+		router.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code, "should return 400 Bad Request for missing roles")
+
+		mockAuthUsecase.AssertNotCalled(t, "CreateMagicLink")
+	})
+
+	t.Run("Empty Roles Array", func(t *testing.T) {
+
+		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
+			Email: "test@example.com",
+			Roles: []string{},
+		}
+		jsonBody, _ := json.Marshal(requestBody)
+
+		req := httptest.NewRequest("POST", "/magiclink", bytes.NewBuffer(jsonBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-api-key", testAPIKey)
+
+		rr := httptest.NewRecorder()
+
+		router.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code, "should return 400 Bad Request for empty roles array")
+
+		mockAuthUsecase.AssertNotCalled(t, "CreateMagicLink")
+	})
+
+	t.Run("Invalid Role", func(t *testing.T) {
+
+		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
+			Email: "test@example.com",
+			Roles: []string{"InvalidRole"},
+		}
+		jsonBody, _ := json.Marshal(requestBody)
+
+		req := httptest.NewRequest("POST", "/magiclink", bytes.NewBuffer(jsonBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-api-key", testAPIKey)
+
+		rr := httptest.NewRecorder()
+
+		router.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code, "should return 400 Bad Request for invalid role")
+
+		mockAuthUsecase.AssertNotCalled(t, "CreateMagicLink")
+	})
+
+	t.Run("Multiple Valid Roles", func(t *testing.T) {
+
+		mockAuthUsecase.On("CreateMagicLink", mock.Anything, mock.AnythingOfType("*requests.SupertokenPasswordlessCreateMagicLink")).Return(nil)
+
+		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
+			Email: "test@example.com",
+			Roles: []string{"Practitioner", "Researcher"},
+		}
+		jsonBody, _ := json.Marshal(requestBody)
+
+		req := httptest.NewRequest("POST", "/magiclink", bytes.NewBuffer(jsonBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-api-key", testAPIKey)
+
+		rr := httptest.NewRecorder()
+
+		router.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code, "should return 200 OK for multiple valid roles")
+		mockAuthUsecase.AssertExpectations(t)
+	})
+
+	t.Run("All Valid Roles", func(t *testing.T) {
+
+		mockAuthUsecase.On("CreateMagicLink", mock.Anything, mock.AnythingOfType("*requests.SupertokenPasswordlessCreateMagicLink")).Return(nil)
+
+		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
+			Email: "test@example.com",
+			Roles: []string{"Patient", "Practitioner", "Clinic Admin", "Researcher"},
+		}
+		jsonBody, _ := json.Marshal(requestBody)
+
+		req := httptest.NewRequest("POST", "/magiclink", bytes.NewBuffer(jsonBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-api-key", testAPIKey)
+
+		rr := httptest.NewRecorder()
+
+		router.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code, "should return 200 OK for all valid roles")
+		mockAuthUsecase.AssertExpectations(t)
+	})
+
+	t.Run("Email and Roles Sanitization", func(t *testing.T) {
+
+		mockAuthUsecase.On("CreateMagicLink", mock.Anything, mock.MatchedBy(func(req *requests.SupertokenPasswordlessCreateMagicLink) bool {
+			// Verify that email is sanitized (lowercase, trimmed)
+			if req.Email != "test@example.com" {
+				return false
+			}
+			// Verify that roles are sanitized (trimmed)
+			if len(req.Roles) != 2 {
+				return false
+			}
+			if req.Roles[0] != "Practitioner" || req.Roles[1] != "Researcher" {
+				return false
+			}
+			return true
+		})).Return(nil)
+
+		// Send request with unsanitized data
+		requestBody := map[string]interface{}{
+			"email": "  TEST@EXAMPLE.COM  ",
+			"roles": []string{"  Practitioner  ", "  Researcher  "},
+		}
+		jsonBody, _ := json.Marshal(requestBody)
+
+		req := httptest.NewRequest("POST", "/magiclink", bytes.NewBuffer(jsonBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-api-key", testAPIKey)
+
+		rr := httptest.NewRecorder()
+
+		router.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code, "should return 200 OK and sanitize input data")
+		mockAuthUsecase.AssertExpectations(t)
 	})
 }
