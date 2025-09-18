@@ -72,3 +72,9 @@ func SanitizeUpdateProfileRequest(input *requests.UpdateProfile) {
 
 	input.Educations = cleanWhiteSpaceFromEachStringOfAnArray(input.Educations)
 }
+
+func SanitizeCreateMagicLinkRequest(input *requests.SupertokenPasswordlessCreateMagicLink) {
+	input.Email = strings.TrimSpace(strings.ToLower(input.Email))
+
+	input.Roles = cleanWhiteSpaceFromEachStringOfAnArray(input.Roles)
+}

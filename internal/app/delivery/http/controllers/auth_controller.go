@@ -98,6 +98,8 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	utils.SanitizeCreateMagicLinkRequest(request)
+
 	if err := utils.ValidateStruct(request); err != nil {
 		ctrl.Log.Error("AuthController.MagicLink validation error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),

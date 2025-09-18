@@ -129,11 +129,22 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Su
 		}
 
 		if len(userRoles.OK.Roles) == 1 && userRoles.OK.Roles[0] == constvars.KonsulinRolePatient {
-			uc.Log.Error("authUsecase.CreateMagicLink supertokens error while check user eligibility",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return errors.New("user is registered as patient first. You can't invite this user via magic link")
+			hasNonPatientRole := false
+			for _, requestedRole := range request.Roles {
+				if requestedRole != constvars.KonsulinRolePatient {
+					hasNonPatientRole = true
+					break
+				}
+			}
+
+			if hasNonPatientRole {
+				uc.Log.Error("authUsecase.CreateMagicLink user is registered as patient only and cannot be assigned other roles",
+					zap.String(constvars.LoggingRequestIDKey, requestID),
+					zap.Strings("current_roles", userRoles.OK.Roles),
+					zap.Strings("requested_roles", request.Roles),
+				)
+				return errors.New("user is registered as patient only. Cannot assign non-patient roles via magic link")
+			}
 		}
 	}
 
@@ -155,28 +166,42 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Su
 		return err
 	}
 
-	uc.Log.Info("authUsecase.InitializeSupertoken assigning Patient Practitioner roles to CreatedNewUser")
-	response, err := userroles.AddRoleToUser(uc.InternalConfig.Supertoken.KonsulinTenantID, plessResponse.User.ID, constvars.KonsulinRolePractitioner, nil)
-	if err != nil {
-		uc.Log.Error("authUsecase.CreateMagicLink error userroles.AddRoleToUser",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return err
-	}
+	uc.Log.Info("authUsecase.CreateMagicLink assigning roles to user",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.Strings("roles", request.Roles),
+	)
 
-	if response.UnknownRoleError != nil {
-		uc.Log.Error("authUsecase.CreateMagicLink error unknown role",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return fmt.Errorf("unknown role found when assigning role: %v", response.UnknownRoleError)
-	}
+	for _, role := range request.Roles {
+		response, err := userroles.AddRoleToUser(uc.InternalConfig.Supertoken.KonsulinTenantID, plessResponse.User.ID, role, nil)
+		if err != nil {
+			uc.Log.Error("authUsecase.CreateMagicLink error userroles.AddRoleToUser",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.String("role", role),
+				zap.Error(err),
+			)
+			return err
+		}
 
-	if response.OK.DidUserAlreadyHaveRole {
-		uc.Log.Info("authUsecase.CreateMagicLink user already have role",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-		)
+		if response.UnknownRoleError != nil {
+			uc.Log.Error("authUsecase.CreateMagicLink error unknown role",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.String("role", role),
+				zap.Error(err),
+			)
+			return fmt.Errorf("unknown role found when assigning role %s: %v", role, response.UnknownRoleError)
+		}
+
+		if response.OK.DidUserAlreadyHaveRole {
+			uc.Log.Info("authUsecase.CreateMagicLink user already have role",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.String("role", role),
+			)
+		} else {
+			uc.Log.Info("authUsecase.CreateMagicLink successfully assigned role to user",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.String("role", role),
+			)
+		}
 	}
 
 	emailData := emaildelivery.EmailType{
