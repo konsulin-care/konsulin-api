@@ -1,10 +1,17 @@
-# Konsulin Backend Service
+<p align="center" style="padding-top:20px">
+ <img width="100px" src="https://github.com/konsulin-care/landing-page/raw/main/assets/images/global/logo.svg" align="center" alt="GitHub Readme Stats" />
+ <h1 align="center">Konsulin API</h1>
+ <p align="center">An API gateway to securely access to your personal health records</p>
+</p>
 
-Welcome to the **Konsulin** backend service repository. This service serves as the API Gateway for the Konsulin digital health platform, enhancing mental well-being through self-paced exercises and various psychological tools. This README provides an overview of the service architecture, features, and how to set up the development environment.
-
-## Overview
-
-Konsulin is a digital health platform that offers self-paced exercises to improve mental health. The backend serves as a centralized API Gateway that routes requests to appropriate internal and external services, providing authentication, authorization, and secure access to healthcare data.
+<p align="center">
+  <a href="https://github.com/konsulin-care/konsulin-api/releases"><img src="https://img.shields.io/github/v/release/konsulin-care/konsulin-api?style=flat" alt="GitHub release (with filter)"></a>
+  <a href="https://github.com/konsulin-care/konsulin-api/actions"><img src="https://img.shields.io/github/actions/workflow/status/konsulin-care/konsulin-api/main.yml?style=flat" alt="GitHub Workflow Status (with event)"></a>
+  <a href="https://github.com/samply/blaze"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.konsulin.care%2Ffhir%2Fmetadata&query=%24.software.version&label=Blaze&color=red" alt="Blaze"></a>
+  <a href="https://hl7.org/fhir/R4"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.konsulin.care%2Ffhir%2Fmetadata&query=%24.fhirVersion&label=FHIR&color=red" alt="Blaze"></a>
+  <a href="https://github.com/konsulin-care/konsulin-api/wiki"><img src="https://img.shields.io/badge/read%20the%20docs-here-blue?style=flat" alt="Docs"></a>
+  <a href="https://feedback.konsulin.care"><img src="https://img.shields.io/badge/discuss-here-0ABDC3?style=flat" alt="Static Badge"></a>
+</p>
 
 ## Architecture
 
@@ -214,4 +221,4 @@ We welcome contributions from team members. Please follow the established coding
 
 ## License
 
-Commercial licenses are available for organizations that wish to use this software without AGPL obligations. Contact us at [hello@konsulin.care](mailto:hello@konsulin.care) to obtain a commercial license.
+Konsulin is distributed under the [AGPL-3.0 License](./LICENSE). **You may not use Konsulin's logo for other projects.** Commercial licenses are available for organizations that wish to use this software without AGPL obligations. Contact [hello@konsulin.care](mailto:hello@konsulin.care) to obtain a commercial license.
