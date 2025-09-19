@@ -7,6 +7,7 @@ p, Clinic Admin, POST, /fhir/Schedule
 p, Clinic Admin, GET, /fhir/Slot
 p, Guest, GET, /fhir/Media
 p, Guest, GET, /fhir/Organization
+p, Guest, POST, /fhir/Patient
 p, Guest, GET, /fhir/PractitionerRole
 p, Guest, GET, /fhir/Questionnaire
 p, Guest, GET, /fhir/QuestionnaireResponse
@@ -43,6 +44,7 @@ p, Practitioner, GET, /fhir/Media
 p, Practitioner, GET, /fhir/Observation
 p, Practitioner, POST, /fhir/Observation
 p, Practitioner, GET, /fhir/Patient
+p, Practitioner, POST, /fhir/Patient
 p, Practitioner, DELETE, /fhir/Practitioner
 p, Practitioner, POST, /fhir/Practitioner
 p, Practitioner, PUT, /fhir/Practitioner
