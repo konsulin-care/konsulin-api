@@ -8,6 +8,7 @@ import (
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"sync"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -34,53 +35,70 @@ func NewSessionService(redisRepository contracts.RedisRepository, logger *zap.Lo
 }
 
 func (svc *sessionService) ParseSessionData(ctx context.Context, sessionData string) (*models.Session, error) {
+	start := time.Now()
 	requestID, ok := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	if !ok {
-		svc.Log.Error("sessionService.ParseSessionData requestID not found in context")
+		svc.Log.Error("Request ID missing from context",
+			zap.String(constvars.LoggingOperationKey, "parse_session_data"),
+		)
 		return nil, exceptions.ErrMissingRequestID(nil)
 	}
 
-	svc.Log.Info("sessionService.ParseSessionData called",
+	svc.Log.Debug("Session data parsing started",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingOperationKey, "parse_session_data"),
 		zap.String(constvars.LoggingRawSessionDataKey, sessionData))
 
 	session := new(models.Session)
 	err := json.Unmarshal([]byte(sessionData), session)
 	if err != nil {
-		svc.Log.Error("sessionService.ParseSessionData error parsing session JSON",
+		svc.Log.Error("Failed to parse session JSON",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingErrorTypeKey, "JSON parsing"),
+			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
 			zap.Error(err))
 		return nil, exceptions.ErrCannotParseJSON(err)
 	}
 
-	svc.Log.Info("sessionService.ParseSessionData succeeded",
+	svc.Log.Debug("Session data parsed successfully",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.Any(constvars.LoggingSessionDataKey, session))
+		zap.String(constvars.LoggingUserIDKey, session.UserID),
+		zap.String("role_name", session.RoleName),
+		zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
+		zap.Bool(constvars.LoggingSuccessKey, true))
 	return session, nil
 }
 
 func (svc *sessionService) GetSessionData(ctx context.Context, sessionID string) (string, error) {
+	start := time.Now()
 	requestID, ok := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	if !ok {
-		svc.Log.Error("sessionService.GetSessionData requestID not found in context")
+		svc.Log.Error("Request ID missing from context",
+			zap.String(constvars.LoggingOperationKey, "get_session_data"),
+		)
 		return "", exceptions.ErrMissingRequestID(nil)
 	}
 
-	svc.Log.Info("sessionService.GetSessionData called",
+	svc.Log.Debug("Session data retrieval started",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingSessionIDKey, sessionID))
+		zap.String(constvars.LoggingSessionIDKey, sessionID),
+		zap.String(constvars.LoggingOperationKey, "get_session_data"))
 
 	sessionData, err := svc.RedisRepository.Get(ctx, sessionID)
 	if err != nil {
-		svc.Log.Error("sessionService.GetSessionData error fetching session data from Redis",
+		svc.Log.Error("Failed to fetch session data from Redis",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String(constvars.LoggingSessionIDKey, sessionID),
+			zap.String(constvars.LoggingErrorTypeKey, "redis query"),
+			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
 			zap.Error(err))
 		return "", exceptions.ErrTokenInvalidOrExpired(err)
 	}
 
-	svc.Log.Info("sessionService.GetSessionData succeeded",
+	svc.Log.Debug("Session data retrieved successfully",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingSessionDataKey, sessionData))
+		zap.String(constvars.LoggingSessionIDKey, sessionID),
+		zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
+		zap.Bool(constvars.LoggingSuccessKey, true))
 	return sessionData, nil
 }

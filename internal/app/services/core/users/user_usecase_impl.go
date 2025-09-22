@@ -66,16 +66,19 @@ func NewUserUsecase(
 }
 
 func (uc *userUsecase) GetUserProfileBySession(ctx context.Context, sessionData string) (*responses.UserProfile, error) {
+	start := time.Now()
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	uc.Log.Info("userUsecase.GetUserProfileBySession called",
+	uc.Log.Debug("User profile retrieval started",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingSessionDataKey, sessionData),
+		zap.String(constvars.LoggingOperationKey, "get_user_profile"),
 	)
 
 	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
 	if err != nil {
-		uc.Log.Error("userUsecase.GetUserProfileBySession error parsing session data",
+		uc.Log.Error("Failed to parse session data",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingErrorTypeKey, "session parsing"),
+			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
 			zap.Error(err),
 		)
 		return nil, err
@@ -83,18 +86,21 @@ func (uc *userUsecase) GetUserProfileBySession(ctx context.Context, sessionData 
 
 	existingUser, err := uc.UserRepository.FindByID(ctx, session.UserID)
 	if err != nil {
-		uc.Log.Error("userUsecase.GetUserProfileBySession error fetching user by ID",
+		uc.Log.Error("Failed to fetch user by ID",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String(constvars.LoggingUserIDKey, session.UserID),
+			zap.String(constvars.LoggingErrorTypeKey, "database query"),
+			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
 			zap.Error(err),
 		)
 		return nil, err
 	}
 
 	if existingUser == nil {
-		uc.Log.Error("userUsecase.GetUserProfileBySession user does not exist",
+		uc.Log.Error("User not found",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String(constvars.LoggingUserIDKey, session.UserID),
+			zap.String(constvars.LoggingErrorTypeKey, "user not found"),
 		)
 		return nil, exceptions.ErrUserNotExist(nil)
 	}
@@ -104,13 +110,15 @@ func (uc *userUsecase) GetUserProfileBySession(ctx context.Context, sessionData 
 		objectUrlExpiryTime := time.Duration(uc.InternalConfig.App.MinioPreSignedUrlObjectExpiryTimeInHours) * time.Hour
 		preSignedUrl, err = uc.MinioStorage.GetObjectUrlWithExpiryTime(ctx, uc.InternalConfig.Minio.BucketName, existingUser.ProfilePictureName, objectUrlExpiryTime)
 		if err != nil {
-			uc.Log.Error("userUsecase.GetUserProfileBySession error generating pre-signed URL",
+			uc.Log.Error("Failed to generate pre-signed URL",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.String(constvars.LoggingErrorTypeKey, "storage service"),
+				zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
 				zap.Error(err),
 			)
 			return nil, err
 		}
-		uc.Log.Info("userUsecase.GetUserProfileBySession generated pre-signed URL",
+		uc.Log.Debug("Generated pre-signed URL for profile picture",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String(constvars.LoggingPreSignedUrlKey, preSignedUrl),
 		)
@@ -118,18 +126,22 @@ func (uc *userUsecase) GetUserProfileBySession(ctx context.Context, sessionData 
 
 	switch session.RoleName {
 	case constvars.RoleTypePractitioner:
-		uc.Log.Info("userUsecase.GetUserProfileBySession processing practitioner profile",
+		uc.Log.Debug("Processing practitioner profile",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingUserIDKey, session.UserID),
 		)
 		return uc.getPractitionerProfile(ctx, session, preSignedUrl)
 	case constvars.RoleTypePatient:
-		uc.Log.Info("userUsecase.GetUserProfileBySession processing patient profile",
+		uc.Log.Debug("Processing patient profile",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingUserIDKey, session.UserID),
 		)
 		return uc.getPatientProfile(ctx, session, preSignedUrl)
 	default:
-		uc.Log.Error("userUsecase.GetUserProfileBySession invalid role type",
+		uc.Log.Error("Invalid role type",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("role_name", session.RoleName),
+			zap.String(constvars.LoggingErrorTypeKey, "invalid role"),
 		)
 		return nil, exceptions.ErrInvalidRoleType(nil)
 	}

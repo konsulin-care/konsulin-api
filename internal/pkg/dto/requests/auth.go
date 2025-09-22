@@ -33,7 +33,7 @@ type ResetPassword struct {
 
 type SupertokenPasswordlessCreateMagicLink struct {
 	Email string   `json:"email" validate:"required,email"`
-	Roles []string `json:"roles" validate:"required,min=1,dive,oneof=Patient Practitioner 'Clinic Admin' Researcher"`
+	Roles []string `json:"roles,omitempty" validate:"omitempty,dive,oneof=Patient Practitioner 'Clinic Admin' Researcher"`
 }
 
 type SupertokenPasswordlessSigninupCreateCode struct {

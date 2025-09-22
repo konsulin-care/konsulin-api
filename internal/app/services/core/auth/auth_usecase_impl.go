@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
@@ -104,54 +103,21 @@ func (uc *authUsecase) LogoutUser(ctx context.Context, sessionData string) error
 }
 
 func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.SupertokenPasswordlessCreateMagicLink) error {
+	start := time.Now()
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	uc.Log.Info("authUsecase.CreateMagicLink called",
+	uc.Log.Debug("Starting magic link creation",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingEmailKey, request.Email),
+		zap.Strings(constvars.LoggingRolesKey, request.Roles),
 	)
-
-	user, err := passwordless.GetUserByEmail(uc.InternalConfig.Supertoken.KonsulinTenantID, request.Email)
-	if err != nil {
-		uc.Log.Error("authUsecase.CreateMagicLink supertokens error get user by tenantID & Email",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return err
-	}
-
-	if user != nil {
-		userRoles, err := userroles.GetRolesForUser(uc.InternalConfig.Supertoken.KonsulinTenantID, user.ID)
-		if err != nil {
-			uc.Log.Error("authUsecase.CreateMagicLink supertokens error get roles for user by tenantID & UserID",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return err
-		}
-
-		if len(userRoles.OK.Roles) == 1 && userRoles.OK.Roles[0] == constvars.KonsulinRolePatient {
-			hasNonPatientRole := false
-			for _, requestedRole := range request.Roles {
-				if requestedRole != constvars.KonsulinRolePatient {
-					hasNonPatientRole = true
-					break
-				}
-			}
-
-			if hasNonPatientRole {
-				uc.Log.Error("authUsecase.CreateMagicLink user is registered as patient only and cannot be assigned other roles",
-					zap.String(constvars.LoggingRequestIDKey, requestID),
-					zap.Strings("current_roles", userRoles.OK.Roles),
-					zap.Strings("requested_roles", request.Roles),
-				)
-				return errors.New("user is registered as patient only. Cannot assign non-patient roles via magic link")
-			}
-		}
-	}
 
 	plessResponse, err := passwordless.SignInUpByEmail(uc.InternalConfig.Supertoken.KonsulinTenantID, request.Email)
 	if err != nil {
-		uc.Log.Error("authUsecase.CreateMagicLink supertokens error create user by tenantID & Email",
+		uc.Log.Error("Failed to create user account",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingEmailKey, request.Email),
+			zap.String(constvars.LoggingErrorTypeKey, "SuperTokens API"),
+			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
 			zap.Error(err),
 		)
 		return err
@@ -159,49 +125,67 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Su
 
 	inviteLink, err := passwordless.CreateMagicLinkByEmail(uc.InternalConfig.Supertoken.KonsulinTenantID, request.Email)
 	if err != nil {
-		uc.Log.Error("authUsecase.CreateMagicLink supertokens error create magic link by email",
+		uc.Log.Error("Failed to generate magic link",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingEmailKey, request.Email),
+			zap.String(constvars.LoggingErrorTypeKey, "SuperTokens API"),
+			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
 			zap.Error(err),
 		)
 		return err
 	}
 
-	uc.Log.Info("authUsecase.CreateMagicLink assigning roles to user",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.Strings("roles", request.Roles),
-	)
+	if len(request.Roles) > 0 {
+		uc.Log.Info("Assigning roles to user",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingEmailKey, request.Email),
+			zap.Strings(constvars.LoggingRolesKey, request.Roles),
+		)
 
-	for _, role := range request.Roles {
-		response, err := userroles.AddRoleToUser(uc.InternalConfig.Supertoken.KonsulinTenantID, plessResponse.User.ID, role, nil)
-		if err != nil {
-			uc.Log.Error("authUsecase.CreateMagicLink error userroles.AddRoleToUser",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.String("role", role),
-				zap.Error(err),
-			)
-			return err
-		}
+		for _, role := range request.Roles {
+			response, err := userroles.AddRoleToUser(uc.InternalConfig.Supertoken.KonsulinTenantID, plessResponse.User.ID, role, nil)
+			if err != nil {
+				uc.Log.Error("Failed to assign role to user",
+					zap.String(constvars.LoggingRequestIDKey, requestID),
+					zap.String(constvars.LoggingEmailKey, request.Email),
+					zap.String("role", role),
+					zap.String(constvars.LoggingErrorTypeKey, "role assignment"),
+					zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
+					zap.Error(err),
+				)
+				return err
+			}
 
-		if response.UnknownRoleError != nil {
-			uc.Log.Error("authUsecase.CreateMagicLink error unknown role",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.String("role", role),
-				zap.Error(err),
-			)
-			return fmt.Errorf("unknown role found when assigning role %s: %v", role, response.UnknownRoleError)
-		}
+			if response.UnknownRoleError != nil {
+				uc.Log.Error("Unknown role provided",
+					zap.String(constvars.LoggingRequestIDKey, requestID),
+					zap.String(constvars.LoggingEmailKey, request.Email),
+					zap.String("role", role),
+					zap.String(constvars.LoggingErrorTypeKey, "unknown role"),
+					zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
+				)
+				return fmt.Errorf("unknown role found when assigning role %s: %v", role, response.UnknownRoleError)
+			}
 
-		if response.OK.DidUserAlreadyHaveRole {
-			uc.Log.Info("authUsecase.CreateMagicLink user already have role",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.String("role", role),
-			)
-		} else {
-			uc.Log.Info("authUsecase.CreateMagicLink successfully assigned role to user",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.String("role", role),
-			)
+			if response.OK.DidUserAlreadyHaveRole {
+				uc.Log.Debug("User already has role",
+					zap.String(constvars.LoggingRequestIDKey, requestID),
+					zap.String(constvars.LoggingEmailKey, request.Email),
+					zap.String("role", role),
+				)
+			} else {
+				uc.Log.Info("Role assigned successfully",
+					zap.String(constvars.LoggingRequestIDKey, requestID),
+					zap.String(constvars.LoggingEmailKey, request.Email),
+					zap.String("role", role),
+				)
+			}
 		}
+	} else {
+		uc.Log.Debug("No roles to assign - existing user",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingEmailKey, request.Email),
+		)
 	}
 
 	emailData := emaildelivery.EmailType{
@@ -213,15 +197,22 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Su
 
 	err = passwordless.SendEmail(emailData)
 	if err != nil {
-		uc.Log.Error("authUsecase.CreateMagicLink supertokens error send email",
+		uc.Log.Error("Failed to send magic link email",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingEmailKey, request.Email),
+			zap.String(constvars.LoggingErrorTypeKey, "email delivery"),
+			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
 			zap.Error(err),
 		)
 		return err
 	}
 
-	uc.Log.Info("authUsecase.CreateMagicLink succeeded",
+	uc.Log.Info("Magic link creation completed successfully",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingEmailKey, request.Email),
+		zap.Strings(constvars.LoggingRolesKey, request.Roles),
+		zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
+		zap.Bool(constvars.LoggingSuccessKey, true),
 	)
 	return nil
 }
@@ -241,4 +232,31 @@ func (uc *authUsecase) CreateAnonymousSession(ctx context.Context) (string, erro
 	)
 
 	return sessionID, nil
+}
+
+func (uc *authUsecase) CheckUserExists(ctx context.Context, email string) (bool, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	uc.Log.Info("authUsecase.CheckUserExists called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("email", email),
+	)
+
+	user, err := passwordless.GetUserByEmail(uc.InternalConfig.Supertoken.KonsulinTenantID, email)
+	if err != nil {
+		uc.Log.Error("authUsecase.CheckUserExists supertokens error get user by email",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("email", email),
+			zap.Error(err),
+		)
+		return false, err
+	}
+
+	exists := user != nil
+	uc.Log.Info("authUsecase.CheckUserExists completed",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("email", email),
+		zap.Bool("exists", exists),
+	)
+
+	return exists, nil
 }
