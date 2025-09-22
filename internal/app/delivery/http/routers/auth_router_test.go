@@ -43,6 +43,11 @@ func (m *MockAuthUsecase) LogoutUser(ctx context.Context, sessionData string) er
 	return args.Error(0)
 }
 
+func (m *MockAuthUsecase) CheckUserExists(ctx context.Context, email string) (bool, error) {
+	args := m.Called(ctx, email)
+	return args.Bool(0), args.Error(1)
+}
+
 func TestAuthRouter_MagicLinkEndpoint(t *testing.T) {
 	logger := zap.NewNop()
 
@@ -67,6 +72,7 @@ func TestAuthRouter_MagicLinkEndpoint(t *testing.T) {
 
 	t.Run("MagicLink with Valid API Key", func(t *testing.T) {
 
+		mockAuthUsecase.On("CheckUserExists", mock.Anything, "test@example.com").Return(false, nil)
 		mockAuthUsecase.On("CreateMagicLink", mock.Anything, mock.AnythingOfType("*requests.SupertokenPasswordlessCreateMagicLink")).Return(nil)
 
 		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
@@ -423,6 +429,96 @@ func TestAuthRouter_ErrorHandling(t *testing.T) {
 		router.ServeHTTP(rr, req)
 
 		assert.Equal(t, http.StatusOK, rr.Code, "should return 200 OK and sanitize input data")
+		mockAuthUsecase.AssertExpectations(t)
+	})
+
+	t.Run("MagicLink for Existing User without Roles", func(t *testing.T) {
+
+		mockAuthUsecase.On("CheckUserExists", mock.Anything, "existing@example.com").Return(true, nil)
+		mockAuthUsecase.On("CreateMagicLink", mock.Anything, mock.AnythingOfType("*requests.SupertokenPasswordlessCreateMagicLink")).Return(nil)
+
+		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
+			Email: "existing@example.com",
+			// No roles provided for existing user
+		}
+		jsonBody, _ := json.Marshal(requestBody)
+
+		req := httptest.NewRequest("POST", "/magiclink", bytes.NewBuffer(jsonBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-api-key", testAPIKey)
+
+		rr := httptest.NewRecorder()
+
+		router.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code, "should return 200 OK for existing user without roles")
+		mockAuthUsecase.AssertExpectations(t)
+	})
+
+	t.Run("MagicLink for New User without Roles", func(t *testing.T) {
+
+		mockAuthUsecase.On("CheckUserExists", mock.Anything, "newuser@example.com").Return(false, nil)
+
+		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
+			Email: "newuser@example.com",
+			// No roles provided for new user - should fail
+		}
+		jsonBody, _ := json.Marshal(requestBody)
+
+		req := httptest.NewRequest("POST", "/magiclink", bytes.NewBuffer(jsonBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-api-key", testAPIKey)
+
+		rr := httptest.NewRecorder()
+
+		router.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code, "should return 400 Bad Request for new user without roles")
+		mockAuthUsecase.AssertNotCalled(t, "CreateMagicLink")
+	})
+
+	t.Run("MagicLink for New User with Empty Roles", func(t *testing.T) {
+
+		mockAuthUsecase.On("CheckUserExists", mock.Anything, "newuser@example.com").Return(false, nil)
+
+		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
+			Email: "newuser@example.com",
+			Roles: []string{}, // Empty roles array
+		}
+		jsonBody, _ := json.Marshal(requestBody)
+
+		req := httptest.NewRequest("POST", "/magiclink", bytes.NewBuffer(jsonBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-api-key", testAPIKey)
+
+		rr := httptest.NewRecorder()
+
+		router.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code, "should return 400 Bad Request for new user with empty roles")
+		mockAuthUsecase.AssertNotCalled(t, "CreateMagicLink")
+	})
+
+	t.Run("MagicLink for Existing User with Roles", func(t *testing.T) {
+
+		mockAuthUsecase.On("CheckUserExists", mock.Anything, "existing@example.com").Return(true, nil)
+		mockAuthUsecase.On("CreateMagicLink", mock.Anything, mock.AnythingOfType("*requests.SupertokenPasswordlessCreateMagicLink")).Return(nil)
+
+		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
+			Email: "existing@example.com",
+			Roles: []string{"Practitioner", "Researcher"}, // Roles provided for existing user
+		}
+		jsonBody, _ := json.Marshal(requestBody)
+
+		req := httptest.NewRequest("POST", "/magiclink", bytes.NewBuffer(jsonBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-api-key", testAPIKey)
+
+		rr := httptest.NewRecorder()
+
+		router.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code, "should return 200 OK for existing user with roles")
 		mockAuthUsecase.AssertExpectations(t)
 	})
 }

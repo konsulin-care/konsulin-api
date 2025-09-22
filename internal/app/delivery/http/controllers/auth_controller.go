@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
@@ -100,6 +101,7 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 
 	utils.SanitizeCreateMagicLinkRequest(request)
 
+	// Basic validation (email format)
 	if err := utils.ValidateStruct(request); err != nil {
 		ctrl.Log.Error("AuthController.MagicLink validation error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -109,7 +111,47 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	// Check if user exists to determine if roles are required
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	userExists, err := ctrl.AuthUsecase.CheckUserExists(ctx, request.Email)
+	if err != nil {
+		ctrl.Log.Error("AuthController.MagicLink error checking user existence",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
+		return
+	}
+
+	// If user doesn't exist, roles are mandatory
+	if !userExists && (len(request.Roles) == 0) {
+		ctrl.Log.Error("AuthController.MagicLink roles required for new user",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("email", request.Email),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrRolesRequired(nil))
+		return
+	}
+
+	// If roles are provided, validate them
+	if len(request.Roles) > 0 {
+		// Validate each role individually
+		for _, role := range request.Roles {
+			if role != "Patient" && role != "Practitioner" && role != "Clinic Admin" && role != "Researcher" {
+				ctrl.Log.Error("AuthController.MagicLink invalid role provided",
+					zap.String(constvars.LoggingRequestIDKey, requestID),
+					zap.String("email", request.Email),
+					zap.String("invalid_role", role),
+				)
+				utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(fmt.Errorf("invalid role: %s", role)))
+				return
+			}
+		}
+	}
+
+	ctx, cancel = context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
 	if err := ctrl.AuthUsecase.CreateMagicLink(ctx, request); err != nil {
