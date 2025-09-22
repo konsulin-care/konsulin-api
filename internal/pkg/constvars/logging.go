@@ -19,6 +19,31 @@ const (
 )
 
 const (
+	LoggingMethodKey     = "method"
+	LoggingEndpointKey   = "endpoint"
+	LoggingUserAgentKey  = "user_agent"
+	LoggingRemoteAddrKey = "remote_addr"
+	LoggingStatusCodeKey = "status_code"
+	LoggingDurationKey   = "duration_ms"
+	LoggingSuccessKey    = "success"
+	LoggingQueryKey      = "query"
+)
+
+const (
+	LoggingEmailKey     = "email"
+	LoggingUserIDKey    = "user_id"
+	LoggingRolesKey     = "roles"
+	LoggingTenantIDKey  = "tenant_id"
+	LoggingOperationKey = "operation"
+)
+
+const (
+	LoggingErrorTypeKey    = "error_type"
+	LoggingErrorCodeKey    = "error_code"
+	LoggingErrorMessageKey = "error_message"
+)
+
+const (
 	LoggingTransactionIDKey    = "transaction_id"
 	LoggingTransactionCountKey = "transactions_count"
 )
@@ -33,10 +58,6 @@ const (
 
 const (
 	LoggingPatientIDKey = "patient_id"
-)
-
-const (
-	LoggingUserIDKey = "user_id"
 )
 
 const (

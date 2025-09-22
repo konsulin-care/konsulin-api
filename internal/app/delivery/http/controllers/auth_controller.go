@@ -79,20 +79,29 @@ func (ctrl *AuthController) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	if !ok || requestID == "" {
-		ctrl.Log.Error("AuthController.MagicLink requestID not found in context")
+		ctrl.Log.Error("Request ID missing from context",
+			zap.String(constvars.LoggingEndpointKey, r.URL.Path),
+			zap.String(constvars.LoggingMethodKey, r.Method),
+			zap.String(constvars.LoggingRemoteAddrKey, r.RemoteAddr),
+		)
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingRequestID(nil))
 		return
 	}
-	ctrl.Log.Info("AuthController.MagicLink called",
+
+	ctrl.Log.Debug("Magic link creation started",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingEndpointKey, r.URL.Path),
+		zap.String(constvars.LoggingMethodKey, r.Method),
 	)
 
 	request := new(requests.SupertokenPasswordlessCreateMagicLink)
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		ctrl.Log.Error("AuthController.MagicLink error decoding JSON",
+		ctrl.Log.Error("Failed to parse request body",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingErrorTypeKey, "JSON parsing"),
 			zap.Error(err),
 		)
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
@@ -103,8 +112,10 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 
 	// Basic validation (email format)
 	if err := utils.ValidateStruct(request); err != nil {
-		ctrl.Log.Error("AuthController.MagicLink validation error",
+		ctrl.Log.Error("Request validation failed",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingEmailKey, request.Email),
+			zap.String(constvars.LoggingErrorTypeKey, "input validation"),
 			zap.Error(err),
 		)
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
@@ -140,10 +151,11 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 		// Validate each role individually
 		for _, role := range request.Roles {
 			if role != "Patient" && role != "Practitioner" && role != "Clinic Admin" && role != "Researcher" {
-				ctrl.Log.Error("AuthController.MagicLink invalid role provided",
+				ctrl.Log.Error("Invalid role provided",
 					zap.String(constvars.LoggingRequestIDKey, requestID),
-					zap.String("email", request.Email),
+					zap.String(constvars.LoggingEmailKey, request.Email),
 					zap.String("invalid_role", role),
+					zap.String(constvars.LoggingErrorTypeKey, "role validation"),
 				)
 				utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(fmt.Errorf("invalid role: %s", role)))
 				return
@@ -155,8 +167,11 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 	defer cancel()
 
 	if err := ctrl.AuthUsecase.CreateMagicLink(ctx, request); err != nil {
-		ctrl.Log.Error("AuthController.MagicLink error from usecase",
+		ctrl.Log.Error("Failed to create magic link",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingEmailKey, request.Email),
+			zap.String(constvars.LoggingErrorTypeKey, "usecase error"),
+			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
 			zap.Error(err),
 		)
 		if err == context.DeadlineExceeded {
@@ -167,8 +182,11 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	ctrl.Log.Info("AuthController.MagicLink succeeded",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
+	// Log business event
+	utils.LogBusinessEvent(ctrl.Log, "magic_link_created", requestID,
+		zap.String(constvars.LoggingEmailKey, request.Email),
+		zap.Strings(constvars.LoggingRolesKey, request.Roles),
+		zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
 	)
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.MagicLinkSuccessMessage, nil)
 }

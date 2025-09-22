@@ -33,12 +33,13 @@ func (m *Middlewares) Logging(logger *zap.Logger) func(http.Handler) http.Handle
 			isClientRequestID := r.Context().Value(constvars.CONTEXT_IS_CLIENT_REQUEST_ID_KEY)
 
 			logger.Info("API request started",
-				zap.Any("request_id", requestID),
+				zap.Any(constvars.LoggingRequestIDKey, requestID),
 				zap.Any("is_client_request_id", isClientRequestID),
-				zap.String("method", r.Method),
-				zap.String("url", r.URL.String()),
-				zap.String("remote_addr", r.RemoteAddr),
-				zap.String("user_agent", r.UserAgent()),
+				zap.String(constvars.LoggingMethodKey, r.Method),
+				zap.String(constvars.LoggingEndpointKey, r.URL.Path),
+				zap.String(constvars.LoggingRemoteAddrKey, r.RemoteAddr),
+				zap.String(constvars.LoggingUserAgentKey, r.UserAgent()),
+				zap.String(constvars.LoggingQueryKey, r.URL.RawQuery),
 			)
 
 			rec := &responseRecorder{ResponseWriter: w, statusCode: http.StatusOK}
@@ -46,14 +47,15 @@ func (m *Middlewares) Logging(logger *zap.Logger) func(http.Handler) http.Handle
 			next.ServeHTTP(rec, r)
 
 			logger.Info("API request completed",
-				zap.Int("status_code", rec.statusCode),
-				zap.Any("request_id", requestID),
+				zap.Int(constvars.LoggingStatusCodeKey, rec.statusCode),
+				zap.Any(constvars.LoggingRequestIDKey, requestID),
 				zap.Any("is_client_request_id", isClientRequestID),
-				zap.String("method", r.Method),
-				zap.String("url", r.URL.String()),
-				zap.String("remote_addr", r.RemoteAddr),
-				zap.String("user_agent", r.UserAgent()),
-				zap.Duration("response_time", time.Since(start)),
+				zap.String(constvars.LoggingMethodKey, r.Method),
+				zap.String(constvars.LoggingEndpointKey, r.URL.Path),
+				zap.String(constvars.LoggingRemoteAddrKey, r.RemoteAddr),
+				zap.String(constvars.LoggingUserAgentKey, r.UserAgent()),
+				zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
+				zap.Bool(constvars.LoggingSuccessKey, rec.statusCode < 400),
 			)
 		})
 	}

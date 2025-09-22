@@ -103,15 +103,21 @@ func (uc *authUsecase) LogoutUser(ctx context.Context, sessionData string) error
 }
 
 func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.SupertokenPasswordlessCreateMagicLink) error {
+	start := time.Now()
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	uc.Log.Info("authUsecase.CreateMagicLink called",
+	uc.Log.Debug("Starting magic link creation",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingEmailKey, request.Email),
+		zap.Strings(constvars.LoggingRolesKey, request.Roles),
 	)
 
 	plessResponse, err := passwordless.SignInUpByEmail(uc.InternalConfig.Supertoken.KonsulinTenantID, request.Email)
 	if err != nil {
-		uc.Log.Error("authUsecase.CreateMagicLink supertokens error create user by tenantID & Email",
+		uc.Log.Error("Failed to create user account",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingEmailKey, request.Email),
+			zap.String(constvars.LoggingErrorTypeKey, "SuperTokens API"),
+			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
 			zap.Error(err),
 		)
 		return err
@@ -119,55 +125,66 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Su
 
 	inviteLink, err := passwordless.CreateMagicLinkByEmail(uc.InternalConfig.Supertoken.KonsulinTenantID, request.Email)
 	if err != nil {
-		uc.Log.Error("authUsecase.CreateMagicLink supertokens error create magic link by email",
+		uc.Log.Error("Failed to generate magic link",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingEmailKey, request.Email),
+			zap.String(constvars.LoggingErrorTypeKey, "SuperTokens API"),
+			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
 			zap.Error(err),
 		)
 		return err
 	}
 
 	if len(request.Roles) > 0 {
-		uc.Log.Info("authUsecase.CreateMagicLink assigning roles to user",
+		uc.Log.Info("Assigning roles to user",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Strings("roles", request.Roles),
+			zap.String(constvars.LoggingEmailKey, request.Email),
+			zap.Strings(constvars.LoggingRolesKey, request.Roles),
 		)
 
 		for _, role := range request.Roles {
 			response, err := userroles.AddRoleToUser(uc.InternalConfig.Supertoken.KonsulinTenantID, plessResponse.User.ID, role, nil)
 			if err != nil {
-				uc.Log.Error("authUsecase.CreateMagicLink error userroles.AddRoleToUser",
+				uc.Log.Error("Failed to assign role to user",
 					zap.String(constvars.LoggingRequestIDKey, requestID),
+					zap.String(constvars.LoggingEmailKey, request.Email),
 					zap.String("role", role),
+					zap.String(constvars.LoggingErrorTypeKey, "role assignment"),
+					zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
 					zap.Error(err),
 				)
 				return err
 			}
 
 			if response.UnknownRoleError != nil {
-				uc.Log.Error("authUsecase.CreateMagicLink error unknown role",
+				uc.Log.Error("Unknown role provided",
 					zap.String(constvars.LoggingRequestIDKey, requestID),
+					zap.String(constvars.LoggingEmailKey, request.Email),
 					zap.String("role", role),
-					zap.Error(err),
+					zap.String(constvars.LoggingErrorTypeKey, "unknown role"),
+					zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
 				)
 				return fmt.Errorf("unknown role found when assigning role %s: %v", role, response.UnknownRoleError)
 			}
 
 			if response.OK.DidUserAlreadyHaveRole {
-				uc.Log.Info("authUsecase.CreateMagicLink user already have role",
+				uc.Log.Debug("User already has role",
 					zap.String(constvars.LoggingRequestIDKey, requestID),
+					zap.String(constvars.LoggingEmailKey, request.Email),
 					zap.String("role", role),
 				)
 			} else {
-				uc.Log.Info("authUsecase.CreateMagicLink successfully assigned role to user",
+				uc.Log.Info("Role assigned successfully",
 					zap.String(constvars.LoggingRequestIDKey, requestID),
+					zap.String(constvars.LoggingEmailKey, request.Email),
 					zap.String("role", role),
 				)
 			}
 		}
 	} else {
-		uc.Log.Info("authUsecase.CreateMagicLink no roles to assign - user already exists",
+		uc.Log.Debug("No roles to assign - existing user",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("email", request.Email),
+			zap.String(constvars.LoggingEmailKey, request.Email),
 		)
 	}
 
@@ -180,15 +197,22 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Su
 
 	err = passwordless.SendEmail(emailData)
 	if err != nil {
-		uc.Log.Error("authUsecase.CreateMagicLink supertokens error send email",
+		uc.Log.Error("Failed to send magic link email",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingEmailKey, request.Email),
+			zap.String(constvars.LoggingErrorTypeKey, "email delivery"),
+			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
 			zap.Error(err),
 		)
 		return err
 	}
 
-	uc.Log.Info("authUsecase.CreateMagicLink succeeded",
+	uc.Log.Info("Magic link creation completed successfully",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingEmailKey, request.Email),
+		zap.Strings(constvars.LoggingRolesKey, request.Roles),
+		zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
+		zap.Bool(constvars.LoggingSuccessKey, true),
 	)
 	return nil
 }
