@@ -39,20 +39,29 @@ func NewUserController(logger *zap.Logger, userUsecase contracts.UserUsecase, in
 	return userControllerInstance
 }
 func (ctrl *UserController) GetUserProfileBySession(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	if !ok || requestID == "" {
-		ctrl.Log.Error("UserController.GetUserProfileBySession requestID not found in context")
+		ctrl.Log.Error("Request ID missing from context",
+			zap.String(constvars.LoggingEndpointKey, r.URL.Path),
+			zap.String(constvars.LoggingMethodKey, r.Method),
+			zap.String(constvars.LoggingRemoteAddrKey, r.RemoteAddr),
+		)
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingRequestID(nil))
 		return
 	}
-	ctrl.Log.Info("UserController.GetUserProfileBySession called",
+
+	ctrl.Log.Debug("User profile retrieval started",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingEndpointKey, r.URL.Path),
+		zap.String(constvars.LoggingMethodKey, r.Method),
 	)
 
 	sessionData, ok := r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string)
 	if !ok || sessionData == "" {
-		ctrl.Log.Error("UserController.GetUserProfileBySession sessionData not found in context",
+		ctrl.Log.Error("Session data missing from context",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingErrorTypeKey, "authentication"),
 		)
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingSessionData(nil))
 		return
@@ -63,8 +72,10 @@ func (ctrl *UserController) GetUserProfileBySession(w http.ResponseWriter, r *ht
 
 	result, err := ctrl.UserUsecase.GetUserProfileBySession(ctx, sessionData)
 	if err != nil {
-		ctrl.Log.Error("UserController.GetUserProfileBySession error from usecase",
+		ctrl.Log.Error("Failed to retrieve user profile",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingErrorTypeKey, "usecase error"),
+			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
 			zap.Error(err),
 		)
 		if err == context.DeadlineExceeded {
@@ -75,27 +86,37 @@ func (ctrl *UserController) GetUserProfileBySession(w http.ResponseWriter, r *ht
 		return
 	}
 
-	ctrl.Log.Info("UserController.GetUserProfileBySession succeeded",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
+	utils.LogBusinessEvent(ctrl.Log, "user_profile_retrieved", requestID,
+		zap.String(constvars.LoggingEmailKey, result.Email),
+		zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
 	)
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.GetProfileSuccessMessage, result)
 }
 
 func (ctrl *UserController) UpdateUserBySession(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	if !ok || requestID == "" {
-		ctrl.Log.Error("UserController.UpdateUserBySession requestID not found in context")
+		ctrl.Log.Error("Request ID missing from context",
+			zap.String(constvars.LoggingEndpointKey, r.URL.Path),
+			zap.String(constvars.LoggingMethodKey, r.Method),
+			zap.String(constvars.LoggingRemoteAddrKey, r.RemoteAddr),
+		)
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingRequestID(nil))
 		return
 	}
-	ctrl.Log.Info("UserController.UpdateUserBySession called",
+
+	ctrl.Log.Debug("User profile update started",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingEndpointKey, r.URL.Path),
+		zap.String(constvars.LoggingMethodKey, r.Method),
 	)
 
 	reqPayload := new(requests.UpdateProfile)
 	if err := json.NewDecoder(r.Body).Decode(&reqPayload); err != nil {
-		ctrl.Log.Error("UserController.UpdateUserBySession error decoding JSON",
+		ctrl.Log.Error("Failed to parse request body",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingErrorTypeKey, "JSON parsing"),
 			zap.Error(err),
 		)
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
@@ -105,24 +126,29 @@ func (ctrl *UserController) UpdateUserBySession(w http.ResponseWriter, r *http.R
 	if reqPayload.ProfilePicture != "" {
 		data, ext, err := utils.DecodeBase64Image(reqPayload.ProfilePicture)
 		if err != nil {
-			ctrl.Log.Error("UserController.UpdateUserBySession error decoding base64 image",
+			ctrl.Log.Error("Failed to decode base64 image",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.String(constvars.LoggingErrorTypeKey, "image processing"),
 				zap.Error(err),
 			)
 			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrImageValidation(err))
 			return
 		}
 		if err := utils.ValidateImageFormat(ext, constvars.ImageAllowedProfilePictureFormats); err != nil {
-			ctrl.Log.Error("UserController.UpdateUserBySession error validating image format",
+			ctrl.Log.Error("Invalid image format",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.String("image_extension", ext),
+				zap.String(constvars.LoggingErrorTypeKey, "image validation"),
 				zap.Error(err),
 			)
 			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrImageValidation(err))
 			return
 		}
 		if err := utils.ValidateImageSize(data, ctrl.InternalConfig.Minio.ProfilePictureMaxUploadSizeInMB); err != nil {
-			ctrl.Log.Error("UserController.UpdateUserBySession error validating image size",
+			ctrl.Log.Error("Image size exceeds limit",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Int("max_size_mb", ctrl.InternalConfig.Minio.ProfilePictureMaxUploadSizeInMB),
+				zap.String(constvars.LoggingErrorTypeKey, "image validation"),
 				zap.Error(err),
 			)
 			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrImageValidation(err))
@@ -135,8 +161,9 @@ func (ctrl *UserController) UpdateUserBySession(w http.ResponseWriter, r *http.R
 	utils.SanitizeUpdateProfileRequest(reqPayload)
 
 	if err := utils.ValidateStruct(reqPayload); err != nil {
-		ctrl.Log.Error("UserController.UpdateUserBySession validation error",
+		ctrl.Log.Error("Request validation failed",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingErrorTypeKey, "input validation"),
 			zap.Error(err),
 		)
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
@@ -145,8 +172,9 @@ func (ctrl *UserController) UpdateUserBySession(w http.ResponseWriter, r *http.R
 
 	sessionData, ok := r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string)
 	if !ok || sessionData == "" {
-		ctrl.Log.Error("UserController.UpdateUserBySession sessionData not found in context",
+		ctrl.Log.Error("Session data missing from context",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingErrorTypeKey, "authentication"),
 		)
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingSessionData(nil))
 		return
@@ -157,8 +185,10 @@ func (ctrl *UserController) UpdateUserBySession(w http.ResponseWriter, r *http.R
 
 	response, err := ctrl.UserUsecase.UpdateUserProfileBySession(ctx, sessionData, reqPayload)
 	if err != nil {
-		ctrl.Log.Error("UserController.UpdateUserBySession error from usecase",
+		ctrl.Log.Error("Failed to update user profile",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingErrorTypeKey, "usecase error"),
+			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
 			zap.Error(err),
 		)
 		if err == context.DeadlineExceeded {
@@ -169,9 +199,10 @@ func (ctrl *UserController) UpdateUserBySession(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	ctrl.Log.Info("UserController.UpdateUserBySession succeeded",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.Any("response", response),
+	utils.LogBusinessEvent(ctrl.Log, "user_profile_updated", requestID,
+		zap.String("patient_id", response.PatientID),
+		zap.String("practitioner_id", response.PractitionerID),
+		zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
 	)
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.UpdateUserSuccessMessage, response)
 }
