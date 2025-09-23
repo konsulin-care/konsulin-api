@@ -120,6 +120,17 @@ func loadInternalConfigWithEnv() *InternalConfig {
 			PerformanceReportBasePrice: utils.GetEnvInt("BASE_PRICE_PERFORMANCE_REPORT", 0),
 			AccessDatasetBasePrice:     utils.GetEnvInt("BASE_PRICE_ACCESS_DATASET", 0),
 		},
+		Webhook: AppWebhook{
+			RateLimit:            utils.GetEnvInt("HOOK_RATE_LIMIT", 0),
+			MonthlyQuota:         utils.GetEnvInt("HOOK_QUOTA", 0),
+			RateLimitedServices:  utils.GetEnvString("HOOK_RATE_LIMITED_SERVICES", ""),
+			MaxQueue:             utils.GetEnvInt("HOOK_MAX_QUEUE", 1),
+			ThrottleRetry:        utils.GetEnvInt("HOOK_THROTTLE_RETRY", 15),
+			URL:                  utils.GetEnvString("HOOK_URL", ""),
+			HTTPTimeoutInSeconds: utils.GetEnvInt("HOOK_HTTP_TIMEOUT", 10),
+			JWTAlg:               utils.GetEnvString("HOOK_JWT_ALG", "ES256"),
+			JWTHookKey:           utils.GetEnvString("JWT_HOOK_KEY", ""),
+		},
 	}
 
 	// this is a safe guard to ensure that no base price is left unset
