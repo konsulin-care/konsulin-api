@@ -71,8 +71,9 @@ func loadInternalConfigWithEnv() *InternalConfig {
 			ForgotPasswordTokenExpiredTimeInMinutes:  utils.GetEnvInt("APP_FORGOT_PASSWORD_TOKEN_EXPIRED_TIME_IN_MINUTES", 0),
 			MinioPreSignedUrlObjectExpiryTimeInHours: utils.GetEnvInt("APP_MINIO_PRE_SIGNED_URL_OBJECT_EXPIRY_TIME_IN_HOURS", 0),
 			QuestionnaireGuestResponseExpiredTimeInMinutes: utils.GetEnvInt("APP_QUESTIONNAIRE_GUEST_RESPONSE_EXPIRED_TIME_IN_MINUTES", 0),
-			SuperadminAPIKey:          utils.GetEnvString("SUPERADMIN_API_KEY", ""),
-			SuperadminAPIKeyRateLimit: utils.GetEnvInt("SUPERADMIN_API_KEY_RATE_LIMIT", 100),
+			SuperadminAPIKey:           utils.GetEnvString("SUPERADMIN_API_KEY", ""),
+			SuperadminAPIKeyRateLimit:  utils.GetEnvInt("SUPERADMIN_API_KEY_RATE_LIMIT", 100),
+			WebhookInstantiateBasePath: utils.GetEnvString("APP_WEBHOOK_INSTANTIATE_BASE_PATH", "/api/v1/hook"),
 		},
 		FHIR: AppFHIR{
 			BaseUrl: utils.GetEnvString("APP_FHIR_BASE_URL", ""),
