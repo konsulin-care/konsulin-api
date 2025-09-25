@@ -40,6 +40,7 @@ type App struct {
 	QuestionnaireGuestResponseExpiredTimeInMinutes int    `mapstructure:"questionnaire_guest_response_expired_time_in_minutes"`
 	SuperadminAPIKey                               string `mapstructure:"superadmin_api_key"`
 	SuperadminAPIKeyRateLimit                      int    `mapstructure:"superadmin_api_key_rate_limit"`
+	WebhookInstantiateBasePath                     string `mapstructure:"webhook_instantiate_base_path"`
 }
 
 type AppFHIR struct {

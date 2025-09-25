@@ -19,9 +19,15 @@ type Bootstrap struct {
 	Minio          *minio.Client
 	InternalConfig *InternalConfig
 	DriverConfig   *DriverConfig
+	// WorkerStop if set will be called during Shutdown to gracefully stop background workers
+	WorkerStop func()
 }
 
 func (b *Bootstrap) Shutdown(ctx context.Context) error {
+	if b.WorkerStop != nil {
+		b.WorkerStop()
+		log.Println("Successfully stopped background workers")
+	}
 	err := b.Redis.Close()
 	if err != nil {
 		return err

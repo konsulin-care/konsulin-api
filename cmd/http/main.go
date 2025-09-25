@@ -15,15 +15,19 @@ import (
 	"konsulin-service/internal/app/services/core/payments"
 	"konsulin-service/internal/app/services/core/session"
 	"konsulin-service/internal/app/services/core/transactions"
+	"konsulin-service/internal/app/services/core/webhook"
 	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/persons"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
 	"konsulin-service/internal/app/services/fhir_spark/service_requests"
+	"konsulin-service/internal/app/services/shared/jwtmanager"
 	"konsulin-service/internal/app/services/shared/locker"
 	"konsulin-service/internal/app/services/shared/mailer"
 	"konsulin-service/internal/app/services/shared/payment_gateway"
+	"konsulin-service/internal/app/services/shared/ratelimiter"
 	redisKonsulin "konsulin-service/internal/app/services/shared/redis"
 	storageKonsulin "konsulin-service/internal/app/services/shared/storage"
+	"konsulin-service/internal/app/services/shared/webhookqueue"
 	"konsulin-service/internal/app/services/shared/whatsapp"
 	"log"
 	"net/http"
@@ -83,7 +87,7 @@ func main() {
 	}
 
 	// Initialize the application with the bootstrap components
-	err = bootstrapingTheApp(bootstrap)
+	err = bootstrapingTheApp(&bootstrap)
 	if err != nil {
 		log.Fatalf("Error while bootstrapping the app: %s", err.Error())
 	}
@@ -146,7 +150,7 @@ func main() {
 }
 
 // bootstrapingTheApp initializes and sets up the application with the given bootstrap components
-func bootstrapingTheApp(bootstrap config.Bootstrap) error {
+func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	// Initialize the repository for Redis
 	redisRepository := redisKonsulin.NewRedisRepository(bootstrap.Redis, bootstrap.Logger)
 
@@ -172,7 +176,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	sessionService := session.NewSessionService(redisRepository, bootstrap.Logger)
 
 	// Initialize session service with Redis repository
-	_ = locker.NewLockService(redisRepository, bootstrap.Logger)
+	lockService := locker.NewLockService(redisRepository, bootstrap.Logger)
 
 	// Initialize FHIR clients
 	patientFhirClient := patientsFhir.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
@@ -207,11 +211,24 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 		log.Fatalf("Error initializing supertokens: %v", err)
 	}
 
-	// Initialize payment usecase and controller
+	// Initialize webhook components
+	webhookJWT, err := jwtmanager.NewJWTManager(bootstrap.InternalConfig, bootstrap.Logger)
+	if err != nil {
+		return err
+	}
+	webhookLimiter := ratelimiter.NewHookRateLimiter(redisRepository, bootstrap.Logger, bootstrap.InternalConfig)
+	webhookQueueService, err := webhookqueue.NewService(bootstrap.RabbitMQ, bootstrap.Logger, bootstrap.InternalConfig.Webhook.MaxQueue)
+	if err != nil {
+		return err
+	}
+	webhookUsecase := webhook.NewUsecase(bootstrap.Logger, bootstrap.InternalConfig, webhookQueueService, webhookJWT)
+	webhookController := controllers.NewWebhookController(bootstrap.Logger, webhookUsecase, webhookLimiter, bootstrap.InternalConfig)
+	// Initialize payment usecase and controller (inject JWT manager)
 	serviceRequestStorage := storageKonsulin.NewServiceRequestStorage(serviceRequestFhirClient, bootstrap.Logger)
 	paymentUsecase := payments.NewPaymentUsecase(
 		transactions.NewTransactionPostgresRepository(nil, bootstrap.Logger),
 		bootstrap.InternalConfig,
+		webhookJWT,
 		patientFhirClient,
 		practitionerFhirClient,
 		personFhirClient,
@@ -221,6 +238,11 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 	)
 	paymentController := controllers.NewPaymentController(bootstrap.Logger, paymentUsecase)
 
+	// Start webhook worker ticker (best-effort lock ensures single execution)
+	worker := webhook.NewWorker(bootstrap.Logger, bootstrap.InternalConfig, lockService, webhookQueueService, webhookJWT)
+	stopWorker := worker.Start(context.Background())
+	bootstrap.WorkerStop = stopWorker
+
 	// Setup routes with the router, configuration, middlewares, and controllers
 	routers.SetupRoutes(
 		bootstrap.Router,
@@ -229,6 +251,7 @@ func bootstrapingTheApp(bootstrap config.Bootstrap) error {
 		middlewares,
 		authController,
 		paymentController,
+		webhookController,
 	)
 
 	return nil
