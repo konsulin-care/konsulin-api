@@ -100,7 +100,12 @@ func EvaluateWebhookAuth(ctx context.Context, log *zap.Logger, jwtMgr *jwtmanage
 	if info.IsAPIKey || info.IsSuperadmin {
 		return nil
 	}
-	if info.UID != "" && !strings.EqualFold(info.UID, "anonymous") {
+	// Allow anonymous users as well (uid empty or "anonymous")
+	if info.UID == "" || strings.EqualFold(info.UID, "anonymous") {
+		return nil
+	}
+	// Any authenticated uid is allowed
+	if info.UID != "" {
 		return nil
 	}
 	return exceptions.BuildNewCustomError(nil, constvars.StatusUnauthorized, "Not authorized", "UNAUTHORIZED_WEBHOOK_CALLER")
