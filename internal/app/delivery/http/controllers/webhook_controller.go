@@ -86,7 +86,18 @@ func (ctrl *WebhookController) HandleEnqueueWebHook(w http.ResponseWriter, r *ht
 	}
 
 	// Rate limit evaluation before enqueue
-	eval, evalErr := ctrl.Limiter.Evaluate(r.Context(), &ratelimiter.EvaluateInput{ServiceName: serviceName, NowUTC: time.Now().UTC()})
+	// Derive actor ID: API key superadmin or uid or "anonymous"
+	actorID := "anonymous"
+	if v := r.Context().Value("api_key_auth"); v != nil {
+		if b, ok := v.(bool); ok && b {
+			actorID = "api-key-superadmin"
+		}
+	}
+	if uid, ok := r.Context().Value("uid").(string); ok && uid != "" && !strings.EqualFold(uid, "anonymous") {
+		actorID = uid
+	}
+
+	eval, evalErr := ctrl.Limiter.Evaluate(r.Context(), &ratelimiter.EvaluateInput{ServiceName: serviceName, NowUTC: time.Now().UTC(), ActorID: actorID})
 	if evalErr != nil {
 		utils.BuildErrorResponse(ctrl.Log, w, evalErr)
 		return
