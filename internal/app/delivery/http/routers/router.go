@@ -22,6 +22,7 @@ func SetupRoutes(
 	middlewares *middlewares.Middlewares,
 	authController *controllers.AuthController,
 	paymentController *controllers.PaymentController,
+	webhookController *controllers.WebhookController,
 ) {
 	corsOptions := cors.Options{
 		AllowOriginFunc: func(r *http.Request, origin string) bool {
@@ -68,6 +69,7 @@ func SetupRoutes(
 			})
 
 			attachPaymentRouter(r, middlewares, paymentController)
+			attachWebhookRouter(r, middlewares, webhookController)
 		})
 	})
 

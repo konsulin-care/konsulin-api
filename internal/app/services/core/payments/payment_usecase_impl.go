@@ -8,6 +8,8 @@ import (
 	"io"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
+	"konsulin-service/internal/app/services/core/webhook"
+	"konsulin-service/internal/app/services/shared/jwtmanager"
 	"konsulin-service/internal/app/services/shared/storage"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
@@ -15,6 +17,8 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"net/http"
+	"net/url"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -26,6 +30,7 @@ type paymentUsecase struct {
 	TransactionRepository  contracts.TransactionRepository
 	InternalConfig         *config.InternalConfig
 	Log                    *zap.Logger
+	JWTManager             *jwtmanager.JWTManager
 	PatientFhirClient      contracts.PatientFhirClient
 	PractitionerFhirClient contracts.PractitionerFhirClient
 	PersonFhirClient       contracts.PersonFhirClient
@@ -41,6 +46,7 @@ var (
 func NewPaymentUsecase(
 	transactionRepository contracts.TransactionRepository,
 	internalConfig *config.InternalConfig,
+	jwtMgr *jwtmanager.JWTManager,
 	patientFhirClient contracts.PatientFhirClient,
 	practitionerFhirClient contracts.PractitionerFhirClient,
 	personFhirClient contracts.PersonFhirClient,
@@ -53,6 +59,7 @@ func NewPaymentUsecase(
 			TransactionRepository:  transactionRepository,
 			InternalConfig:         internalConfig,
 			Log:                    logger,
+			JWTManager:             jwtMgr,
 			PatientFhirClient:      patientFhirClient,
 			PractitionerFhirClient: practitionerFhirClient,
 			PersonFhirClient:       personFhirClient,
@@ -132,7 +139,7 @@ func (uc *paymentUsecase) PaymentRoutingCallback(ctx context.Context, request *r
 	}
 
 	// 6) POST instantiateURI with RawBody
-	if err := callInstantiateURI(ctx, uc.Log, note.InstantiateURI, note.RawBody); err != nil {
+	if err := uc.callInstantiateURI(ctx, note.InstantiateURI, note.RawBody); err != nil {
 		uc.Log.Error("paymentUsecase.PaymentRoutingCallback failed calling instantiate URI",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
@@ -190,7 +197,14 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 	partnerUserID := uid
 
 	// 5) Build instantiateUri and store in ServiceRequest note
-	instantiateURI := fmt.Sprintf("%s/hook/%s", strings.TrimRight(uc.InternalConfig.App.BaseUrl, "/"), requestedService)
+	baseURL := strings.TrimRight(uc.InternalConfig.App.BaseUrl, "/")
+	basePath := uc.InternalConfig.App.WebhookInstantiateBasePath
+	instantiateURI := fmt.Sprintf("%s/%s/%s", baseURL, basePath, requestedService)
+	// Normalize the URL to avoid duplicate slashes in the path
+	if u, err := url.Parse(instantiateURI); err == nil {
+		u.Path = path.Clean(u.Path)
+		instantiateURI = u.String()
+	}
 	occurrence := time.Now().Format("2006-01-02T15:04:05-07:00")
 	storageOutput, err := uc.Storage.Create(ctx, &requests.CreateServiceRequestStorageInput{
 		UID:            uid,
@@ -368,8 +382,8 @@ func (uc *paymentUsecase) calculateAmount(service string, totalItem int) (int, e
 	return amount, nil
 }
 
-func callInstantiateURI(ctx context.Context, log *zap.Logger, url string, body json.RawMessage) error {
-	log.Info("paymentUsecase.callInstantiateURI request",
+func (uc *paymentUsecase) callInstantiateURI(ctx context.Context, url string, body json.RawMessage) error {
+	uc.Log.Info("paymentUsecase.callInstantiateURI request",
 		zap.String("instantiate_uri", url),
 		zap.String("body", string(body)),
 	)
@@ -378,19 +392,25 @@ func callInstantiateURI(ctx context.Context, log *zap.Logger, url string, body j
 		return err
 	}
 	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationJSON)
+	// Attach internal forwarded JWT so webhook endpoint can bypass external auth
+	if uc.JWTManager != nil {
+		if out, err := uc.JWTManager.CreateToken(ctx, &jwtmanager.CreateTokenInput{Subject: "payment-service"}); err == nil {
+			req.Header.Set(webhook.JWTForwardedFromPaymentServiceHeader, out.Token)
+		}
+	}
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusAccepted {
 		b, _ := io.ReadAll(resp.Body)
-		log.Error("instantiate URI returned non-200",
+		uc.Log.Error("instantiate URI returned non-202",
 			zap.Int("status_code", resp.StatusCode),
 			zap.String("body", string(b)),
 		)
-		return fmt.Errorf("non-200 from instantiate uri: %d", resp.StatusCode)
+		return fmt.Errorf("non-202 from instantiate uri: %d", resp.StatusCode)
 	}
 	return nil
 }

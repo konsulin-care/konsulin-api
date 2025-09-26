@@ -12,6 +12,7 @@ type InternalConfig struct {
 	Supertoken     AppSupertoken     `mapstructure:"supertoken"`
 	PaymentGateway AppPaymentGateway `mapstructure:"payment_gateway"`
 	ServicePricing AppServicePricing `mapstructure:"service_pricing"`
+	Webhook        AppWebhook        `mapstructure:"webhook"`
 }
 
 type App struct {
@@ -39,6 +40,7 @@ type App struct {
 	QuestionnaireGuestResponseExpiredTimeInMinutes int    `mapstructure:"questionnaire_guest_response_expired_time_in_minutes"`
 	SuperadminAPIKey                               string `mapstructure:"superadmin_api_key"`
 	SuperadminAPIKeyRateLimit                      int    `mapstructure:"superadmin_api_key_rate_limit"`
+	WebhookInstantiateBasePath                     string `mapstructure:"webhook_instantiate_base_path"`
 }
 
 type AppFHIR struct {
@@ -96,4 +98,26 @@ type AppServicePricing struct {
 	ReportBasePrice            int `mapstructure:"report_base_price"`
 	PerformanceReportBasePrice int `mapstructure:"performance_report_base_price"`
 	AccessDatasetBasePrice     int `mapstructure:"access_dataset_base_price"`
+}
+
+// AppWebhook holds configuration for the Webhook Service Integration feature.
+type AppWebhook struct {
+	// RateLimit is the number of allowed requests per 60-second window (by service name)
+	RateLimit int `mapstructure:"rate_limit"`
+	// MonthlyQuota is the number of allowed requests per calendar month UTC (by service name)
+	MonthlyQuota int `mapstructure:"monthly_quota"`
+	// RateLimitedServices is a CSV list of service names subject to rate limiting
+	RateLimitedServices string `mapstructure:"rate_limited_services"`
+	// MaxQueue defines how many items the worker processes per tick
+	MaxQueue int `mapstructure:"max_queue"`
+	// ThrottleRetry is the failedCount threshold before sending to DLQ
+	ThrottleRetry int `mapstructure:"throttle_retry"`
+	// URL is the base URL of the external webhook service
+	URL string `mapstructure:"url"`
+	// HTTPTimeoutInSeconds is the HTTP client timeout when calling the webhook
+	HTTPTimeoutInSeconds int `mapstructure:"http_timeout_in_seconds"`
+	// JWTAlg selects the signing algorithm (ES256|RS256)
+	JWTAlg string `mapstructure:"jwt_alg"`
+	// JWTHookKey is the private key PEM for signing webhook JWTs
+	JWTHookKey string `mapstructure:"jwt_hook_key"`
 }
