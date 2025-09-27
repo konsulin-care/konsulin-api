@@ -394,7 +394,7 @@ func (uc *paymentUsecase) callInstantiateURI(ctx context.Context, url string, bo
 	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationJSON)
 	// Attach internal forwarded JWT so webhook endpoint can bypass external auth
 	if uc.JWTManager != nil {
-		if out, err := uc.JWTManager.CreateToken(ctx, &jwtmanager.CreateTokenInput{Subject: "payment-service"}); err == nil {
+		if out, err := uc.JWTManager.CreateToken(ctx, &jwtmanager.CreateTokenInput{Subject: webhook.PAYMENT_SERVICE_SUB}); err == nil {
 			req.Header.Set(webhook.JWTForwardedFromPaymentServiceHeader, out.Token)
 		}
 	}

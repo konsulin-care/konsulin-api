@@ -125,6 +125,7 @@ func loadInternalConfigWithEnv() *InternalConfig {
 			RateLimit:            utils.GetEnvInt("HOOK_RATE_LIMIT", 0),
 			MonthlyQuota:         utils.GetEnvInt("HOOK_QUOTA", 0),
 			RateLimitedServices:  utils.GetEnvString("HOOK_RATE_LIMITED_SERVICES", ""),
+			PaidOnlyServices:     utils.GetEnvString("HOOK_PAID_ONLY_SERVICES", ""),
 			MaxQueue:             utils.GetEnvInt("HOOK_MAX_QUEUE", 1),
 			ThrottleRetry:        utils.GetEnvInt("HOOK_THROTTLE_RETRY", 15),
 			URL:                  utils.GetEnvString("HOOK_URL", ""),

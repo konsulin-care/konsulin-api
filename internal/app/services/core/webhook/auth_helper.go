@@ -22,9 +22,9 @@ type ExtractAuthContextOutput struct {
 	IsSuperadmin bool
 }
 
-// ExtractAuthContext reads values set by APIKeyAuth and SessionOptional middlewares.
+// extractAuthContext reads values set by APIKeyAuth and SessionOptional middlewares.
 // It does not perform any I/O and is safe to call in controllers/handlers.
-func ExtractAuthContext(ctx context.Context) *ExtractAuthContextOutput {
+func (u *usecase) extractAuthContext(ctx context.Context) *ExtractAuthContextOutput {
 	out := &ExtractAuthContextOutput{
 		UID:   "",
 		Roles: []string{},
@@ -69,8 +69,30 @@ func ExtractAuthContext(ctx context.Context) *ExtractAuthContextOutput {
 	return out
 }
 
-// EvaluateWebhookAuth returns nil if authorized. It supports forwarded JWT header or falls back to API key/session.
-func EvaluateWebhookAuth(ctx context.Context, log *zap.Logger, jwtMgr *jwtmanager.JWTManager, forwardedJWT string) error {
+// evaluateAuthInput encapsulates inputs needed to evaluate webhook auth.
+type evaluateAuthInput struct {
+	ServiceName  string
+	ForwardedJWT string
+}
+
+// evaluateWebhookAuth returns nil if authorized. It supports forwarded JWT header or falls back to API key/session.
+func (u *usecase) evaluateWebhookAuth(ctx context.Context, in *evaluateAuthInput) error {
+	serviceName := in.ServiceName
+	forwardedJWT := in.ForwardedJWT
+	jwtMgr := u.jwtManager
+	log := u.log
+	paidOnlyServicesCSV := u.cfg.Webhook.PaidOnlyServices
+
+	// Normalize paid-only services
+	mustBeForwarded := false
+	if s := strings.TrimSpace(paidOnlyServicesCSV); s != "" {
+		for _, it := range strings.Split(s, ",") {
+			if strings.EqualFold(strings.TrimSpace(it), serviceName) {
+				mustBeForwarded = true
+				break
+			}
+		}
+	}
 	// Forwarded JWT path
 	if strings.TrimSpace(forwardedJWT) != "" {
 		out, err := jwtMgr.VerifyToken(ctx, &jwtmanager.VerifyTokenInput{Token: forwardedJWT})
@@ -79,21 +101,32 @@ func EvaluateWebhookAuth(ctx context.Context, log *zap.Logger, jwtMgr *jwtmanage
 			if log != nil {
 				log.Info("webhook auth: forwarded JWT invalid",
 					zap.String(constvars.LoggingRequestIDKey, requestID),
-					zap.Error(err),
 				)
 			}
 			return exceptions.BuildNewCustomError(nil, constvars.StatusUnauthorized, "Not authorized", "UNAUTHORIZED_WEBHOOK_CALLER")
 		}
+		// Enforce expected subject for payment-originated requests
+		if sub, ok := out.Claims["sub"].(string); !ok || !strings.EqualFold(sub, PAYMENT_SERVICE_SUB) {
+			if log != nil {
+				log.Info("webhook auth: forwarded JWT subject mismatch",
+					zap.String(constvars.LoggingRequestIDKey, requestID),
+				)
+			}
+			return exceptions.BuildNewCustomError(nil, constvars.StatusUnauthorized, "Not authorized", "INVALID_AUTH_CLAIM")
+		}
 		if log != nil {
-			log.Info("webhook auth: forwarded JWT valid",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-			)
+			log.Info("webhook auth: forwarded JWT valid")
 		}
 		return nil
 	}
 
+	// If service must be forwarded-only and no header provided
+	if mustBeForwarded {
+		return exceptions.BuildNewCustomError(nil, constvars.StatusPaymentRequired, "payment required to access this service", "PAYMENT_REQUIRED_FOR_SERVICE")
+	}
+
 	// Fallback to API key / session rules
-	info := ExtractAuthContext(ctx)
+	info := u.extractAuthContext(ctx)
 	if info == nil {
 		return exceptions.BuildNewCustomError(nil, constvars.StatusUnauthorized, "Not authorized", "UNAUTHORIZED_WEBHOOK_CALLER")
 	}
