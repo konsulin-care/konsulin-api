@@ -122,7 +122,7 @@ func (u *usecase) evaluateWebhookAuth(ctx context.Context, in *evaluateAuthInput
 
 	// If service must be forwarded-only and no header provided
 	if mustBeForwarded {
-		return exceptions.BuildNewCustomError(nil, constvars.StatusUnauthorized, "missing required authentication for this service", "UNAUTHORIZED_WEBHOOK_CALLER")
+		return exceptions.BuildNewCustomError(nil, constvars.StatusPaymentRequired, "payment required to access this service", "PAYMENT_REQUIRED_FOR_SERVICE")
 	}
 
 	// Fallback to API key / session rules
