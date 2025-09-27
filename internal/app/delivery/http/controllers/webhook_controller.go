@@ -65,7 +65,7 @@ func (ctrl *WebhookController) HandleEnqueueWebHook(w http.ResponseWriter, r *ht
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrClientCustomMessage(exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, "Invalid service name", "WEBHOOK_INVALID_SERVICE_NAME")))
 		return
 	}
-	if ok, _ := regexp.MatchString(`^[A-Za-z0-9]+$`, serviceName); !ok {
+	if ok, _ := regexp.MatchString(`^[A-Za-z0-9-]+$`, serviceName); !ok {
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrClientCustomMessage(exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, "Invalid service name", "WEBHOOK_INVALID_SERVICE_NAME")))
 		return
 	}
