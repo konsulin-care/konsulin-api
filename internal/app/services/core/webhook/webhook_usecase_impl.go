@@ -46,6 +46,9 @@ type EnqueueOutput struct{}
 // ensure the request comes from trusted payment service.
 const JWTForwardedFromPaymentServiceHeader = "X-Forwarded-From-Payment-Service"
 
+// PAYMENT_SERVICE_SUB is the expected JWT subject for forwarded requests from payment service
+const PAYMENT_SERVICE_SUB = "payment-service"
+
 // Enqueue validates, rate-limits, and enqueues the message.
 func (u *usecase) Enqueue(ctx context.Context, in *EnqueueInput) (*EnqueueOutput, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
