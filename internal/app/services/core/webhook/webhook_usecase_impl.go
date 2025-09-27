@@ -65,7 +65,7 @@ func (u *usecase) Enqueue(ctx context.Context, in *EnqueueInput) (*EnqueueOutput
 			forwarded = s
 		}
 	}
-	if err := EvaluateWebhookAuth(ctx, u.log, u.jwtManager, forwarded); err != nil {
+	if err := u.evaluateWebhookAuth(ctx, &evaluateAuthInput{ServiceName: in.ServiceName, ForwardedJWT: forwarded}); err != nil {
 		return nil, err
 	}
 

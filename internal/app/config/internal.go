@@ -108,6 +108,8 @@ type AppWebhook struct {
 	MonthlyQuota int `mapstructure:"monthly_quota"`
 	// RateLimitedServices is a CSV list of service names subject to rate limiting
 	RateLimitedServices string `mapstructure:"rate_limited_services"`
+	// PaidOnlyServices is a CSV list of service names that require a forwarded JWT from payment service
+	PaidOnlyServices string `mapstructure:"paid_only_services"`
 	// MaxQueue defines how many items the worker processes per tick
 	MaxQueue int `mapstructure:"max_queue"`
 	// ThrottleRetry is the failedCount threshold before sending to DLQ
