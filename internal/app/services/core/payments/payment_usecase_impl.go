@@ -196,7 +196,10 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 	}
 	partnerUserID := uid
 
-	// 5) Build instantiateUri and store in ServiceRequest note
+	// 5) Determine ServiceRequest.subject
+	subject := uc.determineServiceRequestSubject(requestedService, patientID, roles)
+
+	// 6) Build instantiateUri and store in ServiceRequest note
 	baseURL := strings.TrimRight(uc.InternalConfig.App.BaseUrl, "/")
 	basePath := uc.InternalConfig.App.WebhookInstantiateBasePath
 	instantiateURI := fmt.Sprintf("%s/%s/%s", baseURL, basePath, requestedService)
@@ -209,11 +212,17 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 	storageOutput, err := uc.Storage.Create(ctx, &requests.CreateServiceRequestStorageInput{
 		UID:            uid,
 		PatientID:      patientID,
+		Subject:        subject,
 		InstantiateURI: instantiateURI,
 		RawBody:        req.Body,
 		Occurrence:     occurrence,
 	})
 	if err != nil {
+		uc.Log.Error("paymentUsecase.CreatePay failed storing ServiceRequest",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+
 		return nil, err
 	}
 	partnerTrxID := storageOutput.PartnerTrxID
@@ -413,6 +422,24 @@ func (uc *paymentUsecase) callInstantiateURI(ctx context.Context, url string, bo
 		return fmt.Errorf("non-202 from instantiate uri: %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// determineServiceRequestSubject returns the FHIR subject reference string based on service and roles.
+// For Patient service, it returns "Patient/<patient-id>". For others, it maps to configured Group subjects.
+func (uc *paymentUsecase) determineServiceRequestSubject(service string, patientID string, roles []string) string {
+	normalized := strings.ToLower(service)
+	switch normalized {
+	case string(constvars.ServiceAnalyze):
+		return fmt.Sprintf("%s/%s", constvars.ResourcePatient, patientID)
+	case string(constvars.ServiceReport):
+		return string(constvars.ServiceRequestSubjectPractitioner)
+	case string(constvars.ServicePerformanceReport):
+		return string(constvars.ServiceRequestSubjectClinicAdmin)
+	case string(constvars.ServiceAccessDataset):
+		return string(constvars.ServiceRequestSubjectResearcher)
+	default:
+		return string(constvars.ServiceRequestSubjectGuest)
+	}
 }
 
 // lookupIdentityByService fetches identity based on the service and returns (patientID, fullName).

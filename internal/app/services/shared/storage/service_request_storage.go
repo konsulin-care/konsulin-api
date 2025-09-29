@@ -53,6 +53,11 @@ func (s *ServiceRequestStorage) Create(ctx context.Context, input *requests.Crea
 			{Text: string(serialized)},
 		},
 	}
+	// Set subject reference from input (Group existence ensured at bootstrap time)
+	if input.Subject != "" {
+		resource.Subject = fhir_dto.Reference{Reference: input.Subject}
+	}
+
 	if input.PatientID != "" {
 		resource.Requester = fhir_dto.Reference{Reference: fmt.Sprintf("%s/%s", constvars.ResourcePatient, input.PatientID)}
 	}
@@ -72,5 +77,6 @@ func (s *ServiceRequestStorage) Create(ctx context.Context, input *requests.Crea
 		ServiceRequestID:      created.ID,
 		ServiceRequestVersion: created.Meta.VersionId,
 		PartnerTrxID:          partnerTrxID,
+		Subject:               created.Subject.Reference,
 	}, nil
 }
