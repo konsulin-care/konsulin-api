@@ -16,6 +16,7 @@ type NoteStorage struct {
 type CreateServiceRequestStorageInput struct {
 	UID            string          `json:"uid"`
 	PatientID      string          `json:"patientId"`
+	Subject        string          `json:"subject"`
 	InstantiateURI string          `json:"instantiateUri"`
 	RawBody        json.RawMessage `json:"rawBody"`
 	Occurrence     string          `json:"occurrence"`
@@ -26,6 +27,7 @@ type CreateServiceRequestStorageOutput struct {
 	ServiceRequestID      string `json:"serviceRequestId"`
 	ServiceRequestVersion string `json:"serviceRequestVersion"`
 	PartnerTrxID          string `json:"partnerTrxId"`
+	Subject               string `json:"subject"`
 }
 
 // GetServiceRequestVersionInput identifies a specific version of a ServiceRequest

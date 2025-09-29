@@ -5,6 +5,7 @@ type CreateServiceRequestInput struct {
 	ResourceType       string       `json:"resourceType"`
 	Status             string       `json:"status,omitempty"`
 	Intent             string       `json:"intent,omitempty"`
+	Subject            Reference    `json:"subject,omitempty"`
 	Requester          Reference    `json:"requester,omitempty"`
 	OccurrenceDateTime string       `json:"occurrenceDateTime,omitempty"`
 	Note               []Annotation `json:"note,omitempty"`
@@ -17,6 +18,7 @@ type CreateServiceRequestOutput struct {
 	Meta               Meta         `json:"meta,omitempty"`
 	Status             string       `json:"status,omitempty"`
 	Intent             string       `json:"intent,omitempty"`
+	Subject            Reference    `json:"subject,omitempty"`
 	Requester          Reference    `json:"requester,omitempty"`
 	OccurrenceDateTime string       `json:"occurrenceDateTime,omitempty"`
 	Note               []Annotation `json:"note,omitempty"`
@@ -30,6 +32,7 @@ type GetServiceRequestOutput struct {
 	Meta               Meta         `json:"meta,omitempty"`
 	Status             string       `json:"status,omitempty"`
 	Intent             string       `json:"intent,omitempty"`
+	Subject            Reference    `json:"subject,omitempty"`
 	Requester          Reference    `json:"requester,omitempty"`
 	OccurrenceDateTime string       `json:"occurrenceDateTime,omitempty"`
 	Note               []Annotation `json:"note,omitempty"`
