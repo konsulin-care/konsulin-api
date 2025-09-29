@@ -15,7 +15,8 @@ type NoteStorage struct {
 // and its storage payload.
 type CreateServiceRequestStorageInput struct {
 	UID            string          `json:"uid"`
-	PatientID      string          `json:"patientId"`
+	ResourceType   string          `json:"resourceType"`
+	ID             string          `json:"id"`
 	Subject        string          `json:"subject"`
 	InstantiateURI string          `json:"instantiateUri"`
 	RawBody        json.RawMessage `json:"rawBody"`
