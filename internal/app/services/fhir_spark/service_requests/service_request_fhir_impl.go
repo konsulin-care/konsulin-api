@@ -190,7 +190,7 @@ func (c *serviceRequestFhirClient) ensureGroupExists(ctx context.Context, groupI
 		"resourceType": constvars.ResourceGroup,
 		"id":           groupID,
 		"type":         "person",
-		"actual":       true,
+		"actual":       false,
 		"name":         groupID,
 	}
 	body, err := json.Marshal(payload)
