@@ -51,18 +51,18 @@ type Annotation struct {
 }
 
 type Reference struct {
-	Reference  string     `json:"reference,omitempty" bson:"reference,omitempty"`
-	Type       string     `json:"type,omitempty" bson:"type,omitempty"`
-	Identifier Identifier `json:"identifier,omitempty" bson:"identifier,omitempty"`
-	Display    string     `json:"display,omitempty" bson:"display,omitempty"`
+	Reference  string      `json:"reference,omitempty" bson:"reference,omitempty"`
+	Type       string      `json:"type,omitempty" bson:"type,omitempty"`
+	Identifier *Identifier `json:"identifier,omitempty" bson:"identifier,omitempty"`
+	Display    string      `json:"display,omitempty" bson:"display,omitempty"`
 }
 
 type Identifier struct {
-	Use    string          `json:"use,omitempty" bson:"use,omitempty"`
-	System string          `json:"system,omitempty" bson:"system,omitempty"`
-	Value  string          `json:"value,omitempty" bson:"value,omitempty"`
-	Period Period          `json:"period,omitempty" bson:"period,omitempty"`
-	Type   CodeableConcept `json:"type,omitempty" bson:"type,omitempty"`
+	Use    string           `json:"use,omitempty" bson:"use,omitempty"`
+	System string           `json:"system,omitempty" bson:"system,omitempty"`
+	Value  string           `json:"value,omitempty" bson:"value,omitempty"`
+	Period *Period          `json:"period,omitempty" bson:"period,omitempty"`
+	Type   *CodeableConcept `json:"type,omitempty" bson:"type,omitempty"`
 }
 
 type CodeableConcept struct {
