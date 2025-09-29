@@ -189,14 +189,17 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 		return nil, exceptions.ErrClientCustomMessage(fmt.Errorf("email is required in body"))
 	}
 
-	// 4) Lookup identity by service (encapsulated)
-	patientID, displayFullName, err := uc.lookupIdentityByService(ctx, requestedService, email)
+	// 4) Lookup resource identity by service (encapsulated)
+	resourceID, displayFullName, err := uc.lookupIdentityByService(ctx, requestedService, email)
 	if err != nil {
 		return nil, err
 	}
 	partnerUserID := uid
 
-	// 5) Build instantiateUri and store in ServiceRequest note
+	// 5) Determine ServiceRequest.subject
+	subject := uc.determineServiceRequestSubject(requestedService, resourceID, roles)
+
+	// 6) Build instantiateUri and store in ServiceRequest note
 	baseURL := strings.TrimRight(uc.InternalConfig.App.BaseUrl, "/")
 	basePath := uc.InternalConfig.App.WebhookInstantiateBasePath
 	instantiateURI := fmt.Sprintf("%s/%s/%s", baseURL, basePath, requestedService)
@@ -206,14 +209,24 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 		instantiateURI = u.String()
 	}
 	occurrence := time.Now().Format("2006-01-02T15:04:05-07:00")
+	// Map service to requester resource type via specialized helper
+	requesterResourceType := uc.mapServiceToRequesterResourceType(requestedService)
+
 	storageOutput, err := uc.Storage.Create(ctx, &requests.CreateServiceRequestStorageInput{
 		UID:            uid,
-		PatientID:      patientID,
+		ResourceType:   requesterResourceType,
+		ID:             resourceID,
+		Subject:        subject,
 		InstantiateURI: instantiateURI,
 		RawBody:        req.Body,
 		Occurrence:     occurrence,
 	})
 	if err != nil {
+		uc.Log.Error("paymentUsecase.CreatePay failed storing ServiceRequest",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+
 		return nil, err
 	}
 	partnerTrxID := storageOutput.PartnerTrxID
@@ -415,8 +428,26 @@ func (uc *paymentUsecase) callInstantiateURI(ctx context.Context, url string, bo
 	return nil
 }
 
-// lookupIdentityByService fetches identity based on the service and returns (patientID, fullName).
-// patientID is only set for analyze (Patient), otherwise empty.
+// determineServiceRequestSubject returns the FHIR subject reference string based on service and roles.
+// For Patient service, it returns "Patient/<patient-id>". For others, it maps to configured Group subjects.
+func (uc *paymentUsecase) determineServiceRequestSubject(service string, patientID string, roles []string) string {
+	normalized := strings.ToLower(service)
+	switch normalized {
+	case string(constvars.ServiceAnalyze):
+		return fmt.Sprintf("%s/%s", constvars.ResourcePatient, patientID)
+	case string(constvars.ServiceReport):
+		return string(constvars.ServiceRequestSubjectPractitioner)
+	case string(constvars.ServicePerformanceReport):
+		return string(constvars.ServiceRequestSubjectClinicAdmin)
+	case string(constvars.ServiceAccessDataset):
+		return string(constvars.ServiceRequestSubjectResearcher)
+	default:
+		return string(constvars.ServiceRequestSubjectGuest)
+	}
+}
+
+// lookupIdentityByService fetches resource identity based on the service and returns (resourceID, fullName).
+// For analyze, it returns Patient ID; for report, Practitioner ID; for performance report and access dataset, Person ID.
 func (uc *paymentUsecase) lookupIdentityByService(ctx context.Context, service string, email string) (string, string, error) {
 	switch service {
 	case string(constvars.ServiceAnalyze):
@@ -436,7 +467,7 @@ func (uc *paymentUsecase) lookupIdentityByService(ctx context.Context, service s
 		if len(practitioners) == 0 {
 			return "", "", exceptions.ErrUserNotExist(fmt.Errorf("no practitioner found"))
 		}
-		return "", practitioners[0].FullName(), nil
+		return practitioners[0].ID, practitioners[0].FullName(), nil
 	case string(constvars.ServicePerformanceReport), string(constvars.ServiceAccessDataset):
 		people, err := uc.PersonFhirClient.FindPersonByEmail(ctx, email)
 		if err != nil {
@@ -445,8 +476,23 @@ func (uc *paymentUsecase) lookupIdentityByService(ctx context.Context, service s
 		if len(people) == 0 {
 			return "", "", exceptions.ErrUserNotExist(fmt.Errorf("no person found"))
 		}
-		return "", people[0].FullName(), nil
+		return people[0].ID, people[0].FullName(), nil
 	default:
 		return "", "", exceptions.ErrClientCustomMessage(fmt.Errorf("unsupported service: %s", service))
+	}
+}
+
+// mapServiceToRequesterResourceType returns the FHIR requester resource type for a given service.
+// analyze -> Patient, report -> Practitioner, performance-report/access-dataset -> Person, default empty.
+func (uc *paymentUsecase) mapServiceToRequesterResourceType(service string) string {
+	switch strings.ToLower(service) {
+	case string(constvars.ServiceAnalyze):
+		return constvars.ResourcePatient
+	case string(constvars.ServiceReport):
+		return constvars.ResourcePractitioner
+	case string(constvars.ServicePerformanceReport), string(constvars.ServiceAccessDataset):
+		return constvars.ResourcePerson
+	default:
+		return ""
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"net/http"
+	"strings"
 	"sync"
 
 	"go.uber.org/zap"
@@ -140,4 +141,89 @@ func (c *serviceRequestFhirClient) GetServiceRequestByIDAndVersion(ctx context.C
 		zap.String("version", out.Meta.VersionId),
 	)
 	return out, nil
+}
+
+// EnsureGroupExists checks if Group/{groupID} exists; if not, it creates it via PUT.
+func (c *serviceRequestFhirClient) ensureGroupExists(ctx context.Context, groupID string) error {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	c.Log.Info("serviceRequestFhirClient.EnsureGroupExists called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("group_id", groupID),
+	)
+
+	// Derive root FHIR base from ServiceRequest BaseUrl
+	root := strings.TrimSuffix(c.BaseUrl, constvars.ResourceServiceRequest)
+	groupURL := root + constvars.ResourceGroup + "/" + groupID
+
+	// GET Group/{id}
+	getReq, err := http.NewRequestWithContext(ctx, constvars.MethodGet, groupURL, nil)
+	if err != nil {
+		c.Log.Error("EnsureGroupExists error creating GET request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return exceptions.ErrCreateHTTPRequest(err)
+	}
+	getReq.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
+
+	client := &http.Client{}
+	getResp, err := client.Do(getReq)
+	if err != nil {
+		c.Log.Error("EnsureGroupExists error sending GET",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return exceptions.ErrSendHTTPRequest(err)
+	}
+	defer getResp.Body.Close()
+
+	if getResp.StatusCode == constvars.StatusOK {
+		return nil
+	}
+	if getResp.StatusCode != constvars.StatusNotFound {
+		// Unexpected status
+		return exceptions.ErrGetFHIRResource(nil, constvars.ResourceGroup)
+	}
+
+	// PUT Group/{id} with minimal valid resource
+	payload := map[string]interface{}{
+		"resourceType": constvars.ResourceGroup,
+		"id":           groupID,
+		"type":         "person",
+		"actual":       false,
+		"name":         groupID,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return exceptions.ErrCannotMarshalJSON(err)
+	}
+	putReq, err := http.NewRequestWithContext(ctx, constvars.MethodPut, groupURL, bytes.NewBuffer(body))
+	if err != nil {
+		return exceptions.ErrCreateHTTPRequest(err)
+	}
+	putReq.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
+
+	putResp, err := client.Do(putReq)
+	if err != nil {
+		return exceptions.ErrSendHTTPRequest(err)
+	}
+	defer putResp.Body.Close()
+
+	if putResp.StatusCode != constvars.StatusOK && putResp.StatusCode != constvars.StatusCreated {
+		return exceptions.ErrCreateFHIRResource(nil, constvars.ResourceGroup)
+	}
+	return nil
+}
+
+// EnsureAllNecessaryGroupsExists ensures required groups exist based on constvars.DefaultGroups
+func (c *serviceRequestFhirClient) EnsureAllNecessaryGroupsExists(ctx context.Context) error {
+	for _, g := range constvars.DefaultGroups {
+		if strings.TrimSpace(g) == "" {
+			continue
+		}
+		if err := c.ensureGroupExists(ctx, g); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -8,6 +8,7 @@ import (
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/fhir_dto"
+	"strings"
 
 	"go.uber.org/zap"
 )
@@ -28,12 +29,14 @@ func (s *ServiceRequestStorage) Create(ctx context.Context, input *requests.Crea
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
 
-	// Prepare note payload (raw body, instantiateUri, patientID, uid)
+	// Prepare note payload (raw body, instantiateUri, uid, and patientId when applicable)
 	notePayload := &requests.NoteStorage{
 		RawBody:        input.RawBody,
 		InstantiateURI: input.InstantiateURI,
-		PatientID:      input.PatientID,
 		UID:            input.UID,
+	}
+	if strings.EqualFold(input.ResourceType, constvars.ResourcePatient) {
+		notePayload.PatientID = input.ID
 	}
 	serialized, err := json.Marshal(notePayload)
 	if err != nil {
@@ -53,8 +56,14 @@ func (s *ServiceRequestStorage) Create(ctx context.Context, input *requests.Crea
 			{Text: string(serialized)},
 		},
 	}
-	if input.PatientID != "" {
-		resource.Requester = fhir_dto.Reference{Reference: fmt.Sprintf("%s/%s", constvars.ResourcePatient, input.PatientID)}
+	// Set subject reference from input (Group existence ensured at bootstrap time)
+	if input.Subject != "" {
+		resource.Subject = fhir_dto.Reference{Reference: input.Subject}
+	}
+
+	// Build Requester from supplied ResourceType and ID when provided
+	if strings.TrimSpace(input.ResourceType) != "" && strings.TrimSpace(input.ID) != "" {
+		resource.Requester = fhir_dto.Reference{Reference: fmt.Sprintf("%s/%s", input.ResourceType, input.ID)}
 	}
 
 	created, err := s.FhirClient.CreateServiceRequest(ctx, resource)
@@ -72,5 +81,6 @@ func (s *ServiceRequestStorage) Create(ctx context.Context, input *requests.Crea
 		ServiceRequestID:      created.ID,
 		ServiceRequestVersion: created.Meta.VersionId,
 		PartnerTrxID:          partnerTrxID,
+		Subject:               created.Subject.Reference,
 	}, nil
 }

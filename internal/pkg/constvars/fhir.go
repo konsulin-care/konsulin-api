@@ -8,6 +8,7 @@ const (
 
 const (
 	ResourcePatient               = "Patient"
+	ResourceGroup                 = "Group"
 	ResourceClinician             = "Clinician"
 	ResourceObservation           = "Observation"
 	ResourceCondition             = "Condition"

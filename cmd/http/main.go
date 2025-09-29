@@ -184,6 +184,9 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	personFhirClient := persons.NewPersonFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	serviceRequestFhirClient := service_requests.NewServiceRequestFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 
+	// Ensure default FHIR Groups exist for ServiceRequest subjects
+	_ = serviceRequestFhirClient.EnsureAllNecessaryGroupsExists(context.Background())
+
 	// Initialize Auth usecase with dependencies
 	authUseCase, err := auth.NewAuthUsecase(
 		redisRepository,
