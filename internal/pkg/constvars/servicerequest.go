@@ -7,9 +7,7 @@ type ServiceRequestSubject string
 const (
 	// Group-based subjects for non-Patient roles (lowercased role slug)
 	ServiceRequestSubjectGuest        ServiceRequestSubject = "Group/guest"
-	ServiceRequestSubjectClinician    ServiceRequestSubject = "Group/clinician"
 	ServiceRequestSubjectResearcher   ServiceRequestSubject = "Group/researcher"
-	ServiceRequestSubjectSuperadmin   ServiceRequestSubject = "Group/superadmin"
 	ServiceRequestSubjectClinicAdmin  ServiceRequestSubject = "Group/clinic-admin"
 	ServiceRequestSubjectPractitioner ServiceRequestSubject = "Group/practitioner"
 )
