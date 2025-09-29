@@ -29,11 +29,10 @@ func (s *ServiceRequestStorage) Create(ctx context.Context, input *requests.Crea
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
 
-	// Prepare note payload (raw body, instantiateUri, uid, and patientId when applicable)
+	// Prepare note payload (raw body, uid, and patientId when applicable). Legacy InstantiateURI is no longer stored here.
 	notePayload := &requests.NoteStorage{
-		RawBody:        input.RawBody,
-		InstantiateURI: input.InstantiateURI,
-		UID:            input.UID,
+		RawBody: input.RawBody,
+		UID:     input.UID,
 	}
 	if strings.EqualFold(input.ResourceType, constvars.ResourcePatient) {
 		notePayload.PatientID = input.ID
@@ -55,6 +54,10 @@ func (s *ServiceRequestStorage) Create(ctx context.Context, input *requests.Crea
 		Note: []fhir_dto.Annotation{
 			{Text: string(serialized)},
 		},
+	}
+	// Map caller-provided single instantiatesUri into FHIR array form
+	if strings.TrimSpace(input.InstantiatesUri) != "" {
+		resource.InstantiatesUri = []string{input.InstantiatesUri}
 	}
 	// Set subject reference from input (Group existence ensured at bootstrap time)
 	if input.Subject != "" {
