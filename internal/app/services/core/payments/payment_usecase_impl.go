@@ -138,8 +138,16 @@ func (uc *paymentUsecase) PaymentRoutingCallback(ctx context.Context, request *r
 		return nil
 	}
 
-	// 6) POST instantiateURI with RawBody
-	if err := uc.callInstantiateURI(ctx, note.InstantiateURI, note.RawBody); err != nil {
+	// 6) Resolve instantiatesUri (prefer FHIR field, fallback to legacy note) and POST with RawBody
+	uri, err := resolveInstantiatesURI(sr, note)
+	if err != nil {
+		uc.Log.Error("paymentUsecase.PaymentRoutingCallback failed resolving instantiatesUri",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil
+	}
+	if err := uc.callInstantiateURI(ctx, uri, note.RawBody); err != nil {
 		uc.Log.Error("paymentUsecase.PaymentRoutingCallback failed calling instantiate URI",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
@@ -199,7 +207,7 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 	// 5) Determine ServiceRequest.subject
 	subject := uc.determineServiceRequestSubject(requestedService, resourceID, roles)
 
-	// 6) Build instantiateUri and store in ServiceRequest note
+	// 6) Build instantiateUri
 	baseURL := strings.TrimRight(uc.InternalConfig.App.BaseUrl, "/")
 	basePath := uc.InternalConfig.App.WebhookInstantiateBasePath
 	instantiateURI := fmt.Sprintf("%s/%s/%s", baseURL, basePath, requestedService)
@@ -213,13 +221,13 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 	requesterResourceType := uc.mapServiceToRequesterResourceType(requestedService)
 
 	storageOutput, err := uc.Storage.Create(ctx, &requests.CreateServiceRequestStorageInput{
-		UID:            uid,
-		ResourceType:   requesterResourceType,
-		ID:             resourceID,
-		Subject:        subject,
-		InstantiateURI: instantiateURI,
-		RawBody:        req.Body,
-		Occurrence:     occurrence,
+		UID:             uid,
+		ResourceType:    requesterResourceType,
+		ID:              resourceID,
+		Subject:         subject,
+		InstantiatesUri: instantiateURI,
+		RawBody:         req.Body,
+		Occurrence:      occurrence,
 	})
 	if err != nil {
 		uc.Log.Error("paymentUsecase.CreatePay failed storing ServiceRequest",
@@ -307,6 +315,22 @@ func extractNoteStorage(sr *fhir_dto.GetServiceRequestOutput) (*requests.NoteSto
 		return nil, err
 	}
 	return &note, nil
+}
+
+// resolveInstantiatesURI returns the best-effort instantiates URI to be called.
+// Preference order:
+// 1) FHIR ServiceRequest.instantiatesUri (first element if present)
+// 2) Legacy NoteStorage.InstantiateURI (deprecated)
+// This function serves as a backward compatibility enabler during migration to the
+// FHIR-native field. To remove backward compatibility, simply return sr.InstantiatesUri without checking note.InstantiateURI.
+func resolveInstantiatesURI(sr *fhir_dto.GetServiceRequestOutput, note *requests.NoteStorage) (string, error) {
+	if sr != nil && len(sr.InstantiatesUri) > 0 && strings.TrimSpace(sr.InstantiatesUri[0]) != "" {
+		return sr.InstantiatesUri[0], nil
+	}
+	if note != nil && strings.TrimSpace(note.InstantiateURI) != "" {
+		return note.InstantiateURI, nil
+	}
+	return "", fmt.Errorf("instantiatesUri not found in FHIR resource or legacy note")
 }
 
 func isServicePurchaseAllowed(service string, requesterRoles []string) bool {
