@@ -35,12 +35,10 @@ func (uc *authUsecase) InitializeSupertoken() error {
 	websiteBasePath := uc.DriverConfig.Supertoken.WebsiteBasePath
 	cookieSameSite := constvars.CookieSameSiteStrictMode
 	cookieSecure := true
-	cookieDomain := uc.InternalConfig.App.FrontendDomain
 
 	if uc.InternalConfig.App.Env == "local" || uc.InternalConfig.App.Env == "development" {
 		cookieSameSite = constvars.CookieSameSiteLaxMode
 		cookieSecure = false
-		cookieDomain = ""
 	}
 
 	supertokenConnectionInfo := &supertokens.ConnectionInfo{
@@ -304,7 +302,6 @@ func (uc *authUsecase) InitializeSupertoken() error {
 			},
 			CookieSameSite: &cookieSameSite,
 			CookieSecure:   &cookieSecure,
-			CookieDomain:   &cookieDomain,
 		}),
 		dashboard.Init(&dashboardmodels.TypeInput{
 			Admins: &[]string{
