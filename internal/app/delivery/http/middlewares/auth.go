@@ -611,6 +611,25 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 
 			q := u.Query()
 
+			// support identifier-based lookup for own Practitioner record using SuperTokens UID
+			if ids, ok := q["identifier"]; ok {
+				uidCtx, _ := ctx.Value(keyUID).(string)
+				for _, idv := range ids {
+					parts := strings.SplitN(idv, "|", 2)
+					if len(parts) == 2 {
+						sys, val := parts[0], parts[1]
+						if sys == constvars.FhirSupertokenSystemIdentifier && val == uidCtx {
+							return true
+						}
+					} else {
+						// optionally allow raw UID without system prefix
+						if idv == uidCtx {
+							return true
+						}
+					}
+				}
+			}
+
 			if p := q.Get("practitioner"); p != "" {
 				id := strings.TrimPrefix(p, "Practitioner/")
 				return id == fhirID

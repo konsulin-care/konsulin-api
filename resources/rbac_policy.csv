@@ -47,6 +47,7 @@ p, Practitioner, GET, /fhir/Patient
 p, Practitioner, POST, /fhir/Patient
 p, Practitioner, DELETE, /fhir/Practitioner
 p, Practitioner, POST, /fhir/Practitioner
+p, Practitioner, GET, /fhir/Practitioner
 p, Practitioner, PUT, /fhir/Practitioner
 p, Practitioner, GET, /fhir/PractitionerRole
 p, Practitioner, PUT, /fhir/PractitionerRole
