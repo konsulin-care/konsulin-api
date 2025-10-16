@@ -105,7 +105,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 										},
 										Telecom: []fhir_dto.ContactPoint{
 											{
-												System: "email",
+												System: fhir_dto.ContactPointSystemEmail,
 												Value:  *user.Email,
 												Use:    "work",
 											},
@@ -190,7 +190,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 											Value:  user.ID,
 										}},
 										Telecom: []fhir_dto.ContactPoint{{
-											System: "email",
+											System: fhir_dto.ContactPointSystemEmail,
 											Value:  *user.Email,
 											Use:    "home",
 										}},

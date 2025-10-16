@@ -51,3 +51,17 @@ func (p Patient) FullName() string {
 	}
 	return strings.TrimSpace(strings.Join(parts, " "))
 }
+
+// GetEmailAddresses returns all email values from Telecom where system == email.
+func (p Patient) GetEmailAddresses() []string {
+	if len(p.Telecom) == 0 {
+		return nil
+	}
+	emails := make([]string, 0, len(p.Telecom))
+	for _, tp := range p.Telecom {
+		if tp.System == ContactPointSystemEmail && tp.Value != "" {
+			emails = append(emails, tp.Value)
+		}
+	}
+	return emails
+}

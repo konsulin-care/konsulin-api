@@ -126,7 +126,7 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 			body, _ := io.ReadAll(r.Body)
 			r.Body.Close()
 
-			if err := scanBundle(ctxIface, m.Enforcer, body, roles, ctxIface.Value(keyFHIRID).(string)); err != nil {
+			if err := scanBundle(ctxIface, m.Enforcer, body, roles, ctxIface.Value(keyFHIRID).(string), m.PatientFhirClient, m.PractitionerFhirClient); err != nil {
 				utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
 				return
 			}
@@ -145,7 +145,7 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 			r.Body = io.NopCloser(bytes.NewReader(body))
 		}
 
-		if err := checkSingle(ctxIface, m.Enforcer, r.Method, fullURL, roles, ctxIface.Value(keyFHIRID).(string), m.PatientFhirClient, resourceBody); err != nil {
+		if err := checkSingle(ctxIface, m.Enforcer, r.Method, fullURL, roles, ctxIface.Value(keyFHIRID).(string), m.PatientFhirClient, m.PractitionerFhirClient, resourceBody); err != nil {
 			utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
 			return
 		}
@@ -299,7 +299,7 @@ func resolveIdentifierToPatientID(ctx context.Context, identifier string, patien
 	return patients[0].ID, nil
 }
 
-func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []string, uid string) error {
+func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []string, uid string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient) error {
 	if gjson.GetBytes(raw, "resourceType").String() != "Bundle" {
 		return fmt.Errorf("invalid bundle")
 	}
@@ -308,20 +308,20 @@ func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []str
 		method := entry.Get("request.method").String()
 		url := entry.Get("request.url").String()
 		resource := entry.Get("resource").Raw
-		if err := checkSingle(ctx, e, method, url, roles, uid, nil, []byte(resource)); err != nil {
+		if err := checkSingle(ctx, e, method, url, roles, uid, patientClient, practitionerClient, []byte(resource)); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, roles []string, fhirID string, patientClient contracts.PatientFhirClient, resource []byte) error {
+func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, roles []string, fhirID string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient, resource []byte) error {
 	normalizedPath := normalizePath(url)
 	for _, role := range roles {
 		if allowed(e, role, method, normalizedPath) {
 
 			if role == constvars.KonsulinRolePatient || role == constvars.KonsulinRolePractitioner {
-				if ownsResource(ctx, fhirID, url, role, method, patientClient, resource) {
+				if ownsResource(ctx, fhirID, url, role, method, patientClient, practitionerClient, resource) {
 					return nil
 				}
 				continue
@@ -442,7 +442,7 @@ func validateResourceOwnership(ctx context.Context, fhirID, role, resourceType s
 	return false
 }
 
-func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, patientClient contracts.PatientFhirClient, resource []byte) bool {
+func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient, resource []byte) bool {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return false
@@ -512,7 +512,46 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 					return false
 				}
 
-				return patientID == fhirID
+				if patientID == fhirID {
+					return true
+				}
+
+				// Fallback: if requester has Practitioner role, allow when practitioner's email matches patient's
+				roles, _ := ctx.Value(keyRoles).([]string)
+				isPractitioner := false
+				for _, r := range roles {
+					if strings.EqualFold(r, constvars.KonsulinRolePractitioner) {
+						isPractitioner = true
+						break
+					}
+				}
+				if !isPractitioner {
+					return false
+				}
+
+				// Fetch Practitioner and Patient resources and compare emails (exact match)
+				practitioner, err := practitionerClient.FindPractitionerByID(ctx, fhirID)
+				if err != nil || practitioner == nil {
+					return false
+				}
+				patient, err := patientClient.FindPatientByID(ctx, patientID)
+				if err != nil || patient == nil {
+					return false
+				}
+
+				practEmails := practitioner.GetEmailAddresses()
+				patEmails := patient.GetEmailAddresses()
+				if len(practEmails) == 0 || len(patEmails) == 0 {
+					return false
+				}
+				for _, pe := range practEmails {
+					for _, qe := range patEmails {
+						if pe == qe {
+							return true
+						}
+					}
+				}
+				return false
 			}
 
 			return false
