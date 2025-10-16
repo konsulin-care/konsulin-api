@@ -98,10 +98,25 @@ type Meta struct {
 	Security    []Coding  `json:"security,omitempty" bson:"security,omitempty"`
 	Tag         []Coding  `json:"tag,omitempty" bson:"tag,omitempty"`
 }
+
+// ContactPointSystemCode represents FHIR R4 ContactPoint.system code values
+// Reference: https://hl7.org/fhir/R4/datatypes.html#ContactPoint
+type ContactPointSystemCode string
+
+const (
+	ContactPointSystemPhone ContactPointSystemCode = "phone"
+	ContactPointSystemFax   ContactPointSystemCode = "fax"
+	ContactPointSystemEmail ContactPointSystemCode = "email"
+	ContactPointSystemPager ContactPointSystemCode = "pager"
+	ContactPointSystemURL   ContactPointSystemCode = "url"
+	ContactPointSystemSMS   ContactPointSystemCode = "sms"
+	ContactPointSystemOther ContactPointSystemCode = "other"
+)
+
 type ContactPoint struct {
-	System string `json:"system"`
-	Value  string `json:"value"`
-	Use    string `json:"use"`
+	System ContactPointSystemCode `json:"system"`
+	Value  string                 `json:"value"`
+	Use    string                 `json:"use"`
 }
 
 type Qualification struct {

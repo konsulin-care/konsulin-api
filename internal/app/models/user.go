@@ -122,12 +122,12 @@ func (u *User) ConvertToPatientFhirDeactivationRequest() *fhir_dto.Patient {
 		},
 		Telecom: []fhir_dto.ContactPoint{
 			{
-				System: "email",
+				System: fhir_dto.ContactPointSystemEmail,
 				Value:  u.Email,
 				Use:    "home",
 			},
 			{
-				System: "phone",
+				System: fhir_dto.ContactPointSystemPhone,
 				Value:  u.WhatsAppNumber,
 				Use:    "mobile",
 			},
@@ -166,12 +166,12 @@ func (u *User) ConvertToPractitionerFhirDeactivationRequest() *fhir_dto.Practiti
 		},
 		Telecom: []fhir_dto.ContactPoint{
 			{
-				System: "email",
+				System: fhir_dto.ContactPointSystemEmail,
 				Value:  u.Email,
 				Use:    "home",
 			},
 			{
-				System: "phone",
+				System: fhir_dto.ContactPointSystemPhone,
 				Value:  u.WhatsAppNumber,
 				Use:    "mobile",
 			},
