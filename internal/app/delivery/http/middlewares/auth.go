@@ -278,9 +278,13 @@ func (m *Middlewares) resolveFHIRIdentity(ctx context.Context, uid string) (role
 	if len(pats) == 0 {
 		return "", "", fmt.Errorf("no Practitioner/Patient found for uid %s", uid)
 	}
-	if len(pats) > 1 {
-		return "", "", fmt.Errorf("multiple Patient resources for uid %s", uid)
-	}
+
+	// supress error for multiple patients found
+	// if len(pats) > 1 {
+	// 	fmt.Println("MULTIPLE PATIENTS FOUND FOR UID", uid)
+	// 	fmt.Println("PATIENTS", pats)
+	// 	return "", "", fmt.Errorf("multiple Patient resources for uid %s", uid)
+	// }
 	return constvars.KonsulinRolePatient, pats[0].ID, nil
 }
 
@@ -293,9 +297,10 @@ func resolveIdentifierToPatientID(ctx context.Context, identifier string, patien
 		return "", fmt.Errorf("no patient found with identifier %s", identifier)
 	}
 
-	if len(patients) > 1 {
-		return "", fmt.Errorf("multiple patients found with identifier %s", identifier)
-	}
+	// supress error for multiple patients found
+	// if len(patients) > 1 {
+	// 	return "", fmt.Errorf("multiple patients found with identifier %s", identifier)
+	// }
 	return patients[0].ID, nil
 }
 

@@ -176,11 +176,12 @@ func (uc *authUsecase) InitializeSupertoken() error {
 									log.Println("consumeCode: find patient", zap.Error(err))
 									return plessmodels.ConsumeCodeResponse{}, err
 								}
-								if len(list) > 1 {
-									log.Println("consumeCode: more than 1 patient for uid",
-										zap.String("uid", user.ID))
-									return plessmodels.ConsumeCodeResponse{}, errors.New(constvars.ErrClientCannotProcessRequest)
-								}
+								// suppress error for multiple patients found
+								// if len(list) > 1 {
+								// 	log.Println("consumeCode: more than 1 patient for uid",
+								// 		zap.String("uid", user.ID))
+								// 	return plessmodels.ConsumeCodeResponse{}, errors.New(constvars.ErrClientCannotProcessRequest)
+								// }
 								if len(list) == 0 {
 									newPatient := &fhir_dto.Patient{
 										ResourceType: constvars.ResourcePatient,
