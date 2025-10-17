@@ -1,0 +1,91 @@
+internal_config:
+  app:
+    env: 
+    port: 
+    version: 
+    address: 
+    base_url: 
+    timezone: 
+    endpoint_prefix: 
+    reset_password_url: 
+    max_requests: 
+    shutdown_timeout_in_seconds: 
+    max_time_requests_per_seconds: 
+    request_body_limit_in_megabyte: 
+    account_deactivation_age_in_days: 
+    login_session_expired_time_in_hours: 
+    forgot_password_token_expired_time_in_minutes: 
+    minio_pre_signed_url_object_expiry_time_in_hours: 
+    questionnaire_guest_response_response_expired_time_in_minutes: 
+    superadmin_api_key: 
+    superadmin_api_key_rate_limit: 
+
+  fhir:
+    base_url: 
+
+  jwt:
+    secret: 
+    exp_time_in_hour: 
+
+  mailer:
+    email_sender: 
+
+  minio:
+    profile_picture_max_upload_size_in_mb: 
+    bucket_name: 
+
+  rabbitmq:
+    mailer_queue: 
+    whatsapp_queue: 
+
+  mongodb:
+    fhir_db_name: 
+    konsulin_db_name: 
+
+  konsulin:
+    bank_code:
+    bank_account_number:
+    finance_email:
+    payment_display_name:
+  
+  payment_gateway:
+    username:
+    api_key:
+    base_url:
+
+driver_config:
+  postgres:
+    port: 
+    host: 
+    username: 
+    password: 
+    dbname: 
+
+  mongodb:
+    port: 
+    host: 
+    username: 
+    password: 
+
+  redis:
+    host: 
+    port: 
+    password: 
+
+  logger:
+    level: 
+    output_file_name: 
+    output_error_file_name: 
+
+  rabbitmq:
+    port: 
+    host: 
+    username: 
+    password: 
+
+  minio:
+    port: 
+    host: 
+    username: 
+    password: 
+    use_ssl: 

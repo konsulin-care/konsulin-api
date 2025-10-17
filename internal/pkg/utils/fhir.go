@@ -1,13 +1,59 @@
 package utils
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
+	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/fhir_dto"
 	"strings"
 	"time"
 )
 
-func BuildPatientProfileResponse(patientFhir *responses.Patient) *responses.UserProfile {
+func ParseIDFromReference(subject fhir_dto.Reference) (string, error) {
+	parts := strings.Split(subject.Reference, "/")
+	if len(parts) == 2 {
+		return parts[1], nil
+	}
+	return "", fmt.Errorf("invalid reference format: %s", subject.Reference)
+}
+
+func ParseSlashSeparatedToDashSeparated(input string) string {
+	parts := strings.Split(input, "/")
+	if len(parts) != 2 {
+		return input
+	}
+
+	processedType := strings.ToLower(
+		strings.ReplaceAll(
+			strings.ReplaceAll(parts[0], "Item", "-item"),
+			"Role", "-role",
+		),
+	)
+
+	return fmt.Sprintf("%s-%s", processedType, parts[1])
+}
+
+func ParseDashSeparatedToSlashSeparated(input string) string {
+	lastHyphenIndex := strings.LastIndex(input, "-")
+	if lastHyphenIndex == -1 {
+		return input
+	}
+
+	typePart := input[:lastHyphenIndex]
+	idPart := input[lastHyphenIndex+1:]
+
+	typePart = strings.ReplaceAll(typePart, "-item", "Item")
+	typePart = strings.ReplaceAll(typePart, "-role", "Role")
+	typePart = capitalize(strings.ReplaceAll(typePart, "-", ""))
+
+	return fmt.Sprintf("%s/%s", typePart, idPart)
+}
+
+func BuildPatientProfileResponse(patientFhir *fhir_dto.Patient) *responses.UserProfile {
 	fullname := GetFullName(patientFhir.Name)
 	email, whatsAppNumber := GetEmailAndWhatsapp(patientFhir.Telecom)
 	age := CalculateAge(patientFhir.BirthDate)
@@ -27,12 +73,12 @@ func BuildPatientProfileResponse(patientFhir *responses.Patient) *responses.User
 	}
 }
 
-func BuildPractitionerProfileResponse(practitionerFhir *responses.Practitioner) *responses.UserProfile {
+func BuildPractitionerProfileResponse(practitionerFhir *fhir_dto.Practitioner) *responses.UserProfile {
 	fullname := GetFullName(practitionerFhir.Name)
 	email, whatsAppNumber := GetEmailAndWhatsapp(practitionerFhir.Telecom)
 	age := CalculateAge(practitionerFhir.BirthDate)
 	educations := GetEducationFromExtensions(practitionerFhir.Extension)
-	formattedAddress := GetHomeAddress(practitionerFhir.Address)
+	formattedAddress := GetWorkAddress(practitionerFhir.Address)
 	formattedBirthDate := FormatBirthDate(practitionerFhir.BirthDate)
 
 	return &responses.UserProfile{
@@ -47,23 +93,54 @@ func BuildPractitionerProfileResponse(practitionerFhir *responses.Practitioner) 
 	}
 }
 
-func extractSpecialties(qualifications []responses.Qualification) []string {
-	specialties := []string{}
-	for _, qualification := range qualifications {
-		for _, coding := range qualification.Code.Coding {
-			specialties = append(specialties, coding.Display)
+func ExtractOrganizationIDsFromPractitionerRoles(practitionerRoles []fhir_dto.PractitionerRole) []string {
+	organizationIDs := make([]string, 0, len(practitionerRoles))
+
+	for _, role := range practitionerRoles {
+		parts := strings.Split(role.Organization.Reference, "/")
+		if len(parts) == 2 && parts[0] == "Organization" {
+			organizationIDs = append(organizationIDs, parts[1])
 		}
 	}
-	return specialties
+
+	return organizationIDs
 }
 
-func MapPractitionerToClinicClinician(practitioner *responses.Practitioner, clinicName, affiliationName string) responses.ClinicClinician {
+func ExtractQualifications(qualifications []fhir_dto.Qualification) []string {
+	qualificationsResponse := []string{}
+	for _, qualification := range qualifications {
+		for _, coding := range qualification.Code.Coding {
+			qualificationsResponse = append(qualificationsResponse, coding.Display)
+		}
+	}
+	return qualificationsResponse
+}
+
+func ExtractSpecialties(specialties []fhir_dto.CodeableConcept) []string {
+	qualificationsResponse := []string{}
+	for _, specialty := range specialties {
+		for _, coding := range specialty.Coding {
+			qualificationsResponse = append(qualificationsResponse, coding.Display)
+		}
+	}
+	return qualificationsResponse
+}
+
+func ExtractSpecialtiesText(specialties []fhir_dto.CodeableConcept) []string {
+	qualificationsResponse := []string{}
+	for _, specialty := range specialties {
+		qualificationsResponse = append(qualificationsResponse, specialty.Text)
+	}
+	return qualificationsResponse
+}
+
+func MapPractitionerToClinicClinician(practitioner *fhir_dto.Practitioner, specialty []fhir_dto.CodeableConcept, organizationName string) responses.ClinicClinician {
 	return responses.ClinicClinician{
 		PractitionerID: practitioner.ID,
 		Name:           GetFullName(practitioner.Name),
-		ClinicName:     clinicName,
-		Affiliation:    affiliationName,
-		Specialties:    extractSpecialties(practitioner.Qualification),
+		ClinicName:     organizationName,
+		Affiliation:    organizationName,
+		Specialties:    ExtractSpecialtiesText(specialty),
 	}
 }
 
@@ -87,7 +164,7 @@ func CalculateAge(birthDate string) int {
 	return age
 }
 
-func GetEducationFromExtensions(extensions []responses.Extension) []string {
+func GetEducationFromExtensions(extensions []fhir_dto.Extension) []string {
 	var educations []string
 	for _, ext := range extensions {
 		if ext.Url == "http://example.org/fhir/StructureDefinition/education" {
@@ -97,31 +174,19 @@ func GetEducationFromExtensions(extensions []responses.Extension) []string {
 	return educations
 }
 
-func GetHomeAddress(addresses []responses.Address) string {
+func GetHomeAddress(addresses []fhir_dto.Address) string {
 	for _, address := range addresses {
 		if address.Use == "home" {
-			return fmt.Sprintf("%s, %s, %s, %s, %s",
-				strings.Join(address.Line, " "),
-				address.City,
-				address.State,
-				address.PostalCode,
-				address.Country,
-			)
+			return strings.Join(address.Line, ", ")
 		}
 	}
 	return ""
 }
 
-func GetWorkAddress(addresses []responses.Address) string {
+func GetWorkAddress(addresses []fhir_dto.Address) string {
 	for _, address := range addresses {
 		if address.Use == "work" {
-			return fmt.Sprintf("%s, %s, %s, %s, %s",
-				strings.Join(address.Line, " "),
-				address.City,
-				address.State,
-				address.PostalCode,
-				address.Country,
-			)
+			return strings.Join(address.Line, ", ")
 		}
 	}
 	return ""
@@ -141,20 +206,28 @@ func FormatBirthDate(birthDate string) string {
 	return dob.Format("02 January 2006")
 }
 
-func GetFullName(names []responses.HumanName) string {
+func GetFullName(names []fhir_dto.HumanName) string {
 	if len(names) == 0 {
 		return ""
 	}
 
 	var fullname string
 	name := names[0]
+
+	if len(name.Prefix) > 0 {
+		fullname += name.Prefix[0] + " "
+	}
 	if len(name.Given) > 0 {
-		fullname += " " + name.Given[0]
+		fullname += name.Given[0]
+	}
+
+	if name.Family != "" {
+		fullname += " " + name.Family
 	}
 	return fullname
 }
 
-func GetEmailAndWhatsapp(telecoms []responses.ContactPoint) (string, string) {
+func GetEmailAndWhatsapp(telecoms []fhir_dto.ContactPoint) (string, string) {
 	var (
 		email          string
 		whatsAppNumber string
@@ -168,4 +241,255 @@ func GetEmailAndWhatsapp(telecoms []responses.ContactPoint) (string, string) {
 		}
 	}
 	return email, whatsAppNumber
+}
+
+func DaysContains(slice []string, item string) bool {
+	for _, v := range slice {
+		switch v {
+		case "mon":
+			v = time.Monday.String()
+		case "tue":
+			v = time.Tuesday.String()
+		case "wed":
+			v = time.Wednesday.String()
+		case "thu":
+			v = time.Thursday.String()
+		case "fri":
+			v = time.Friday.String()
+		case "sat":
+			v = time.Saturday.String()
+		case "sun":
+			v = time.Sunday.String()
+		}
+		if v == item {
+			return true
+		}
+	}
+	return false
+}
+func Contains(slice []string, item string) bool {
+	for _, v := range slice {
+		if v == item {
+			return true
+		}
+	}
+	return false
+}
+
+func GenerateTimeSlots(start, end string) []string {
+	var times []string
+	startTime, _ := time.Parse("15:04:05", start)
+	endTime, _ := time.Parse("15:04:05", end)
+
+	for t := startTime; t.Before(endTime); t = t.Add(30 * time.Minute) {
+		times = append(times, t.Format("15:04"))
+	}
+
+	return times
+}
+
+func RemoveFromSlice(slice *[]string, item string) {
+	for i, v := range *slice {
+		if v == item {
+			*slice = append((*slice)[:i], (*slice)[i+1:]...)
+			break
+		}
+	}
+}
+
+func FindPatientIDFromFhirAppointment(ctx context.Context, request fhir_dto.Appointment) (string, error) {
+	for _, participant := range request.Participant {
+		if strings.Contains(participant.Actor.Reference, "Patient/") {
+			parts := strings.Split(participant.Actor.Reference, "/")
+			if len(parts) > 1 {
+				return parts[1], nil
+			}
+		}
+	}
+	errResponse := errors.New("patient ID not found in appointment")
+	return "", exceptions.ErrServerProcess(errResponse)
+}
+
+func FindPractitionerIDFromFhirAppointment(ctx context.Context, request fhir_dto.Appointment) (string, error) {
+	for _, participant := range request.Participant {
+		if strings.Contains(participant.Actor.Reference, "Practitioner/") {
+			parts := strings.Split(participant.Actor.Reference, "/")
+			if len(parts) > 1 {
+				return parts[1], nil
+			}
+		}
+	}
+	errResponse := errors.New("practitioner ID not found in appointment")
+	return "", exceptions.ErrServerProcess(errResponse)
+}
+
+func AddAndGetTime(hoursToAdd, minutesToAdd, secondsToAdd int) string {
+	currentTime := time.Now().UTC()
+
+	newTime := currentTime.Add(
+		time.Duration(hoursToAdd)*time.Hour +
+			time.Duration(minutesToAdd)*time.Minute +
+			time.Duration(secondsToAdd)*time.Second)
+
+	return newTime.Format("2006-01-02 15:04:05")
+}
+
+func MapJournalRequestToCreateObserVationRequest(request *requests.CreateJournal) (*fhir_dto.Observation, error) {
+	journalDate, err := time.Parse("2006-01-02", request.JournalDate)
+	if err != nil {
+		return nil, err
+	}
+
+	components := []fhir_dto.Component{
+		{
+			Code: fhir_dto.CodeableConcept{
+				Text: constvars.FhirObservationJournalTitle,
+			},
+			ValueString: request.Title,
+		},
+	}
+
+	for _, body := range request.JournalBody {
+		components = append(components, fhir_dto.Component{
+			Code: fhir_dto.CodeableConcept{
+				Text: constvars.FhirObservationJournalBody,
+			},
+			ValueString: body,
+		})
+	}
+
+	observation := &fhir_dto.Observation{
+		ResourceType: constvars.ResourceObservation,
+		Status:       constvars.FhirObservationStatusFinal,
+		Code: fhir_dto.CodeableConcept{
+			Coding: []fhir_dto.Coding{
+				{
+					System:  "https://loinc.org",
+					Code:    "51855-5",
+					Display: "Patient Note",
+				},
+			},
+			Text: "Patient journaling note",
+		},
+		Subject: fhir_dto.Reference{
+			Reference: fmt.Sprintf("%s/%s", constvars.ResourcePatient, request.PatientID),
+		},
+		Performer: []fhir_dto.Reference{
+			{
+				Reference: fmt.Sprintf("%s/%s", constvars.ResourcePatient, request.PatientID),
+				Display:   "The patient as performer",
+			},
+		},
+		EffectiveDateTime: journalDate.Format(time.RFC3339),
+		Issued:            time.Now().Format(time.RFC3339),
+		Component:         components,
+	}
+
+	return observation, nil
+}
+
+func MapUpdateJournalToUpdateObservationRequest(request *requests.UpdateJournal) (*fhir_dto.Observation, error) {
+	journalDate, err := time.Parse("2006-01-02", request.JournalDate)
+	if err != nil {
+		return nil, exceptions.ErrCannotParseDate(err)
+	}
+
+	components := []fhir_dto.Component{
+		{
+			Code: fhir_dto.CodeableConcept{
+				Text: constvars.FhirObservationJournalTitle,
+			},
+			ValueString: request.Title,
+		},
+	}
+
+	for _, body := range request.JournalBody {
+		components = append(components, fhir_dto.Component{
+			Code: fhir_dto.CodeableConcept{
+				Text: constvars.FhirObservationJournalBody,
+			},
+			ValueString: body,
+		})
+	}
+
+	observation := &fhir_dto.Observation{
+		ResourceType: constvars.ResourceObservation,
+		ID:           request.JournalID,
+		Status:       constvars.FhirObservationStatusAmended,
+		Code: fhir_dto.CodeableConcept{
+			Coding: []fhir_dto.Coding{
+				{
+					System:  "https://loinc.org",
+					Code:    "51855-5",
+					Display: "Patient Note",
+				},
+			},
+			Text: "Patient journaling note",
+		},
+		Subject: fhir_dto.Reference{
+			Reference: fmt.Sprintf("%s/%s", constvars.ResourcePatient, request.PatientID),
+		},
+		Performer: []fhir_dto.Reference{
+			{
+				Reference: fmt.Sprintf("%s/%s", constvars.ResourcePatient, request.PatientID),
+				Display:   "The patient as performer",
+			},
+		},
+		EffectiveDateTime: journalDate.Format(time.RFC3339),
+		Issued:            time.Now().Format(time.RFC3339),
+		Component:         components,
+	}
+
+	return observation, nil
+}
+
+func MapObservationToJournalResponse(observation *fhir_dto.Observation) (*responses.Journal, error) {
+	var patientID string
+	if observation.Subject.Reference != "" {
+		parts := strings.Split(observation.Subject.Reference, "/")
+		if len(parts) == 2 {
+			patientID = parts[1]
+		}
+	}
+
+	journalDate, err := time.Parse(time.RFC3339, observation.EffectiveDateTime)
+	if err != nil {
+		return nil, exceptions.ErrCannotParseDate(err)
+	}
+
+	var title string
+	var journalBody []string
+	for _, component := range observation.Component {
+		if component.Code.Text == constvars.FhirObservationJournalTitle {
+			title = component.ValueString
+		} else if component.Code.Text == constvars.FhirObservationJournalBody {
+			journalBody = append(journalBody, component.ValueString)
+		}
+	}
+
+	journal := &responses.Journal{
+		JournalID:   observation.ID,
+		PatientID:   patientID,
+		Title:       title,
+		JournalBody: journalBody,
+		JournalDate: journalDate,
+	}
+
+	return journal, nil
+}
+
+func GetPatientIDFromObservation(observation *fhir_dto.Observation) (string, error) {
+	var err error
+	if observation.Subject.Reference == "" {
+		err = errors.New("subject reference is empty")
+		return "", exceptions.ErrServerProcess(err)
+	}
+
+	parts := strings.Split(observation.Subject.Reference, "/")
+	if len(parts) != 2 || parts[0] != constvars.ResourcePatient {
+		err = fmt.Errorf("invalid subject reference format: %s", observation.Subject.Reference)
+		return "", exceptions.ErrServerProcess(err)
+	}
+
+	return parts[1], nil
 }

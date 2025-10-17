@@ -11,10 +11,11 @@ WORKDIR /go/src/github.com/konsulin-id/be-konsulin
 # get current commit and create build number
 # echoing only the first 7 chars of the GIT_COMMIT
 RUN echo "$VERSION -> ${GIT_COMMIT}" > /go/src/github.com/konsulin-id/be-konsulin/BUILD.txt
-
+ADD . ./
 ADD go.mod go.sum ./
 ADD cmd ./cmd
 ADD cmd/http ./cmd/http
 ADD internal ./internal
+ADD resources ./resources
 ADD pkg ./pkg
 RUN go mod download

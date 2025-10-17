@@ -16,8 +16,9 @@ func NewMinio(driverConfig *config.DriverConfig) *minio.Client {
 		Secure: driverConfig.Minio.UseSSL,
 	})
 	if err != nil {
-		log.Fatalf("Failed to connect to Minio: %s", err.Error())
+		log.Fatalf("Failed to initialize Minio Client: %s", err.Error())
 	}
+
 	log.Println("Successfully connected to minio")
 	return minioClient
 }

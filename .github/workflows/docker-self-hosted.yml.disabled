@@ -1,0 +1,67 @@
+name: Docker (self-hosted)
+
+on:
+  workflow_call:
+    inputs:
+      TZ_ARG:
+        type: string
+        required: true
+        default: Asia/Jakarta
+      AUTHOR:
+        type: string
+        required: true
+      VERSION:
+        type: string
+        required: true
+      GIT_COMMIT:
+        type: string
+        required: true
+      BUILD_TIME:
+        type: string
+        required: true
+      RUN_NUMBER:
+        type: string
+        required: true
+      RELEASE_TAG:
+        type: string
+        required: true
+      DOCKER_TAG:
+        type: string
+        required: true
+      DOCKER_VENDOR_TAG:
+        type: string
+        required: true
+
+jobs:
+  docker:
+    name: Docker (self-hosted)
+    runs-on: self-hosted
+
+    steps:
+    - name: Prepare
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Build Vendor Image
+      env:
+        DOCKER_BUILDKIT: 1
+      run: |
+        docker build -t konsulin/rest-backend-vendor:${{ inputs.DOCKER_VENDOR_TAG }} -f Dockerfile-vendor .
+
+    - name: Update Dockerfile Base Image Tag
+      run: |
+        sed -i "s|FROM konsulin/rest-backend-vendor:[^[:space:]]*|FROM konsulin/rest-backend-vendor:${{ inputs.DOCKER_VENDOR_TAG }}|" Dockerfile
+
+    - name: Build Main Image
+      env:
+        DOCKER_BUILDKIT: 1
+      run: |
+        docker build -t konsulin/api-service:${{ inputs.DOCKER_TAG }} -f Dockerfile . \
+          --build-arg TZ_ARG=${{ inputs.TZ_ARG }} \
+          --build-arg VERSION=${{ inputs.VERSION }} \
+          --build-arg GIT_COMMIT=${{ inputs.GIT_COMMIT }} \
+          --build-arg TAG=${{ inputs.RELEASE_TAG }} \
+          --build-arg AUTHOR=${{ inputs.AUTHOR }} \
+          --build-arg RUN_NUMBER=${{ inputs.RUN_NUMBER }} \
+          --build-arg BUILD_TIME=${{ inputs.BUILD_TIME }}

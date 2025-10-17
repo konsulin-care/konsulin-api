@@ -60,15 +60,16 @@ func BuildErrorResponse(log *zap.Logger, w http.ResponseWriter, err error) {
 	if errors.As(err, &customErr) {
 		code = customErr.StatusCode
 		clientMessage = customErr.ClientMessage
-		location := map[string]interface{}{
-			"file":          customErr.Location.File,
-			"line":          customErr.Location.Line,
-			"function_name": customErr.Location.FunctionName,
+		for _, location := range customErr.Locations {
+			location := map[string]interface{}{
+				"file":          location.File,
+				"line":          location.Line,
+				"function_name": location.FunctionName,
+			}
+			log.Error(customErr.DevMessage,
+				zap.Any("location", location),
+			)
 		}
-
-		log.Error(customErr.DevMessage,
-			zap.Any("location", location),
-		)
 	} else {
 		log.Error(err.Error())
 	}
@@ -84,7 +85,7 @@ func BuildErrorResponse(log *zap.Logger, w http.ResponseWriter, err error) {
 	appEnvironment := GetEnvString("APP_ENV", "development")
 	if customErr != nil && appEnvironment != "production" {
 		response.DevMessage = customErr.DevMessage
-		response.Location = customErr.Location
+		response.Locations = customErr.Locations
 	}
 	json.NewEncoder(w).Encode(response)
 }

@@ -1,0 +1,20 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      RELEASE_NAME:
+        description: 'Release name (e.g., v1.0.0)'
+        required: true
+
+jobs:
+  deploy:
+    name: Deployment
+    uses: ./.github/workflows/deploy-ansible.yml
+    with:
+      DOCKER_TAG: ${{ inputs.RELEASE_NAME}}
+      ANSIBLE_PLAYBOOK: playbook-prod.yml
+      ANSIBLE_INVENTORY_HOSTS: "37.27.46.214,"
+    secrets:
+      ANSIBLE_VAULT_PASSWORD: ${{ secrets.PRODUCTION_ANSIBLE_VAULT_PASSWORD }}
+      SSH_KEY: ${{ secrets.SSH_KEY }}

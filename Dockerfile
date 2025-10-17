@@ -6,7 +6,7 @@ ARG TAG
 ARG BUILD_TIME
 ARG RUN_NUMBER
 
-FROM debian:buster-slim AS base
+FROM uzie17/debian:stable-Jakarta AS base
 LABEL maintainer="Muhammad Febrian Ardiansyah <mfardiansyah.id@gmail.com>"
 WORKDIR /app
 
@@ -22,7 +22,8 @@ RUN apt-get update && \
     dpkg-reconfigure -f noninteractive tzdata
 ENV TZ=$TZ_ARG
 
-FROM repository.konsulin.care/repository/private/be-konsulin:latest as gobuild
+#FROM repository.konsulin.care/repository/private/be-konsulin:latest as gobuild
+FROM konsulin/rest-backend-vendor:develop as gobuild
 LABEL stage=gobuild
 
 # captures argument
@@ -48,6 +49,7 @@ RUN echo "Set ARG value of [TAG] as $TAG"
 ARG RELEASE_NOTE="author=$AUTHOR \nversion=$VERSION \ncommit=${GIT_COMMIT} \ntag=$TAG \nbuild time=$BUILD_TIME \nrun number=$RUN_NUMBER"
 RUN echo "${RELEASE_NOTE}" > /go/src/github.com/konsulin-id/be-konsulin/RELEASE
 
+ADD . ./
 ADD go.mod go.sum ./
 ADD cmd ./cmd
 ADD cmd/http ./cmd/http
@@ -66,7 +68,8 @@ RUN go build -o api-service \
 
 FROM base AS release
 
-COPY --from=gobuild /go/src/github.com/konsulin-id/be-konsulin/api-service .
-COPY --from=gobuild /go/src/github.com/konsulin-id/be-konsulin/RELEASE ./RELEASE
+COPY --from=gobuild /go/src/github.com/konsulin-id/be-konsulin/ .
+# COPY --from=gobuild /go/src/github.com/konsulin-id/be-konsulin/api-service .
+# COPY --from=gobuild /go/src/github.com/konsulin-id/be-konsulin/RELEASE ./RELEASE
 
 ENTRYPOINT ["./api-service"]

@@ -3,34 +3,56 @@ package mailer
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
-	"regexp"
+	"konsulin-service/internal/pkg/exceptions"
+	"sync"
 
 	"github.com/rabbitmq/amqp091-go"
+	"go.uber.org/zap"
+)
+
+var (
+	mailerServiceInstance contracts.MailerService
+	onceMailerService     sync.Once
+	mailerServiceError    error
 )
 
 type mailerService struct {
 	Channel *amqp091.Channel
 	Queue   string
+	Log     *zap.Logger
 }
 
-func NewMailerService(rabbitMQConnection *amqp091.Connection, queue string) (MailerService, error) {
-	channel, err := rabbitMQConnection.Channel()
-	if err != nil {
-		return nil, err
-	}
-
-	return &mailerService{
-		Channel: channel,
-		Queue:   queue,
-	}, nil
+func NewMailerService(rabbitMQConnection *amqp091.Connection, logger *zap.Logger, queue string) (contracts.MailerService, error) {
+	onceMailerService.Do(func() {
+		channel, mailerServiceError := rabbitMQConnection.Channel()
+		if mailerServiceError != nil {
+			return
+		}
+		instance := &mailerService{
+			Channel: channel,
+			Queue:   queue,
+			Log:     logger,
+		}
+		mailerServiceInstance = instance
+	})
+	return mailerServiceInstance, mailerServiceError
 }
 func (s *mailerService) SendEmail(ctx context.Context, request *requests.EmailPayload) error {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	s.Log.Info("mailerService.SendEmail called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
 	body, err := json.Marshal(request)
 	if err != nil {
-		return err
+		s.Log.Error("mailerService.SendEmail error marshaling JSON",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return exceptions.ErrCannotMarshalJSON(err)
 	}
 
 	headers := amqp091.Table{
@@ -46,15 +68,23 @@ func (s *mailerService) SendEmail(ctx context.Context, request *requests.EmailPa
 		Headers:      headers,
 	}
 
+	s.Log.Info("mailerService.SendEmail publishing message",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingQueueNameKey, s.Queue),
+	)
 	err = s.Channel.PublishWithContext(ctx, "", s.Queue, false, false, message)
 	if err != nil {
-		return fmt.Errorf("failed to publish message: %w", err)
+		s.Log.Error("mailerService.SendEmail error publishing message",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+			zap.String(constvars.LoggingQueueNameKey, s.Queue),
+		)
+		return exceptions.ErrRabbitMQPublishMessage(err, s.Queue)
 	}
 
+	s.Log.Info("mailerService.SendEmail succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingQueueNameKey, s.Queue),
+	)
 	return nil
-}
-
-func (svc *mailerService) ValidateEmail(email string) bool {
-	re := regexp.MustCompile(constvars.RegexEmail)
-	return re.MatchString(email)
 }

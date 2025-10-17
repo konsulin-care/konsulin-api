@@ -1,3 +1,4 @@
+supertokens_db_cleaning.sh
 .env
 
 *.log
@@ -14,3 +15,13 @@ vendor/
 
 resources/http-client.env.json
 .vscode/settings.json
+
+*.local.yaml
+*.development.yaml
+
+.DS_STORE
+.DS_Store
+
+deployments/.vault
+
+dbconfig.yml

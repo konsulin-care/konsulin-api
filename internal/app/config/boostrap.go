@@ -8,43 +8,38 @@ import (
 	"github.com/minio/minio-go/v7"
 	"github.com/rabbitmq/amqp091-go"
 	"github.com/redis/go-redis/v9"
-	"go.mongodb.org/mongo-driver/mongo"
 	"go.uber.org/zap"
 )
 
 type Bootstrap struct {
 	Router         *chi.Mux
-	MongoDB        *mongo.Client
 	Redis          *redis.Client
 	Logger         *zap.Logger
 	RabbitMQ       *amqp091.Connection
 	Minio          *minio.Client
 	InternalConfig *InternalConfig
+	DriverConfig   *DriverConfig
+	// WorkerStop if set will be called during Shutdown to gracefully stop background workers
+	WorkerStop func()
 }
 
 func (b *Bootstrap) Shutdown(ctx context.Context) error {
-	// Shutdown MongoDB
-	err := b.MongoDB.Disconnect(ctx)
-	if err != nil {
-		return err
+	if b.WorkerStop != nil {
+		b.WorkerStop()
+		log.Println("Successfully stopped background workers")
 	}
-	log.Println("Successfully disconnected with MongoDB")
-
-	// Shutdown Redis
-	err = b.Redis.Close()
+	err := b.Redis.Close()
 	if err != nil {
 		return err
 	}
 	log.Println("Successfully closing Redis")
 
-	// Close RabbitMQ
 	err = b.RabbitMQ.Close()
 	if err != nil {
 		return err
 	}
 	log.Println("Successfully closing RabbitMQ")
 
-	// Sync the logger
 	err = b.Logger.Sync()
 	if err != nil {
 		return err

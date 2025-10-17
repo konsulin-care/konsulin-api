@@ -1,0 +1,164 @@
+# code: language=ansible
+---
+- name: Deploy API Development
+  hosts: all
+  become: true
+
+  vars:
+    app_env: development
+    ansible_user: konsulin
+    ansible_python_interpreter: /usr/bin/python3.12
+    docker_service_name: dev-api
+    deployment_path: "/home/konsulin/infrastructure/development/konsulin-app"
+    deployment_env: "develop"
+    config_file_name: "config.development.yaml"
+
+    image_repository: konsulin/api-service
+    image_tag: ""
+
+    logging:
+      driver: "json-file"
+      options:
+        maxSize: "200k"
+        maxFile: "10"
+
+    domain:
+      virtual_host: dev-api.konsulin.care
+      letsencrypt_host: dev-api.konsulin.care
+      letsencrypt_email: mfardiansyah.id@gmail.com
+
+    internal_config:
+      app:
+        env: "development"
+        port: 3001
+        version: "v1"
+        address: "0.0.0.0"
+        base_url: "https://dev-api.konsulin.care/"
+        timezone: "Asia/Jakarta"
+        frontend_domain: "https://dev-app.konsulin.care"
+        endpoint_prefix: "api"
+        reset_password_url: "https://dev-app.konsulin.care/reset-password-form?token="
+        max_requests: 15
+        shutdown_timeout_in_seconds: 3
+        max_time_requests_per_seconds: 30
+        session_multiplier_in_minutes: 30
+        request_body_limit_in_megabyte: 30
+        payment_expired_time_in_minutes: 60
+        account_deactivation_age_in_days: 30
+        login_session_expired_time_in_hours: 2
+        whatsapp_otp_expired_time_in_minutes: 1
+        forgot_password_token_expired_time_in_minutes: 2
+        minio_pre_signed_url_object_expiry_time_in_hours: 1
+        questionnaire_guest_response_response_expired_time_in_minutes: 10
+
+      fhir:
+        base_url: "https://dev-blaze.konsulin.care/fhir/"
+
+      jwt:
+        secret: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          38366361353437396132393161656561626131363261663732396238656339616233306163343066
+          6265303163316138353334653836356133653330373634370a323263396232643334643539643934
+          32656635386636386535666464616437643532356465356535656366666164336565613064393530
+          6336343039393033310a396539663636646564663863633938666162333935663566323739303339
+          66313035346265636131663231343235663236356532633839613839383432633335
+        exp_time_in_hour: 1
+      mailer:
+        email_sender: "konsulin.care@gmail.com"
+      minio:
+        profile_picture_max_upload_size_in_mb: 2
+        bucket_name: "konsulin-dev"
+      rabbitmq:
+        mailer_queue: "dev.email"
+        whatsapp_queue: "dev.whatsapp"
+      konsulin:
+        bank_code: "014"
+        bank_account_number: "1234567890"
+        finance_email: "konsulin.care+finance@gmail.com"
+        payment_display_name: "Konsulin"
+      payment_gateway:
+        username: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          31386463356131343865373364633937333433323863356264363531656165306132366465313130
+          6233363861376366343633326431616133356534363431340a633633323139313637383939633966
+          35666331633232336638653734663438623630663164353239393062346439653636623436313036
+          3637366334353631310a373231353932316264313133366638613230666138653634363464353132
+          3639
+        api_key: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          61633331323363643862386530343564366335633461346438316135366534333230666234643730
+          6432373739646233346530613430316330346666356235320a393135363131336163303363343433
+          37393537613662353162646461643563656431303634383233653363363366333432336233383038
+          3961356331326530360a663237343366633238366334393135643038353439643834386430663164
+          36636162663362303665313730633166383739663634356636323566323033616533336662333539
+          6464636336376539366538646532643033653234356230356361
+        base_url: "https://api-stg.oyindonesia.com/api/"
+      supertoken:
+        magiclink_base_url: "https://dev-app.konsulin.care/auth/verify"
+        konsulin_dashboard_admin_email: "konsulin.care@gmail.com"
+        konsulin_tenant_id: "public"
+    driver_config:
+      supertoken:
+        api_base_path: "/auth"
+        website_base_path: "/auth"
+        connection_uri: "https://login.konsulin.care"
+        app_name: "Konsulin"
+        api_domain: "https://dev-api.konsulin.care"
+        website_domain: "https://dev-app.konsulin.care"
+      
+      redis:
+        host: "37.27.46.214"
+        port: 6379
+        password: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          33393338343262303137656138376363306266383363326237353730356261623965393936656135
+          3362323165613036656266633339333739306462363931640a383565343963373563306333613837
+          38326131373934396266373263653430613534613362383364306161646365333334316664313233
+          3831353563373465350a373937386533663238653063623930646636643130383266333831353266
+          63373332393661393831333636383939343263623430643035646136343861353966
+
+      logger:
+        level: "debug"
+        output_file_name: "logger.log"
+        output_error_file_name: "logger_error.log"
+
+      rabbitmq:
+        port: 5672
+        host: "37.27.46.214"
+        username: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          38303731346163366233633632633663313338353663613863646364393131396262616663366239
+          3032616136323732313362303635323936396539613038620a346561316136636239643566366662
+          31323063383337396230643030376639366538613631316263333934613735333662323533383030
+          3262376262623936650a393234633535656136386330656132646237613133353730656466663432
+          6561
+        password: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          31353935383765333833336332376536613530363833356636653437303633343939363033653830
+          3031313532663839313563323166623836323331613632340a306164643364303535626437656632
+          33663639393961373133643864336463373464613239356663366435646235653662376531633366
+          3639353339383431350a633065346434303963643738303039386362353066303865623030353965
+          32333631623638343664633931383334356365316238616636353538653562636336
+
+      minio:
+        port: 9000
+        host: "37.27.46.214"
+        use_ssl: false
+        username: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          30366135323936346264306231623163303366333666633333643132336165353237616233613537
+          3766333137653864396235643661366263646538353938650a313865373661313564316464376437
+          63383930373863336235386539336534376661633839336536316161343864646165356132623034
+          3863353432313830360a333331363862633363356230653564653764316133333361303734336665
+          32393532343666343166313162303764633963396537653463653135316435663365
+        password: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          61383038336563643935323239613533643461333732623037616138383666356236373261356465
+          3537326135643239623165333430373931303865383837310a623562333735373238343532653563
+          63346332396639616231313038373266343362663933353734373230663032346332393536356335
+          3531336530336434380a346338626363316132613231633064343037363862313466383138313465
+          34393162643364663638373333306133316333303439313634336562633966356661
+
+  tasks:
+    - name: Include deployment tasks
+      include_tasks: deploy-task.yml

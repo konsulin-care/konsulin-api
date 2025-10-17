@@ -3,43 +3,59 @@ package routers
 import (
 	"fmt"
 	"konsulin-service/internal/app/config"
+	"konsulin-service/internal/app/delivery/http/controllers"
 	"konsulin-service/internal/app/delivery/http/middlewares"
-	"konsulin-service/internal/app/services/core/auth"
-	"konsulin-service/internal/app/services/core/clinics"
-	educationLevels "konsulin-service/internal/app/services/core/education_levels"
-	"konsulin-service/internal/app/services/core/genders"
-	"konsulin-service/internal/app/services/core/users"
-	"time"
+	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
-	"github.com/go-chi/httprate"
+	"github.com/supertokens/supertokens-golang/supertokens"
+	"go.uber.org/zap"
 )
 
 func SetupRoutes(
 	router *chi.Mux,
 	internalConfig *config.InternalConfig,
+	logger *zap.Logger,
 	middlewares *middlewares.Middlewares,
-	userController *users.UserController,
-	authController *auth.AuthController,
-	clinicController *clinics.ClinicController,
-	educationLevelController *educationLevels.EducationLevelController,
-	genderController *genders.GenderController,
+	authController *controllers.AuthController,
+	paymentController *controllers.PaymentController,
+	webhookController *controllers.WebhookController,
 ) {
-
 	corsOptions := cors.Options{
-		AllowedOrigins:   []string{"*"},
+		AllowOriginFunc: func(r *http.Request, origin string) bool {
+			if strings.HasPrefix(origin, "http://localhost:") || strings.HasPrefix(origin, "http://127.0.0.1:") {
+				return true
+			}
+			if strings.HasPrefix(origin, "https://localhost:") || strings.HasPrefix(origin, "https://127.0.0.1:") {
+				return true
+			}
+			if isAllowedOrigin(internalConfig.App.FrontendDomain, origin) {
+				return true
+			}
+			return false
+		},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		AllowedHeaders:   append([]string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"}, supertokens.GetAllCORSHeaders()...),
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}
-	router.Use(cors.Handler(corsOptions))
 
-	// Rate limiting middleware using httprate
-	rateLimiter := httprate.LimitByIP(internalConfig.App.MaxRequests, time.Second)
-	router.Use(rateLimiter)
+	router.Use(middlewares.RequestIDMiddleware)
+	router.Use(middlewares.Logging(logger))
+	router.Use(middlewares.BodyBuffer)
+	router.Use(cors.Handler(corsOptions))
+	router.Use(supertokens.Middleware)
+	router.Use(middlewares.APIKeyAuth)
+	router.Use(middlewares.SessionOptional)
+	// router.Use(middlewares.Auth)
+
+	// Conditional rate limiting based on authentication method
+	normalLimiter, apiKeyLimiter := middlewares.CreateRateLimiters()
+	router.Use(middlewares.ConditionalRateLimit(normalLimiter, apiKeyLimiter))
 
 	router.Use(middlewares.ErrorHandler)
 
@@ -52,21 +68,36 @@ func SetupRoutes(
 				attachAuthRoutes(r, middlewares, authController)
 			})
 
-			r.Route("/users", func(r chi.Router) {
-				attachUserRoutes(r, middlewares, userController)
-			})
-
-			r.Route("/education-levels", func(r chi.Router) {
-				attachEducationLevelRoutes(r, middlewares, educationLevelController)
-			})
-
-			r.Route("/genders", func(r chi.Router) {
-				attachGenderRoutes(r, middlewares, genderController)
-			})
-
-			r.Route("/clinics", func(r chi.Router) {
-				attachClinicRoutes(r, middlewares, clinicController)
-			})
+			attachPaymentRouter(r, middlewares, paymentController)
+			attachWebhookRouter(r, middlewares, webhookController)
 		})
 	})
+
+	router.With(middlewares.Auth).
+		Mount("/fhir", middlewares.Bridge(internalConfig.FHIR.BaseUrl))
+}
+
+func isAllowedOrigin(allowedDomain, origin string) bool {
+	allowedDomain = strings.TrimSuffix(allowedDomain, "/")
+	origin = strings.TrimSuffix(origin, "/")
+
+	if allowedDomain == "" || origin == "" {
+		return false
+	}
+
+	allowedURL, err := url.Parse(allowedDomain)
+	if err != nil {
+		allowedURL = &url.URL{Host: allowedDomain}
+	}
+
+	originURL, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+
+	if strings.EqualFold(allowedURL.Hostname(), originURL.Hostname()) {
+		return true
+	}
+	return false
+
 }

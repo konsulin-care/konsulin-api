@@ -1,12 +1,25 @@
 package utils
 
 import (
+	"encoding/json"
+	"fmt"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
+	"konsulin-service/internal/pkg/dto/responses"
+	"konsulin-service/internal/pkg/fhir_dto"
 	"net/http"
 	"strconv"
 	"strings"
 )
+
+func ParseJSONBody(body []byte) (map[string]interface{}, error) {
+	var data map[string]interface{}
+	err := json.Unmarshal(body, &data)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
 
 func BuildPaginationRequest(r *http.Request) *requests.Pagination {
 	pageStr := r.URL.Query().Get("page")
@@ -28,12 +41,26 @@ func BuildPaginationRequest(r *http.Request) *requests.Pagination {
 	}
 }
 
-func BuildFhirPatientRegistrationRequest(username, email string) *requests.PatientFhir {
-	return &requests.PatientFhir{
+func BuildQueryParamsRequest(r *http.Request) *requests.QueryParams {
+	searchStr := r.URL.Query().Get(constvars.URLQueryParamSearch)
+	fetchType := r.URL.Query().Get(constvars.URLQueryParamFetchType)
+
+	if fetchType != constvars.QueryParamFetchTypeUpcoming {
+		fetchType = ""
+	}
+
+	return &requests.QueryParams{
+		Search:    searchStr,
+		FetchType: fetchType,
+	}
+}
+
+func BuildFhirPatientRegistrationRequest(username, email string) *fhir_dto.Patient {
+	return &fhir_dto.Patient{
 		ResourceType: constvars.ResourcePatient,
-		Telecom: []requests.ContactPoint{
+		Telecom: []fhir_dto.ContactPoint{
 			{
-				System: "email",
+				System: fhir_dto.ContactPointSystemEmail,
 				Value:  email,
 				Use:    "home",
 			},
@@ -41,41 +68,53 @@ func BuildFhirPatientRegistrationRequest(username, email string) *requests.Patie
 	}
 }
 
-func BuildFhirPatientUpdateProfileRequest(request *requests.UpdateProfile, patientID string) *requests.PatientFhir {
-	var extensions []requests.Extension
+func BuildFhirPatientWhatsAppRegistrationRequest(phoneNumber string) *fhir_dto.Patient {
+	return &fhir_dto.Patient{
+		ResourceType: constvars.ResourcePatient,
+		Telecom: []fhir_dto.ContactPoint{
+			{
+				System: fhir_dto.ContactPointSystemPhone,
+				Value:  phoneNumber,
+				Use:    "mobile",
+			},
+		},
+	}
+}
+
+func BuildFhirPatientUpdateProfileRequest(request *requests.UpdateProfile, patientID string) *fhir_dto.Patient {
+	var extensions []fhir_dto.Extension
 	for _, education := range request.Educations {
-		extensions = append(extensions, requests.Extension{
+		extensions = append(extensions, fhir_dto.Extension{
 			Url:         "http://example.org/fhir/StructureDefinition/education",
 			ValueString: education,
 		})
 	}
 
-	return &requests.PatientFhir{
+	return &fhir_dto.Patient{
 		ResourceType: constvars.ResourcePatient,
 		ID:           patientID,
 		Active:       true,
-		Name: []requests.HumanName{
+		Name: []fhir_dto.HumanName{
 			{
-				Use:    "official",
-				Family: request.Fullname,
-				Given:  []string{request.Fullname},
+				Use:   "official",
+				Given: []string{request.Fullname},
 			},
 		},
-		Telecom: []requests.ContactPoint{
+		Telecom: []fhir_dto.ContactPoint{
 			{
-				System: "email",
+				System: fhir_dto.ContactPointSystemEmail,
 				Value:  request.Email,
 				Use:    "home",
 			},
 			{
-				System: "phone",
+				System: fhir_dto.ContactPointSystemPhone,
 				Value:  request.WhatsAppNumber,
 				Use:    "mobile",
 			},
 		},
 		Gender:    request.Gender,
 		BirthDate: request.BirthDate,
-		Address: []requests.Address{
+		Address: []fhir_dto.Address{
 			{
 				Use:  "home",
 				Line: strings.Split(request.Address, ", "),
@@ -85,12 +124,12 @@ func BuildFhirPatientUpdateProfileRequest(request *requests.UpdateProfile, patie
 	}
 }
 
-func BuildFhirPractitionerRegistrationRequest(username, email string) *requests.PractitionerFhir {
-	return &requests.PractitionerFhir{
+func BuildFhirPractitionerRegistrationRequest(username, email string) *fhir_dto.Practitioner {
+	return &fhir_dto.Practitioner{
 		ResourceType: constvars.ResourcePractitioner,
-		Telecom: []requests.ContactPoint{
+		Telecom: []fhir_dto.ContactPoint{
 			{
-				System: "email",
+				System: fhir_dto.ContactPointSystemEmail,
 				Value:  email,
 				Use:    "work",
 			},
@@ -98,41 +137,53 @@ func BuildFhirPractitionerRegistrationRequest(username, email string) *requests.
 	}
 }
 
-func BuildFhirPractitionerUpdateProfileRequest(request *requests.UpdateProfile, practitionerID string) *requests.PractitionerFhir {
-	var extensions []requests.Extension
+func BuildFhirPractitionerWhatsAppRegistrationRequest(phoneNumber string) *fhir_dto.Practitioner {
+	return &fhir_dto.Practitioner{
+		ResourceType: constvars.ResourcePractitioner,
+		Telecom: []fhir_dto.ContactPoint{
+			{
+				System: fhir_dto.ContactPointSystemPhone,
+				Value:  phoneNumber,
+				Use:    "mobile",
+			},
+		},
+	}
+}
+
+func BuildFhirPractitionerUpdateProfileRequest(request *requests.UpdateProfile, practitionerID string) *fhir_dto.Practitioner {
+	var extensions []fhir_dto.Extension
 	for _, education := range request.Educations {
-		extensions = append(extensions, requests.Extension{
+		extensions = append(extensions, fhir_dto.Extension{
 			Url:         "http://example.org/fhir/StructureDefinition/education",
 			ValueString: education,
 		})
 	}
 
-	return &requests.PractitionerFhir{
+	return &fhir_dto.Practitioner{
 		ResourceType: constvars.ResourcePractitioner,
 		ID:           practitionerID,
 		Active:       true,
-		Name: []requests.HumanName{
+		Name: []fhir_dto.HumanName{
 			{
 				Use:    "official",
 				Family: request.Fullname,
-				Given:  []string{request.Fullname},
 			},
 		},
-		Telecom: []requests.ContactPoint{
+		Telecom: []fhir_dto.ContactPoint{
 			{
-				System: "email",
+				System: fhir_dto.ContactPointSystemEmail,
 				Value:  request.Email,
 				Use:    "work",
 			},
 			{
-				System: "phone",
+				System: fhir_dto.ContactPointSystemPhone,
 				Value:  request.WhatsAppNumber,
 				Use:    "mobile",
 			},
 		},
 		Gender:    request.Gender,
 		BirthDate: request.BirthDate,
-		Address: []requests.Address{
+		Address: []fhir_dto.Address{
 			{
 				Use:  "work",
 				Line: strings.Split(request.Address, ", "),
@@ -142,58 +193,97 @@ func BuildFhirPractitionerUpdateProfileRequest(request *requests.UpdateProfile, 
 	}
 }
 
-func BuildFhirPractitionerDeactivateRequest(practitionerID string) *requests.PractitionerFhir {
-	return &requests.PractitionerFhir{
+func BuildFhirPractitionerDeactivateRequest(practitionerID string) *fhir_dto.Practitioner {
+	return &fhir_dto.Practitioner{
 		ResourceType: constvars.ResourcePractitioner,
 		ID:           practitionerID,
 		Active:       false,
 	}
 }
 
-func BuildFhirPatientDeactivateRequest(patientID string) *requests.PatientFhir {
-	return &requests.PatientFhir{
+func BuildFhirPatientDeactivateRequest(patientID string) *fhir_dto.Patient {
+	return &fhir_dto.Patient{
 		ResourceType: constvars.ResourcePatient,
 		ID:           patientID,
 		Active:       false,
 	}
 }
 
-func BuildFhirPatientReactivateRequest(patientID string) *requests.PatientFhir {
-	return &requests.PatientFhir{
-		ResourceType: constvars.ResourcePatient,
-		ID:           patientID,
-		Active:       true,
-	}
-}
-func BuildFhirPractitionerReactivateRequest(practitionerID string) *requests.PractitionerFhir {
-	return &requests.PractitionerFhir{
-		ResourceType: constvars.ResourcePractitioner,
-		ID:           practitionerID,
-		Active:       true,
-	}
-}
+func BuildPractitionerRolesBundleRequestByPractitionerID(practitionerID string, organizationIDs []string) interface{} {
+	practitionerRoles := make([]fhir_dto.PractitionerRole, len(organizationIDs))
 
-func BuildUpdateUserProfileRequest(r *http.Request) (*requests.UpdateProfile, error) {
-	request := new(requests.UpdateProfile)
-
-	request.Fullname = r.FormValue("fullname")
-	request.Email = r.FormValue("email")
-	request.BirthDate = r.FormValue("birth_date")
-	request.WhatsAppNumber = r.FormValue("whatsapp_number")
-	request.Address = r.FormValue("address")
-	request.Gender = r.FormValue("gender")
-	request.Educations = r.Form["educations"]
-
-	file, fileHeader, err := r.FormFile("profile_picture")
-	if err == nil {
-		defer file.Close()
-		request.ProfilePicture = make([]byte, fileHeader.Size)
-		_, err := file.Read(request.ProfilePicture)
-		if err != nil {
-			return nil, err
+	for i, orgID := range organizationIDs {
+		practitionerReference := fhir_dto.Reference{
+			Reference: fmt.Sprintf("%s/%s", constvars.ResourcePractitioner, practitionerID),
 		}
-		request.ProfilePictureName = fileHeader.Filename
+		organizationReference := fhir_dto.Reference{
+			Reference: fmt.Sprintf("%s/%s", constvars.ResourceOrganization, orgID),
+		}
+
+		practitionerRoles[i] = fhir_dto.PractitionerRole{
+			ResourceType: constvars.ResourcePractitionerRole,
+			Practitioner: practitionerReference,
+			Organization: organizationReference,
+			Active:       true,
+		}
 	}
 
-	return request, nil
+	bundle := map[string]interface{}{
+		"resourceType": "Bundle",
+		"type":         "transaction",
+		"entry":        []interface{}{},
+	}
+
+	for _, practitionerRole := range practitionerRoles {
+		entry := map[string]interface{}{
+			"resource": practitionerRole,
+			"request": map[string]string{
+				"method": "POST",
+				"url":    "PractitionerRole",
+			},
+		}
+		bundle["entry"] = append(bundle["entry"].([]interface{}), entry)
+	}
+
+	return bundle
+}
+
+func BuildFhirPatientReactivateRequest(patientID string) *fhir_dto.Patient {
+	return &fhir_dto.Patient{
+		ResourceType: constvars.ResourcePatient,
+		ID:           patientID,
+		Active:       true,
+	}
+}
+
+func BuildFhirPractitionerReactivateRequest(practitionerID string) *fhir_dto.Practitioner {
+	return &fhir_dto.Practitioner{
+		ResourceType: constvars.ResourcePractitioner,
+		ID:           practitionerID,
+		Active:       true,
+	}
+}
+
+func ConvertToModelAvailableTimes(availableTimes []requests.AvailableTimeRequest) []fhir_dto.AvailableTime {
+	var result []fhir_dto.AvailableTime
+	for _, at := range availableTimes {
+		result = append(result, fhir_dto.AvailableTime{
+			DaysOfWeek:         at.DaysOfWeek,
+			AvailableStartTime: at.AvailableStartTime,
+			AvailableEndTime:   at.AvailableEndTime,
+		})
+	}
+	return result
+}
+
+func ConvertToAvailableTimesResponse(availableTimes []fhir_dto.AvailableTime) []responses.AvailableTimeResponse {
+	result := make([]responses.AvailableTimeResponse, 0, len(availableTimes))
+	for _, at := range availableTimes {
+		result = append(result, responses.AvailableTimeResponse{
+			DaysOfWeek:         at.DaysOfWeek,
+			AvailableStartTime: at.AvailableStartTime,
+			AvailableEndTime:   at.AvailableEndTime,
+		})
+	}
+	return result
 }

@@ -3,13 +3,14 @@ package constvars
 // Validation messages mapper
 var CustomValidationErrorMessages = map[string]string{
 	"required":             "is required",
+	"username":             "must only contain letters, numbers, underscores, or dots",
 	"email":                "must be a valid email",
 	"alphanum":             "must contain only alphanumeric characters",
 	"min":                  "must be at least %s characters long",
 	"max":                  "maximum at %s characters long",
 	"eqfield":              "must match %s",
 	"password":             "must be at least 8 characters long, contain at least one special character, and one uppercase letter",
-	"numeric":              "must be a number",
+	"numeric":              "must be in numbers",
 	"len":                  "must be %s characters long",
 	"oneof":                "must be one of [%s]",
 	"gt":                   "must be greater than %s",
@@ -30,6 +31,10 @@ var CustomValidationErrorMessages = map[string]string{
 	"required_without":     "is required when %s is not present",
 	"required_without_all": "is required when none of [%s] are present",
 	"user_type":            "must be either 'practitioner' or 'patient'",
+	"phone_number":         "phone number given is not valid",
+	"not_past_date":        "the date must not be in the past",
+	"not_future_date":      "the date must not be in the future",
+	"not_past_time":        "the time must not be in the past for today's date.",
 }
 
 // Tags that require parameter substitution
@@ -58,7 +63,9 @@ var TagsWithParams = map[string]bool{
 const (
 	ErrClientPasswordsDoNotMatch           = "passwords do not match"
 	ErrClientEmailAlreadyExists            = "email already used"
+	ErrClientPhoneNumberAlreadyRegistered  = "phone number already registered"
 	ErrClientUsernameAlreadyExists         = "username already used"
+	ErrWhatsAppNumberAlreadyExists         = "whatsapp number already used"
 	ErrClientCannotProcessRequest          = "failed to process your request"
 	ErrClientInvalidUsernameOrPassword     = "invalid username or password"
 	ErrClientInvalidImageFormat            = "the image you uploaded does not meet the specified standards"
@@ -66,17 +73,24 @@ const (
 	ErrClientServerLongRespond             = "the app taking too long to respond"
 	ErrClientNotAuthorized                 = "you can't access this feature"
 	ErrClientNotLoggedIn                   = "your session ended, please login again"
-	ErrClientResetPasswordToken            = "your reset password request already expired"
+	ErrClientResetPasswordTokenExpired     = "your reset password request already expired"
+	ErrClientWhatsAppOTPExpired            = "your whatsapp otp already expired"
+	ErrClientWhatsAppOTPInvalid            = "your whatsapp otp is invalid"
 )
 
 // Error messages for developers
 const (
 	ErrDevInvalidInput                  = "invalid input"
+	ErrDevCannotReadBody                = "cannot read data body"
 	ErrDevCannotParseJSON               = "cannot parse JSON into struct or other data types"
+	ErrDevCannotParseTime               = "cannot parse time into the given format"
 	ErrDevCannotMarshalJSON             = "cannot convert struct or other data types to JSON"
+	ErrDevInvalidFormat                 = "invalid %s format"
 	ErrDevCannotParseMultipartForm      = "cannot parse multipart form body"
+	ErrDevCannotParsedate               = "cannot parse the requested date"
 	ErrDevBuildRequest                  = "encountering error while building request DTO"
-	ErrDevInvalidRoleType               = "invalid role type, should be 'practitioner' or 'patient'"
+	ErrDevInvalidRoleType               = "invalid role type, should be 'clinician' or 'patient'"
+	ErrDevUnknownRoleType               = "unknown role type, should be 'clinician' or 'patient'"
 	ErrDevRoleTypeDoesntMatch           = "invalid role type, request done by user with different type"
 	ErrDevFailedToCreateUser            = "failed to create user"
 	ErrDevFailedToHashPassword          = "failed to hash password"
@@ -90,17 +104,27 @@ const (
 	// SMTP
 	ErrDevSMTPSendEmail = "failed to send email via SMTP client hostname %s"
 
+	// Supertokens
+	ErrDevSupertoken            = "there is something wrong with the supertoken API/SDK"
+	ErrDevSupertokenConsumeCode = "failed to do pless.ConsumeCode with supertokens SDK"
+	ErrDevSupertokenCreateCode  = "failed to do pless.CreateCode with supertokens SDK"
+
 	// Usecase messages
-	ErrDevPasswordsDoNotMatch   = "passwords do not match"
-	ErrDevEmailAlreadyExists    = "email already exists"
-	ErrDevUsernameAlreadyExists = "username already exists"
-	ErrDevUserNotExists         = "user not exists in our system"
+	ErrDevPasswordsDoNotMatch          = "passwords do not match with the password in database"
+	ErrDevEmailAlreadyExists           = "email already exists in database"
+	ErrDevPhoneNumberAlreadyRegistered = "phone number already registered in database"
+	ErrDevUsernameAlreadyExists        = "username already exists in database"
+	ErrDevWhatsAppNumberAlreadyExists  = "whatsapp number already exists in database"
+	ErrDevUserNotExists                = "user not exists in our system"
 
 	// Spark messages
-	ErrDevSparkCreateFHIRResource         = "failed to create FHIR %s from firesly spark"
-	ErrDevSparkUpdateFHIRResource         = "failed to update FHIR %s from firesly spark"
-	ErrDevSparkGetFHIRResource            = "failed to get FHIR %s from firely spark"
-	ErrDevSparkDecodeFHIRResourceResponse = "failed to decode FHIR %s response from firely spark"
+	ErrDevSparkCreateFHIRResource                 = "failed to create FHIR %s from `BLAZE` service"
+	ErrDevSparkUpdateFHIRResource                 = "failed to update FHIR %s from `BLAZE` service"
+	ErrDevSparkGetFHIRResource                    = "failed to get FHIR %s from `BLAZE` service"
+	ErrDevSparkNoDataFHIRResource                 = "no data found from FHIR %s"
+	ErrDevSparkFetchedResultNotUniqueFHIRResource = "result fetched for %s response contain more than 1 data (not unique)"
+	ErrDevSparkGetFHIRResourceDuplicate           = "got more than one document when get FHIR %s from `BLAZE` service, which should be unique and contain only one result"
+	ErrDevSparkDecodeFHIRResourceResponse         = "failed to decode FHIR %s response from `BLAZE` service"
 
 	// Validation messages
 	ErrDevValidationFailed           = "validation failed"
@@ -112,25 +136,35 @@ const (
 	// Authentication messages
 	ErrDevAuthSigningMethod         = "unexpected signing method"
 	ErrDevAuthTokenInvalidOrExpired = "invalid or expired token"
-	ErrDevAuthTokenExpired          = "token expired"
+	ErrDevAuthTokenExpired          = "token lifetime already exceed our internal app config"
 	ErrDevAuthTokenMissing          = "token missing"
 	ErrDevAuthInvalidSession        = "invalid session"
 	ErrDevAuthPermissionDenied      = "permission denied"
 	ErrDevAuthGenerateToken         = "failed to generate token"
 	ErrDevAuthRoleNotExists         = "role doesn't exist on the system"
+	ErrDevAuthWhatsAppOTPExpired    = "whatsapp otp lifetime already exceed our internal app config"
+	ErrDevAuthWhatsAppOTPInvalid    = "whatsapp otp given by user doesn't match with otp in database"
+	ErrDevAuthSessionDataIsMissing  = "session data not found in context"
+	ErrDevAuthRequestIDIsMissing    = "requestID not found in context"
 
 	// Database messages
 	ErrDevDBFailedToInsertDocument   = "failed to insert document into database"
 	ErrDevDBFailedToUpdateDocument   = "failed to update document into database"
-	ErrDevDBFailedToFindDocument     = "failed when do find document on database"
-	ErrDevDBFailedToDeleteDocument   = "failed when do delete document on database"
+	ErrDevDBFailedToFindDocument     = "failed when do find document from database"
+	ErrDevDBFailedToDeleteDocument   = "failed when do delete document from database"
 	ErrDevDBFailedToIterateDocuments = "failed when iterating documents from database"
+	ErrDevDBFailedToInsertData       = "failed to insert data into database"
+	ErrDevDBFailedToUpdateData       = "failed to update data into database"
+	ErrDevDBFailedToFindData         = "failed when find data from database"
+	ErrDevDBFailedToDeleteData       = "failed when do delete data from database"
+	ErrDevDBFailedToIterateDataset   = "failed when iterating dataset from database"
 	ErrDevDBConnectionFailed         = "failed to connect to database"
 	ErrDevDBOperationFailed          = "database operation failed"
 	ErrDevDBStringNotObjectID        = "given ID is not valid object ID"
 
 	// Minio messages
-	ErrDevMinioFailedToCreateObject = "failed to create object into minio storage, with bucket name '%s'"
+	ErrDevMinioFailedToCreateObject          = "failed to create object into minio storage with bucket name '%s'"
+	ErrDevMinioFailedToGetObjectPresignedURL = "failed to get object URL from minio storage with bucket name '%s'"
 
 	// Redis messages
 	ErrDevRedisSetData         = "failed to SET data into redis"
@@ -142,9 +176,13 @@ const (
 	ErrDevRedisLeftPopList     = "failed to LPOP data from list in redis"
 	ErrDevRedisSAdd            = "failed to SAdd data into set in redis"
 	ErrDevRedisSMembers        = "failed to SMembers data from set in redis"
+	ErrDevRedisUnlock          = "failed to unlock data from redis"
+
+	// RabbitMQ messages
+	ErrDevRabbitMQPublishMessage = "failed to publish message to %s queue"
 
 	// Server messages
-	ErrDevServerProcess          = "server failed to process something related to machine system"
+	ErrDevServerProcess          = "server failed to process the request"
 	ErrDevServerInternalError    = "internal server error"
 	ErrDevServerNotImplemented   = "feature not implemented"
 	ErrDevServerBadRequest       = "bad request"

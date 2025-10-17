@@ -18,20 +18,29 @@ var (
 	ErrHashPassword = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevFailedToHashPassword)
 	}
-	ErrCannotParseJSON = func(err error) *CustomError {
-		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevCannotParseJSON)
-	}
 	ErrBuildRequest = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevBuildRequest)
 	}
 	ErrCannotParseMultipartForm = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevCannotParseMultipartForm)
 	}
+	ErrCannotParseDate = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevCannotParseMultipartForm)
+	}
+	ErrInvalidFormat = func(err error, source string) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevInvalidFormat, source))
+	}
 	ErrCannotMarshalJSON = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevCannotMarshalJSON)
 	}
 	ErrServerDeadlineExceeded = func(err error) *CustomError {
-		return BuildNewCustomError(err, constvars.StatusRequestTimeout, constvars.ErrClientServerLongRespond, constvars.ErrDevServerDeadlineExceeded)
+		return BuildNewCustomError(err, constvars.StatusGatewayTimeout, constvars.ErrClientServerLongRespond, constvars.ErrDevServerDeadlineExceeded)
+	}
+	ErrMissingSessionData = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, constvars.ErrDevAuthSessionDataIsMissing)
+	}
+	ErrMissingRequestID = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, constvars.ErrDevAuthRequestIDIsMissing)
 	}
 	ErrInvalidUsernameOrPassword = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusUnauthorized, constvars.ErrClientInvalidUsernameOrPassword, constvars.ErrDevInvalidCredentials)
@@ -45,11 +54,14 @@ var (
 	ErrEmailAlreadyExist = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientEmailAlreadyExists, constvars.ErrDevEmailAlreadyExists)
 	}
+	ErrPhoneNumberAlreadyRegistered = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientPhoneNumberAlreadyRegistered, constvars.ErrDevPhoneNumberAlreadyRegistered)
+	}
 	ErrUsernameAlreadyExist = func(err error) *CustomError {
-		return BuildNewCustomError(err, constvars.StatusNotFound, constvars.ErrClientUsernameAlreadyExists, constvars.ErrDevUsernameAlreadyExists)
+		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientUsernameAlreadyExists, constvars.ErrDevUsernameAlreadyExists)
 	}
 	ErrUserNotExist = func(err error) *CustomError {
-		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevUserNotExists)
+		return BuildNewCustomError(err, constvars.StatusNotFound, constvars.ErrClientCannotProcessRequest, constvars.ErrDevUserNotExists)
 	}
 	ErrTokenMissing = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusUnauthorized, constvars.ErrClientNotAuthorized, constvars.ErrDevAuthTokenMissing)
@@ -61,26 +73,46 @@ var (
 		return BuildNewCustomError(err, constvars.StatusUnauthorized, constvars.ErrClientNotLoggedIn, constvars.ErrDevAuthTokenInvalidOrExpired)
 	}
 	ErrTokenResetPasswordExpired = func(err error) *CustomError {
-		return BuildNewCustomError(err, constvars.StatusUnauthorized, constvars.ErrClientResetPasswordToken, constvars.ErrDevAuthTokenExpired)
+		return BuildNewCustomError(err, constvars.StatusGone, constvars.ErrClientResetPasswordTokenExpired, constvars.ErrDevAuthTokenExpired)
+	}
+	ErrWhatsAppOTPExpired = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusGone, constvars.ErrClientWhatsAppOTPExpired, constvars.ErrDevAuthWhatsAppOTPExpired)
+	}
+	ErrWhatsAppOTPInvalid = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientWhatsAppOTPInvalid, constvars.ErrDevAuthWhatsAppOTPInvalid)
 	}
 	ErrInvalidRoleType = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevInvalidRoleType)
+	}
+	ErrUnknownRoleType = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevInvalidRoleType)
 	}
 	ErrNotMatchRoleType = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, constvars.ErrDevRoleTypeDoesntMatch)
 	}
 
+	// Parse
+	ErrReadBody = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevCannotReadBody)
+	}
+	ErrCannotParseJSON = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevCannotParseJSON)
+	}
+	ErrCannotParseTime = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, constvars.ErrDevCannotParseJSON)
+	}
+
 	// Auth
 	ErrAuthInvalidRole = func(err error) *CustomError {
-		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientNotAuthorized, constvars.ErrDevRoleTypeDoesntMatch)
+		return BuildNewCustomError(err, constvars.StatusUnauthorized, constvars.ErrClientNotAuthorized, constvars.ErrDevRoleTypeDoesntMatch)
 	}
 
 	// Mongo DB
 	ErrMongoDBFindDocument = func(err error) *CustomError {
-		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevDBFailedToFindDocument)
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToFindDocument)
 	}
 	ErrMongoDBDeleteDocument = func(err error) *CustomError {
-		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevDBFailedToDeleteDocument)
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToDeleteDocument)
 	}
 	ErrMongoDBIterateDocuments = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToIterateDocuments)
@@ -95,8 +127,28 @@ var (
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToInsertDocument)
 	}
 
+	// Postgres DB
+	ErrPostgresDBFindData = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToFindData)
+	}
+	ErrPostgresDBDeleteData = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToDeleteData)
+	}
+	ErrPostgresDBIterateDataset = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToIterateDataset)
+	}
+	ErrPostgresDBUpdateData = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToUpdateData)
+	}
+	ErrPostgresDBInsertData = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevDBFailedToInsertData)
+	}
+
 	// Minio
 	ErrMinioCreateObject = func(err error, bucketName string) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, fmt.Sprintf(constvars.ErrDevMinioFailedToCreateObject, bucketName))
+	}
+	ErrMinioFindObjectPresignedURL = func(err error, bucketName string) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, fmt.Sprintf(constvars.ErrDevMinioFailedToCreateObject, bucketName))
 	}
 
@@ -128,6 +180,14 @@ var (
 	ErrRedisGetSetMembers = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevRedisSMembers)
 	}
+	ErrRedisUnlock = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevRedisSMembers)
+	}
+
+	// RabbitMQ
+	ErrRabbitMQPublishMessage = func(err error, queueName string) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevRedisSMembers)
+	}
 
 	// HTTP
 	ErrCreateHTTPRequest = func(err error) *CustomError {
@@ -149,15 +209,34 @@ var (
 	ErrGetFHIRResource = func(err error, resource string) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkGetFHIRResource, resource))
 	}
+	ErrNoDataFHIRResource = func(err error, resource string) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkNoDataFHIRResource, resource))
+	}
+	ErrGetFHIRResourceDuplicate = func(err error, resource string) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkGetFHIRResourceDuplicate, resource))
+	}
 	ErrUpdateFHIRResource = func(err error, resource string) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkUpdateFHIRResource, resource))
 	}
+	ErrResultFetchedNotUniqueFhirResource = func(err error, resource string) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkFetchedResultNotUniqueFHIRResource, resource))
+	}
+
 	ErrDecodeResponse = func(err error, resource string) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, fmt.Sprintf(constvars.ErrDevSparkDecodeFHIRResourceResponse, resource))
+	}
+
+	// Supertokens
+	ErrSupertoken = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevSupertoken)
 	}
 
 	// Default Server
 	ErrServerProcess = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientCannotProcessRequest, constvars.ErrDevServerProcess)
+	}
+
+	ErrClientCustomMessage = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusBadRequest, err.Error(), constvars.ErrDevServerProcess)
 	}
 )

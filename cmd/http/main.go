@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"konsulin-service/internal/app/config"
+	"konsulin-service/internal/app/delivery/http/controllers"
 	"konsulin-service/internal/app/delivery/http/middlewares"
 	"konsulin-service/internal/app/delivery/http/routers"
 	"konsulin-service/internal/app/drivers/database"
@@ -11,20 +12,23 @@ import (
 	"konsulin-service/internal/app/drivers/messaging"
 	"konsulin-service/internal/app/drivers/storage"
 	"konsulin-service/internal/app/services/core/auth"
-	"konsulin-service/internal/app/services/core/clinics"
-	educationLevels "konsulin-service/internal/app/services/core/education_levels"
-	"konsulin-service/internal/app/services/core/genders"
-	"konsulin-service/internal/app/services/core/roles"
+	"konsulin-service/internal/app/services/core/payments"
 	"konsulin-service/internal/app/services/core/session"
-	"konsulin-service/internal/app/services/core/users"
-	"konsulin-service/internal/app/services/fhir_spark/organizations"
-	"konsulin-service/internal/app/services/fhir_spark/patients"
-	practitionerRoles "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
+	"konsulin-service/internal/app/services/core/transactions"
+	"konsulin-service/internal/app/services/core/webhook"
+	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
+	"konsulin-service/internal/app/services/fhir_spark/persons"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
+	"konsulin-service/internal/app/services/fhir_spark/service_requests"
+	"konsulin-service/internal/app/services/shared/jwtmanager"
+	"konsulin-service/internal/app/services/shared/locker"
 	"konsulin-service/internal/app/services/shared/mailer"
+	"konsulin-service/internal/app/services/shared/payment_gateway"
+	"konsulin-service/internal/app/services/shared/ratelimiter"
 	redisKonsulin "konsulin-service/internal/app/services/shared/redis"
 	storageKonsulin "konsulin-service/internal/app/services/shared/storage"
-	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/app/services/shared/webhookqueue"
+	"konsulin-service/internal/app/services/shared/whatsapp"
 	"log"
 	"net/http"
 	"os"
@@ -59,9 +63,6 @@ func main() {
 	time.Local = location
 	log.Printf("Successfully set time base to %s", internalConfig.App.Timezone)
 
-	// Initialize MongoDB connection
-	mongoDB := database.NewMongoDB(driverConfig)
-
 	// Initialize Redis connection
 	redis := database.NewRedisClient(driverConfig)
 
@@ -77,16 +78,16 @@ func main() {
 	// Bundle all initialized components into a Bootstrap struct
 	bootstrap := config.Bootstrap{
 		Router:         chiRouter,
-		MongoDB:        mongoDB,
 		Redis:          redis,
 		Logger:         logger,
 		Minio:          minio,
 		RabbitMQ:       rabbitMQ,
 		InternalConfig: internalConfig,
+		DriverConfig:   driverConfig,
 	}
 
 	// Initialize the application with the bootstrap components
-	err = bootstrapingTheApp(bootstrap)
+	err = bootstrapingTheApp(&bootstrap)
 	if err != nil {
 		log.Fatalf("Error while bootstrapping the app: %s", err.Error())
 	}
@@ -99,9 +100,9 @@ func main() {
 
 	// Start the server in a separate goroutine
 	go func() {
-		log.Printf("Server is running on port: %s", internalConfig.App.Port)
 		log.Printf("Server Version: %s", Version)
 		log.Printf("Server Tag: %s", Tag)
+		log.Printf("Server is running on port: %s", internalConfig.App.Port)
 		err := server.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server failed to start: %v", err)
@@ -149,85 +150,111 @@ func main() {
 }
 
 // bootstrapingTheApp initializes and sets up the application with the given bootstrap components
-func bootstrapingTheApp(bootstrap config.Bootstrap) error {
+func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	// Initialize the repository for Redis
-	redisRepository := redisKonsulin.NewRedisRepository(bootstrap.Redis)
+	redisRepository := redisKonsulin.NewRedisRepository(bootstrap.Redis, bootstrap.Logger)
 
 	// Initialize the mailer service with RabbitMQ
-	mailerService, err := mailer.NewMailerService(bootstrap.RabbitMQ, bootstrap.InternalConfig.RabbitMQ.MailerQueue)
+	mailerService, err := mailer.NewMailerService(bootstrap.RabbitMQ, bootstrap.Logger, bootstrap.InternalConfig.RabbitMQ.MailerQueue)
 	if err != nil {
 		return err
 	}
+
+	// Initialize the whatsApp service with RabbitMQ
+	whatsAppService, err := whatsapp.NewWhatsAppService(bootstrap.RabbitMQ, bootstrap.Logger, bootstrap.InternalConfig.RabbitMQ.WhatsAppQueue)
+	if err != nil {
+		return err
+	}
+
+	// Initialize oy service
+	_ = payment_gateway.NewOyService(bootstrap.InternalConfig, bootstrap.Logger)
 
 	// Initialize Minio storage
 	minioStorage := storageKonsulin.NewMinioStorage(bootstrap.Minio)
 
 	// Initialize session service with Redis repository
-	sessionService := session.NewSessionService(redisRepository)
+	sessionService := session.NewSessionService(redisRepository, bootstrap.Logger)
+
+	// Initialize session service with Redis repository
+	lockService := locker.NewLockService(redisRepository, bootstrap.Logger)
 
 	// Initialize FHIR clients
-	patientFhirClient := patients.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePatient)
-	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePractitioner)
-	organizationFhirClient := organizations.NewOrganizationFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourceOrganization)
-	practitionerRoleFhirClient := practitionerRoles.NewPractitionerRoleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl + constvars.ResourcePractitionerRole)
+	patientFhirClient := patientsFhir.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	personFhirClient := persons.NewPersonFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	serviceRequestFhirClient := service_requests.NewServiceRequestFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 
-	// Initialize Users dependencies
-	userMongoRepository := users.NewUserMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
-	userUseCase := users.NewUserUsecase(userMongoRepository, patientFhirClient, practitionerFhirClient, redisRepository, sessionService, minioStorage, bootstrap.InternalConfig)
-	userController := users.NewUserController(bootstrap.Logger, userUseCase)
-
-	// Initialize Education Level dependencies
-	educationLevelMongoRepository := educationLevels.NewEducationLevelMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
-	educationLevelUseCase, err := educationLevels.NewEducationLevelUsecase(educationLevelMongoRepository, redisRepository)
-	if err != nil {
-		return err
-	}
-	educationLevelController := educationLevels.NewEducationLevelController(bootstrap.Logger, educationLevelUseCase)
-
-	// Initialize Gender dependencies
-	genderMongoRepository := genders.NewGenderMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
-	genderUseCase, err := genders.NewGenderUsecase(genderMongoRepository, redisRepository)
-	if err != nil {
-		return err
-	}
-	genderController := genders.NewGenderController(bootstrap.Logger, genderUseCase)
-
-	// Initialize Role repository with MongoDB
-	roleMongoRepository := roles.NewRoleMongoRepository(bootstrap.MongoDB, bootstrap.InternalConfig.MongoDB.KonsulinDBName)
-
-	// Initialize Clinic dependencies
-	clinicUsecase := clinics.NewClinicUsecase(organizationFhirClient, practitionerRoleFhirClient, practitionerFhirClient, redisRepository, bootstrap.InternalConfig)
-	clinicController := clinics.NewClinicController(bootstrap.Logger, clinicUsecase)
+	// Ensure default FHIR Groups exist for ServiceRequest subjects
+	_ = serviceRequestFhirClient.EnsureAllNecessaryGroupsExists(context.Background())
 
 	// Initialize Auth usecase with dependencies
 	authUseCase, err := auth.NewAuthUsecase(
-		userMongoRepository,
 		redisRepository,
 		sessionService,
-		roleMongoRepository,
 		patientFhirClient,
 		practitionerFhirClient,
 		mailerService,
+		whatsAppService,
+		minioStorage,
 		bootstrap.InternalConfig,
+		bootstrap.DriverConfig,
+		bootstrap.Logger,
 	)
 	if err != nil {
 		return err
 	}
-	authController := auth.NewAuthController(bootstrap.Logger, authUseCase)
+	authController := controllers.NewAuthController(bootstrap.Logger, authUseCase)
 
 	// Initialize middlewares with logger, session service, and auth usecase
-	middlewares := middlewares.NewMiddlewares(bootstrap.Logger, sessionService, authUseCase, bootstrap.InternalConfig)
+	middlewares := middlewares.NewMiddlewares(bootstrap.Logger, sessionService, authUseCase, bootstrap.InternalConfig, practitionerFhirClient, patientFhirClient)
+
+	// Initialize supertokens
+	err = authUseCase.InitializeSupertoken()
+	if err != nil {
+		log.Fatalf("Error initializing supertokens: %v", err)
+	}
+
+	// Initialize webhook components
+	webhookJWT, err := jwtmanager.NewJWTManager(bootstrap.InternalConfig, bootstrap.Logger)
+	if err != nil {
+		return err
+	}
+	webhookLimiter := ratelimiter.NewHookRateLimiter(redisRepository, bootstrap.Logger, bootstrap.InternalConfig)
+	webhookQueueService, err := webhookqueue.NewService(bootstrap.RabbitMQ, bootstrap.Logger, bootstrap.InternalConfig.Webhook.MaxQueue)
+	if err != nil {
+		return err
+	}
+	webhookUsecase := webhook.NewUsecase(bootstrap.Logger, bootstrap.InternalConfig, webhookQueueService, webhookJWT)
+	webhookController := controllers.NewWebhookController(bootstrap.Logger, webhookUsecase, webhookLimiter, bootstrap.InternalConfig)
+	// Initialize payment usecase and controller (inject JWT manager)
+	serviceRequestStorage := storageKonsulin.NewServiceRequestStorage(serviceRequestFhirClient, bootstrap.Logger)
+	paymentUsecase := payments.NewPaymentUsecase(
+		transactions.NewTransactionPostgresRepository(nil, bootstrap.Logger),
+		bootstrap.InternalConfig,
+		webhookJWT,
+		patientFhirClient,
+		practitionerFhirClient,
+		personFhirClient,
+		serviceRequestStorage,
+		payment_gateway.NewOyService(bootstrap.InternalConfig, bootstrap.Logger),
+		bootstrap.Logger,
+	)
+	paymentController := controllers.NewPaymentController(bootstrap.Logger, paymentUsecase)
+
+	// Start webhook worker ticker (best-effort lock ensures single execution)
+	worker := webhook.NewWorker(bootstrap.Logger, bootstrap.InternalConfig, lockService, webhookQueueService, webhookJWT)
+	stopWorker := worker.Start(context.Background())
+	bootstrap.WorkerStop = stopWorker
 
 	// Setup routes with the router, configuration, middlewares, and controllers
 	routers.SetupRoutes(
 		bootstrap.Router,
 		bootstrap.InternalConfig,
+		bootstrap.Logger,
 		middlewares,
-		userController,
 		authController,
-		clinicController,
-		educationLevelController,
-		genderController,
+		paymentController,
+		webhookController,
 	)
 
 	return nil
