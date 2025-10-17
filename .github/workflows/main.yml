@@ -1,38 +1,61 @@
 name: CI/CD Workflow for Konsulin
 
 on:
-  push:
+  pull_request:
+    types:
+      - closed
     branches:
       - develop
-    tags:
-      - "v*"
+      - main
 
 jobs:
+  # Debug: Display all vars variables
+  debug-vars:
+    name: Debug - Display Vars Variables
+    runs-on: ubuntu-latest
+    steps:
+      - name: Display Vars Variables
+        run: |
+          echo "=== GITHUB CONTEXT VARIABLES ==="
+          echo "GITHUB_REF: ${{ github.ref }}"
+          echo "GITHUB_REF_NAME: ${{ github.ref_name }}"
+          echo "GITHUB_SHA: ${{ github.sha }}"
+          echo "GITHUB_ACTOR: ${{ github.actor }}"
+          echo "GITHUB_RUN_NUMBER: ${{ github.run_number }}"
+          echo "GITHUB_EVENT_HEAD_COMMIT_TIMESTAMP: ${{ github.event.head_commit.timestamp }}"
+          echo "DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}"
+          echo ""
+          echo "=== COMPUTED VALUES ==="
+          echo "BASE_REF: ${{ github.event.pull_request.base.ref }}"
+          echo "IS_DEV: ${{ github.event.pull_request.merged && github.event.pull_request.base.ref == 'develop' }}"
+          echo "IS_PROD: ${{ github.event.pull_request.merged && github.event.pull_request.base.ref == 'main' }}"
+
   # Build and push Docker image
   docker:
+    if: github.event.pull_request.merged == true
     name: Build Docker Image
     uses: ./.github/workflows/docker-build.yml
     with:
       TZ_ARG: Asia/Jakarta
       AUTHOR: ${{ github.actor }}
       # Version control parameters
-      VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'develop' }}
-      TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'develop' }}
       GIT_COMMIT: ${{ github.sha }}
       BUILD_TIME: ${{ github.event.head_commit.timestamp }}
       RUN_NUMBER: ${{ github.run_number }}
+      VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'develop' }}
+      TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'develop' }}
       # Environment flags
-      IS_DEV: ${{ github.ref_name == 'develop' }}
-      IS_PROD: ${{ startsWith(github.ref, 'refs/tags/v') }}
+      IS_DEV: ${{ github.event.pull_request.merged && github.event.pull_request.base.ref == 'develop' }}
+      IS_PROD: ${{ github.event.pull_request.merged && github.event.pull_request.base.ref == 'main' }}
     secrets:
-      DOCKER_USERNAME: ${{ vars.DOCKER_USERNAME }}
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
 
   # Deploy to appropriate environment
   deploy-dev:
     name: Deploy to Dev (Coolify)
     needs: docker
-    if: ${{ github.ref_name == 'develop' }}
+    if: ${{ github.event.pull_request.merged && github.event.pull_request.base.ref == 'develop' }}
     uses: ./.github/workflows/trigger-coolify.yml
     secrets:
       COOLIFY_TRIGGER_URL: ${{ secrets.COOLIFY_TRIGGER_URL_DEV }}
@@ -41,7 +64,7 @@ jobs:
   deploy-prod:
     name: Deploy to Prod (Coolify)
     needs: docker
-    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    if: ${{ github.event.pull_request.merged && github.event.pull_request.base.ref == 'main' }}
     uses: ./.github/workflows/trigger-coolify.yml
     secrets:
       COOLIFY_TRIGGER_URL: ${{ secrets.COOLIFY_TRIGGER_URL_PROD }}
