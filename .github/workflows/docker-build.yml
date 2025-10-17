@@ -80,6 +80,20 @@ jobs:
       - name: Get Branch Name
         run: echo "BRANCH=${GITHUB_REF##*/}" >> $GITHUB_ENV
 
+      - name: Build Vendor Image
+        run: |
+          docker build \
+            -t ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}-vendor:latest \
+            -f Dockerfile-vendor .
+
+      - name: Push Vendor Image
+        run: |
+          docker push ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}-vendor:latest
+
+      - name: Replace FROM in Dockerfile with image from ENV
+        run: |
+          sed -i '/^FROM .* as gobuild/c\FROM '"${{ env.IMAGE_NAMESPACE }}"'/'"${{ env.IMAGE_NAME }}"'-vendor:latest as gobuild' Dockerfile
+
       - name: Build and Push Docker Images
         run: |
           if [ "${{ inputs.IS_DEV }}" == "true" ]; then
@@ -89,11 +103,13 @@ jobs:
               -t ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}:nightly \
               -t ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}:${VERSION} \
               -f Dockerfile \
-              --build-arg VERSION="$VERSION" \
-              --build-arg TAG="$VERSION" \
-              --build-arg GIT_COMMIT="${{ inputs.GIT_COMMIT }}" \
-              --build-arg BUILD_TIME="${{ inputs.BUILD_TIME }}" \
-              --build-arg AUTHOR="${{ inputs.AUTHOR }}" .
+              --build-arg TZ_ARG=${{ inputs.TZ_ARG }} \
+              --build-arg VERSION=${{ inputs.VERSION }} \
+              --build-arg GIT_COMMIT=${{ inputs.GIT_COMMIT }} \
+              --build-arg TAG=${{ inputs.TAG }} \
+              --build-arg AUTHOR=${{ inputs.AUTHOR }} \
+              --build-arg RUN_NUMBER=${{ inputs.RUN_NUMBER }} \
+              --build-arg BUILD_TIME=${{ inputs.BUILD_TIME }} .
 
             docker push ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}:nightly
             docker push ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}:${VERSION}
@@ -105,11 +121,13 @@ jobs:
               -t ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}:latest \
               -t ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}:${VERSION} \
               -f Dockerfile \
-              --build-arg VERSION="$VERSION" \
-              --build-arg TAG="$VERSION" \
-              --build-arg GIT_COMMIT="${{ inputs.GIT_COMMIT }}" \
-              --build-arg BUILD_TIME="${{ inputs.BUILD_TIME }}" \
-              --build-arg AUTHOR="${{ inputs.AUTHOR }}" .
+              --build-arg TZ_ARG=${{ inputs.TZ_ARG }} \
+              --build-arg VERSION=${{ inputs.VERSION }} \
+              --build-arg GIT_COMMIT=${{ inputs.GIT_COMMIT }} \
+              --build-arg TAG=${{ inputs.TAG }} \
+              --build-arg AUTHOR=${{ inputs.AUTHOR }} \
+              --build-arg RUN_NUMBER=${{ inputs.RUN_NUMBER }} \
+              --build-arg BUILD_TIME=${{ inputs.BUILD_TIME }} .
 
             docker push ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}:latest
             docker push ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}:${VERSION}
