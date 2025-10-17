@@ -60,7 +60,7 @@ func BuildFhirPatientRegistrationRequest(username, email string) *fhir_dto.Patie
 		ResourceType: constvars.ResourcePatient,
 		Telecom: []fhir_dto.ContactPoint{
 			{
-				System: "email",
+				System: fhir_dto.ContactPointSystemEmail,
 				Value:  email,
 				Use:    "home",
 			},
@@ -73,7 +73,7 @@ func BuildFhirPatientWhatsAppRegistrationRequest(phoneNumber string) *fhir_dto.P
 		ResourceType: constvars.ResourcePatient,
 		Telecom: []fhir_dto.ContactPoint{
 			{
-				System: "phone",
+				System: fhir_dto.ContactPointSystemPhone,
 				Value:  phoneNumber,
 				Use:    "mobile",
 			},
@@ -102,12 +102,12 @@ func BuildFhirPatientUpdateProfileRequest(request *requests.UpdateProfile, patie
 		},
 		Telecom: []fhir_dto.ContactPoint{
 			{
-				System: "email",
+				System: fhir_dto.ContactPointSystemEmail,
 				Value:  request.Email,
 				Use:    "home",
 			},
 			{
-				System: "phone",
+				System: fhir_dto.ContactPointSystemPhone,
 				Value:  request.WhatsAppNumber,
 				Use:    "mobile",
 			},
@@ -129,7 +129,7 @@ func BuildFhirPractitionerRegistrationRequest(username, email string) *fhir_dto.
 		ResourceType: constvars.ResourcePractitioner,
 		Telecom: []fhir_dto.ContactPoint{
 			{
-				System: "email",
+				System: fhir_dto.ContactPointSystemEmail,
 				Value:  email,
 				Use:    "work",
 			},
@@ -142,7 +142,7 @@ func BuildFhirPractitionerWhatsAppRegistrationRequest(phoneNumber string) *fhir_
 		ResourceType: constvars.ResourcePractitioner,
 		Telecom: []fhir_dto.ContactPoint{
 			{
-				System: "phone",
+				System: fhir_dto.ContactPointSystemPhone,
 				Value:  phoneNumber,
 				Use:    "mobile",
 			},
@@ -171,12 +171,12 @@ func BuildFhirPractitionerUpdateProfileRequest(request *requests.UpdateProfile, 
 		},
 		Telecom: []fhir_dto.ContactPoint{
 			{
-				System: "email",
+				System: fhir_dto.ContactPointSystemEmail,
 				Value:  request.Email,
 				Use:    "work",
 			},
 			{
-				System: "phone",
+				System: fhir_dto.ContactPointSystemPhone,
 				Value:  request.WhatsAppNumber,
 				Use:    "mobile",
 			},
