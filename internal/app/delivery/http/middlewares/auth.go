@@ -714,6 +714,25 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 				}
 			}
 
+			// add support email based query
+			if email := q.Get("email"); email != "" {
+				fmt.Println("email", email)
+				practitioners, err := practitionerClient.FindPractitionerByEmail(ctx, email)
+
+				if err != nil {
+					return false
+				}
+
+				fmt.Println("practitioners", practitioners)
+
+				// guard against multiple practitioners found
+				// or no practitioners found at all
+				if len(practitioners) != 1 {
+					return false
+				}
+
+				return practitioners[0].ID == fhirID
+			}
 			return false
 		}
 
