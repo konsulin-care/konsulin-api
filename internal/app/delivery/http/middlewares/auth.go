@@ -559,6 +559,57 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 				return false
 			}
 
+			// add support email based query
+			if email := q.Get("email"); email != "" {
+				patients, err := patientClient.FindPatientByEmail(ctx, email)
+				if err != nil {
+					return false
+				}
+
+				// the check below will be turned of for now
+				// to temporarily allow multiple patients found
+				// // guard against no patients found or multiple patients found
+				// if len(patients) != 1 {
+				// 	return false
+				// }
+
+				// If any patient resolved by email matches current fhirID, allow
+				for _, p := range patients {
+					if p.ID == fhirID {
+						return true
+					}
+				}
+
+				// Require Practitioner role for email intersection fallback
+				roles, _ := ctx.Value(keyRoles).([]string)
+				hasPractRole := false
+				for _, r := range roles {
+					if strings.EqualFold(r, constvars.KonsulinRolePractitioner) {
+						hasPractRole = true
+						break
+					}
+				}
+				if !hasPractRole {
+					return false
+				}
+
+				// Verify practitioner's emails intersect with requested email
+				practitioner, err := practitionerClient.FindPractitionerByID(ctx, fhirID)
+				if err != nil || practitioner == nil {
+					return false
+				}
+				practEmails := practitioner.GetEmailAddresses()
+				if len(practEmails) == 0 {
+					return false
+				}
+				for _, pe := range practEmails {
+					if pe == email {
+						return true
+					}
+				}
+				return false
+			}
+
 			return false
 		}
 
