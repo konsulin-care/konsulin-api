@@ -436,6 +436,14 @@ func validateResourceOwnership(ctx context.Context, fhirID, role, resourceType s
 			}
 		}
 
+		// this checks below is to allow practitioner to update their own practitioner resource
+		if resourceType == constvars.ResourcePractitioner {
+			practitionerID := gjson.Get(resourceStr, "id").String()
+			if practitionerID == fhirID {
+				return true
+			}
+		}
+
 		practitionerRefs := []string{
 			gjson.Get(resourceStr, "practitioner.reference").String(),
 			gjson.Get(resourceStr, "actor.reference").String(),
