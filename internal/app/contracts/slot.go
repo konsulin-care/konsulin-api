@@ -47,4 +47,7 @@ func (p SlotSearchParams) ToQueryString() string {
 	}
 	return sb.String()
 }
+
+type SlotUsecaseIface interface {
+	HandleAutomatedSlotGeneration(ctx context.Context, practitionerRole fhir_dto.PractitionerRole)
 }
