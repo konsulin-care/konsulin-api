@@ -250,6 +250,10 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 
 	slotUsecase := slot.NewSlotUsecase(scheduleClient, lockService, slotClient, bootstrap.InternalConfig, bootstrap.Logger)
 	// Start webhook worker ticker (best-effort lock ensures single execution)
+	worker := webhook.NewWorker(bootstrap.Logger, bootstrap.InternalConfig, lockService, webhookQueueService, webhookJWT)
+	stopWorker := worker.Start(context.Background())
+	bootstrap.WorkerStop = stopWorker
+
 	// Start slot top-up worker (leader lock inside)
 	slotWorker := slot.NewWorker(bootstrap.Logger, bootstrap.InternalConfig, lockService, practitionerRoleClient, slotUsecase)
 	stopSlotWorker := slotWorker.Start(context.Background())
