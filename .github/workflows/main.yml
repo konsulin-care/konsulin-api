@@ -1,9 +1,7 @@
 name: CI/CD Workflow for Konsulin
 
 on:
-  pull_request:
-    types:
-      - closed
+  push:
     branches:
       - develop
       - main
@@ -26,13 +24,11 @@ jobs:
           echo "DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}"
           echo ""
           echo "=== COMPUTED VALUES ==="
-          echo "BASE_REF: ${{ github.event.pull_request.base.ref }}"
-          echo "IS_DEV: ${{ github.event.pull_request.merged && github.event.pull_request.base.ref == 'develop' }}"
-          echo "IS_PROD: ${{ github.event.pull_request.merged && github.event.pull_request.base.ref == 'main' }}"
+          echo "IS_DEV: ${{ github.ref_name == 'develop' }}"
+          echo "IS_PROD: ${{ github.ref_name == 'main' }}"
 
   # Build and push Docker image
   docker:
-    if: github.event.pull_request.merged == true
     name: Build Docker Image
     uses: ./.github/workflows/docker-build.yml
     with:
@@ -45,8 +41,8 @@ jobs:
       VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'develop' }}
       TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'develop' }}
       # Environment flags
-      IS_DEV: ${{ github.event.pull_request.merged && github.event.pull_request.base.ref == 'develop' }}
-      IS_PROD: ${{ github.event.pull_request.merged && github.event.pull_request.base.ref == 'main' }}
+      IS_DEV: ${{ github.ref_name == 'develop' }}
+      IS_PROD: ${{ github.ref_name == 'main' }}
     secrets:
       DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
@@ -55,7 +51,7 @@ jobs:
   deploy-dev:
     name: Deploy to Dev (Coolify)
     needs: docker
-    if: ${{ github.event.pull_request.merged && github.event.pull_request.base.ref == 'develop' }}
+    if: github.ref_name == 'develop'
     uses: ./.github/workflows/trigger-coolify.yml
     secrets:
       COOLIFY_TRIGGER_URL: ${{ secrets.COOLIFY_TRIGGER_URL_DEV }}
@@ -64,7 +60,7 @@ jobs:
   deploy-prod:
     name: Deploy to Prod (Coolify)
     needs: docker
-    if: ${{ github.event.pull_request.merged && github.event.pull_request.base.ref == 'main' }}
+    if: github.ref_name == 'main'
     uses: ./.github/workflows/trigger-coolify.yml
     secrets:
       COOLIFY_TRIGGER_URL: ${{ secrets.COOLIFY_TRIGGER_URL_PROD }}
@@ -79,4 +75,3 @@ jobs:
       SSH_HOST: ${{ secrets.SSH_HOST }}
       SSH_USERNAME: ${{ secrets.SSH_USERNAME }}
       SSH_KEY: ${{ secrets.SSH_KEY }}
-

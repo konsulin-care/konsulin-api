@@ -394,6 +394,14 @@ func validateResourceOwnership(ctx context.Context, fhirID, role, resourceType s
 			}
 		}
 
+		// this checks below is to allow patient to update their own patient resource
+		if resourceType == constvars.ResourcePatient {
+			patientID := gjson.Get(resourceStr, "id").String()
+			if patientID == fhirID {
+				return true
+			}
+		}
+
 		patientRefs := []string{
 			gjson.Get(resourceStr, "subject.reference").String(),
 			gjson.Get(resourceStr, "patient.reference").String(),
@@ -425,6 +433,14 @@ func validateResourceOwnership(ctx context.Context, fhirID, role, resourceType s
 						return true
 					}
 				}
+			}
+		}
+
+		// this checks below is to allow practitioner to update their own practitioner resource
+		if resourceType == constvars.ResourcePractitioner {
+			practitionerID := gjson.Get(resourceStr, "id").String()
+			if practitionerID == fhirID {
+				return true
 			}
 		}
 
