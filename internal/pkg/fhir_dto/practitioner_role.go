@@ -9,4 +9,5 @@ type PractitionerRole struct {
 	Specialty     []CodeableConcept `json:"specialty,omitempty"`
 	AvailableTime []AvailableTime   `json:"availableTime,omitempty"`
 	Extension     []Extension       `json:"extension,omitempty"`
+	Period        Period            `json:"period,omitempty"`
 }

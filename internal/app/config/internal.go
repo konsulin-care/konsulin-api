@@ -41,6 +41,10 @@ type App struct {
 	SuperadminAPIKey                               string `mapstructure:"superadmin_api_key"`
 	SuperadminAPIKeyRateLimit                      int    `mapstructure:"superadmin_api_key_rate_limit"`
 	WebhookInstantiateBasePath                     string `mapstructure:"webhook_instantiate_base_path"`
+	// SlotWindowDays controls rolling window days for Slot generation (default 30 if unset)
+	SlotWindowDays int `mapstructure:"slot_window_days"`
+	// SlotWorkerCronSpec defines the cron expression for the slot worker schedule (e.g., "@daily")
+	SlotWorkerCronSpec string `mapstructure:"slot_worker_cron_spec"`
 }
 
 type AppFHIR struct {

@@ -14,12 +14,16 @@ import (
 	"konsulin-service/internal/app/services/core/auth"
 	"konsulin-service/internal/app/services/core/payments"
 	"konsulin-service/internal/app/services/core/session"
+	"konsulin-service/internal/app/services/core/slot"
 	"konsulin-service/internal/app/services/core/transactions"
 	"konsulin-service/internal/app/services/core/webhook"
 	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/persons"
+	practitionerRoleFhir "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
+	scheduleFhir "konsulin-service/internal/app/services/fhir_spark/schedules"
 	"konsulin-service/internal/app/services/fhir_spark/service_requests"
+	slotFhir "konsulin-service/internal/app/services/fhir_spark/slots"
 	"konsulin-service/internal/app/services/shared/jwtmanager"
 	"konsulin-service/internal/app/services/shared/locker"
 	"konsulin-service/internal/app/services/shared/mailer"
@@ -181,7 +185,10 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	// Initialize FHIR clients
 	patientFhirClient := patientsFhir.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	practitionerRoleClient := practitionerRoleFhir.NewPractitionerRoleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	personFhirClient := persons.NewPersonFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	scheduleClient := scheduleFhir.NewScheduleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	slotClient := slotFhir.NewSlotFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	serviceRequestFhirClient := service_requests.NewServiceRequestFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 
 	// Ensure default FHIR Groups exist for ServiceRequest subjects
@@ -241,10 +248,16 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	)
 	paymentController := controllers.NewPaymentController(bootstrap.Logger, paymentUsecase)
 
+	slotUsecase := slot.NewSlotUsecase(scheduleClient, lockService, slotClient, bootstrap.InternalConfig, bootstrap.Logger)
 	// Start webhook worker ticker (best-effort lock ensures single execution)
 	worker := webhook.NewWorker(bootstrap.Logger, bootstrap.InternalConfig, lockService, webhookQueueService, webhookJWT)
 	stopWorker := worker.Start(context.Background())
 	bootstrap.WorkerStop = stopWorker
+
+	// Start slot top-up worker (leader lock inside)
+	slotWorker := slot.NewWorker(bootstrap.Logger, bootstrap.InternalConfig, lockService, practitionerRoleClient, slotUsecase)
+	slotWorker.Start(context.Background())
+	bootstrap.SlotWorkerStop = slotWorker.Stop
 
 	// Setup routes with the router, configuration, middlewares, and controllers
 	routers.SetupRoutes(
