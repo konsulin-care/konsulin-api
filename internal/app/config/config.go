@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
+	"github.com/robfig/cron/v3"
 	"github.com/spf13/viper"
 )
 
@@ -81,12 +82,9 @@ func loadInternalConfigWithEnv() *InternalConfig {
 				}
 				return v
 			}(),
-			SlotWorkerIntervalInMinutes: func() int {
-				v := utils.GetEnvInt("SLOT_WORKER_INTERVAL_IN_MINUTES", 15)
-				if v <= 0 {
-					return 15
-				}
-				return v
+			SlotWorkerCronSpec: func() string {
+				// read raw env; validation below
+				return utils.GetEnvString("SLOT_WORKER_CRON_SPEC", "")
 			}(),
 		},
 		FHIR: AppFHIR{
@@ -158,6 +156,19 @@ func loadInternalConfigWithEnv() *InternalConfig {
 		cfg.ServicePricing.AccessDatasetBasePrice <= 0 {
 		log.Fatalf("invalid service base price configuration: all BASE_PRICE_* must be > 0")
 	}
+
+	// Validate/normalize cron spec now; default to @daily if empty or invalid
+	spec := cfg.App.SlotWorkerCronSpec
+	if spec == "" {
+		log.Printf("slot worker: empty cron spec, defaulting to @daily")
+		spec = "@daily"
+	}
+	if _, err := cron.ParseStandard(spec); err != nil {
+		log.Printf("slot worker: invalid cron spec '%s': %v, defaulting to @daily", spec, err)
+		spec = "@daily"
+	}
+	// store normalized spec back
+	cfg.App.SlotWorkerCronSpec = spec
 
 	return cfg
 }
