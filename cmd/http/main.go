@@ -256,8 +256,8 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 
 	// Start slot top-up worker (leader lock inside)
 	slotWorker := slot.NewWorker(bootstrap.Logger, bootstrap.InternalConfig, lockService, practitionerRoleClient, slotUsecase)
-	stopSlotWorker := slotWorker.Start(context.Background())
-	bootstrap.SlotWorkerStop = stopSlotWorker
+	slotWorker.Start(context.Background())
+	bootstrap.SlotWorkerStop = slotWorker.Stop
 
 	// Setup routes with the router, configuration, middlewares, and controllers
 	routers.SetupRoutes(

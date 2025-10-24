@@ -43,9 +43,8 @@ type App struct {
 	WebhookInstantiateBasePath                     string `mapstructure:"webhook_instantiate_base_path"`
 	// SlotWindowDays controls rolling window days for Slot generation (default 30 if unset)
 	SlotWindowDays int `mapstructure:"slot_window_days"`
-	// SlotWorkerIntervalInMinutes controls how often the Slot worker runs and its leader lock TTL
-	// (default 15 if unset)
-	SlotWorkerIntervalInMinutes int `mapstructure:"slot_worker_interval_in_minutes"`
+	// SlotWorkerCronSpec defines the cron expression for the slot worker schedule (e.g., "@daily")
+	SlotWorkerCronSpec string `mapstructure:"slot_worker_cron_spec"`
 }
 
 type AppFHIR struct {

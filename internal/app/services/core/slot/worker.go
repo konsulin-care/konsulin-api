@@ -6,6 +6,7 @@ import (
 	"konsulin-service/internal/app/contracts"
 	"time"
 
+	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
 )
 
@@ -20,6 +21,9 @@ type Worker struct {
 	roles       contracts.PractitionerRoleFhirClient
 	slotUsecase contracts.SlotUsecaseIface
 	stop        chan struct{}
+	cron        *cron.Cron
+	runCtx      context.Context
+	cancel      context.CancelFunc
 }
 
 func NewWorker(log *zap.Logger, cfg *config.InternalConfig, lockerSvc contracts.LockerService, rolesClient contracts.PractitionerRoleFhirClient, slotUsecase contracts.SlotUsecaseIface) *Worker {
@@ -27,33 +31,43 @@ func NewWorker(log *zap.Logger, cfg *config.InternalConfig, lockerSvc contracts.
 }
 
 // Start begins the periodic loop. Returns a stop function.
-func (w *Worker) Start(ctx context.Context) (stop func()) {
-	interval := time.Duration(w.cfg.App.SlotWorkerIntervalInMinutes) * time.Minute
+func (w *Worker) Start(ctx context.Context) {
+	// create run context we can cancel from Stop()
+	w.runCtx, w.cancel = context.WithCancel(ctx)
+	c := cron.New()
+	// Use the validated cron spec from config
+	spec := w.cfg.App.SlotWorkerCronSpec
+	_, err := c.AddFunc(spec, func() { w.runOnce(w.runCtx) })
+	if err != nil {
+		w.log.Warn("slot.worker: failed to schedule with provided cron spec; falling back to @daily", zap.Error(err))
+		c = cron.New()
+		_, _ = c.AddFunc("@daily", func() { w.runOnce(w.runCtx) })
+	}
+	c.Start()
+	w.cron = c
+}
 
-	ticker := time.NewTicker(interval)
-	stopped := make(chan struct{})
-	go func() {
-		defer close(stopped)
-		for {
-			select {
-			case <-ctx.Done():
-				ticker.Stop()
-				return
-			case <-w.stop:
-				ticker.Stop()
-				return
-			case <-ticker.C:
-				w.runOnce(ctx)
-			}
-		}
-	}()
-	return func() { close(w.stop); <-stopped }
+// Stop gracefully stops the worker cron and any in-flight runOnce refreshers.
+func (w *Worker) Stop() {
+	// signal run goroutines to stop
+	select {
+	case <-w.stop:
+		// already closed
+	default:
+		close(w.stop)
+	}
+	if w.cancel != nil {
+		w.cancel()
+	}
+	if w.cron != nil {
+		ctx := w.cron.Stop() // wait for running jobs to finish
+		<-ctx.Done()
+	}
 }
 
 func (w *Worker) runOnce(ctx context.Context) {
 	// Acquire leader lock
-	ttlMinutes := w.cfg.App.SlotWorkerIntervalInMinutes
-	ttl := time.Duration(ttlMinutes) * time.Minute
+	ttl := 2 * time.Minute // fixed small TTL; cron cadence is independent
 	acquired, token, err := w.locker.TryLock(ctx, leaderLockKey, ttl)
 	if err != nil {
 		w.log.Warn("slot.worker: leader lock attempt failed", zap.Error(err))
@@ -64,6 +78,26 @@ func (w *Worker) runOnce(ctx context.Context) {
 		return
 	}
 	defer w.locker.Unlock(ctx, leaderLockKey, token)
+
+	// Start TTL refresher goroutine
+	refreshCtx, cancelRefresh := context.WithCancel(ctx)
+	defer cancelRefresh()
+	go func() {
+		// refresh a bit before expiry (e.g., half TTL)
+		tick := time.NewTicker(ttl / 2)
+		defer tick.Stop()
+		for {
+			select {
+			case <-refreshCtx.Done():
+				return
+			case <-tick.C:
+				w.log.Info("slot.worker: refreshing leader lock TTL", zap.String("key", leaderLockKey), zap.String("token", token), zap.Duration("ttl", ttl))
+				if err := w.locker.Refresh(ctx, leaderLockKey, token, ttl); err != nil {
+					w.log.Warn("slot.worker: failed to refresh leader lock TTL", zap.Error(err))
+				}
+			}
+		}
+	}()
 
 	active := true
 	roles, err := w.roles.Search(ctx, contracts.PractitionerRoleSearchParams{
