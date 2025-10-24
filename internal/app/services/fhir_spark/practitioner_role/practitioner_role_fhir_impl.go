@@ -40,6 +40,57 @@ func NewPractitionerRoleFhirClient(baseUrl string, logger *zap.Logger) contracts
 	return practitionerRoleFhirClientInstance
 }
 
+func (c *practitionerRoleFhirClient) Search(ctx context.Context, params contracts.PractitionerRoleSearchParams) ([]fhir_dto.PractitionerRole, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	q := params.ToQueryParam()
+	urlStr := c.BaseUrl
+	if enc := q.Encode(); enc != "" {
+		urlStr += "?" + enc
+	}
+
+	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, urlStr, nil)
+	if err != nil {
+		return nil, exceptions.ErrCreateHTTPRequest(err)
+	}
+	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, exceptions.ErrSendHTTPRequest(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != constvars.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		var outcome fhir_dto.OperationOutcome
+		_ = json.Unmarshal(bodyBytes, &outcome)
+		if len(outcome.Issue) > 0 {
+			return nil, exceptions.ErrGetFHIRResource(fmt.Errorf(outcome.Issue[0].Diagnostics), constvars.ResourcePractitionerRole)
+		}
+		return nil, exceptions.ErrGetFHIRResource(fmt.Errorf("status %d", resp.StatusCode), constvars.ResourcePractitionerRole)
+	}
+
+	var bundle struct {
+		Entry []struct {
+			Resource fhir_dto.PractitionerRole `json:"resource"`
+		} `json:"entry"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&bundle); err != nil {
+		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePractitionerRole)
+	}
+
+	out := make([]fhir_dto.PractitionerRole, len(bundle.Entry))
+	for i, e := range bundle.Entry {
+		out[i] = e.Resource
+	}
+
+	c.Log.Info("practitionerRoleFhirClient.Search",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.Int(constvars.LoggingPractitionerRoleCountKey, len(out)))
+	return out, nil
+}
+
 func (c *practitionerRoleFhirClient) DeletePractitionerRoleByID(ctx context.Context, practitionerRoleID string) error {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	c.Log.Info("practitionerRoleFhirClient.DeletePractitionerRoleByID called",
