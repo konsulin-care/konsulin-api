@@ -74,6 +74,20 @@ func loadInternalConfigWithEnv() *InternalConfig {
 			SuperadminAPIKey:           utils.GetEnvString("SUPERADMIN_API_KEY", ""),
 			SuperadminAPIKeyRateLimit:  utils.GetEnvInt("SUPERADMIN_API_KEY_RATE_LIMIT", 100),
 			WebhookInstantiateBasePath: utils.GetEnvString("APP_WEBHOOK_INSTANTIATE_BASE_PATH", "/api/v1/hook"),
+			SlotWindowDays: func() int {
+				v := utils.GetEnvInt("SLOT_WINDOW_DAYS", 30)
+				if v <= 0 {
+					return 30
+				}
+				return v
+			}(),
+			SlotWorkerIntervalInMinutes: func() int {
+				v := utils.GetEnvInt("SLOT_WORKER_INTERVAL_IN_MINUTES", 15)
+				if v <= 0 {
+					return 15
+				}
+				return v
+			}(),
 		},
 		FHIR: AppFHIR{
 			BaseUrl: utils.GetEnvString("APP_FHIR_BASE_URL", ""),
