@@ -131,6 +131,9 @@ func ParseScheduleConfig(comment string) (ScheduleConfig, error) {
 	if c.SlotMinutes <= 0 {
 		return ScheduleConfig{}, fmt.Errorf("invalid slotMinutes: %d", c.SlotMinutes)
 	}
+	if c.BufferMinutes < 0 {
+		return ScheduleConfig{}, fmt.Errorf("invalid bufferMinutes: %d", c.BufferMinutes)
+	}
 	return c, nil
 }
 
