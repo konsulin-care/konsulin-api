@@ -300,8 +300,8 @@ func dayWorkIntervals(day time.Time, tz *time.Location, windows []dayWindow) []i
 	}
 	var out []interval
 	for _, w := range windows {
-		start := AtClock(day, w.Start.H, w.Start.M, tz)
-		end := AtClock(day, w.End.H, w.End.M, tz)
+		start := atClock(day, w.Start.H, w.Start.M, tz)
+		end := atClock(day, w.End.H, w.End.M, tz)
 		if end.After(start) {
 			out = append(out, interval{Start: start, End: end})
 		}
@@ -421,15 +421,15 @@ func generateSlotsForDayWindows(day time.Time, tz *time.Location, windows []dayW
 	}
 	var out []interval
 	for _, w := range windows {
-		dayStart := AtClock(day, w.Start.H, w.Start.M, tz)
-		dayEnd := AtClock(day, w.End.H, w.End.M, tz)
+		dayStart := atClock(day, w.Start.H, w.Start.M, tz)
+		dayEnd := atClock(day, w.End.H, w.End.M, tz)
 		out = append(out, generateSlotsBetween(dayStart, dayEnd, slotMinutes, bufferMinutes)...)
 	}
 	return out
 }
 
-// AtClock returns the time on 'day' at hour:minute in the given timezone.
-func AtClock(day time.Time, h, m int, loc *time.Location) time.Time {
+// atClock returns the time on 'day' at hour:minute in the given timezone.
+func atClock(day time.Time, h, m int, loc *time.Location) time.Time {
 	d := day.In(loc)
 	y, mo, dd := d.Date()
 	return time.Date(y, mo, dd, h, m, 0, 0, loc)
