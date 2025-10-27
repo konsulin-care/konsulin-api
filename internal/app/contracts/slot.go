@@ -2,6 +2,8 @@ package contracts
 
 import (
 	"context"
+	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"net/url"
 	"strings"
@@ -48,6 +50,62 @@ func (p SlotSearchParams) ToQueryString() string {
 	return sb.String()
 }
 
+type SetUnavailabilityForMultiplePractitionerRolesInput struct {
+	PractitionerRoleIDs []string
+	AllDay              bool
+	AllDayDate          string
+	StartTime           time.Time
+	EndTime             time.Time
+	Reason              string
+	SlotStatus          fhir_dto.SlotStatus
+}
+
+func (input *SetUnavailabilityForMultiplePractitionerRolesInput) Validate() error {
+	if len(input.PractitionerRoleIDs) == 0 {
+		return exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, "practitioner role ids are required")
+	}
+	if input.AllDay && input.AllDayDate == "" {
+		return exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, "all day date is required when all day is true")
+	}
+
+	if !input.AllDay {
+		if input.StartTime.IsZero() || input.EndTime.IsZero() {
+			return exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, "start and end time are required")
+		}
+
+		if input.EndTime.Before(input.StartTime) {
+			return exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, "end time must be after start time")
+		}
+	}
+
+	if input.Reason == "" {
+		return exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, "reason is required")
+	}
+
+	return nil
+}
+
+type CreatedSlotItem struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+}
+
+type ConflictingSlotItem struct {
+	PractitionerRoleID string `json:"practitionerRoleId"`
+	SlotID             string `json:"slotId"`
+	Start              string `json:"start"`
+	End                string `json:"end"`
+	Status             string `json:"status"`
+}
+
+type SetUnavailableOutcome struct {
+	Created                bool
+	CreatedSlots           []CreatedSlotItem
+	UpdatedPractitionerIDs []string
+	Conflicts              []ConflictingSlotItem
+}
+
 type SlotUsecaseIface interface {
 	HandleAutomatedSlotGeneration(ctx context.Context, practitionerRole fhir_dto.PractitionerRole)
+	HandleSetUnavailabilityForMultiplePractitionerRoles(ctx context.Context, input SetUnavailabilityForMultiplePractitionerRolesInput) (*SetUnavailableOutcome, error)
 }
