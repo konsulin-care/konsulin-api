@@ -17,7 +17,6 @@ import (
 	"konsulin-service/internal/app/services/core/slot"
 	"konsulin-service/internal/app/services/core/transactions"
 	"konsulin-service/internal/app/services/core/webhook"
-	bundle "konsulin-service/internal/app/services/fhir_spark/bundle"
 	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/persons"
 	practitionerRoleFhir "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
@@ -249,9 +248,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	)
 	paymentController := controllers.NewPaymentController(bootstrap.Logger, paymentUsecase)
 
-	bundleClient := bundle.NewBundleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
-	slotUsecase := slot.NewSlotUsecase(scheduleClient, lockService, slotClient, practitionerRoleClient, bundleClient, bootstrap.InternalConfig, bootstrap.Logger)
-	scheduleController := controllers.NewScheduleController(slotUsecase)
+	slotUsecase := slot.NewSlotUsecase(scheduleClient, lockService, slotClient, bootstrap.InternalConfig, bootstrap.Logger)
 	// Start webhook worker ticker (best-effort lock ensures single execution)
 	worker := webhook.NewWorker(bootstrap.Logger, bootstrap.InternalConfig, lockService, webhookQueueService, webhookJWT)
 	stopWorker := worker.Start(context.Background())
@@ -271,7 +268,6 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		authController,
 		paymentController,
 		webhookController,
-		scheduleController,
 	)
 
 	return nil
