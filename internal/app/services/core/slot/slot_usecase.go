@@ -148,22 +148,6 @@ func (s *SlotUsecase) HandleAutomatedSlotGeneration(ctx context.Context, practit
 	}
 }
 
-// resolveRoleTimezone perform best effort to resolve the timezone from the role's period.start or period.end.
-func (s *SlotUsecase) resolveRoleTimezone(role fhir_dto.PractitionerRole) (*time.Location, error) {
-	if role.Period.Start != "" {
-		if t, err := time.Parse(time.RFC3339, role.Period.Start); err == nil {
-			return t.Location(), nil
-		}
-	}
-	if role.Period.End != "" {
-		if t, err := time.Parse(time.RFC3339, role.Period.End); err == nil {
-			return t.Location(), nil
-		}
-	}
-
-	return nil, fmt.Errorf("cannot determine timezone: invalid period.start and period.end")
-}
-
 // tryAcquireDayLock acquires a per-day lock for a schedule and local day.
 // tzName should be the IANA timezone string used when computing the local day boundaries.
 func (s *SlotUsecase) tryAcquireDayLock(ctx context.Context, scheduleID string, day time.Time, tzName string, ttl time.Duration) (acquired bool, key string, token string, err error) {
