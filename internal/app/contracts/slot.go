@@ -2,6 +2,7 @@ package contracts
 
 import (
 	"context"
+	"fmt"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
@@ -82,7 +83,13 @@ func (input *SetUnavailabilityForMultiplePractitionerRolesInput) Validate() erro
 		return exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, "reason is required")
 	}
 
-	return nil
+	// only allowing certain slot statuses for unavailability
+	switch input.SlotStatus {
+	default:
+		return fmt.Errorf("slot status %s is not supported", input.SlotStatus)
+	case fhir_dto.SlotStatusBusy, fhir_dto.SlotStatusBusyUnavailable, fhir_dto.SlotStatusBusyTentative:
+		return nil
+	}
 }
 
 type CreatedSlotItem struct {
