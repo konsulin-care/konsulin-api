@@ -221,7 +221,7 @@ func (s *SlotUsecase) topUpRoleForDay(ctx context.Context, in topUpRoleForDayInp
 
 	// Compute local day bounds strings
 	dayLocal := in.Day.In(in.Timezone)
-	dayStart := AtClock(dayLocal, 0, 0, in.Timezone)
+	dayStart := atClock(dayLocal, 0, 0, in.Timezone)
 	dayEnd := dayStart.AddDate(0, 0, 1)
 	params := contracts.SlotSearchParams{
 		Start:  "lt" + dayEnd.Format(time.RFC3339),
