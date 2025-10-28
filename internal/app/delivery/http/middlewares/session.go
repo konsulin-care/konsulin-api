@@ -68,6 +68,12 @@ func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
 
 		ctx := context.WithValue(r.Context(), keyRoles, roles)
 		ctx = context.WithValue(ctx, keyUID, uid)
+
+		// new keys for context will be used for now and one and this
+		// will deprecate the use of untyped string in context keys
+		ctx = context.WithValue(ctx, constvars.CONTEXT_FHIR_ROLE, roles)
+		ctx = context.WithValue(ctx, constvars.CONTEXT_UID, uid)
+
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

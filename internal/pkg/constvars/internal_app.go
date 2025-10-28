@@ -1,7 +1,5 @@
 package constvars
 
-type ContextKey string
-
 const (
 	ResourceUsers           = "users"
 	ResourceRoles           = "roles"
@@ -47,12 +45,19 @@ const (
 	TIME_DIFFERENCE_CAIRO         = 2
 )
 
+// ContextKey is a custom type enum-style value to be used to
+// interact with context embedded value. This is the better and preferred
+// implementation than using untyped string constants.
+type ContextKey string
+
 const (
 	CONTEXT_REQUEST_ID_KEY           ContextKey = "request_id"
 	CONTEXT_SESSION_DATA_KEY         ContextKey = "session_data"
 	CONTEXT_IS_CLIENT_REQUEST_ID_KEY ContextKey = "is_client_request_id"
 	CONTEXT_STEPS_KEY                ContextKey = "steps"
 	CONTEXT_RAW_BODY                 ContextKey = "raw_body"
+	CONTEXT_FHIR_ROLE                ContextKey = "fhir_role"
+	CONTEXT_UID                      ContextKey = "uid"
 )
 
 const (
