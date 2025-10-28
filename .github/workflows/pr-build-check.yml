@@ -1,0 +1,48 @@
+name: PR Build Check (Docker)
+
+on:
+  pull_request:
+    branches:
+      - develop
+
+env:
+  IMAGE_NAMESPACE: konsulin
+  IMAGE_NAME: konsulin-api
+
+jobs:
+  build-docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Get Short SHA
+        run: echo "SHORT_SHA=${GITHUB_SHA::8}" >> $GITHUB_ENV
+
+      - name: Build Vendor Image
+        run: |
+          docker build \
+            -t ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}-vendor:latest \
+            -f Dockerfile-vendor .
+
+      - name: Replace FROM in Dockerfile to use local vendor image
+        run: |
+          sed -i '/^FROM .* as gobuild/c\FROM '"${{ env.IMAGE_NAMESPACE }}"'/'"${{ env.IMAGE_NAME }}"'-vendor:latest as gobuild' Dockerfile
+
+      - name: Build Main Docker Image (local)
+        run: |
+          echo "Performing ephemeral PR build..."
+          VERSION="pr-${{ env.SHORT_SHA }}"
+          docker build \
+            -t ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}:${VERSION} \
+            -f Dockerfile .
+
+      - name: Verify Built Images
+        run: |
+          echo "=== Local Docker Images ==="
+          docker images | grep ${{ env.IMAGE_NAME }}
