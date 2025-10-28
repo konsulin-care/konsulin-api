@@ -1,6 +1,9 @@
 package fhir_dto
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // SlotStatus enumerates valid FHIR Slot.status values.
 // docs: https://hl7.org/fhir/R4/valueset-slotstatus.html
@@ -25,4 +28,14 @@ type Slot struct {
 	End          time.Time    `json:"end" bson:"end"`
 	Overbooked   bool         `json:"overbooked,omitempty" bson:"overbooked,omitempty"`
 	Comment      string       `json:"comment,omitempty" bson:"comment,omitempty"`
+}
+
+// ParseSlotStatus converts a string into a SlotStatus, validating the value.
+func ParseSlotStatus(s string) (SlotStatus, error) {
+	switch SlotStatus(s) {
+	case SlotStatusBusy, SlotStatusFree, SlotStatusBusyUnavailable, SlotStatusBusyTentative, SlotStatusEnteredInError:
+		return SlotStatus(s), nil
+	default:
+		return "", fmt.Errorf("invalid setStatus; must be one of: busy, busy-tentative, busy-unavailable, free, entered-in-error")
+	}
 }
