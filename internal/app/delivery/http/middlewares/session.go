@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// Deprecated: all context keys must use typed string, such as constvars.ContextKey
 const (
 	keyFHIRRole                               = "fhirRole"
 	keyFHIRID                                 = "fhirID"
