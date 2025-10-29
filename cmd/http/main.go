@@ -250,7 +250,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	paymentController := controllers.NewPaymentController(bootstrap.Logger, paymentUsecase)
 
 	bundleClient := bundle.NewBundleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
-	slotUsecase := slot.NewSlotUsecase(scheduleClient, lockService, slotClient, practitionerRoleClient, practitionerFhirClient, bundleClient, bootstrap.InternalConfig, bootstrap.Logger)
+	slotUsecase := slot.NewSlotUsecase(scheduleClient, lockService, slotClient, practitionerRoleClient, practitionerFhirClient, personFhirClient, bundleClient, bootstrap.InternalConfig, bootstrap.Logger)
 	scheduleController := controllers.NewScheduleController(slotUsecase, bootstrap.Logger)
 
 	// Start webhook worker ticker (best-effort lock ensures single execution)

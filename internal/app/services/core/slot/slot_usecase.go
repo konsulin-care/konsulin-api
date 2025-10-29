@@ -25,6 +25,7 @@ type SlotUsecase struct {
 	slots             contracts.SlotFhirClient
 	practitionerRoles contracts.PractitionerRoleFhirClient
 	practitioner      contracts.PractitionerFhirClient
+	person            contracts.PersonFhirClient
 	bundles           bundleSvc.BundleFhirClient
 	config            *config.InternalConfig
 	logger            *zap.Logger
@@ -36,6 +37,7 @@ func NewSlotUsecase(
 	slots contracts.SlotFhirClient,
 	practitionerRoles contracts.PractitionerRoleFhirClient,
 	practitioner contracts.PractitionerFhirClient,
+	person contracts.PersonFhirClient,
 	bundles bundleSvc.BundleFhirClient,
 	config *config.InternalConfig,
 	logger *zap.Logger,
@@ -46,6 +48,7 @@ func NewSlotUsecase(
 		slots:             slots,
 		practitionerRoles: practitionerRoles,
 		practitioner:      practitioner,
+		person:            person,
 		bundles:           bundles,
 		config:            config,
 		logger:            logger,
@@ -136,15 +139,45 @@ func (s *SlotUsecase) HandleSetUnavailabilityForMultiplePractitionerRoles(ctx co
 
 	// Clinic Admin org-scope check (placeholder: ensure all roles share same org)
 	if role == constvars.KonsulinRoleClinicAdmin {
-		org := roles[0].Organization.Reference
-		for _, pr := range roles[1:] {
-			if pr.Organization.Reference != org {
-				err := exceptions.BuildNewCustomError(nil, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, "cross-organization modification is not allowed")
+		// Resolve current clinic admin by Person identifier (system|value)
+		identifierToken := fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, uid)
+		people, perr := s.person.Search(ctx, contracts.PersonSearchInput{Identifier: identifierToken})
+		if perr != nil {
+			return nil, exceptions.BuildNewCustomError(
+				perr,
+				constvars.StatusInternalServerError,
+				perr.Error(),
+				perr.Error(),
+			)
+		}
+		if len(people) != 1 {
+			errMultiPersons := errors.New("multiple persons found on the same identifier or no person found at all")
+			return nil, exceptions.BuildNewCustomError(
+				errMultiPersons,
+				constvars.StatusBadRequest,
+				errMultiPersons.Error(),
+				errMultiPersons.Error(),
+			)
+		}
+		adminPerson := people[0]
+		adminOrgRef := ""
+		if adminPerson.ManagingOrganization != nil {
+			adminOrgRef = adminPerson.ManagingOrganization.Reference
+		}
+		if adminOrgRef == "" {
+			err := exceptions.BuildNewCustomError(nil, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, "clinic admin has no managingOrganization configured")
+			s.logger.With(zap.Error(err)).Error("organization scope check failed: missing managingOrganization on admin")
+			return nil, err
+		}
+
+		// Ensure all target roles belong to the same managing organization as the admin
+		for _, pr := range roles {
+			if pr.Organization.Reference != adminOrgRef {
+				err := exceptions.BuildNewCustomError(nil, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, "clinic admin cannot modify roles from other organization")
 				s.logger.With(zap.Error(err)).Error("organization scope check failed")
 				return nil, err
 			}
 		}
-		// NOTE: actual verification that admin belongs to org is pending integration with user/org mapping
 
 		unavailableReason += "Person/" + uid
 	}
