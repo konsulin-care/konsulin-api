@@ -92,7 +92,7 @@ jobs:
 
       - name: Replace FROM in Dockerfile with image from ENV
         run: |
-          sed -i -E "s|^[[:space:]]*FROM[[:space:]]+.*[[:space:]]+[Aa][Ss][[:space:]]+gobuild|FROM ${IMAGE_NAMESPACE}/${IMAGE_NAME}-vendor:pr-${SHORT_SHA} as gobuild|" Dockerfile
+          sed -i -E "s|^[[:space:]]*FROM[[:space:]]+.*[[:space:]]+[Aa][Ss][[:space:]]+gobuild|FROM ${IMAGE_NAMESPACE}/${IMAGE_NAME}-vendor:latest as gobuild|" Dockerfile
 
       - name: Build and Push Docker Images
         run: |
@@ -135,4 +135,5 @@ jobs:
             echo "No valid environment specified. in productions need 2 conditions: branch is main and tag starts with v"
             exit 1
           fi
+
 
