@@ -2,8 +2,7 @@ name: PR Build Check (Docker)
 
 on:
   pull_request:
-    branches:
-      - develop
+    branches: [develop]
 
 env:
   IMAGE_NAMESPACE: konsulin
@@ -11,15 +10,9 @@ env:
 
 jobs:
   build-docker:
-    name: Build Docker Image
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@v4
 
       - name: Get Short SHA
         run: echo "SHORT_SHA=${GITHUB_SHA::8}" >> $GITHUB_ENV
@@ -27,22 +20,19 @@ jobs:
       - name: Build Vendor Image
         run: |
           docker build \
-            -t ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}-vendor:latest \
+            -t ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}-vendor:pr-${{ env.SHORT_SHA }} \
             -f Dockerfile-vendor .
 
-      - name: Replace FROM in Dockerfile to use local vendor image
+      - name: Replace FROM to use local vendor pr-tag
         run: |
-          sed -i '/^FROM .* as gobuild/c\FROM '"${{ env.IMAGE_NAMESPACE }}"'/'"${{ env.IMAGE_NAME }}"'-vendor:latest as gobuild' Dockerfile
+          sed -i 's|^FROM .* as gobuild|FROM '"${{ env.IMAGE_NAMESPACE }}"'/'"${{ env.IMAGE_NAME }}"'-vendor:pr-'"${{ env.SHORT_SHA }}"' as gobuild|' Dockerfile
 
-      - name: Build Main Docker Image (local)
+      - name: Build Main Docker Image
         run: |
-          echo "Performing ephemeral PR build..."
-          VERSION="pr-${{ env.SHORT_SHA }}"
           docker build \
-            -t ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}:${VERSION} \
+            -t ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}:pr-${{ env.SHORT_SHA }} \
             -f Dockerfile .
 
       - name: Verify Built Images
         run: |
-          echo "=== Local Docker Images ==="
           docker images | grep ${{ env.IMAGE_NAME }}
