@@ -136,6 +136,7 @@ func IsPublicResource(resourceType string) bool {
 		"MessageDefinition":       true,
 		"ActivityDefinition":      true,
 		"PlanDefinition":          true,
+		"Schedule":                true,
 		"Library":                 true,
 		"Measure":                 true,
 		"MeasureReport":           true,

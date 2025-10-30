@@ -19,6 +19,7 @@ p, Patient, GET, /fhir/Appointment
 p, Patient, POST, /fhir/Appointment
 p, Patient, POST, /fhir/Condition
 p, Patient, GET, /fhir/Media
+p, Patient, GET, /fhir/Schedule
 p, Patient, GET, /fhir/Observation
 p, Patient, POST, /fhir/Observation
 p, Patient, PUT, /fhir/Observation
