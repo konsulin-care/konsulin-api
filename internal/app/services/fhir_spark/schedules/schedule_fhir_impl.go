@@ -11,6 +11,7 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"net/http"
+	"net/url"
 	"sync"
 
 	"go.uber.org/zap"
@@ -293,4 +294,64 @@ func (c *scheduleFhirClient) FindScheduleByPractitionerRoleID(ctx context.Contex
 		zap.Int(constvars.LoggingScheduleCountKey, len(schedulesFhir)),
 	)
 	return schedulesFhir, nil
+}
+
+func (c *scheduleFhirClient) Search(ctx context.Context, params contracts.ScheduleSearchParams) ([]fhir_dto.Schedule, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	c.Log.Info("scheduleFhirClient.Search called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
+	q := params.ToQueryParam()
+	// ensure proper encoding, even though ToQueryParam returns url.Values
+	if q == nil {
+		q = url.Values{}
+	}
+	urlStr := c.BaseUrl
+	if enc := q.Encode(); enc != "" {
+		urlStr += "?" + enc
+	}
+
+	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, urlStr, nil)
+	if err != nil {
+		return nil, exceptions.ErrCreateHTTPRequest(err)
+	}
+	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, exceptions.ErrSendHTTPRequest(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != constvars.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		var outcome fhir_dto.OperationOutcome
+		_ = json.Unmarshal(bodyBytes, &outcome)
+		if len(outcome.Issue) > 0 {
+			return nil, exceptions.ErrGetFHIRResource(fmt.Errorf(outcome.Issue[0].Diagnostics), constvars.ResourceSchedule)
+		}
+		return nil, exceptions.ErrGetFHIRResource(fmt.Errorf("status %d", resp.StatusCode), constvars.ResourceSchedule)
+	}
+
+	var bundle fhir_dto.FHIRBundle
+	if err := json.NewDecoder(resp.Body).Decode(&bundle); err != nil {
+		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourceSchedule)
+	}
+
+	schedules := make([]fhir_dto.Schedule, 0, len(bundle.Entry))
+	for _, e := range bundle.Entry {
+		var s fhir_dto.Schedule
+		if err := json.Unmarshal(e.Resource, &s); err != nil {
+			return nil, exceptions.ErrCannotParseJSON(err)
+		}
+		schedules = append(schedules, s)
+	}
+
+	c.Log.Info("scheduleFhirClient.Search succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.Int(constvars.LoggingScheduleCountKey, len(schedules)),
+	)
+	return schedules, nil
 }
