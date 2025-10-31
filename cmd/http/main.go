@@ -214,7 +214,16 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	authController := controllers.NewAuthController(bootstrap.Logger, authUseCase)
 
 	// Initialize middlewares with logger, session service, and auth usecase
-	middlewares := middlewares.NewMiddlewares(bootstrap.Logger, sessionService, authUseCase, bootstrap.InternalConfig, practitionerFhirClient, patientFhirClient)
+	middlewares := middlewares.NewMiddlewares(
+		bootstrap.Logger,
+		sessionService,
+		authUseCase,
+		bootstrap.InternalConfig,
+		practitionerFhirClient,
+		patientFhirClient,
+		practitionerRoleClient,
+		scheduleClient,
+	)
 
 	// Initialize supertokens
 	err = authUseCase.InitializeSupertoken()
