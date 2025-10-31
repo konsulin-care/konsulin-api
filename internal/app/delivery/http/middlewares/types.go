@@ -16,7 +16,9 @@ func NewMiddlewares(
 	authUsecase contracts.AuthUsecase,
 	internalConfig *config.InternalConfig,
 	practitionerFhirClient contracts.PractitionerFhirClient,
-	patientFhirClient contracts.PatientFhirClient,
+    patientFhirClient contracts.PatientFhirClient,
+    practitionerRoleFhirClient contracts.PractitionerRoleFhirClient,
+    scheduleFhirClient contracts.ScheduleFhirClient,
 ) *Middlewares {
 	enforcer, err := casbin.NewEnforcer("resources/rbac_model.conf", "resources/rbac_policy.csv")
 	if err != nil {
@@ -73,6 +75,8 @@ func NewMiddlewares(
 		InternalConfig:         internalConfig,
 		PractitionerFhirClient: practitionerFhirClient,
 		PatientFhirClient:      patientFhirClient,
+        PractitionerRoleFhirClient: practitionerRoleFhirClient,
+        ScheduleFhirClient:         scheduleFhirClient,
 		Enforcer:               enforcer,
 	}
 }
@@ -85,6 +89,8 @@ type Middlewares struct {
 	InternalConfig         *config.InternalConfig
 	PractitionerFhirClient contracts.PractitionerFhirClient
 	PatientFhirClient      contracts.PatientFhirClient
+    PractitionerRoleFhirClient contracts.PractitionerRoleFhirClient
+    ScheduleFhirClient         contracts.ScheduleFhirClient
 	Enforcer               *casbin.Enforcer
 }
 

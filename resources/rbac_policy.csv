@@ -59,6 +59,7 @@ p, Practitioner, PUT, /fhir/QuestionnaireResponse
 p, Practitioner, GET, /fhir/QuestionnaireResponse
 p, Practitioner, GET, /fhir/ResearchStudy
 p, Practitioner, GET, /fhir/Slot
+p, Practitioner, PUT, /fhir/Schedule
 p, Researcher, GET, /fhir/PlanDefinition
 p, Researcher, POST, /fhir/PlanDefinition
 p, Researcher, PUT, /fhir/PlanDefinition
