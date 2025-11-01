@@ -5,6 +5,7 @@ import (
 	"konsulin-service/internal/pkg/utils"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 	"github.com/robfig/cron/v3"
@@ -138,6 +139,7 @@ func loadInternalConfigWithEnv() *InternalConfig {
 			MonthlyQuota:         utils.GetEnvInt("HOOK_QUOTA", 0),
 			RateLimitedServices:  utils.GetEnvString("HOOK_RATE_LIMITED_SERVICES", ""),
 			PaidOnlyServices:     utils.GetEnvString("HOOK_PAID_ONLY_SERVICES", ""),
+			AsyncServiceNames:    parseCSVToLowerSlice(utils.GetEnvString("HOOK_ASYNC_SERVICE_NAMES", "")),
 			MaxQueue:             utils.GetEnvInt("HOOK_MAX_QUEUE", 1),
 			ThrottleRetry:        utils.GetEnvInt("HOOK_THROTTLE_RETRY", 15),
 			URL:                  utils.GetEnvString("HOOK_URL", ""),
@@ -231,4 +233,22 @@ func GetInternalConfig() *InternalConfig {
 }
 func GetDriverConfig() *DriverConfig {
 	return driverCfg
+}
+
+// parseCSVToLowerSlice parses a comma-separated string into a slice of trimmed, lowercased strings.
+// Returns an empty slice if the input is empty or contains only whitespace.
+func parseCSVToLowerSlice(csv string) []string {
+	csv = strings.TrimSpace(csv)
+	if csv == "" {
+		return []string{}
+	}
+	parts := strings.Split(csv, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			result = append(result, strings.ToLower(trimmed))
+		}
+	}
+	return result
 }
