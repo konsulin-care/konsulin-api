@@ -33,6 +33,9 @@ func (m *Middlewares) APIKeyAuth(next http.Handler) http.Handler {
 		ctx = context.WithValue(ctx, keyRoles, []string{constvars.KonsulinRoleSuperadmin})
 		ctx = context.WithValue(ctx, keyUID, "api-key-superadmin")
 
+		ctx = context.WithValue(ctx, constvars.CONTEXT_FHIR_ROLE, []string{constvars.KonsulinRoleSuperadmin})
+		ctx = context.WithValue(ctx, constvars.CONTEXT_UID, "api-key-superadmin")
+
 		m.Log.Info("API Key authentication successful",
 			zap.String("ip", r.RemoteAddr),
 			zap.String("endpoint", r.URL.Path),
@@ -70,6 +73,9 @@ func (m *Middlewares) RequireSuperadminAPIKey(next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), ContextAPIKeyAuth, true)
 		ctx = context.WithValue(ctx, keyRoles, []string{constvars.KonsulinRoleSuperadmin})
 		ctx = context.WithValue(ctx, keyUID, "api-key-superadmin")
+		// Add new typed context keys alongside existing ones
+		ctx = context.WithValue(ctx, constvars.CONTEXT_FHIR_ROLE, []string{constvars.KonsulinRoleSuperadmin})
+		ctx = context.WithValue(ctx, constvars.CONTEXT_UID, "api-key-superadmin")
 
 		m.Log.Info("Superadmin API key authentication successful",
 			zap.String("ip", r.RemoteAddr),
