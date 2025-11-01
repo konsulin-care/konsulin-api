@@ -10,6 +10,10 @@ import (
 func attachWebhookRouter(router chi.Router, middlewares *middlewares.Middlewares, ctrl *controllers.WebhookController) {
 	// POST /hook/{service}
 	router.Post("/hook/{service}", ctrl.HandleEnqueueWebHook)
+
+	// POST /callback/service-request
+	router.Post("/callback/service-request", ctrl.HandleAsyncServiceResultCallback)
+
+	// GET /service-request/{id}/result - no authentication required
+	router.Get("/service-request/{id}/result", ctrl.HandleGetAsyncServiceResult)
 }
-
-
