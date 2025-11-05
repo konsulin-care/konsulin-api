@@ -128,6 +128,84 @@ func (c *slotFhirClient) FindSlotByScheduleID(ctx context.Context, scheduleID st
 	return slotsFhir, nil
 }
 
+func (c *slotFhirClient) FindSlotByID(ctx context.Context, slotID string) (*fhir_dto.Slot, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	c.Log.Info("slotFhirClient.FindSlotByID called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("slotId", slotID),
+	)
+
+	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet,
+		fmt.Sprintf("%s/%s", c.BaseUrl, slotID),
+		nil,
+	)
+	if err != nil {
+		c.Log.Error("slotFhirClient.FindSlotByID error creating HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrCreateHTTPRequest(err)
+	}
+	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		c.Log.Error("slotFhirClient.FindSlotByID error sending HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrSendHTTPRequest(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != constvars.StatusOK {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			c.Log.Error("slotFhirClient.FindSlotByID error reading response body",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
+		}
+
+		var outcome fhir_dto.OperationOutcome
+		err = json.Unmarshal(bodyBytes, &outcome)
+		if err != nil {
+			c.Log.Error("slotFhirClient.FindSlotByID error unmarshaling outcome",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
+		}
+
+		if len(outcome.Issue) > 0 {
+			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			c.Log.Error("slotFhirClient.FindSlotByID FHIR error",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(fhirErrorIssue),
+			)
+			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourceSlot)
+		}
+	}
+
+	var slot fhir_dto.Slot
+	err = json.NewDecoder(resp.Body).Decode(&slot)
+	if err != nil {
+		c.Log.Error("slotFhirClient.FindSlotByID error decoding response",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourceSlot)
+	}
+
+	c.Log.Info("slotFhirClient.FindSlotByID succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("slotId", slot.ID),
+	)
+	return &slot, nil
+}
+
 func (c *slotFhirClient) FindSlotByScheduleIDAndStatus(ctx context.Context, scheduleID, status string) ([]fhir_dto.Slot, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	c.Log.Info("slotFhirClient.FindSlotByScheduleIDAndStatus called",
