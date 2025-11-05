@@ -66,7 +66,7 @@ func (s *ServiceRequestStorage) Create(ctx context.Context, input *requests.Crea
 
 	// Build Requester from supplied ResourceType and ID when provided
 	if strings.TrimSpace(input.ResourceType) != "" && strings.TrimSpace(input.ID) != "" {
-		resource.Requester = fhir_dto.Reference{Reference: fmt.Sprintf("%s/%s", input.ResourceType, input.ID)}
+		resource.Requester = &fhir_dto.Reference{Reference: fmt.Sprintf("%s/%s", input.ResourceType, input.ID)}
 	}
 
 	created, err := s.FhirClient.CreateServiceRequest(ctx, resource)

@@ -239,7 +239,7 @@ func (u *usecase) handleAsyncService(ctx context.Context, in *EnqueueInput) (*En
 		AuthoredOn: time.Now().UTC(),
 	}
 	if requesterRef != "" {
-		req.Requester = fhir_dto.Reference{Reference: requesterRef}
+		req.Requester = &fhir_dto.Reference{Reference: requesterRef}
 	}
 
 	out, err := u.serviceRequestFhir.CreateServiceRequest(ctx, req)
