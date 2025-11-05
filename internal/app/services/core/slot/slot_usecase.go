@@ -923,3 +923,60 @@ func (s *SlotUsecase) acquireDayLocksOrdered(ctx context.Context, targets []dayL
 	}
 	return release, nil
 }
+
+// AcquireLocksForAppointment acquires locks for all affected schedule-day pairs
+// when booking an appointment. This prevents race conditions across practitioner roles.
+func (s *SlotUsecase) AcquireLocksForAppointment(
+	ctx context.Context,
+	practitionerRoles []fhir_dto.PractitionerRole,
+	appointmentStart, appointmentEnd time.Time,
+	ttl time.Duration,
+) (func(context.Context), error) {
+	// Build day lock targets for all roles
+	var allTargets []dayLockTarget
+	for _, role := range practitionerRoles {
+		loc, err := role.GetPreferredTimezone()
+		if err != nil {
+			return func(context.Context) {}, fmt.Errorf("failed to get timezone for role %s: %w", role.ID, err)
+		}
+
+		// Find schedule for this role
+		scheds, err := s.schedules.FindScheduleByPractitionerRoleID(ctx, role.ID)
+		if err != nil || len(scheds) == 0 {
+			return func(context.Context) {}, fmt.Errorf("failed to find schedule for role %s: %w", role.ID, err)
+		}
+		if len(scheds) != 1 {
+			return func(context.Context) {}, fmt.Errorf("unexpected schedule count %d for role %s", len(scheds), role.ID)
+		}
+		scheduleID := scheds[0].ID
+
+		// Compute affected days
+		targets := s.dayTargetsForWindow(scheduleID, loc, appointmentStart, appointmentEnd)
+		allTargets = append(allTargets, targets...)
+	}
+
+	// Deduplicate and sort targets
+	seen := make(map[string]struct{})
+	var uniqueTargets []dayLockTarget
+	for _, t := range allTargets {
+		key := fmt.Sprintf("%s|%04d-%02d-%02d|%s", t.ScheduleID, t.Day.Year(), int(t.Day.Month()), t.Day.Day(), t.Location.String())
+		if _, ok := seen[key]; !ok {
+			seen[key] = struct{}{}
+			uniqueTargets = append(uniqueTargets, t)
+		}
+	}
+
+	// Sort for deterministic ordering
+	sort.SliceStable(uniqueTargets, func(i, j int) bool {
+		if uniqueTargets[i].ScheduleID != uniqueTargets[j].ScheduleID {
+			return uniqueTargets[i].ScheduleID < uniqueTargets[j].ScheduleID
+		}
+		if !uniqueTargets[i].Day.Equal(uniqueTargets[j].Day) {
+			return uniqueTargets[i].Day.Before(uniqueTargets[j].Day)
+		}
+		return uniqueTargets[i].Location.String() < uniqueTargets[j].Location.String()
+	})
+
+	// Acquire locks in order
+	return s.acquireDayLocksOrdered(ctx, uniqueTargets, ttl)
+}

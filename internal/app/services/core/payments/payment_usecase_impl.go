@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/services/core/webhook"
+	bundleSvc "konsulin-service/internal/app/services/fhir_spark/bundle"
 	"konsulin-service/internal/app/services/shared/jwtmanager"
 	"konsulin-service/internal/app/services/shared/storage"
 	"konsulin-service/internal/pkg/constvars"
@@ -19,23 +21,31 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 type paymentUsecase struct {
-	TransactionRepository  contracts.TransactionRepository
-	InternalConfig         *config.InternalConfig
-	Log                    *zap.Logger
-	JWTManager             *jwtmanager.JWTManager
-	PatientFhirClient      contracts.PatientFhirClient
-	PractitionerFhirClient contracts.PractitionerFhirClient
-	PersonFhirClient       contracts.PersonFhirClient
-	Storage                *storage.ServiceRequestStorage
-	PaymentGateway         contracts.PaymentGatewayService
+	TransactionRepository      contracts.TransactionRepository
+	InternalConfig             *config.InternalConfig
+	Log                        *zap.Logger
+	JWTManager                 *jwtmanager.JWTManager
+	PatientFhirClient          contracts.PatientFhirClient
+	PractitionerFhirClient     contracts.PractitionerFhirClient
+	PersonFhirClient           contracts.PersonFhirClient
+	Storage                    *storage.ServiceRequestStorage
+	PaymentGateway             contracts.PaymentGatewayService
+	InvoiceFhirClient          contracts.InvoiceFhirClient
+	PractitionerRoleFhirClient contracts.PractitionerRoleFhirClient
+	SlotFhirClient             contracts.SlotFhirClient
+	ScheduleFhirClient         contracts.ScheduleFhirClient
+	BundleFhirClient           bundleSvc.BundleFhirClient
+	SlotUsecase                contracts.SlotUsecaseIface
 }
 
 var (
@@ -52,19 +62,31 @@ func NewPaymentUsecase(
 	personFhirClient contracts.PersonFhirClient,
 	storageService *storage.ServiceRequestStorage,
 	paymentGateway contracts.PaymentGatewayService,
+	invoiceFhirClient contracts.InvoiceFhirClient,
+	practitionerRoleFhirClient contracts.PractitionerRoleFhirClient,
+	slotFhirClient contracts.SlotFhirClient,
+	scheduleFhirClient contracts.ScheduleFhirClient,
+	bundleFhirClient bundleSvc.BundleFhirClient,
+	slotUsecase contracts.SlotUsecaseIface,
 	logger *zap.Logger,
 ) contracts.PaymentUsecase {
 	oncePaymentUsecase.Do(func() {
 		instance := &paymentUsecase{
-			TransactionRepository:  transactionRepository,
-			InternalConfig:         internalConfig,
-			Log:                    logger,
-			JWTManager:             jwtMgr,
-			PatientFhirClient:      patientFhirClient,
-			PractitionerFhirClient: practitionerFhirClient,
-			PersonFhirClient:       personFhirClient,
-			Storage:                storageService,
-			PaymentGateway:         paymentGateway,
+			TransactionRepository:      transactionRepository,
+			InternalConfig:             internalConfig,
+			Log:                        logger,
+			JWTManager:                 jwtMgr,
+			PatientFhirClient:          patientFhirClient,
+			PractitionerFhirClient:     practitionerFhirClient,
+			PersonFhirClient:           personFhirClient,
+			Storage:                    storageService,
+			PaymentGateway:             paymentGateway,
+			InvoiceFhirClient:          invoiceFhirClient,
+			PractitionerRoleFhirClient: practitionerRoleFhirClient,
+			SlotFhirClient:             slotFhirClient,
+			ScheduleFhirClient:         scheduleFhirClient,
+			BundleFhirClient:           bundleFhirClient,
+			SlotUsecase:                slotUsecase,
 		}
 		paymentUsecaseInstance = instance
 	})
@@ -520,3 +542,393 @@ func (uc *paymentUsecase) mapServiceToRequesterResourceType(service string) stri
 		return ""
 	}
 }
+
+func (uc *paymentUsecase) HandleAppointmentPayment(
+	ctx context.Context,
+	req *requests.AppointmentPaymentRequest,
+) (*responses.AppointmentPaymentResponse, error) {
+	if !uc.whitelistAccessByRoles(ctx, []string{constvars.KonsulinRolePatient}) {
+		return nil, exceptions.ErrAuthInvalidRole(errors.New("forbidden access"))
+	}
+
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	uc.Log.Info("paymentUsecase.HandleAppointmentPayment called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
+	if req.UseOnlinePayment {
+		uc.Log.Warn("paymentUsecase.HandleAppointmentPayment online payment requested but not implemented",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
+		return nil, exceptions.BuildNewCustomError(
+			nil,
+			constvars.StatusNotImplemented,
+			constvars.OnlinePaymentNotImplementedMessage,
+			"online payment feature is not yet implemented",
+		)
+	}
+
+	precond, err := uc.ensurePreconditionsValid(ctx, req)
+	if err != nil {
+		uc.Log.Error("paymentUsecase.HandleAppointmentPayment precondition validation failed",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+
+	practitionerID := strings.TrimPrefix(precond.PractitionerRole.Practitioner.Reference, "Practitioner/")
+	allPractitionerRoles, err := uc.PractitionerRoleFhirClient.Search(ctx, contracts.PractitionerRoleSearchParams{
+		PractitionerID: practitionerID,
+	})
+	if err != nil {
+		uc.Log.Error("paymentUsecase.HandleAppointmentPayment failed to fetch practitioner roles",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("practitionerId", practitionerID),
+			zap.Error(err),
+		)
+		return nil, exceptions.BuildNewCustomError(
+			err,
+			constvars.StatusInternalServerError,
+			"failed to fetch practitioner roles",
+			"failed to fetch practitioner roles",
+		)
+	}
+
+	uc.Log.Info("paymentUsecase.HandleAppointmentPayment found practitioner roles",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.Int("role_count", len(allPractitionerRoles)),
+	)
+
+	release, lockErr := uc.SlotUsecase.AcquireLocksForAppointment(
+		ctx,
+		allPractitionerRoles,
+		precond.Slot.Start,
+		precond.Slot.End,
+		30*time.Second,
+	)
+	if lockErr != nil {
+		uc.Log.Error("paymentUsecase.HandleAppointmentPayment failed to acquire locks",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(lockErr),
+		)
+		return nil, exceptions.BuildNewCustomError(
+			lockErr,
+			constvars.StatusConflict,
+			"Unable to acquire necessary locks for booking. Please try again.",
+			"lock acquisition failed",
+		)
+	}
+	defer release(ctx)
+
+	slotID := strings.TrimPrefix(req.SlotID, "Slot/")
+	revalidatedSlot, slotErr := uc.SlotFhirClient.FindSlotByID(ctx, slotID)
+	if slotErr != nil {
+		uc.Log.Error("paymentUsecase.HandleAppointmentPayment failed to re-fetch slot",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(slotErr),
+		)
+		return nil, exceptions.BuildNewCustomError(
+			slotErr,
+			constvars.StatusInternalServerError,
+			"failed to re-fetch slot",
+			"failed to re-fetch slot",
+		)
+	}
+
+	if revalidatedSlot.Status != fhir_dto.SlotStatusFree {
+		uc.Log.Warn("paymentUsecase.HandleAppointmentPayment slot no longer free",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("slotId", slotID),
+			zap.String("status", string(revalidatedSlot.Status)),
+		)
+		return nil, exceptions.BuildNewCustomError(
+			nil,
+			constvars.StatusConflict,
+			constvars.SlotNoLongerAvailableMessage,
+			fmt.Sprintf("slot %s has status %s", slotID, revalidatedSlot.Status),
+		)
+	}
+
+	bundleEntries, appointmentID, paymentNoticeID, err := uc.buildAppointmentPaymentBundle(ctx, req, precond, allPractitionerRoles)
+	if err != nil {
+		uc.Log.Error("paymentUsecase.HandleAppointmentPayment failed to build bundle",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+
+	// atomic bundle transaction
+	bundle := map[string]any{
+		"resourceType": "Bundle",
+		"type":         "transaction",
+		"entry":        bundleEntries,
+	}
+
+	_, bundleErr := uc.BundleFhirClient.PostTransactionBundle(ctx, bundle)
+	if bundleErr != nil {
+		uc.Log.Error("paymentUsecase.HandleAppointmentPayment bundle execution failed",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(bundleErr),
+		)
+		return nil, exceptions.BuildNewCustomError(
+			bundleErr,
+			constvars.StatusInternalServerError,
+			"Failed to process appointment booking. Please try again.",
+			"FHIR bundle transaction failed",
+		)
+	}
+
+	// best effort webhook notification
+	asyncCtx := context.WithoutCancel(ctx)
+	go uc.notifyProviderAsync(asyncCtx, notifyProviderAsyncInput{
+		patient:       precond.Patient,
+		paymentDate:   time.Now().Format(time.RFC3339),
+		timeSlotStart: precond.Slot.Start.Format(time.RFC3339),
+		timeSlotEnd:   precond.Slot.End.Format(time.RFC3339),
+		amount:        formatMoney(precond.Invoice.TotalNet),
+		amountPaid:    "0", // because for now only offline payment is supported
+	})
+
+	uc.Log.Info("paymentUsecase.HandleAppointmentPayment succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("appointmentId", appointmentID),
+	)
+
+	return &responses.AppointmentPaymentResponse{
+		Status:          constvars.StatusCreated,
+		Message:         constvars.AppointmentPaymentSuccessMessage,
+		AppointmentID:   fmt.Sprintf("%s/%s", constvars.ResourceAppointment, appointmentID),
+		SlotID:          req.SlotID,
+		PaymentNoticeID: fmt.Sprintf("%s/%s", constvars.ResourcePaymentNotice, paymentNoticeID),
+	}, nil
+}
+
+func (uc *paymentUsecase) whitelistAccessByRoles(ctx context.Context, allowedRoles []string) bool {
+	roles, _ := ctx.Value(constvars.CONTEXT_FHIR_ROLE).([]string)
+
+	for _, role := range roles {
+		if slices.Contains(allowedRoles, role) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// resourceFetchError is used to preserve which resource failed during concurrent fetches.
+type resourceFetchError struct {
+	resource string
+	err      error
+}
+
+func (e *resourceFetchError) Error() string { return e.resource + ": " + e.err.Error() }
+func (e *resourceFetchError) Unwrap() error { return e.err }
+
+// preconditionData holds all fetched resources needed for appointment payment
+type preconditionData struct {
+	Slot             *fhir_dto.Slot
+	PractitionerRole *fhir_dto.PractitionerRole
+	Practitioner     *fhir_dto.Practitioner
+	Patient          *fhir_dto.Patient
+	Invoice          *fhir_dto.Invoice
+	Schedule         *fhir_dto.Schedule
+}
+
+// ensurePreconditionsValid fetches and validates all required resources
+func (uc *paymentUsecase) ensurePreconditionsValid(
+	ctx context.Context,
+	req *requests.AppointmentPaymentRequest,
+) (*preconditionData, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	uid, _ := ctx.Value(constvars.CONTEXT_UID).(string)
+
+	slotID := strings.TrimPrefix(req.SlotID, "Slot/")
+	practitionerRoleID := strings.TrimPrefix(req.PractitionerRoleID, "PractitionerRole/")
+	patientID := strings.TrimPrefix(req.PatientID, "Patient/")
+	invoiceID := strings.TrimPrefix(req.InvoiceID, "Invoice/")
+
+	// Concurrent fetches with early cancellation on first error
+	g, gctx := errgroup.WithContext(ctx)
+
+	var (
+		fetchedSlot             *fhir_dto.Slot
+		fetchedPractitionerRole *fhir_dto.PractitionerRole
+		fetchedPatient          *fhir_dto.Patient
+		fetchedInvoices         []fhir_dto.Invoice
+		schedules               []fhir_dto.Schedule
+		schedulesErr            error
+	)
+
+	g.Go(func() error {
+		s, err := uc.SlotFhirClient.FindSlotByID(gctx, slotID)
+		if err != nil {
+			return &resourceFetchError{resource: "slot", err: err}
+		}
+		fetchedSlot = s
+		return nil
+	})
+
+	g.Go(func() error {
+		pr, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByID(gctx, practitionerRoleID)
+		if err != nil {
+			return &resourceFetchError{resource: "practitionerRole", err: err}
+		}
+		fetchedPractitionerRole = pr
+		return nil
+	})
+
+	g.Go(func() error {
+		p, err := uc.PatientFhirClient.FindPatientByID(gctx, patientID)
+		if err != nil {
+			return &resourceFetchError{resource: "patient", err: err}
+		}
+		match := false
+		for _, identifier := range p.Identifier {
+			if identifier.Value == uid {
+				match = true
+				break
+			}
+		}
+		if !match {
+			return &resourceFetchError{resource: "patient", err: errors.New("patient ID does not match with the current user")}
+		}
+		fetchedPatient = p
+		return nil
+	})
+
+	g.Go(func() error {
+		inv, err := uc.InvoiceFhirClient.Search(gctx, contracts.InvoiceSearchParams{ID: invoiceID})
+		if err != nil {
+			return &resourceFetchError{resource: "invoice", err: err}
+		}
+		fetchedInvoices = inv
+		return nil
+	})
+
+	g.Go(func() error {
+		sched, err := uc.ScheduleFhirClient.FindScheduleByPractitionerRoleID(gctx, practitionerRoleID)
+		if err != nil {
+			schedulesErr = err
+			return nil
+		}
+		schedules = sched
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		resType := "unknown"
+		unwrapped := err
+		if fe, ok := err.(*resourceFetchError); ok {
+			resType = fe.resource
+			unwrapped = fe.err
+		}
+		uc.Log.Error("paymentUsecase.ensurePreconditionsValid failed to fetch resource",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("resourceType", resType),
+			zap.Error(unwrapped),
+		)
+		return nil, exceptions.BuildNewCustomError(
+			unwrapped,
+			constvars.StatusBadRequest,
+			unwrapped.Error(),
+			"precondition checks failed",
+		)
+	}
+
+	if len(fetchedInvoices) != 1 {
+		return nil, exceptions.BuildNewCustomError(
+			nil,
+			constvars.StatusNotFound,
+			"Invoice not found or multiple invoices found",
+			fmt.Sprintf("invoice %s not found or multiple invoices found", invoiceID),
+		)
+	}
+
+	isInvoiceBelongsToPractitionerRole := slices.ContainsFunc(fetchedInvoices[0].Participant, func(p fhir_dto.InvoiceParticipant) bool {
+		return p.Actor.Reference == req.PractitionerRoleID
+	})
+
+	if !isInvoiceBelongsToPractitionerRole {
+		return nil, exceptions.BuildNewCustomError(
+			nil,
+			constvars.StatusBadRequest,
+			"Invoice does not belong to the specified practitioner role",
+			fmt.Sprintf("invoice %s does not belong to the specified practitioner role", invoiceID),
+		)
+	}
+
+	if fetchedSlot.Status != fhir_dto.SlotStatusFree {
+		return nil, exceptions.BuildNewCustomError(
+			nil,
+			constvars.StatusConflict,
+			constvars.SlotNoLongerAvailableMessage,
+			fmt.Sprintf("slot %s has status %s, expected free", slotID, fetchedSlot.Status),
+		)
+	}
+
+	scheduleRef := fetchedSlot.Schedule.Reference
+	if schedulesErr != nil || len(schedules) == 0 {
+		return nil, exceptions.BuildNewCustomError(
+			schedulesErr,
+			constvars.StatusBadRequest,
+			"Failed to validate slot ownership",
+			"failed to find schedule for practitioner role",
+		)
+	}
+
+	matchFound := false
+	var schedule *fhir_dto.Schedule
+	for i := range schedules {
+		if "Schedule/"+schedules[i].ID == scheduleRef {
+			matchFound = true
+			schedule = &schedules[i]
+			break
+		}
+	}
+
+	if !matchFound {
+		return nil, exceptions.BuildNewCustomError(
+			nil,
+			constvars.StatusBadRequest,
+			"Slot does not belong to the specified practitioner role",
+			fmt.Sprintf("slot schedule %s does not match practitioner role", scheduleRef),
+		)
+	}
+
+	nowLocal := time.Now().In(fetchedSlot.Start.Location())
+	if fetchedSlot.Start.Before(nowLocal) || fetchedSlot.Start.Equal(nowLocal) {
+		return nil, exceptions.BuildNewCustomError(
+			nil,
+			constvars.StatusBadRequest,
+			constvars.SlotInPastMessage,
+			fmt.Sprintf("slot start time %s is not in the future", fetchedSlot.Start.Format(time.RFC3339)),
+		)
+	}
+
+	practitionerRef := fetchedPractitionerRole.Practitioner.Reference
+	practitionerID := strings.TrimPrefix(practitionerRef, "Practitioner/")
+	practitioner, practErr := uc.PractitionerFhirClient.FindPractitionerByID(ctx, practitionerID)
+	if practErr != nil {
+		return nil, exceptions.BuildNewCustomError(
+			practErr,
+			constvars.StatusInternalServerError,
+			"failed to fetch practitioner",
+			"failed to fetch practitioner",
+		)
+	}
+
+	return &preconditionData{
+		Slot:             fetchedSlot,
+		PractitionerRole: fetchedPractitionerRole,
+		Practitioner:     practitioner,
+		Patient:          fetchedPatient,
+		Invoice:          &fetchedInvoices[0],
+		Schedule:         schedule,
+	}, nil
+}
+
+// buildAppointmentPaymentBundle constructs the full transaction bundle entries and
+// returns the entries alongside deterministically generated IDs for Appointment and PaymentNotice.
+// duplicate helper definitions removed (see appointment_payment_helpers.go)
