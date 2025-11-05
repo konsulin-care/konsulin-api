@@ -500,7 +500,7 @@ func (s *SlotUsecase) HandleSetUnavailabilityForMultiplePractitionerRoles(ctx co
 				"start":        fc.start.Format(time.RFC3339),
 				"end":          fc.end.Format(time.RFC3339),
 				"meta": map[string]any{
-					"tag": []map[string]any{{"code": slotTagSystemGenerated}},
+					"tag": []map[string]any{{"code": SlotTagSystemGenerated}},
 				},
 			},
 		})
