@@ -18,6 +18,7 @@ import (
 	"konsulin-service/internal/app/services/core/transactions"
 	"konsulin-service/internal/app/services/core/webhook"
 	bundle "konsulin-service/internal/app/services/fhir_spark/bundle"
+	invoicesFhir "konsulin-service/internal/app/services/fhir_spark/invoices"
 	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/persons"
 	practitionerRoleFhir "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
@@ -245,6 +246,11 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	webhookController := controllers.NewWebhookController(bootstrap.Logger, webhookUsecase, webhookLimiter, bootstrap.InternalConfig)
 	// Initialize payment usecase and controller (inject JWT manager)
 	serviceRequestStorage := storageKonsulin.NewServiceRequestStorage(serviceRequestFhirClient, bootstrap.Logger)
+	invoiceFhirClient := invoicesFhir.NewInvoiceFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+
+	bundleClient := bundle.NewBundleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	slotUsecase := slot.NewSlotUsecase(scheduleClient, lockService, slotClient, practitionerRoleClient, practitionerFhirClient, personFhirClient, bundleClient, bootstrap.InternalConfig, bootstrap.Logger)
+
 	paymentUsecase := payments.NewPaymentUsecase(
 		transactions.NewTransactionPostgresRepository(nil, bootstrap.Logger),
 		bootstrap.InternalConfig,
@@ -254,12 +260,16 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		personFhirClient,
 		serviceRequestStorage,
 		payment_gateway.NewOyService(bootstrap.InternalConfig, bootstrap.Logger),
+		invoiceFhirClient,
+		practitionerRoleClient,
+		slotClient,
+		scheduleClient,
+		bundleClient,
+		slotUsecase,
 		bootstrap.Logger,
 	)
 	paymentController := controllers.NewPaymentController(bootstrap.Logger, paymentUsecase)
 
-	bundleClient := bundle.NewBundleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
-	slotUsecase := slot.NewSlotUsecase(scheduleClient, lockService, slotClient, practitionerRoleClient, practitionerFhirClient, personFhirClient, bundleClient, bootstrap.InternalConfig, bootstrap.Logger)
 	scheduleController := controllers.NewScheduleController(slotUsecase, bootstrap.Logger)
 
 	// Start webhook worker ticker (best-effort lock ensures single execution)
