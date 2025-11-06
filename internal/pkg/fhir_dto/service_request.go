@@ -7,13 +7,13 @@ import (
 
 // CreateServiceRequestInput is the payload sent to FHIR when creating a ServiceRequest.
 type CreateServiceRequestInput struct {
-	ResourceType       string    `json:"resourceType"`
-	Status             string    `json:"status,omitempty"`
-	Intent             string    `json:"intent,omitempty"`
-	Subject            Reference `json:"subject,omitempty"`
-	Requester          Reference `json:"requester,omitempty"`
-	OccurrenceDateTime string    `json:"occurrenceDateTime,omitempty"`
-	AuthoredOn         time.Time `json:"authoredOn,omitempty"`
+	ResourceType       string     `json:"resourceType"`
+	Status             string     `json:"status,omitempty"`
+	Intent             string     `json:"intent,omitempty"`
+	Subject            Reference  `json:"subject,omitempty"`
+	Requester          *Reference `json:"requester,omitempty"`
+	OccurrenceDateTime string     `json:"occurrenceDateTime,omitempty"`
+	AuthoredOn         time.Time  `json:"authoredOn,omitempty"`
 	// instantiatesUri corresponds to FHIR ServiceRequest.instantiatesUri (0..*)
 	// See: https://hl7.org/fhir/R4/servicerequest.html#resource
 	InstantiatesUri []string     `json:"instantiatesUri,omitempty"`

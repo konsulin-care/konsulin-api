@@ -239,7 +239,7 @@ func (u *usecase) handleAsyncService(ctx context.Context, in *EnqueueInput) (*En
 		AuthoredOn: time.Now().UTC(),
 	}
 	if requesterRef != "" {
-		req.Requester = fhir_dto.Reference{Reference: requesterRef}
+		req.Requester = &fhir_dto.Reference{Reference: requesterRef}
 	}
 
 	out, err := u.serviceRequestFhir.CreateServiceRequest(ctx, req)
@@ -258,7 +258,11 @@ func (u *usecase) handleAsyncService(ctx context.Context, in *EnqueueInput) (*En
 	if payload == nil {
 		payload = map[string]interface{}{}
 	}
+
+	callbackURL := strings.TrimRight(u.cfg.App.BaseUrl, "/") + "/api/v1/callback/service-request"
+	payload["url"] = callbackURL
 	payload["serviceRequestId"] = out.ID
+
 	newBody, err := json.Marshal(payload)
 	if err != nil {
 		return nil, exceptions.ErrCannotMarshalJSON(err)
