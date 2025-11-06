@@ -49,6 +49,13 @@ const (
 	// Patient-related messages
 	CreatePatientAppointmentSuccessMessage = "appoinment successfully created for patient"
 
+	// Appointment payment messages
+	AppointmentPaymentSuccessMessage = "Payment successful and appointment confirmed."
+	OnlinePaymentNotImplementedMessage = "Online payment is not yet supported. Please use offline payment."
+	SlotNoLongerAvailableMessage = "Selected slot is no longer available."
+	InvalidReferenceFormatMessage = "Invalid reference format. Expected format: ResourceType/ID"
+	SlotInPastMessage = "Slot start time must be in the future."
+
 	// Auth messages
 	WhatsAppOTPSuccessMessage    = "whatsapp OTP successfully sent to recipient number"
 	LoginSuccessMessage          = "successfully login"

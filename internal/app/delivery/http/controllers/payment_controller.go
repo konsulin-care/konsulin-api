@@ -145,3 +145,62 @@ func (ctrl *PaymentController) CreatePay(w http.ResponseWriter, r *http.Request)
 	)
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.ResponseSuccess, resp)
 }
+
+func (ctrl *PaymentController) HandleAppointmentPayment(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	if !ok || requestID == "" {
+		ctrl.Log.Error("PaymentController.HandleAppointmentPayment requestID not found in context")
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingRequestID(nil))
+		return
+	}
+
+	ctrl.Log.Info("PaymentController.HandleAppointmentPayment called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
+	req := new(requests.AppointmentPaymentRequest)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		ctrl.Log.Error("PaymentController.HandleAppointmentPayment error decoding JSON",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+		return
+	}
+
+	if err := req.Validate(); err != nil {
+		ctrl.Log.Error("PaymentController.HandleAppointmentPayment validation failed",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.BuildNewCustomError(
+			err,
+			constvars.StatusBadRequest,
+			err.Error(),
+			"validation error",
+		))
+		return
+	}
+
+	resp, err := ctrl.PaymentUsecase.HandleAppointmentPayment(r.Context(), req)
+	if err != nil {
+		ctrl.Log.Error("PaymentController.HandleAppointmentPayment error from usecase",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
+			zap.Error(err),
+		)
+		if err == context.DeadlineExceeded {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	ctrl.Log.Info("PaymentController.HandleAppointmentPayment succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("appointmentId", resp.AppointmentID),
+	)
+	utils.BuildSuccessResponse(w, constvars.StatusCreated, constvars.AppointmentPaymentSuccessMessage, resp)
+}
