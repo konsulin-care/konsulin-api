@@ -223,16 +223,7 @@ func (uc *paymentUsecase) XenditInvoiceCallback(ctx context.Context, header *req
 		return nil
 	}
 
-	// 3) Early exit for EXPIRED status
-	if body.Status == requests.XenditInvoiceStatusExpired {
-		uc.Log.Info("paymentUsecase.XenditInvoiceCallback expired status; ignoring",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("invoice_id", body.ID),
-		)
-		return nil
-	}
-
-	// 4) Verify payment status with Xendit (only for PAID status)
+	// 3) Verify payment status with Xendit (only for PAID status)
 	if body.Status == requests.XenditInvoiceStatusPaid {
 		if err := uc.verifyPaymentStatus(ctx, body.ID, body.Status); err != nil {
 			uc.Log.Error("paymentUsecase.XenditInvoiceCallback verification failed",
@@ -250,56 +241,190 @@ func (uc *paymentUsecase) XenditInvoiceCallback(ctx context.Context, header *req
 		}
 	}
 
-	// 5) Parse external_id into id-version
-	id, version, parseErr := parsePartnerTrxID(body.ExternalID)
-	if parseErr != nil {
-		uc.Log.Error("paymentUsecase.XenditInvoiceCallback invalid external_id format",
+	// 4) Parse external_id prefix and route to appropriate handler
+	parts := strings.Split(body.ExternalID, ":")
+	if len(parts) < 2 {
+		uc.Log.Error("paymentUsecase.XenditInvoiceCallback invalid external_id format: missing prefix",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String("external_id", body.ExternalID),
+		)
+		return nil
+	}
+	prefix := parts[0]
+
+	switch prefix {
+	case string(constvars.AppointmentPaymentService):
+		return uc.handleAppointmentPaymentNotification(ctx, body.ExternalID, body.Status)
+	case string(constvars.WebhookPaymentService):
+		return uc.handleWebhookPaymentNotification(ctx, body.ExternalID, body.Status)
+	default:
+		uc.Log.Error("paymentUsecase.XenditInvoiceCallback unknown payment service type",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("prefix", prefix),
+			zap.String("external_id", body.ExternalID),
+		)
+		return nil
+	}
+}
+
+// handleWebhookPaymentNotification processes webhook service payment notifications
+func (uc *paymentUsecase) handleWebhookPaymentNotification(ctx context.Context, externalID string, status requests.XenditInvoiceStatus) error {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+
+	if status == requests.XenditInvoiceStatusExpired {
+		uc.Log.Info("paymentUsecase.handleWebhookPaymentNotification expired status; ignoring",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("external_id", externalID),
+		)
+		return nil
+	}
+
+	parts := strings.Split(externalID, ":")
+	if len(parts) < 2 {
+		uc.Log.Error("paymentUsecase.handleWebhookPaymentNotification invalid external_id format",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("external_id", externalID),
+		)
+		return nil
+	}
+	partnerTrxID := parts[1]
+
+	id, version, parseErr := parsePartnerTrxID(partnerTrxID)
+	if parseErr != nil {
+		uc.Log.Error("paymentUsecase.handleWebhookPaymentNotification invalid partner_trx_id format",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("partner_trx_id", partnerTrxID),
 			zap.Error(parseErr),
 		)
 		return nil
 	}
 
-	// 6) Fetch ServiceRequest specific version
 	sr, err := uc.Storage.FhirClient.GetServiceRequestByIDAndVersion(ctx, id, version)
 	if err != nil {
-		uc.Log.Error("paymentUsecase.XenditInvoiceCallback failed fetching ServiceRequest",
+		uc.Log.Error("paymentUsecase.handleWebhookPaymentNotification failed fetching ServiceRequest",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
 		return nil
 	}
 
-	// 7) Parse note.text -> NoteStorage
 	note, err := extractNoteStorage(sr)
 	if err != nil {
-		uc.Log.Error("paymentUsecase.XenditInvoiceCallback failed parsing stored note",
+		uc.Log.Error("paymentUsecase.handleWebhookPaymentNotification failed parsing stored note",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
 		return nil
 	}
 
-	// 8) Resolve instantiatesUri (prefer FHIR field, fallback to legacy note) and POST with RawBody
 	uri, err := resolveInstantiatesURI(sr, note)
 	if err != nil {
-		uc.Log.Error("paymentUsecase.XenditInvoiceCallback failed resolving instantiatesUri",
+		uc.Log.Error("paymentUsecase.handleWebhookPaymentNotification failed resolving instantiatesUri",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
 		return nil
 	}
 	if err := uc.callInstantiateURI(ctx, uri, note.RawBody); err != nil {
-		uc.Log.Error("paymentUsecase.XenditInvoiceCallback failed calling instantiate URI",
+		uc.Log.Error("paymentUsecase.handleWebhookPaymentNotification failed calling instantiate URI",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
 		return nil
 	}
 
-	uc.Log.Info("paymentUsecase.XenditInvoiceCallback completed successfully",
+	uc.Log.Info("paymentUsecase.handleWebhookPaymentNotification completed successfully",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+	return nil
+}
+
+// handleAppointmentPaymentNotification processes appointment payment notifications
+func (uc *paymentUsecase) handleAppointmentPaymentNotification(ctx context.Context, externalID string, status requests.XenditInvoiceStatus) error {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+
+	slotID, err := parseAppointmentExternalID(externalID)
+	if err != nil {
+		uc.Log.Error("paymentUsecase.handleAppointmentPaymentNotification failed parsing external_id",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("external_id", externalID),
+			zap.Error(err),
+		)
+		return exceptions.BuildNewCustomError(
+			err,
+			constvars.StatusBadRequest,
+			"Invalid external_id format",
+			"failed to parse appointment external_id",
+		)
+	}
+
+	slot, err := uc.SlotFhirClient.FindSlotByID(ctx, slotID)
+	if err != nil {
+		uc.Log.Error("paymentUsecase.handleAppointmentPaymentNotification failed fetching slot",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("slotId", slotID),
+			zap.Error(err),
+		)
+		return exceptions.BuildNewCustomError(
+			err,
+			constvars.StatusNotFound,
+			"Slot not found",
+			fmt.Sprintf("failed to fetch slot %s", slotID),
+		)
+	}
+
+	var targetStatus fhir_dto.SlotStatus
+	switch status {
+	case requests.XenditInvoiceStatusPaid, requests.XenditInvoiceStatusSettled:
+		targetStatus = fhir_dto.SlotStatusBusyUnavailable
+	case requests.XenditInvoiceStatusExpired:
+		targetStatus = fhir_dto.SlotStatusFree
+	default:
+		uc.Log.Info("paymentUsecase.handleAppointmentPaymentNotification unsupported status",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("status", string(status)),
+		)
+		return exceptions.BuildNewCustomError(
+			fmt.Errorf("unsupported status"),
+			constvars.StatusBadRequest,
+			"Unsupported status",
+			fmt.Sprintf("unsupported status: %s", string(status)),
+		)
+	}
+
+	// Check if slot status already matches target (idempotency)
+	if slot.Status == targetStatus {
+		uc.Log.Info("paymentUsecase.handleAppointmentPaymentNotification slot already in target status",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("slotId", slotID),
+			zap.String("status", string(slot.Status)),
+		)
+		return nil
+	}
+
+	oldStatus := slot.Status
+
+	slot.Status = targetStatus
+	updatedSlot, err := uc.SlotFhirClient.UpdateSlot(ctx, slotID, slot)
+	if err != nil {
+		uc.Log.Error("paymentUsecase.handleAppointmentPaymentNotification failed updating slot",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("slotId", slotID),
+			zap.Error(err),
+		)
+		return exceptions.BuildNewCustomError(
+			err,
+			constvars.StatusInternalServerError,
+			"Failed to update slot status",
+			"failed to update slot status",
+		)
+	}
+
+	uc.Log.Info("paymentUsecase.handleAppointmentPaymentNotification completed successfully",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("slotId", slotID),
+		zap.String("oldStatus", string(oldStatus)),
+		zap.String("newStatus", string(updatedSlot.Status)),
 	)
 	return nil
 }
@@ -429,7 +554,8 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 	desc := fmt.Sprintf("pembayaran layanan %s dari konsulin sejumlah %d item", req.Service, req.TotalItem)
 	durationSeconds := float32(uc.InternalConfig.App.PaymentExpiredTimeInMinutes * 60)
 
-	invoiceReq := xinvoice.NewCreateInvoiceRequest(partnerTrxID, float64(amount))
+	externalID := fmt.Sprintf("%s:%s", constvars.WebhookPaymentService, partnerTrxID)
+	invoiceReq := xinvoice.NewCreateInvoiceRequest(externalID, float64(amount))
 	invoiceReq.SetCurrency(constvars.CurrencyIndonesianRupiah)
 	invoiceReq.SetDescription(desc)
 	invoiceReq.SetSuccessRedirectUrl(uc.InternalConfig.App.FrontendDomain)
@@ -587,6 +713,22 @@ func parsePartnerTrxID(partnerTrxID string) (string, string, error) {
 		return "", "", fmt.Errorf("invalid partner_trx_id components")
 	}
 	return id, version, nil
+}
+
+func parseAppointmentExternalID(externalID string) (string, error) {
+	parts := strings.Split(externalID, ":")
+	if len(parts) != 2 {
+		return "", fmt.Errorf("invalid appointment external_id format: expected prefix:payload")
+	}
+	payload := parts[1]
+	if !strings.HasPrefix(payload, constvars.ResourceAppointment+"-") {
+		return "", fmt.Errorf("invalid appointment external_id format: payload must start with %s-", constvars.ResourceAppointment)
+	}
+	slotID := strings.TrimPrefix(payload, constvars.ResourceAppointment+"-")
+	if strings.TrimSpace(slotID) == "" {
+		return "", fmt.Errorf("invalid appointment external_id format: slot ID is empty")
+	}
+	return slotID, nil
 }
 
 func extractNoteStorage(sr *fhir_dto.GetServiceRequestOutput) (*requests.NoteStorage, error) {
