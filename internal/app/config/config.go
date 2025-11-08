@@ -147,6 +147,9 @@ func loadInternalConfigWithEnv() *InternalConfig {
 			JWTAlg:               utils.GetEnvString("HOOK_JWT_ALG", "ES256"),
 			JWTHookKey:           utils.GetEnvString("JWT_HOOK_KEY", ""),
 		},
+		Xendit: AppXendit{
+			APIKey: utils.GetEnvString("APP_XENDIT_API_KEY", ""),
+		},
 	}
 
 	// this is a safe guard to ensure that no base price is left unset
