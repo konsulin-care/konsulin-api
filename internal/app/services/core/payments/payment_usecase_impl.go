@@ -191,6 +191,161 @@ func (uc *paymentUsecase) PaymentRoutingCallback(ctx context.Context, request *r
 	return nil
 }
 
+func (uc *paymentUsecase) XenditInvoiceCallback(ctx context.Context, header *requests.XenditInvoiceCallbackHeader, body *requests.XenditInvoiceCallbackBody) error {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	uc.Log.Info("paymentUsecase.XenditInvoiceCallback called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("invoice_id", body.ID),
+		zap.String("external_id", body.ExternalID),
+		zap.String("status", string(body.Status)),
+	)
+
+	// 1) Validate callback token
+	if header.CallbackToken != uc.InternalConfig.Xendit.WebhookToken {
+		uc.Log.Error("paymentUsecase.XenditInvoiceCallback invalid callback token",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
+		return exceptions.BuildNewCustomError(
+			fmt.Errorf("invalid callback token"),
+			constvars.StatusUnauthorized,
+			"Invalid callback token",
+			"x-callback-token mismatch",
+		)
+	}
+
+	// 2) Early exit for PENDING status
+	if body.Status == requests.XenditInvoiceStatusPending {
+		uc.Log.Info("paymentUsecase.XenditInvoiceCallback pending status; ignoring",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("invoice_id", body.ID),
+		)
+		return nil
+	}
+
+	// 3) Early exit for EXPIRED status
+	if body.Status == requests.XenditInvoiceStatusExpired {
+		uc.Log.Info("paymentUsecase.XenditInvoiceCallback expired status; ignoring",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("invoice_id", body.ID),
+		)
+		return nil
+	}
+
+	// 4) Verify payment status with Xendit (only for PAID status)
+	if body.Status == requests.XenditInvoiceStatusPaid {
+		if err := uc.verifyPaymentStatus(ctx, body.ID, body.Status); err != nil {
+			uc.Log.Error("paymentUsecase.XenditInvoiceCallback verification failed",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.String("invoice_id", body.ID),
+				zap.Error(err),
+			)
+			// Return 500 to trigger Xendit retry
+			return exceptions.BuildNewCustomError(
+				err,
+				constvars.StatusInternalServerError,
+				"Payment verification failed",
+				"failed to verify payment status with Xendit",
+			)
+		}
+	}
+
+	// 5) Parse external_id into id-version
+	id, version, parseErr := parsePartnerTrxID(body.ExternalID)
+	if parseErr != nil {
+		uc.Log.Error("paymentUsecase.XenditInvoiceCallback invalid external_id format",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("external_id", body.ExternalID),
+			zap.Error(parseErr),
+		)
+		return nil
+	}
+
+	// 6) Fetch ServiceRequest specific version
+	sr, err := uc.Storage.FhirClient.GetServiceRequestByIDAndVersion(ctx, id, version)
+	if err != nil {
+		uc.Log.Error("paymentUsecase.XenditInvoiceCallback failed fetching ServiceRequest",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil
+	}
+
+	// 7) Parse note.text -> NoteStorage
+	note, err := extractNoteStorage(sr)
+	if err != nil {
+		uc.Log.Error("paymentUsecase.XenditInvoiceCallback failed parsing stored note",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil
+	}
+
+	// 8) Resolve instantiatesUri (prefer FHIR field, fallback to legacy note) and POST with RawBody
+	uri, err := resolveInstantiatesURI(sr, note)
+	if err != nil {
+		uc.Log.Error("paymentUsecase.XenditInvoiceCallback failed resolving instantiatesUri",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil
+	}
+	if err := uc.callInstantiateURI(ctx, uri, note.RawBody); err != nil {
+		uc.Log.Error("paymentUsecase.XenditInvoiceCallback failed calling instantiate URI",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil
+	}
+
+	uc.Log.Info("paymentUsecase.XenditInvoiceCallback completed successfully",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+	return nil
+}
+
+// verifyPaymentStatus fetches the invoice from Xendit and verifies the status matches the webhook status
+func (uc *paymentUsecase) verifyPaymentStatus(ctx context.Context, invoiceID string, expectedStatus requests.XenditInvoiceStatus) error {
+	ctxTimeout, cancel := context.WithTimeout(ctx, time.Duration(uc.InternalConfig.App.PaymentGatewayRequestTimeoutInSeconds)*time.Second)
+	defer cancel()
+
+	if uc.XenditClient == nil {
+		return fmt.Errorf("xendit client not initialized")
+	}
+
+	apiReq := uc.XenditClient.InvoiceApi.GetInvoiceById(ctxTimeout, invoiceID)
+	inv, httpResp, xenditErr := apiReq.Execute()
+	if xenditErr != nil {
+		return mapXenditError(xenditErr, httpResp)
+	}
+
+	if expectedStatus == requests.XenditInvoiceStatus(inv.GetStatus()) {
+		return nil
+	}
+
+	invoiceStatus := requests.XenditInvoiceStatus(inv.GetStatus())
+
+	switch expectedStatus {
+	case requests.XenditInvoiceStatusExpired:
+		if invoiceStatus == requests.XenditInvoiceStatusExpired {
+			return nil
+		}
+	case requests.XenditInvoiceStatusPaid:
+		// when expecting status PAID, the fetched invoice on xendit
+		// can be either PAID or SETTLED and both should be valid
+		// in this case behave as if the payment has been paid
+		if invoiceStatus == requests.XenditInvoiceStatusPaid ||
+			invoiceStatus == requests.XenditInvoiceStatusSettled {
+			return nil
+		}
+	case requests.XenditInvoiceStatusSettled:
+		if invoiceStatus == requests.XenditInvoiceStatusSettled {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("invalid expected status")
+}
+
 func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePayRequest) (*responses.CreatePayResponse, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	uc.Log.Info("paymentUsecase.CreatePay called",
