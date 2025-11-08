@@ -376,6 +376,68 @@ func (c *slotFhirClient) CreateSlot(ctx context.Context, request *fhir_dto.Slot)
 	return slotFhir, nil
 }
 
+func (c *slotFhirClient) UpdateSlot(ctx context.Context, id string, slot *fhir_dto.Slot) (*fhir_dto.Slot, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	c.Log.Info("slotFhirClient.UpdateSlot called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("id", id),
+	)
+
+	requestJSON, err := json.Marshal(slot)
+	if err != nil {
+		c.Log.Error("slotFhirClient.UpdateSlot error marshaling JSON",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrCannotMarshalJSON(err)
+	}
+
+	url := c.BaseUrl + "/" + id
+	req, err := http.NewRequestWithContext(ctx, constvars.MethodPut, url, bytes.NewBuffer(requestJSON))
+	if err != nil {
+		c.Log.Error("slotFhirClient.UpdateSlot error creating HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrCreateHTTPRequest(err)
+	}
+	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		c.Log.Error("slotFhirClient.UpdateSlot error sending HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrSendHTTPRequest(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != constvars.StatusOK && resp.StatusCode != constvars.StatusCreated {
+		c.Log.Error("slotFhirClient.UpdateSlot received error status",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Int("status_code", resp.StatusCode),
+		)
+		return nil, exceptions.ErrUpdateFHIRResource(nil, constvars.ResourceSlot)
+	}
+
+	out := new(fhir_dto.Slot)
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		c.Log.Error("slotFhirClient.UpdateSlot error decoding response",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourceSlot)
+	}
+
+	c.Log.Info("slotFhirClient.UpdateSlot succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("slot_id", out.ID),
+	)
+	return out, nil
+}
+
 func (c *slotFhirClient) FindSlotByScheduleAndTimeRange(ctx context.Context, scheduleID string, startTime, endTime time.Time) ([]fhir_dto.Slot, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	c.Log.Info("slotFhirClient.FindSlotByScheduleAndTimeRange called",
