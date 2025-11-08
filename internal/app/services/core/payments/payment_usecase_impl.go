@@ -324,21 +324,12 @@ func (uc *paymentUsecase) verifyPaymentStatus(ctx context.Context, invoiceID str
 
 	invoiceStatus := requests.XenditInvoiceStatus(inv.GetStatus())
 
-	switch expectedStatus {
-	case requests.XenditInvoiceStatusExpired:
-		if invoiceStatus == requests.XenditInvoiceStatusExpired {
-			return nil
-		}
-	case requests.XenditInvoiceStatusPaid:
+	if expectedStatus == requests.XenditInvoiceStatusPaid {
 		// when expecting status PAID, the fetched invoice on xendit
 		// can be either PAID or SETTLED and both should be valid
 		// in this case behave as if the payment has been paid
 		if invoiceStatus == requests.XenditInvoiceStatusPaid ||
 			invoiceStatus == requests.XenditInvoiceStatusSettled {
-			return nil
-		}
-	case requests.XenditInvoiceStatusSettled:
-		if invoiceStatus == requests.XenditInvoiceStatusSettled {
 			return nil
 		}
 	}
