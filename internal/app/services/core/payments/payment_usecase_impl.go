@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"path"
@@ -502,6 +503,79 @@ func mapXenditError(err *common.XenditSdkError, httpResp *http.Response) *except
 	return exceptions.BuildNewCustomError(wrappedErr, statusCode, rawMsg, devMsg)
 }
 
+// createXenditInvoiceForAppointment creates a Xendit invoice for appointment payment
+func (uc *paymentUsecase) createXenditInvoiceForAppointment(
+	ctx context.Context,
+	req *requests.AppointmentPaymentRequest,
+	precond *preconditionData,
+) (string, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+
+	slotID := strings.TrimPrefix(req.SlotID, "Slot/")
+	externalID := fmt.Sprintf("%s:%s-%s", constvars.AppointmentPaymentService, constvars.ResourceAppointment, slotID)
+
+	dateOnly := precond.Slot.Start.Format(time.DateOnly)
+	startTime := precond.Slot.Start.Format(time.TimeOnly)
+	endTime := precond.Slot.End.Format(time.TimeOnly)
+	description := fmt.Sprintf("Pembayaran janji temu pada tanggal %s pukul %s - %s", dateOnly, startTime, endTime)
+
+	amount := int(math.Ceil(precond.Invoice.TotalNet.Value))
+
+	patientEmails := precond.Patient.GetEmailAddresses()
+	var patientEmail string
+	if len(patientEmails) > 0 {
+		patientEmail = patientEmails[0]
+	}
+	patientName := precond.Patient.FullName()
+
+	durationSeconds := float32(uc.InternalConfig.App.PaymentExpiredTimeInMinutes * 60)
+
+	invoiceReq := xinvoice.NewCreateInvoiceRequest(externalID, float64(amount))
+	invoiceReq.SetCurrency(constvars.CurrencyIndonesianRupiah)
+	invoiceReq.SetDescription(description)
+	invoiceReq.SetSuccessRedirectUrl(uc.InternalConfig.App.FrontendDomain)
+	invoiceReq.SetFailureRedirectUrl(uc.InternalConfig.App.FrontendDomain)
+	if durationSeconds > 0 {
+		invoiceReq.SetInvoiceDuration(durationSeconds)
+	}
+
+	customer := xinvoice.NewCustomerObject()
+	customer.SetGivenNames(patientName)
+	customer.SetEmail(patientEmail)
+	invoiceReq.SetCustomer(*customer)
+
+	notif := xinvoice.NewNotificationPreference()
+	notif.SetInvoiceCreated([]xinvoice.NotificationChannel{xinvoice.NOTIFICATIONCHANNEL_EMAIL})
+	notif.SetInvoicePaid([]xinvoice.NotificationChannel{xinvoice.NOTIFICATIONCHANNEL_EMAIL})
+	invoiceReq.SetCustomerNotificationPreference(*notif)
+
+	item := xinvoice.NewInvoiceItem("Pembayaran Janji Temu", float32(amount), float32(1))
+	invoiceReq.SetItems([]xinvoice.InvoiceItem{*item})
+
+	ctxTimeout, cancel := context.WithTimeout(ctx, time.Duration(uc.InternalConfig.App.PaymentGatewayRequestTimeoutInSeconds)*time.Second)
+	defer cancel()
+
+	apiReq := uc.XenditClient.InvoiceApi.CreateInvoice(ctxTimeout).CreateInvoiceRequest(*invoiceReq)
+	inv, httpResp, xenditErr := apiReq.Execute()
+	if xenditErr != nil {
+		uc.Log.Error("paymentUsecase.createXenditInvoiceForAppointment failed",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("slotId", slotID),
+			zap.Error(xenditErr),
+		)
+		return "", mapXenditError(xenditErr, httpResp)
+	}
+
+	uc.Log.Info("paymentUsecase.createXenditInvoiceForAppointment succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("slotId", slotID),
+		zap.String("invoiceId", inv.GetId()),
+		zap.String("externalId", externalID),
+	)
+
+	return inv.GetInvoiceUrl(), nil
+}
+
 func parsePartnerTrxID(partnerTrxID string) (string, string, error) {
 	parts := strings.Split(partnerTrxID, "-")
 	if len(parts) < 2 {
@@ -743,18 +817,6 @@ func (uc *paymentUsecase) HandleAppointmentPayment(
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
 
-	if req.UseOnlinePayment {
-		uc.Log.Warn("paymentUsecase.HandleAppointmentPayment online payment requested but not implemented",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-		)
-		return nil, exceptions.BuildNewCustomError(
-			nil,
-			constvars.StatusNotImplemented,
-			constvars.OnlinePaymentNotImplementedMessage,
-			"online payment feature is not yet implemented",
-		)
-	}
-
 	precond, err := uc.ensurePreconditionsValid(ctx, req)
 	if err != nil {
 		uc.Log.Error("paymentUsecase.HandleAppointmentPayment precondition validation failed",
@@ -837,6 +899,20 @@ func (uc *paymentUsecase) HandleAppointmentPayment(
 		)
 	}
 
+	// Create Xendit invoice for online payment before bundle transaction
+	var paymentURL string
+	if req.UseOnlinePayment {
+		url, xenditErr := uc.createXenditInvoiceForAppointment(ctx, req, precond)
+		if xenditErr != nil {
+			uc.Log.Error("paymentUsecase.HandleAppointmentPayment failed to create Xendit invoice",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(xenditErr),
+			)
+			return nil, xenditErr
+		}
+		paymentURL = url
+	}
+
 	bundleEntries, appointmentID, paymentNoticeID, err := uc.buildAppointmentPaymentBundle(ctx, req, precond, allPractitionerRoles)
 	if err != nil {
 		uc.Log.Error("paymentUsecase.HandleAppointmentPayment failed to build bundle",
@@ -883,13 +959,20 @@ func (uc *paymentUsecase) HandleAppointmentPayment(
 		zap.String("appointmentId", appointmentID),
 	)
 
-	return &responses.AppointmentPaymentResponse{
+	response := &responses.AppointmentPaymentResponse{
 		Status:          constvars.StatusCreated,
 		Message:         constvars.AppointmentPaymentSuccessMessage,
 		AppointmentID:   fmt.Sprintf("%s/%s", constvars.ResourceAppointment, appointmentID),
 		SlotID:          req.SlotID,
 		PaymentNoticeID: fmt.Sprintf("%s/%s", constvars.ResourcePaymentNotice, paymentNoticeID),
-	}, nil
+	}
+
+	// Only populate PaymentURL for online payments
+	if req.UseOnlinePayment {
+		response.PaymentURL = paymentURL
+	}
+
+	return response, nil
 }
 
 func (uc *paymentUsecase) whitelistAccessByRoles(ctx context.Context, allowedRoles []string) bool {
@@ -1043,6 +1126,15 @@ func (uc *paymentUsecase) ensurePreconditionsValid(
 			constvars.StatusBadRequest,
 			"Invoice does not belong to the specified practitioner role",
 			fmt.Sprintf("invoice %s does not belong to the specified practitioner role", invoiceID),
+		)
+	}
+
+	if fetchedInvoices[0].TotalNet == nil || fetchedInvoices[0].TotalNet.Value <= 0 {
+		return nil, exceptions.BuildNewCustomError(
+			nil,
+			constvars.StatusPreconditionFailed,
+			"Invoice total amount must be greater than zero",
+			fmt.Sprintf("invoice %s has invalid totalNet value", invoiceID),
 		)
 	}
 
