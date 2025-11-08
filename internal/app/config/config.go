@@ -148,7 +148,8 @@ func loadInternalConfigWithEnv() *InternalConfig {
 			JWTHookKey:           utils.GetEnvString("JWT_HOOK_KEY", ""),
 		},
 		Xendit: AppXendit{
-			APIKey: utils.GetEnvString("APP_XENDIT_API_KEY", ""),
+			APIKey:       utils.GetEnvString("APP_XENDIT_API_KEY", ""),
+			WebhookToken: utils.GetEnvString("APP_XENDIT_WEBHOOK_TOKEN", ""),
 		},
 	}
 
