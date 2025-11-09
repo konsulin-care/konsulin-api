@@ -17,6 +17,7 @@ type SlotFhirClient interface {
 	FindSlotByScheduleIDAndStatus(ctx context.Context, scheduleID, status string) ([]fhir_dto.Slot, error)
 	FindSlotByID(ctx context.Context, slotID string) (*fhir_dto.Slot, error)
 	CreateSlot(ctx context.Context, request *fhir_dto.Slot) (*fhir_dto.Slot, error)
+	UpdateSlot(ctx context.Context, id string, slot *fhir_dto.Slot) (*fhir_dto.Slot, error)
 	// New generic finder with search params (start/end/status). Caller provides comparator in values.
 	FindSlotsByScheduleWithQuery(ctx context.Context, scheduleID string, params SlotSearchParams) ([]fhir_dto.Slot, error)
 	// Post transaction bundle (creates/deletes)
@@ -117,4 +118,5 @@ type SlotUsecaseIface interface {
 	HandleAutomatedSlotGeneration(ctx context.Context, practitionerRole fhir_dto.PractitionerRole)
 	HandleSetUnavailabilityForMultiplePractitionerRoles(ctx context.Context, input SetUnavailabilityForMultiplePractitionerRolesInput) (*SetUnavailableOutcome, error)
 	AcquireLocksForAppointment(ctx context.Context, practitionerRoles []fhir_dto.PractitionerRole, appointmentStart, appointmentEnd time.Time, ttl time.Duration) (func(context.Context), error)
+	AcquireLocksForSlot(ctx context.Context, slot *fhir_dto.Slot, ttl time.Duration) (func(context.Context), error)
 }

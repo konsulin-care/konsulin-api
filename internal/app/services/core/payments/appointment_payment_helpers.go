@@ -126,7 +126,12 @@ func (uc *paymentUsecase) buildAppointmentPaymentBundle(
 		})
 	}
 
-	precond.Slot.Status = fhir_dto.SlotStatusBusyUnavailable
+	// Set slot status based on payment type
+	if req.UseOnlinePayment {
+		precond.Slot.Status = fhir_dto.SlotStatusBusyTentative
+	} else {
+		precond.Slot.Status = fhir_dto.SlotStatusBusyUnavailable
+	}
 	entries = append(entries, map[string]any{
 		"request": map[string]any{
 			"method": "PUT",
@@ -136,6 +141,10 @@ func (uc *paymentUsecase) buildAppointmentPaymentBundle(
 	})
 
 	appointmentID := uuid.New().String()
+	appointmentTypeText := "Offline"
+	if req.UseOnlinePayment {
+		appointmentTypeText = "Online"
+	}
 	appointment := fhir_dto.Appointment{
 		ResourceType: constvars.ResourceAppointment,
 		ID:           appointmentID,
@@ -144,7 +153,7 @@ func (uc *paymentUsecase) buildAppointmentPaymentBundle(
 		},
 		Status: constvars.FhirAppointmentStatusBooked,
 		AppointmentType: fhir_dto.CodeableConcept{
-			Text: "Offline",
+			Text: appointmentTypeText,
 		},
 		Start:   precond.Slot.Start,
 		End:     precond.Slot.End,

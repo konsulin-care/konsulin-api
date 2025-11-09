@@ -6,5 +6,6 @@ type AppointmentPaymentResponse struct {
 	AppointmentID   string `json:"appointment"`
 	SlotID          string `json:"slot"`
 	PaymentNoticeID string `json:"paymentNotice"`
+	PaymentURL      string `json:"paymentUrl,omitempty"`
 }
 
