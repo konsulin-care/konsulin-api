@@ -1,6 +1,8 @@
 package fhir_dto
 
-import "strings"
+import (
+	"strings"
+)
 
 type Patient struct {
 	ID           string         `json:"id,omitempty"`
@@ -19,6 +21,16 @@ type Patient struct {
 // Preference: official > usual > first; prefer Text, else Prefix+Given+Family.
 func (p Patient) FullName() string {
 	if len(p.Name) == 0 {
+		emails := p.GetEmailAddresses()
+		for _, email := range emails {
+			if strings.Contains(email, "@") {
+				firstPart := strings.Split(email, "@")[0]
+				if firstPart != "" {
+					return firstPart
+				}
+			}
+		}
+
 		return ""
 	}
 	chosen := p.Name[0]
