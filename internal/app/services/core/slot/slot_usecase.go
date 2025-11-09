@@ -11,6 +11,7 @@ import (
 	"konsulin-service/internal/pkg/fhir_dto"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	bundleSvc "konsulin-service/internal/app/services/fhir_spark/bundle"
@@ -979,4 +980,46 @@ func (s *SlotUsecase) AcquireLocksForAppointment(
 
 	// Acquire locks in order
 	return s.acquireDayLocksOrdered(ctx, uniqueTargets, ttl)
+}
+
+// AcquireLocksForSlot acquires locks for all affected schedule-day pairs
+// for a given slot. This prevents race conditions when mutating slot resources.
+// The function extracts the schedule ID and timezone from the slot automatically.
+func (s *SlotUsecase) AcquireLocksForSlot(
+	ctx context.Context,
+	slot *fhir_dto.Slot,
+	ttl time.Duration,
+) (func(context.Context), error) {
+	if slot == nil {
+		return func(context.Context) {}, fmt.Errorf("slot cannot be nil")
+	}
+
+	// Extract schedule ID from Schedule.Reference (e.g., "Schedule/123" -> "123")
+	scheduleRef := slot.Schedule.Reference
+	if scheduleRef == "" {
+		return func(context.Context) {}, fmt.Errorf("slot has no schedule reference")
+	}
+
+	scheduleID := strings.TrimPrefix(scheduleRef, "Schedule/")
+	if scheduleID == "" {
+		return func(context.Context) {}, fmt.Errorf("invalid schedule reference format: %s", scheduleRef)
+	}
+
+	// Extract timezone from slot start time
+	if slot.Start.IsZero() {
+		return func(context.Context) {}, fmt.Errorf("slot start time is zero")
+	}
+	loc := slot.Start.Location()
+	if loc == nil {
+		return func(context.Context) {}, fmt.Errorf("slot start time has no location/timezone")
+	}
+
+	// Compute affected days for the slot's time window
+	targets := s.dayTargetsForWindow(scheduleID, loc, slot.Start, slot.End)
+	if len(targets) == 0 {
+		return func(context.Context) {}, fmt.Errorf("no day targets computed for slot time window")
+	}
+
+	// Acquire locks in order
+	return s.acquireDayLocksOrdered(ctx, targets, ttl)
 }

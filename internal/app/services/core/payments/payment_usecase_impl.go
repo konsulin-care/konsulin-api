@@ -373,6 +373,39 @@ func (uc *paymentUsecase) handleAppointmentPaymentNotification(ctx context.Conte
 		)
 	}
 
+	// Acquire locks before mutation to prevent race conditions and TOCTOU
+	release, lockErr := uc.SlotUsecase.AcquireLocksForSlot(ctx, slot, 30*time.Second)
+	if lockErr != nil {
+		uc.Log.Error("paymentUsecase.handleAppointmentPaymentNotification failed to acquire locks",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("slotId", slotID),
+			zap.Error(lockErr),
+		)
+		return exceptions.BuildNewCustomError(
+			lockErr,
+			constvars.StatusConflict,
+			"Unable to acquire necessary locks for slot update. Please try again.",
+			"lock acquisition failed",
+		)
+	}
+	defer release(ctx)
+
+	// Re-fetch slot after acquiring locks to protect against TOCTOU
+	revalidatedSlot, err := uc.SlotFhirClient.FindSlotByID(ctx, slotID)
+	if err != nil {
+		uc.Log.Error("paymentUsecase.handleAppointmentPaymentNotification failed re-fetching slot",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("slotId", slotID),
+			zap.Error(err),
+		)
+		return exceptions.BuildNewCustomError(
+			err,
+			constvars.StatusInternalServerError,
+			"Failed to re-fetch slot",
+			"failed to re-fetch slot",
+		)
+	}
+
 	var targetStatus fhir_dto.SlotStatus
 	switch status {
 	case requests.XenditInvoiceStatusPaid, requests.XenditInvoiceStatusSettled:
@@ -392,20 +425,20 @@ func (uc *paymentUsecase) handleAppointmentPaymentNotification(ctx context.Conte
 		)
 	}
 
-	// Check if slot status already matches target (idempotency)
-	if slot.Status == targetStatus {
+	// Check if slot status already matches target (idempotency) - using revalidated slot
+	if revalidatedSlot.Status == targetStatus {
 		uc.Log.Info("paymentUsecase.handleAppointmentPaymentNotification slot already in target status",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String("slotId", slotID),
-			zap.String("status", string(slot.Status)),
+			zap.String("status", string(revalidatedSlot.Status)),
 		)
 		return nil
 	}
 
-	oldStatus := slot.Status
+	oldStatus := revalidatedSlot.Status
 
-	slot.Status = targetStatus
-	updatedSlot, err := uc.SlotFhirClient.UpdateSlot(ctx, slotID, slot)
+	revalidatedSlot.Status = targetStatus
+	updatedSlot, err := uc.SlotFhirClient.UpdateSlot(ctx, slotID, revalidatedSlot)
 	if err != nil {
 		uc.Log.Error("paymentUsecase.handleAppointmentPaymentNotification failed updating slot",
 			zap.String(constvars.LoggingRequestIDKey, requestID),

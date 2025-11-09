@@ -118,4 +118,5 @@ type SlotUsecaseIface interface {
 	HandleAutomatedSlotGeneration(ctx context.Context, practitionerRole fhir_dto.PractitionerRole)
 	HandleSetUnavailabilityForMultiplePractitionerRoles(ctx context.Context, input SetUnavailabilityForMultiplePractitionerRolesInput) (*SetUnavailableOutcome, error)
 	AcquireLocksForAppointment(ctx context.Context, practitionerRoles []fhir_dto.PractitionerRole, appointmentStart, appointmentEnd time.Time, ttl time.Duration) (func(context.Context), error)
+	AcquireLocksForSlot(ctx context.Context, slot *fhir_dto.Slot, ttl time.Duration) (func(context.Context), error)
 }
