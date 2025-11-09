@@ -474,7 +474,7 @@ func (uc *paymentUsecase) verifyPaymentStatus(ctx context.Context, invoiceID str
 	apiReq := uc.XenditClient.InvoiceApi.GetInvoiceById(ctxTimeout, invoiceID)
 	inv, httpResp, xenditErr := apiReq.Execute()
 	if xenditErr != nil {
-		return mapXenditError(xenditErr, httpResp)
+		return uc.mapXenditError(ctx, xenditErr, httpResp)
 	}
 
 	if expectedStatus == requests.XenditInvoiceStatus(inv.GetStatus()) {
@@ -588,7 +588,7 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 	durationSeconds := float32(uc.InternalConfig.App.PaymentExpiredTimeInMinutes * 60)
 
 	externalID := fmt.Sprintf("%s:%s", constvars.WebhookPaymentService, partnerTrxID)
-	invoiceReq := xinvoice.NewCreateInvoiceRequest(externalID, float64(amount))
+	invoiceReq := xinvoice.NewCreateInvoiceRequest(externalID, float64(0))
 	invoiceReq.SetCurrency(constvars.CurrencyIndonesianRupiah)
 	invoiceReq.SetDescription(desc)
 	invoiceReq.SetSuccessRedirectUrl(uc.InternalConfig.App.FrontendDomain)
@@ -616,7 +616,7 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 	apiReq := uc.XenditClient.InvoiceApi.CreateInvoice(ctxTimeout).CreateInvoiceRequest(*invoiceReq)
 	inv, httpResp, xenditErr := apiReq.Execute()
 	if xenditErr != nil {
-		return nil, mapXenditError(xenditErr, httpResp)
+		return nil, uc.mapXenditError(ctx, xenditErr, httpResp)
 	}
 
 	// 9) Build response from Xendit invoice
@@ -628,7 +628,21 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 	}, nil
 }
 
-func mapXenditError(err *common.XenditSdkError, httpResp *http.Response) *exceptions.CustomError {
+func (uc *paymentUsecase) mapXenditError(ctx context.Context, err *common.XenditSdkError, httpResp *http.Response) *exceptions.CustomError {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+
+	// Log response body if available
+	if httpResp != nil && httpResp.Body != nil {
+		bodyBytes, readErr := io.ReadAll(httpResp.Body)
+		if readErr == nil && len(bodyBytes) > 0 {
+			uc.Log.Error("paymentUsecase.mapXenditError Xendit error response body",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.String("response_body", string(bodyBytes)),
+				zap.Int("status_code", httpResp.StatusCode),
+			)
+		}
+	}
+
 	statusCode := constvars.StatusInternalServerError
 	if httpResp != nil && httpResp.StatusCode > 0 {
 		statusCode = httpResp.StatusCode
@@ -722,7 +736,7 @@ func (uc *paymentUsecase) createXenditInvoiceForAppointment(
 			zap.String("slotId", slotID),
 			zap.Error(xenditErr),
 		)
-		return "", mapXenditError(xenditErr, httpResp)
+		return "", uc.mapXenditError(ctx, xenditErr, httpResp)
 	}
 
 	uc.Log.Info("paymentUsecase.createXenditInvoiceForAppointment succeeded",
