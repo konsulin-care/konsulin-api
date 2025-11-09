@@ -588,7 +588,7 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 	durationSeconds := float32(uc.InternalConfig.App.PaymentExpiredTimeInMinutes * 60)
 
 	externalID := fmt.Sprintf("%s:%s", constvars.WebhookPaymentService, partnerTrxID)
-	invoiceReq := xinvoice.NewCreateInvoiceRequest(externalID, float64(0))
+	invoiceReq := xinvoice.NewCreateInvoiceRequest(externalID, float64(amount))
 	invoiceReq.SetCurrency(constvars.CurrencyIndonesianRupiah)
 	invoiceReq.SetDescription(desc)
 	invoiceReq.SetSuccessRedirectUrl(uc.InternalConfig.App.FrontendDomain)
