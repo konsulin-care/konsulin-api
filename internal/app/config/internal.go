@@ -13,6 +13,7 @@ type InternalConfig struct {
 	PaymentGateway AppPaymentGateway `mapstructure:"payment_gateway"`
 	ServicePricing AppServicePricing `mapstructure:"service_pricing"`
 	Webhook        AppWebhook        `mapstructure:"webhook"`
+	Xendit         AppXendit         `mapstructure:"xendit"`
 }
 
 type App struct {
@@ -128,4 +129,10 @@ type AppWebhook struct {
 	JWTAlg string `mapstructure:"jwt_alg"`
 	// JWTHookKey is the private key PEM for signing webhook JWTs
 	JWTHookKey string `mapstructure:"jwt_hook_key"`
+}
+
+// AppXendit holds Xendit SDK configuration
+type AppXendit struct {
+	APIKey      string `mapstructure:"api_key"`
+	WebhookToken string `mapstructure:"webhook_token"`
 }

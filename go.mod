@@ -18,8 +18,10 @@ require (
 	github.com/stretchr/testify v1.9.0
 	github.com/supertokens/supertokens-golang v0.25.1
 	github.com/tidwall/gjson v1.18.0
+	github.com/xendit/xendit-go/v7 v7.0.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.24.0
+	golang.org/x/sync v0.7.0
 )
 
 require (
@@ -71,7 +73,6 @@ require (
 	go.uber.org/multierr v1.10.0 // indirect
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9 // indirect
 	golang.org/x/net v0.26.0 // indirect
-	golang.org/x/sync v0.7.0 // indirect
 	golang.org/x/text v0.16.0 // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
 	gopkg.in/alexcesaro/quotedprintable.v3 v3.0.0-20150716171945-2caba252f4dc // indirect

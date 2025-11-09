@@ -7,6 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
+	"path"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/services/core/webhook"
@@ -18,14 +27,10 @@ import (
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
-	"net/http"
-	"net/url"
-	"path"
-	"slices"
-	"strings"
-	"sync"
-	"time"
 
+	xendit "github.com/xendit/xendit-go/v7"
+	common "github.com/xendit/xendit-go/v7/common"
+	xinvoice "github.com/xendit/xendit-go/v7/invoice"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
@@ -46,6 +51,7 @@ type paymentUsecase struct {
 	ScheduleFhirClient         contracts.ScheduleFhirClient
 	BundleFhirClient           bundleSvc.BundleFhirClient
 	SlotUsecase                contracts.SlotUsecaseIface
+	XenditClient               *xendit.APIClient
 }
 
 var (
@@ -62,6 +68,7 @@ func NewPaymentUsecase(
 	personFhirClient contracts.PersonFhirClient,
 	storageService *storage.ServiceRequestStorage,
 	paymentGateway contracts.PaymentGatewayService,
+	xenditClient *xendit.APIClient,
 	invoiceFhirClient contracts.InvoiceFhirClient,
 	practitionerRoleFhirClient contracts.PractitionerRoleFhirClient,
 	slotFhirClient contracts.SlotFhirClient,
@@ -87,6 +94,7 @@ func NewPaymentUsecase(
 			ScheduleFhirClient:         scheduleFhirClient,
 			BundleFhirClient:           bundleFhirClient,
 			SlotUsecase:                slotUsecase,
+			XenditClient:               xenditClient,
 		}
 		paymentUsecaseInstance = instance
 	})
@@ -183,6 +191,152 @@ func (uc *paymentUsecase) PaymentRoutingCallback(ctx context.Context, request *r
 	return nil
 }
 
+func (uc *paymentUsecase) XenditInvoiceCallback(ctx context.Context, header *requests.XenditInvoiceCallbackHeader, body *requests.XenditInvoiceCallbackBody) error {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	uc.Log.Info("paymentUsecase.XenditInvoiceCallback called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("invoice_id", body.ID),
+		zap.String("external_id", body.ExternalID),
+		zap.String("status", string(body.Status)),
+	)
+
+	// 1) Validate callback token
+	if header.CallbackToken != uc.InternalConfig.Xendit.WebhookToken {
+		uc.Log.Error("paymentUsecase.XenditInvoiceCallback invalid callback token",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
+		return exceptions.BuildNewCustomError(
+			fmt.Errorf("invalid callback token"),
+			constvars.StatusUnauthorized,
+			"Invalid callback token",
+			"x-callback-token mismatch",
+		)
+	}
+
+	// 2) Early exit for PENDING status
+	if body.Status == requests.XenditInvoiceStatusPending {
+		uc.Log.Info("paymentUsecase.XenditInvoiceCallback pending status; ignoring",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("invoice_id", body.ID),
+		)
+		return nil
+	}
+
+	// 3) Early exit for EXPIRED status
+	if body.Status == requests.XenditInvoiceStatusExpired {
+		uc.Log.Info("paymentUsecase.XenditInvoiceCallback expired status; ignoring",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("invoice_id", body.ID),
+		)
+		return nil
+	}
+
+	// 4) Verify payment status with Xendit (only for PAID status)
+	if body.Status == requests.XenditInvoiceStatusPaid {
+		if err := uc.verifyPaymentStatus(ctx, body.ID, body.Status); err != nil {
+			uc.Log.Error("paymentUsecase.XenditInvoiceCallback verification failed",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.String("invoice_id", body.ID),
+				zap.Error(err),
+			)
+			// Return 500 to trigger Xendit retry
+			return exceptions.BuildNewCustomError(
+				err,
+				constvars.StatusInternalServerError,
+				"Payment verification failed",
+				"failed to verify payment status with Xendit",
+			)
+		}
+	}
+
+	// 5) Parse external_id into id-version
+	id, version, parseErr := parsePartnerTrxID(body.ExternalID)
+	if parseErr != nil {
+		uc.Log.Error("paymentUsecase.XenditInvoiceCallback invalid external_id format",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("external_id", body.ExternalID),
+			zap.Error(parseErr),
+		)
+		return nil
+	}
+
+	// 6) Fetch ServiceRequest specific version
+	sr, err := uc.Storage.FhirClient.GetServiceRequestByIDAndVersion(ctx, id, version)
+	if err != nil {
+		uc.Log.Error("paymentUsecase.XenditInvoiceCallback failed fetching ServiceRequest",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil
+	}
+
+	// 7) Parse note.text -> NoteStorage
+	note, err := extractNoteStorage(sr)
+	if err != nil {
+		uc.Log.Error("paymentUsecase.XenditInvoiceCallback failed parsing stored note",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil
+	}
+
+	// 8) Resolve instantiatesUri (prefer FHIR field, fallback to legacy note) and POST with RawBody
+	uri, err := resolveInstantiatesURI(sr, note)
+	if err != nil {
+		uc.Log.Error("paymentUsecase.XenditInvoiceCallback failed resolving instantiatesUri",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil
+	}
+	if err := uc.callInstantiateURI(ctx, uri, note.RawBody); err != nil {
+		uc.Log.Error("paymentUsecase.XenditInvoiceCallback failed calling instantiate URI",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil
+	}
+
+	uc.Log.Info("paymentUsecase.XenditInvoiceCallback completed successfully",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+	return nil
+}
+
+// verifyPaymentStatus fetches the invoice from Xendit and verifies the status matches the webhook status
+func (uc *paymentUsecase) verifyPaymentStatus(ctx context.Context, invoiceID string, expectedStatus requests.XenditInvoiceStatus) error {
+	ctxTimeout, cancel := context.WithTimeout(ctx, time.Duration(uc.InternalConfig.App.PaymentGatewayRequestTimeoutInSeconds)*time.Second)
+	defer cancel()
+
+	if uc.XenditClient == nil {
+		return fmt.Errorf("xendit client not initialized")
+	}
+
+	apiReq := uc.XenditClient.InvoiceApi.GetInvoiceById(ctxTimeout, invoiceID)
+	inv, httpResp, xenditErr := apiReq.Execute()
+	if xenditErr != nil {
+		return mapXenditError(xenditErr, httpResp)
+	}
+
+	if expectedStatus == requests.XenditInvoiceStatus(inv.GetStatus()) {
+		return nil
+	}
+
+	invoiceStatus := requests.XenditInvoiceStatus(inv.GetStatus())
+
+	if expectedStatus == requests.XenditInvoiceStatusPaid {
+		// when expecting status PAID, the fetched invoice on xendit
+		// can be either PAID or SETTLED and both should be valid
+		// in this case behave as if the payment has been paid
+		if invoiceStatus == requests.XenditInvoiceStatusPaid ||
+			invoiceStatus == requests.XenditInvoiceStatusSettled {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("invalid expected status")
+}
+
 func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePayRequest) (*responses.CreatePayResponse, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	uc.Log.Info("paymentUsecase.CreatePay called",
@@ -224,7 +378,6 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 	if err != nil {
 		return nil, err
 	}
-	partnerUserID := uid
 
 	// 5) Determine ServiceRequest.subject
 	subject := uc.determineServiceRequestSubject(requestedService, resourceID, roles)
@@ -262,57 +415,91 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 	partnerTrxID := storageOutput.PartnerTrxID
 
 	// 6) Compute amount using service-based calculator
-	amount, err := uc.calculateAmount(requestedService, req.TotalItem)
+	amount, basePrice, err := uc.calculateAmount(requestedService, req.TotalItem)
 	if err != nil {
 		return nil, err
 	}
 
-	// 7) Prepare OY payment request
-	loc := time.FixedZone("UTC+7", 7*60*60) // Force UTC+7 because OY is in UTC+7
-	expiration := time.Now().In(loc).Add(time.Duration(uc.InternalConfig.App.PaymentExpiredTimeInMinutes) * time.Minute).Format("2006-01-02 15:04:05")
-
-	uc.Log.Info("paymentUsecase.CreatePay expiration",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String("expiration", expiration),
-	)
-
-	oyReq := &requests.PaymentRequestDTO{
-		PartnerUserID:           partnerUserID,
-		UseLinkedAccount:        false,
-		PartnerTransactionID:    partnerTrxID,
-		NeedFrontend:            true,
-		SenderEmail:             email,
-		FullName:                displayFullName,
-		PaymentExpirationTime:   expiration,
-		ReceiveAmount:           amount,
-		ListEnablePaymentMethod: uc.InternalConfig.PaymentGateway.ListEnablePaymentMethod,
-		ListEnableSOF:           uc.InternalConfig.PaymentGateway.ListEnableSOF,
-		VADisplayName:           uc.InternalConfig.Konsulin.PaymentDisplayName,
-		PaymentRouting: []requests.PaymentRouting{
-			{
-				RecipientBank:    uc.InternalConfig.Konsulin.BankCode,
-				RecipientAccount: uc.InternalConfig.Konsulin.BankAccountNumber,
-				RecipientAmount:  amount,
-				RecipientEmail:   uc.InternalConfig.Konsulin.FinanceEmail,
-			},
-		},
+	// 7) Create Xendit invoice
+	if uc.XenditClient == nil {
+		return nil, exceptions.ErrServerProcess(fmt.Errorf("xendit client not initialized"))
 	}
 
-	// 8) Call OY with timeout
+	desc := fmt.Sprintf("pembayaran layanan %s dari konsulin sejumlah %d item", req.Service, req.TotalItem)
+	durationSeconds := float32(uc.InternalConfig.App.PaymentExpiredTimeInMinutes * 60)
+
+	invoiceReq := xinvoice.NewCreateInvoiceRequest(partnerTrxID, float64(amount))
+	invoiceReq.SetCurrency(constvars.CurrencyIndonesianRupiah)
+	invoiceReq.SetDescription(desc)
+	invoiceReq.SetSuccessRedirectUrl(uc.InternalConfig.App.FrontendDomain)
+	invoiceReq.SetFailureRedirectUrl(uc.InternalConfig.App.FrontendDomain)
+	if durationSeconds > 0 {
+		invoiceReq.SetInvoiceDuration(durationSeconds)
+	}
+
+	customer := xinvoice.NewCustomerObject()
+	customer.SetGivenNames(displayFullName)
+	customer.SetEmail(email)
+	invoiceReq.SetCustomer(*customer)
+
+	notif := xinvoice.NewNotificationPreference()
+	notif.SetInvoiceCreated([]xinvoice.NotificationChannel{xinvoice.NOTIFICATIONCHANNEL_EMAIL})
+	notif.SetInvoicePaid([]xinvoice.NotificationChannel{xinvoice.NOTIFICATIONCHANNEL_EMAIL})
+	invoiceReq.SetCustomerNotificationPreference(*notif)
+
+	item := xinvoice.NewInvoiceItem(requestedService, float32(basePrice), float32(req.TotalItem))
+	invoiceReq.SetItems([]xinvoice.InvoiceItem{*item})
+
+	// 8) Execute with timeout
 	ctxTimeout, cancel := context.WithTimeout(ctx, time.Duration(uc.InternalConfig.App.PaymentGatewayRequestTimeoutInSeconds)*time.Second)
 	defer cancel()
-	oyResp, err := uc.PaymentGateway.CreatePaymentRouting(ctxTimeout, oyReq)
-	if err != nil {
-		return nil, err
+	apiReq := uc.XenditClient.InvoiceApi.CreateInvoice(ctxTimeout).CreateInvoiceRequest(*invoiceReq)
+	inv, httpResp, xenditErr := apiReq.Execute()
+	if xenditErr != nil {
+		return nil, mapXenditError(xenditErr, httpResp)
 	}
 
-	// 9) Build response
+	// 9) Build response from Xendit invoice
 	return &responses.CreatePayResponse{
-		PaymentCheckoutURL: oyResp.PaymentInfo.PaymentCheckoutURL,
+		PaymentCheckoutURL: inv.GetInvoiceUrl(),
 		PartnerTrxID:       partnerTrxID,
-		TrxID:              oyResp.TrxID,
+		TrxID:              inv.GetId(),
 		Amount:             amount,
 	}, nil
+}
+
+func mapXenditError(err *common.XenditSdkError, httpResp *http.Response) *exceptions.CustomError {
+	statusCode := constvars.StatusInternalServerError
+	if httpResp != nil && httpResp.StatusCode > 0 {
+		statusCode = httpResp.StatusCode
+	} else if statusText := strings.TrimSpace(err.Status()); statusText != "" {
+		if parsed, convErr := strconv.Atoi(statusText); convErr == nil {
+			statusCode = parsed
+		}
+	}
+
+	rawMsg := strings.TrimSpace(err.Error())
+	if raw := err.RawResponse(); raw != nil {
+		if messageAny, ok := raw["message"]; ok {
+			if msgStr, ok := messageAny.(string); ok {
+				if trimmed := strings.TrimSpace(msgStr); trimmed != "" {
+					rawMsg = trimmed
+				}
+			}
+		}
+	}
+	if rawMsg == "" {
+		rawMsg = constvars.ErrClientCannotProcessRequest
+	}
+
+	devMsg := fmt.Sprintf("xendit error code=%s message=%s", err.ErrorCode(), rawMsg)
+	wrappedErr := errors.New(devMsg)
+
+	if err.ErrorCode() == "API_VALIDATION_ERROR" || statusCode == http.StatusBadRequest {
+		return exceptions.BuildNewCustomError(wrappedErr, constvars.StatusBadRequest, rawMsg, devMsg)
+	}
+
+	return exceptions.BuildNewCustomError(wrappedErr, statusCode, rawMsg, devMsg)
 }
 
 func parsePartnerTrxID(partnerTrxID string) (string, string, error) {
@@ -404,7 +591,7 @@ func normalizeService(service string) (string, error) {
 }
 
 // calculateAmount validates service and totalItem against business rules and returns basePrice(service) * totalItem.
-func (uc *paymentUsecase) calculateAmount(service string, totalItem int) (int, error) {
+func (uc *paymentUsecase) calculateAmount(service string, totalItem int) (int, int, error) {
 	serviceName := strings.ToLower(service)
 
 	var (
@@ -426,19 +613,19 @@ func (uc *paymentUsecase) calculateAmount(service string, totalItem int) (int, e
 		serviceType = constvars.ServiceAccessDataset
 		basePrice = uc.InternalConfig.ServicePricing.AccessDatasetBasePrice
 	default:
-		return 0, exceptions.ErrClientCustomMessage(fmt.Errorf("invalid service: %s", service))
+		return 0, 0, exceptions.ErrClientCustomMessage(fmt.Errorf("invalid service: %s", service))
 	}
 
 	minQty, ok := constvars.ServiceToMinQuantity[serviceType]
 	if !ok {
-		return 0, exceptions.ErrClientCustomMessage(fmt.Errorf("unsupported service: %s", service))
+		return 0, 0, exceptions.ErrClientCustomMessage(fmt.Errorf("unsupported service: %s", service))
 	}
 	if totalItem < int(minQty) {
-		return 0, exceptions.ErrClientCustomMessage(fmt.Errorf("total_item must be >= %d for service %s", int(minQty), serviceName))
+		return 0, 0, exceptions.ErrClientCustomMessage(fmt.Errorf("total_item must be >= %d for service %s", int(minQty), serviceName))
 	}
 
 	amount := basePrice * totalItem
-	return amount, nil
+	return amount, basePrice, nil
 }
 
 func (uc *paymentUsecase) callInstantiateURI(ctx context.Context, url string, body json.RawMessage) error {

@@ -43,6 +43,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	xendit "github.com/xendit/xendit-go/v7"
 )
 
 // Version sets the default build version
@@ -172,8 +173,11 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		return err
 	}
 
-	// Initialize oy service
+	// Initialize oy service (kept for backward-compatibility; not used for creation)
 	_ = payment_gateway.NewOyService(bootstrap.InternalConfig, bootstrap.Logger)
+
+	// Initialize Xendit client (reusable)
+	xenditClient := xendit.NewClient(bootstrap.InternalConfig.Xendit.APIKey)
 
 	// Initialize Minio storage
 	minioStorage := storageKonsulin.NewMinioStorage(bootstrap.Minio)
@@ -260,6 +264,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		personFhirClient,
 		serviceRequestStorage,
 		payment_gateway.NewOyService(bootstrap.InternalConfig, bootstrap.Logger),
+		xenditClient,
 		invoiceFhirClient,
 		practitionerRoleClient,
 		slotClient,
