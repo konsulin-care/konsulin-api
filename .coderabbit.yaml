@@ -1,0 +1,14 @@
+language: en-US
+tone_instructions: "Be concise and focus on critical issues only"
+reviews:
+  auto_title_instructions: "use conventional commits structure: <type>[optional scope]: <description>"
+  sequence_diagram: false
+  estimate_code_review_effort: false
+  related_prs: false
+  suggested_labels: false
+  suggested_reviewers: false
+  poem: false
+  auto_review:
+    ignore_usernames: [dependabot]
+chat:
+  auto_reply: false
