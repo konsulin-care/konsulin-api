@@ -49,7 +49,9 @@ func NewOrganizationUsecase(
 		bundleClient:       bundles,
 		config:             cfg,
 		log:                log,
-		httpClient:         &http.Client{},
+		httpClient: &http.Client{
+			Timeout: 10 * time.Second,
+		},
 	}
 }
 
