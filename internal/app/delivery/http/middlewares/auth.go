@@ -568,6 +568,10 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 				return true
 			}
 
+			if val := q.Get("_id"); val != "" {
+				return val == fhirID
+			}
+
 			if identifier := q.Get("identifier"); identifier != "" {
 
 				patientID, err := resolveIdentifierToPatientID(ctx, identifier, patientClient)
@@ -787,6 +791,10 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 			if p := q.Get("practitioner"); p != "" {
 				id := strings.TrimPrefix(p, "Practitioner/")
 				return id == fhirID
+			}
+
+			if val := q.Get("_id"); val != "" {
+				return val == fhirID
 			}
 
 			if a := q.Get("actor"); a != "" {
