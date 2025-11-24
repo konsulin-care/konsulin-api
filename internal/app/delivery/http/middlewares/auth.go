@@ -322,6 +322,14 @@ func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []str
 
 func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, roles []string, fhirID string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient, practitionerRoleClient contracts.PractitionerRoleFhirClient, scheduleClient contracts.ScheduleFhirClient, resource []byte) error {
 	normalizedPath := normalizePath(url)
+	resourceType := utils.ExtractResourceTypeFromPath(normalizedPath)
+
+	// direct request to public resource is allowed to bypass RBAC checks
+	// but only for GET requests to avoid unwanted modifications
+	if utils.IsPublicResource(resourceType) && method == http.MethodGet {
+		return nil
+	}
+
 	for _, role := range roles {
 		if allowed(e, role, method, normalizedPath) {
 
