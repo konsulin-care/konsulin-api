@@ -150,6 +150,7 @@ func IsPublicResource(resourceType string) bool {
 		"SpecimenDefinition":      true,
 		"NamingSystem":            true,
 		"TerminologyCapabilities": true,
+		"Media":                   true,
 	}
 
 	return publicResources[resourceType]
