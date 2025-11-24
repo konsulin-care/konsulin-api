@@ -12,6 +12,7 @@ import (
 	"konsulin-service/internal/app/drivers/messaging"
 	"konsulin-service/internal/app/drivers/storage"
 	"konsulin-service/internal/app/services/core/auth"
+	"konsulin-service/internal/app/services/core/organization"
 	"konsulin-service/internal/app/services/core/payments"
 	"konsulin-service/internal/app/services/core/session"
 	"konsulin-service/internal/app/services/core/slot"
@@ -294,6 +295,16 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 
 	scheduleController := controllers.NewScheduleController(slotUsecase, bootstrap.Logger)
 
+	// Initialize organization usecase and controller
+	orgUsecase := organization.NewOrganizationUsecase(
+		practitionerFhirClient,
+		personFhirClient,
+		bundleClient,
+		bootstrap.InternalConfig,
+		bootstrap.Logger,
+	)
+	orgController := controllers.NewOrganizationController(bootstrap.Logger, orgUsecase)
+
 	// Start webhook worker ticker (best-effort lock ensures single execution)
 	worker := webhook.NewWorker(bootstrap.Logger, bootstrap.InternalConfig, lockService, webhookQueueService, webhookJWT)
 	stopWorker := worker.Start(context.Background())
@@ -314,6 +325,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		paymentController,
 		webhookController,
 		scheduleController,
+		orgController,
 	)
 
 	return nil
