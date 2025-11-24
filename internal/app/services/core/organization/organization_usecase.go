@@ -26,6 +26,7 @@ import (
 type Usecase struct {
 	practitionerClient contracts.PractitionerFhirClient
 	personClient       contracts.PersonFhirClient
+	organizationClient contracts.OrganizationFhirClient
 	bundleClient       bundleSvc.BundleFhirClient
 	config             *config.InternalConfig
 	log                *zap.Logger
@@ -36,6 +37,7 @@ type Usecase struct {
 func NewOrganizationUsecase(
 	practitionerClient contracts.PractitionerFhirClient,
 	personClient contracts.PersonFhirClient,
+	organizationClient contracts.OrganizationFhirClient,
 	bundles bundleSvc.BundleFhirClient,
 	cfg *config.InternalConfig,
 	log *zap.Logger,
@@ -43,6 +45,7 @@ func NewOrganizationUsecase(
 	return &Usecase{
 		practitionerClient: practitionerClient,
 		personClient:       personClient,
+		organizationClient: organizationClient,
 		bundleClient:       bundles,
 		config:             cfg,
 		log:                log,
@@ -79,6 +82,17 @@ func (uc *Usecase) RegisterPractitionerRoleAndSchedule(ctx context.Context, in c
 			constvars.ErrClientNotAuthorized,
 			"authorization failed for register practitioner role",
 		)
+	}
+
+	_, err := uc.organizationClient.FindOrganizationByID(ctx, in.OrganizationID)
+	if err != nil {
+		notFoundErr := exceptions.BuildNewCustomError(
+			errors.New("organization not found"),
+			constvars.StatusNotFound,
+			constvars.ErrClientCannotProcessRequest,
+			fmt.Sprintf("organization %s does not exists", in.OrganizationID),
+		)
+		return nil, notFoundErr
 	}
 
 	// Clinic Admin must manage the target organization.
