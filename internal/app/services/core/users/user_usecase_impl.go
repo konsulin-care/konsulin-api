@@ -9,6 +9,7 @@ import (
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/utils"
 	"strings"
 	"sync"
@@ -21,6 +22,7 @@ type userUsecase struct {
 	UserRepository             contracts.UserRepository
 	PatientFhirClient          contracts.PatientFhirClient
 	PractitionerFhirClient     contracts.PractitionerFhirClient
+	PersonFhirClient           contracts.PersonFhirClient
 	PractitionerRoleFhirClient contracts.PractitionerRoleFhirClient
 	OrganizationFhirClient     contracts.OrganizationFhirClient
 	RedisRepository            contracts.RedisRepository
@@ -28,6 +30,7 @@ type userUsecase struct {
 	MinioStorage               contracts.Storage
 	InternalConfig             *config.InternalConfig
 	Log                        *zap.Logger
+	LockerService              contracts.LockerService
 }
 
 var (
@@ -39,6 +42,7 @@ func NewUserUsecase(
 	userMongoRepository contracts.UserRepository,
 	patientFhirClient contracts.PatientFhirClient,
 	practitionerFhirClient contracts.PractitionerFhirClient,
+	personFhirClient contracts.PersonFhirClient,
 	practitionerRoleFhirClient contracts.PractitionerRoleFhirClient,
 	organizationFhirClient contracts.OrganizationFhirClient,
 	redisRepository contracts.RedisRepository,
@@ -46,12 +50,14 @@ func NewUserUsecase(
 	minioStorage contracts.Storage,
 	internalConfig *config.InternalConfig,
 	logger *zap.Logger,
+	lockerService contracts.LockerService,
 ) contracts.UserUsecase {
 	onceUserUsecase.Do(func() {
 		instance := &userUsecase{
 			UserRepository:             userMongoRepository,
 			PatientFhirClient:          patientFhirClient,
 			PractitionerFhirClient:     practitionerFhirClient,
+			PersonFhirClient:           personFhirClient,
 			PractitionerRoleFhirClient: practitionerRoleFhirClient,
 			OrganizationFhirClient:     organizationFhirClient,
 			RedisRepository:            redisRepository,
@@ -59,6 +65,7 @@ func NewUserUsecase(
 			MinioStorage:               minioStorage,
 			InternalConfig:             internalConfig,
 			Log:                        logger,
+			LockerService:              lockerService,
 		}
 		userUsecaseInstance = instance
 	})
@@ -371,6 +378,38 @@ func (uc *userUsecase) DeactivateUserBySession(ctx context.Context, sessionData 
 	}
 }
 
+func (uc *userUsecase) InitializeNewUserFHIRResources(ctx context.Context, input *contracts.InitializeNewUserFHIRResourcesInput) (*contracts.InitializeNewUserFHIRResourcesOutput, error) {
+	if err := input.Validate(); err != nil {
+		return nil, exceptions.ErrInvalidFormat(err, "email")
+	}
+
+	output := &contracts.InitializeNewUserFHIRResourcesOutput{}
+
+	for _, resource := range input.Resources() {
+		switch resource {
+		case constvars.ResourcePractitioner:
+			practitioner, err := uc.createPractitionerIfNotExists(ctx, input.Email, input.SuperTokenUserID)
+			if err != nil {
+				return nil, err
+			}
+			output.PractitionerID = practitioner.ID
+		case constvars.ResourcePatient:
+			patient, err := uc.createPatientIfNotExists(ctx, input.Email, input.SuperTokenUserID)
+			if err != nil {
+				return nil, err
+			}
+			output.PatientID = patient.ID
+		case constvars.ResourcePerson:
+			person, err := uc.createPersonIfNotExists(ctx, input.Email, input.SuperTokenUserID)
+			if err != nil {
+				return nil, err
+			}
+			output.PersonID = person.ID
+		}
+	}
+	return output, nil
+}
+
 func (uc *userUsecase) deactivatePractitionerFhirData(ctx context.Context, user *models.User) error {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	uc.Log.Info("userUsecase.deactivatePractitionerFhirData called",
@@ -415,6 +454,292 @@ func (uc *userUsecase) deactivatePatientFhirData(ctx context.Context, user *mode
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
 	return nil
+}
+
+func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email string, superTokenUserID string) (*fhir_dto.Practitioner, error) {
+	practitioners, err := uc.PractitionerFhirClient.FindPractitionerByEmail(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+	if len(practitioners) > 0 {
+		practitioner := practitioners[0]
+
+		found := false
+		foundOnIdx := -1
+		exactMatch := false
+
+		for idx, identifier := range practitioner.Identifier {
+			if identifier.System == constvars.FhirSupertokenSystemIdentifier {
+				found = true
+				foundOnIdx = idx
+			}
+			if identifier.Value == superTokenUserID {
+				exactMatch = true
+
+				break
+			}
+		}
+
+		if found && !exactMatch {
+			if superTokenUserID == "" {
+				return &practitioner, nil
+			}
+
+			practitioner.Identifier[foundOnIdx] = fhir_dto.Identifier{
+				System: constvars.FhirSupertokenSystemIdentifier,
+				Value:  superTokenUserID,
+			}
+			updatedPractitioner, err := uc.PractitionerFhirClient.UpdatePractitioner(ctx, &practitioner)
+			if err != nil {
+				return nil, err
+			}
+
+			return updatedPractitioner, nil
+		}
+
+		if !found {
+			if superTokenUserID == "" {
+				return &practitioner, nil
+			}
+
+			practitioner.Identifier = append(practitioner.Identifier, fhir_dto.Identifier{
+				System: constvars.FhirSupertokenSystemIdentifier,
+				Value:  superTokenUserID,
+			})
+
+			updatedPractitioner, err := uc.PractitionerFhirClient.UpdatePractitioner(ctx, &practitioner)
+			if err != nil {
+				return nil, err
+			}
+
+			return updatedPractitioner, nil
+		}
+
+		return &practitioner, nil
+	}
+
+	newPractitionerInput := &fhir_dto.Practitioner{
+		ResourceType: constvars.ResourcePractitioner,
+		Active:       true,
+		Identifier: []fhir_dto.Identifier{
+			{ // this is necessary because the request will fail if the identifier is not provided
+				System: constvars.FhirSupertokenSystemIdentifier,
+				Value:  superTokenUserID,
+			},
+			{
+				System: string(fhir_dto.ContactPointSystemEmail),
+				Value:  email,
+			},
+		},
+		Telecom: []fhir_dto.ContactPoint{
+			{
+				System: fhir_dto.ContactPointSystemEmail,
+				Value:  email,
+				Use:    "work",
+			},
+		},
+	}
+
+	newPractitioner, err := uc.PractitionerFhirClient.CreatePractitioner(ctx, newPractitionerInput)
+	if err != nil {
+		return nil, err
+	}
+
+	return newPractitioner, nil
+}
+
+func (uc *userUsecase) createPatientIfNotExists(ctx context.Context, email string, superTokenUserID string) (*fhir_dto.Patient, error) {
+	patients, err := uc.PatientFhirClient.FindPatientByEmail(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+	if len(patients) > 0 {
+		patient := patients[0]
+
+		found := false
+		foundOnIdx := -1
+		exactMatch := false
+
+		for idx, identifier := range patient.Identifier {
+			if identifier.System == constvars.FhirSupertokenSystemIdentifier {
+				found = true
+				foundOnIdx = idx
+
+				if identifier.Value == superTokenUserID {
+					exactMatch = true
+					break
+				}
+			}
+		}
+
+		if found && !exactMatch {
+			// if the super token user ID is not provided, we don't need to update the patient
+			if superTokenUserID == "" {
+				return &patient, nil
+			}
+
+			patient.Identifier[foundOnIdx] = fhir_dto.Identifier{
+				System: constvars.FhirSupertokenSystemIdentifier,
+				Value:  superTokenUserID,
+			}
+
+			updatedPatient, err := uc.PatientFhirClient.UpdatePatient(ctx, &patient)
+			if err != nil {
+				return nil, err
+			}
+
+			return updatedPatient, nil
+		}
+
+		if !found {
+			// if the super token user ID is not provided, we don't need to create a new patient
+			if superTokenUserID == "" {
+				return &patient, nil
+			}
+
+			patient.Identifier = append(patient.Identifier, fhir_dto.Identifier{
+				System: constvars.FhirSupertokenSystemIdentifier,
+				Value:  superTokenUserID,
+			})
+
+			updatedPatient, err := uc.PatientFhirClient.UpdatePatient(ctx, &patient)
+			if err != nil {
+				return nil, err
+			}
+
+			return updatedPatient, nil
+		}
+
+		return &patients[0], nil
+	}
+
+	newPatientInput := &fhir_dto.Patient{
+		ResourceType: constvars.ResourcePatient,
+		Active:       true,
+		Identifier: []fhir_dto.Identifier{
+			{ // this is necessary because the request will fail if the identifier is not provided
+				System: string(fhir_dto.ContactPointSystemEmail),
+				Value:  email,
+			},
+		},
+		Telecom: []fhir_dto.ContactPoint{
+			{
+				System: fhir_dto.ContactPointSystemEmail,
+				Value:  email,
+				Use:    "work",
+			},
+		},
+	}
+
+	if superTokenUserID != "" {
+		newPatientInput.Identifier = append(newPatientInput.Identifier, fhir_dto.Identifier{
+			System: constvars.FhirSupertokenSystemIdentifier,
+			Value:  superTokenUserID,
+		})
+	}
+
+	newPatient, err := uc.PatientFhirClient.CreatePatient(ctx, newPatientInput)
+	if err != nil {
+		return nil, err
+	}
+
+	return newPatient, nil
+}
+
+func (uc *userUsecase) createPersonIfNotExists(ctx context.Context, email string, superTokenUserID string) (*fhir_dto.Person, error) {
+	person, err := uc.PersonFhirClient.FindPersonByEmail(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+	if len(person) > 0 {
+		person := person[0]
+
+		found := false
+		foundOnIdx := -1
+		exactMatch := false
+
+		for idx, identifier := range person.Identifier {
+			if identifier.System == constvars.FhirSupertokenSystemIdentifier {
+				found = true
+				foundOnIdx = idx
+
+				if identifier.Value == superTokenUserID {
+					exactMatch = true
+					break
+				}
+			}
+		}
+
+		if found && !exactMatch {
+			if superTokenUserID == "" {
+				return &person, nil
+			}
+
+			person.Identifier[foundOnIdx] = fhir_dto.Identifier{
+				System: constvars.FhirSupertokenSystemIdentifier,
+				Value:  superTokenUserID,
+			}
+
+			updatedPerson, err := uc.PersonFhirClient.Update(ctx, &person)
+			if err != nil {
+				return nil, err
+			}
+
+			return updatedPerson, nil
+		}
+
+		if !found {
+			if superTokenUserID == "" {
+				return &person, nil
+			}
+
+			person.Identifier = append(person.Identifier, fhir_dto.Identifier{
+				System: constvars.FhirSupertokenSystemIdentifier,
+				Value:  superTokenUserID,
+			})
+
+			updatedPerson, err := uc.PersonFhirClient.Update(ctx, &person)
+			if err != nil {
+				return nil, err
+			}
+
+			return updatedPerson, nil
+		}
+
+		return &person, nil
+	}
+
+	newPersonInput := &fhir_dto.Person{
+		ResourceType: constvars.ResourcePerson,
+		Active:       true,
+		Identifier: []fhir_dto.Identifier{
+			{ // this is necessary because the request will fail if the identifier is not provided
+				System: string(fhir_dto.ContactPointSystemEmail),
+				Value:  email,
+			},
+		},
+		Telecom: []fhir_dto.ContactPoint{
+			{
+				System: fhir_dto.ContactPointSystemEmail,
+				Value:  email,
+				Use:    "work",
+			},
+		},
+	}
+
+	if superTokenUserID != "" {
+		newPersonInput.Identifier = append(newPersonInput.Identifier, fhir_dto.Identifier{
+			System: constvars.FhirSupertokenSystemIdentifier,
+			Value:  superTokenUserID,
+		})
+	}
+
+	newPerson, err := uc.PersonFhirClient.Create(ctx, newPersonInput)
+	if err != nil {
+		return nil, err
+	}
+
+	return newPerson, nil
 }
 
 func (uc *userUsecase) updatePatientFhirProfile(ctx context.Context, user *models.User, session *models.Session, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error) {
