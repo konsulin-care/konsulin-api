@@ -126,7 +126,7 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 			body, _ := io.ReadAll(r.Body)
 			r.Body.Close()
 
-			if err := scanBundle(ctxIface, m.Enforcer, body, roles, ctxIface.Value(keyFHIRID).(string), m.PatientFhirClient, m.PractitionerFhirClient); err != nil {
+			if err := scanBundle(ctxIface, m.Enforcer, body, roles, ctxIface.Value(keyFHIRID).(string), m.PatientFhirClient, m.PractitionerFhirClient, m.PractitionerRoleFhirClient, m.ScheduleFhirClient); err != nil {
 				utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
 				return
 			}
@@ -145,7 +145,7 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 			r.Body = io.NopCloser(bytes.NewReader(body))
 		}
 
-		if err := checkSingle(ctxIface, m.Enforcer, r.Method, fullURL, roles, ctxIface.Value(keyFHIRID).(string), m.PatientFhirClient, m.PractitionerFhirClient, resourceBody); err != nil {
+		if err := checkSingle(ctxIface, m.Enforcer, r.Method, fullURL, roles, ctxIface.Value(keyFHIRID).(string), m.PatientFhirClient, m.PractitionerFhirClient, m.PractitionerRoleFhirClient, m.ScheduleFhirClient, resourceBody); err != nil {
 			utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
 			return
 		}
@@ -304,7 +304,7 @@ func resolveIdentifierToPatientID(ctx context.Context, identifier string, patien
 	return patients[0].ID, nil
 }
 
-func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []string, uid string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient) error {
+func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []string, uid string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient, practitionerRoleClient contracts.PractitionerRoleFhirClient, scheduleClient contracts.ScheduleFhirClient) error {
 	if gjson.GetBytes(raw, "resourceType").String() != "Bundle" {
 		return fmt.Errorf("invalid bundle")
 	}
@@ -313,20 +313,21 @@ func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []str
 		method := entry.Get("request.method").String()
 		url := entry.Get("request.url").String()
 		resource := entry.Get("resource").Raw
-		if err := checkSingle(ctx, e, method, url, roles, uid, patientClient, practitionerClient, []byte(resource)); err != nil {
+		if err := checkSingle(ctx, e, method, url, roles, uid, patientClient, practitionerClient, practitionerRoleClient, scheduleClient, []byte(resource)); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, roles []string, fhirID string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient, resource []byte) error {
+func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, roles []string, fhirID string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient, practitionerRoleClient contracts.PractitionerRoleFhirClient, scheduleClient contracts.ScheduleFhirClient, resource []byte) error {
 	normalizedPath := normalizePath(url)
 	for _, role := range roles {
 		if allowed(e, role, method, normalizedPath) {
 
 			if role == constvars.KonsulinRolePatient || role == constvars.KonsulinRolePractitioner {
-				if ownsResource(ctx, fhirID, url, role, method, patientClient, practitionerClient, resource) {
+				ok := ownsResource(ctx, fhirID, url, role, method, patientClient, practitionerClient, practitionerRoleClient, scheduleClient, resource)
+				if ok {
 					return nil
 				}
 				continue
@@ -361,7 +362,7 @@ func firstSeg(raw string) string {
 	}
 	return ""
 }
-func validateResourceOwnership(ctx context.Context, fhirID, role, resourceType string, resource []byte, patientClient contracts.PatientFhirClient) bool {
+func validateResourceOwnership(ctx context.Context, fhirID, role, resourceType string, resource []byte, practitionerRoleClient contracts.PractitionerRoleFhirClient, scheduleClient contracts.ScheduleFhirClient) bool {
 	if role == constvars.KonsulinRolePatient {
 		resourceStr := string(resource)
 
@@ -444,12 +445,46 @@ func validateResourceOwnership(ctx context.Context, fhirID, role, resourceType s
 			}
 		}
 
+		// schedule ownership check via first actor -> PractitionerRole -> Practitioner
+		if resourceType == constvars.ResourceSchedule {
+			scheduleID := gjson.Get(resourceStr, "id").String()
+			if scheduleID == "" {
+				return false
+			}
+
+			schedules, err := scheduleClient.Search(ctx, contracts.ScheduleSearchParams{ID: scheduleID})
+			if err != nil {
+				return false
+			}
+			if len(schedules) != 1 {
+				return false
+			}
+			sch := schedules[0]
+			if len(sch.Actor) < 1 {
+				return false
+			}
+			firstActor := sch.Actor[0].Reference
+			if strings.HasPrefix(firstActor, "PractitionerRole/") {
+				roleID := strings.TrimPrefix(firstActor, "PractitionerRole/")
+				pr, err := practitionerRoleClient.FindPractitionerRoleByID(ctx, roleID)
+				if err != nil {
+					return false
+				}
+				pracRef := pr.Practitioner.Reference
+				if strings.HasPrefix(pracRef, "Practitioner/") {
+					pid := strings.TrimPrefix(pracRef, "Practitioner/")
+					if pid == fhirID {
+						return true
+					}
+				}
+			}
+		}
+
 		practitionerRefs := []string{
 			gjson.Get(resourceStr, "practitioner.reference").String(),
 			gjson.Get(resourceStr, "actor.reference").String(),
 			gjson.Get(resourceStr, "performer.reference").String(),
 		}
-
 		for _, ref := range practitionerRefs {
 			if strings.HasPrefix(ref, "Practitioner/") {
 				practitionerID := strings.TrimPrefix(ref, "Practitioner/")
@@ -463,7 +498,7 @@ func validateResourceOwnership(ctx context.Context, fhirID, role, resourceType s
 	return false
 }
 
-func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient, resource []byte) bool {
+func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient, practitionerRoleClient contracts.PractitionerRoleFhirClient, scheduleClient contracts.ScheduleFhirClient, resource []byte) bool {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return false
@@ -476,7 +511,7 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 	}
 
 	if method == "PUT" && len(resource) > 0 {
-		return validateResourceOwnership(ctx, fhirID, role, resourceType, resource, patientClient)
+		return validateResourceOwnership(ctx, fhirID, role, resourceType, resource, practitionerRoleClient, scheduleClient)
 	}
 
 	if role == constvars.KonsulinRolePatient {

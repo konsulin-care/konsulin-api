@@ -5,8 +5,10 @@ import (
 	"konsulin-service/internal/pkg/utils"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
+	"github.com/robfig/cron/v3"
 	"github.com/spf13/viper"
 )
 
@@ -74,6 +76,17 @@ func loadInternalConfigWithEnv() *InternalConfig {
 			SuperadminAPIKey:           utils.GetEnvString("SUPERADMIN_API_KEY", ""),
 			SuperadminAPIKeyRateLimit:  utils.GetEnvInt("SUPERADMIN_API_KEY_RATE_LIMIT", 100),
 			WebhookInstantiateBasePath: utils.GetEnvString("APP_WEBHOOK_INSTANTIATE_BASE_PATH", "/api/v1/hook"),
+			SlotWindowDays: func() int {
+				v := utils.GetEnvInt("SLOT_WINDOW_DAYS", 30)
+				if v <= 0 {
+					return 30
+				}
+				return v
+			}(),
+			SlotWorkerCronSpec: func() string {
+				// read raw env; validation below
+				return utils.GetEnvString("SLOT_WORKER_CRON_SPEC", "")
+			}(),
 		},
 		FHIR: AppFHIR{
 			BaseUrl: utils.GetEnvString("APP_FHIR_BASE_URL", ""),
@@ -126,12 +139,17 @@ func loadInternalConfigWithEnv() *InternalConfig {
 			MonthlyQuota:         utils.GetEnvInt("HOOK_QUOTA", 0),
 			RateLimitedServices:  utils.GetEnvString("HOOK_RATE_LIMITED_SERVICES", ""),
 			PaidOnlyServices:     utils.GetEnvString("HOOK_PAID_ONLY_SERVICES", ""),
+			AsyncServiceNames:    parseCSVToLowerSlice(utils.GetEnvString("HOOK_ASYNC_SERVICE_NAMES", "")),
 			MaxQueue:             utils.GetEnvInt("HOOK_MAX_QUEUE", 1),
 			ThrottleRetry:        utils.GetEnvInt("HOOK_THROTTLE_RETRY", 15),
 			URL:                  utils.GetEnvString("HOOK_URL", ""),
 			HTTPTimeoutInSeconds: utils.GetEnvInt("HOOK_HTTP_TIMEOUT", 10),
 			JWTAlg:               utils.GetEnvString("HOOK_JWT_ALG", "ES256"),
 			JWTHookKey:           utils.GetEnvString("JWT_HOOK_KEY", ""),
+		},
+		Xendit: AppXendit{
+			APIKey:       utils.GetEnvString("APP_XENDIT_API_KEY", ""),
+			WebhookToken: utils.GetEnvString("APP_XENDIT_WEBHOOK_TOKEN", ""),
 		},
 	}
 
@@ -144,6 +162,19 @@ func loadInternalConfigWithEnv() *InternalConfig {
 		cfg.ServicePricing.AccessDatasetBasePrice <= 0 {
 		log.Fatalf("invalid service base price configuration: all BASE_PRICE_* must be > 0")
 	}
+
+	// Validate/normalize cron spec now; default to @daily if empty or invalid
+	spec := cfg.App.SlotWorkerCronSpec
+	if spec == "" {
+		log.Printf("slot worker: empty cron spec, defaulting to @daily")
+		spec = "@daily"
+	}
+	if _, err := cron.ParseStandard(spec); err != nil {
+		log.Printf("slot worker: invalid cron spec '%s': %v, defaulting to @daily", spec, err)
+		spec = "@daily"
+	}
+	// store normalized spec back
+	cfg.App.SlotWorkerCronSpec = spec
 
 	return cfg
 }
@@ -206,4 +237,22 @@ func GetInternalConfig() *InternalConfig {
 }
 func GetDriverConfig() *DriverConfig {
 	return driverCfg
+}
+
+// parseCSVToLowerSlice parses a comma-separated string into a slice of trimmed, lowercased strings.
+// Returns an empty slice if the input is empty or contains only whitespace.
+func parseCSVToLowerSlice(csv string) []string {
+	csv = strings.TrimSpace(csv)
+	if csv == "" {
+		return []string{}
+	}
+	parts := strings.Split(csv, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			result = append(result, strings.ToLower(trimmed))
+		}
+	}
+	return result
 }

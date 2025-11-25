@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 )
 
@@ -25,6 +26,31 @@ type WebhookController struct {
 	Usecase   webhook.Usecase
 	Limiter   *ratelimiter.HookRateLimiter
 	AppConfig *config.InternalConfig
+}
+
+// AsyncServiceResultRequest represents the request body for async service result callback.
+type AsyncServiceResultRequest struct {
+	ServiceRequestID string `json:"serviceRequestId"`
+	Result           string `json:"result"`
+	Timestamp        string `json:"timestamp"` // RFC3339 format
+}
+
+// validate checks that all required fields are present and valid.
+func (req *AsyncServiceResultRequest) validate() error {
+	if strings.TrimSpace(req.ServiceRequestID) == "" {
+		return exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, "serviceRequestId is required", "VALIDATION_ERROR")
+	}
+	if strings.TrimSpace(req.Result) == "" {
+		return exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, "result is required", "VALIDATION_ERROR")
+	}
+	if strings.TrimSpace(req.Timestamp) == "" {
+		return exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, "timestamp is required", "VALIDATION_ERROR")
+	}
+	// Validate timestamp format
+	if _, err := time.Parse(time.RFC3339, req.Timestamp); err != nil {
+		return exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, "timestamp must be in RFC3339 format", "VALIDATION_ERROR")
+	}
+	return nil
 }
 
 var (
@@ -116,7 +142,7 @@ func (ctrl *WebhookController) HandleEnqueueWebHook(w http.ResponseWriter, r *ht
 	fwd := r.Header.Get(webhook.JWTForwardedFromPaymentServiceHeader)
 	ctx := context.WithValue(r.Context(), webhook.JWTForwardedFromPaymentServiceHeader, fwd)
 
-	_, err = ctrl.Usecase.Enqueue(ctx, &webhook.EnqueueInput{
+	out, err := ctrl.Usecase.Enqueue(ctx, &webhook.EnqueueInput{
 		ServiceName: serviceName,
 		Method:      constvars.MethodPost,
 		RawJSON:     raw,
@@ -128,7 +154,75 @@ func (ctrl *WebhookController) HandleEnqueueWebHook(w http.ResponseWriter, r *ht
 		return
 	}
 
-	w.Header().Set(constvars.HeaderContentType, constvars.MIMEApplicationJSON)
-	w.WriteHeader(constvars.StatusAccepted)
-	w.Write([]byte(`{"success":true}`))
+	utils.BuildSuccessResponse(w, constvars.StatusAccepted, constvars.ResponseSuccess, out)
+}
+
+func (ctrl *WebhookController) HandleAsyncServiceResultCallback(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.BuildNewCustomError(nil, constvars.StatusMethodNotAllowed, "Only POST is allowed", "METHOD_NOT_ALLOWED"))
+		return
+	}
+
+	// Enforce Content-Type: application/json
+	if !strings.HasPrefix(r.Header.Get(constvars.HeaderContentType), constvars.MIMEApplicationJSON) {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.BuildNewCustomError(nil, constvars.StatusUnsupportedMediaType, "Content-Type must be application/json", "UNSUPPORTED_MEDIA_TYPE"))
+		return
+	}
+
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrReadBody(err))
+		return
+	}
+	defer r.Body.Close()
+
+	var req AsyncServiceResultRequest
+	if err := json.Unmarshal(raw, &req); err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+		return
+	}
+
+	if err := req.validate(); err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	timestamp, err := time.Parse(time.RFC3339, req.Timestamp)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, "Invalid timestamp format", "VALIDATION_ERROR"))
+		return
+	}
+
+	err = ctrl.Usecase.HandleAsyncServiceResult(r.Context(), &webhook.HandleAsyncServiceResultInput{
+		ServiceRequestID: req.ServiceRequestID,
+		Result:           req.Result,
+		Timestamp:        timestamp,
+	})
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (ctrl *WebhookController) HandleGetAsyncServiceResult(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.BuildNewCustomError(nil, constvars.StatusMethodNotAllowed, "Only GET is allowed", "METHOD_NOT_ALLOWED"))
+		return
+	}
+
+	id := chi.URLParam(r, "id")
+	if strings.TrimSpace(id) == "" {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, "id is required", "VALIDATION_ERROR"))
+		return
+	}
+
+	result, err := ctrl.Usecase.GetAsyncServiceResult(r.Context(), id)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.ResponseSuccess, result)
 }

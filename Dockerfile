@@ -23,7 +23,7 @@ RUN apt-get update && \
 ENV TZ=$TZ_ARG
 
 #FROM repository.konsulin.care/repository/private/be-konsulin:latest as gobuild
-FROM konsulin/rest-backend-vendor:develop as gobuild
+FROM konsulin/rest-backend-vendor:develop AS gobuild
 LABEL stage=gobuild
 
 # captures argument

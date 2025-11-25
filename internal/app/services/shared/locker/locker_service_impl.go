@@ -120,3 +120,56 @@ func (s *lockService) Unlock(ctx context.Context, key, lockValue string) error {
 	)
 	return nil
 }
+
+// Refresh extends the TTL of a lock if the caller owns it (lockValue matches stored value).
+func (s *lockService) Refresh(ctx context.Context, key, lockValue string, expiration time.Duration) error {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	s.Log.Info("lockService.Refresh called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingRedisKey, key),
+		zap.Duration(constvars.LoggingLockExpirationTimeKey, expiration),
+	)
+
+	storedVal, err := s.redisRepo.Get(ctx, key)
+	if err != nil {
+		s.Log.Error("lockService.Refresh error retrieving value from redis",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return err
+	}
+	if storedVal == "" {
+		// lock missing; nothing to refresh
+		s.Log.Info("lockService.Refresh no existing lock; skip",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingRedisKey, key),
+		)
+		return nil
+	}
+
+	expectedValue := fmt.Sprintf("\"%s\"", lockValue)
+	if storedVal != expectedValue {
+		err := exceptions.ErrRedisUnlock(fmt.Errorf("lock not owned by this client"))
+		s.Log.Error("lockService.Refresh lock ownership mismatch",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingLockStoredValueKey, storedVal),
+			zap.String(constvars.LoggingLockExpectedValueKey, expectedValue),
+			zap.Error(err),
+		)
+		return err
+	}
+
+	// Reset TTL by writing the same value with new expiration
+	if err := s.redisRepo.Set(ctx, key, lockValue, expiration); err != nil {
+		s.Log.Error("lockService.Refresh error extending TTL",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return err
+	}
+	s.Log.Info("lockService.Refresh succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingRedisKey, key),
+	)
+	return nil
+}

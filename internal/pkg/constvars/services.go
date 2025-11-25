@@ -35,3 +35,14 @@ var KnownServices = []ServiceType{
 	ServicePerformanceReport,
 	ServiceAccessDataset,
 }
+
+// PaymentServiceType represents the type of payment service for Xendit invoice callbacks.
+// These variable will be used to indicate which service the payment
+// is for.
+type PaymentServiceType string
+
+// list of known paid services
+const (
+	AppointmentPaymentService PaymentServiceType = "appointment"
+	WebhookPaymentService     PaymentServiceType = "webhook"
+)

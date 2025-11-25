@@ -33,6 +33,9 @@ const (
 	ResourceLocation              = "Location"
 	ResourceHealthcareService     = "HealthcareService"
 	ResourceServiceRequest        = "ServiceRequest"
+	ResourceInvoice               = "Invoice"
+	ResourcePaymentReconciliation = "PaymentReconciliation"
+	ResourcePaymentNotice         = "PaymentNotice"
 )
 
 const (

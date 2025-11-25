@@ -13,6 +13,7 @@ type InternalConfig struct {
 	PaymentGateway AppPaymentGateway `mapstructure:"payment_gateway"`
 	ServicePricing AppServicePricing `mapstructure:"service_pricing"`
 	Webhook        AppWebhook        `mapstructure:"webhook"`
+	Xendit         AppXendit         `mapstructure:"xendit"`
 }
 
 type App struct {
@@ -41,6 +42,10 @@ type App struct {
 	SuperadminAPIKey                               string `mapstructure:"superadmin_api_key"`
 	SuperadminAPIKeyRateLimit                      int    `mapstructure:"superadmin_api_key_rate_limit"`
 	WebhookInstantiateBasePath                     string `mapstructure:"webhook_instantiate_base_path"`
+	// SlotWindowDays controls rolling window days for Slot generation (default 30 if unset)
+	SlotWindowDays int `mapstructure:"slot_window_days"`
+	// SlotWorkerCronSpec defines the cron expression for the slot worker schedule (e.g., "@daily")
+	SlotWorkerCronSpec string `mapstructure:"slot_worker_cron_spec"`
 }
 
 type AppFHIR struct {
@@ -110,6 +115,8 @@ type AppWebhook struct {
 	RateLimitedServices string `mapstructure:"rate_limited_services"`
 	// PaidOnlyServices is a CSV list of service names that require a forwarded JWT from payment service
 	PaidOnlyServices string `mapstructure:"paid_only_services"`
+	// AsyncServiceNames is a parsed list of service names that trigger async ServiceRequest creation
+	AsyncServiceNames []string
 	// MaxQueue defines how many items the worker processes per tick
 	MaxQueue int `mapstructure:"max_queue"`
 	// ThrottleRetry is the failedCount threshold before sending to DLQ
@@ -122,4 +129,10 @@ type AppWebhook struct {
 	JWTAlg string `mapstructure:"jwt_alg"`
 	// JWTHookKey is the private key PEM for signing webhook JWTs
 	JWTHookKey string `mapstructure:"jwt_hook_key"`
+}
+
+// AppXendit holds Xendit SDK configuration
+type AppXendit struct {
+	APIKey      string `mapstructure:"api_key"`
+	WebhookToken string `mapstructure:"webhook_token"`
 }

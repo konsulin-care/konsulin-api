@@ -3,15 +3,16 @@ package fhir_dto
 import "strings"
 
 type Person struct {
-	ResourceType string         `json:"resourceType"`
-	ID           string         `json:"id,omitempty"`
-	Active       bool           `json:"active,omitempty"`
-	Name         []HumanName    `json:"name,omitempty"`
-	Telecom      []ContactPoint `json:"telecom,omitempty"`
-	Gender       string         `json:"gender,omitempty"`
-	BirthDate    string         `json:"birthDate,omitempty"`
-	Photo        *Attachment    `json:"photo,omitempty"`
-	Identifier   []Identifier   `json:"identifier"`
+	ResourceType         string         `json:"resourceType"`
+	ID                   string         `json:"id,omitempty"`
+	Active               bool           `json:"active,omitempty"`
+	Name                 []HumanName    `json:"name,omitempty"`
+	Telecom              []ContactPoint `json:"telecom,omitempty"`
+	Gender               string         `json:"gender,omitempty"`
+	BirthDate            string         `json:"birthDate,omitempty"`
+	Photo                *Attachment    `json:"photo,omitempty"`
+	Identifier           []Identifier   `json:"identifier"`
+	ManagingOrganization *Reference     `json:"managingOrganization,omitempty"`
 }
 
 // FullName returns a best-effort display name for the person.

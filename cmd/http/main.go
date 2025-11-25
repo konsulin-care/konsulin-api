@@ -14,12 +14,18 @@ import (
 	"konsulin-service/internal/app/services/core/auth"
 	"konsulin-service/internal/app/services/core/payments"
 	"konsulin-service/internal/app/services/core/session"
+	"konsulin-service/internal/app/services/core/slot"
 	"konsulin-service/internal/app/services/core/transactions"
 	"konsulin-service/internal/app/services/core/webhook"
+	bundle "konsulin-service/internal/app/services/fhir_spark/bundle"
+	invoicesFhir "konsulin-service/internal/app/services/fhir_spark/invoices"
 	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/persons"
+	practitionerRoleFhir "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
+	scheduleFhir "konsulin-service/internal/app/services/fhir_spark/schedules"
 	"konsulin-service/internal/app/services/fhir_spark/service_requests"
+	slotFhir "konsulin-service/internal/app/services/fhir_spark/slots"
 	"konsulin-service/internal/app/services/shared/jwtmanager"
 	"konsulin-service/internal/app/services/shared/locker"
 	"konsulin-service/internal/app/services/shared/mailer"
@@ -37,6 +43,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	xendit "github.com/xendit/xendit-go/v7"
 )
 
 // Version sets the default build version
@@ -166,8 +173,11 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		return err
 	}
 
-	// Initialize oy service
+	// Initialize oy service (kept for backward-compatibility; not used for creation)
 	_ = payment_gateway.NewOyService(bootstrap.InternalConfig, bootstrap.Logger)
+
+	// Initialize Xendit client (reusable)
+	xenditClient := xendit.NewClient(bootstrap.InternalConfig.Xendit.APIKey)
 
 	// Initialize Minio storage
 	minioStorage := storageKonsulin.NewMinioStorage(bootstrap.Minio)
@@ -181,7 +191,10 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	// Initialize FHIR clients
 	patientFhirClient := patientsFhir.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	practitionerRoleClient := practitionerRoleFhir.NewPractitionerRoleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	personFhirClient := persons.NewPersonFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	scheduleClient := scheduleFhir.NewScheduleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	slotClient := slotFhir.NewSlotFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	serviceRequestFhirClient := service_requests.NewServiceRequestFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 
 	// Ensure default FHIR Groups exist for ServiceRequest subjects
@@ -206,7 +219,16 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	authController := controllers.NewAuthController(bootstrap.Logger, authUseCase)
 
 	// Initialize middlewares with logger, session service, and auth usecase
-	middlewares := middlewares.NewMiddlewares(bootstrap.Logger, sessionService, authUseCase, bootstrap.InternalConfig, practitionerFhirClient, patientFhirClient)
+	middlewares := middlewares.NewMiddlewares(
+		bootstrap.Logger,
+		sessionService,
+		authUseCase,
+		bootstrap.InternalConfig,
+		practitionerFhirClient,
+		patientFhirClient,
+		practitionerRoleClient,
+		scheduleClient,
+	)
 
 	// Initialize supertokens
 	err = authUseCase.InitializeSupertoken()
@@ -224,10 +246,15 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	if err != nil {
 		return err
 	}
-	webhookUsecase := webhook.NewUsecase(bootstrap.Logger, bootstrap.InternalConfig, webhookQueueService, webhookJWT)
+	webhookUsecase := webhook.NewUsecase(bootstrap.Logger, bootstrap.InternalConfig, webhookQueueService, webhookJWT, patientFhirClient, practitionerFhirClient, serviceRequestFhirClient)
 	webhookController := controllers.NewWebhookController(bootstrap.Logger, webhookUsecase, webhookLimiter, bootstrap.InternalConfig)
 	// Initialize payment usecase and controller (inject JWT manager)
 	serviceRequestStorage := storageKonsulin.NewServiceRequestStorage(serviceRequestFhirClient, bootstrap.Logger)
+	invoiceFhirClient := invoicesFhir.NewInvoiceFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+
+	bundleClient := bundle.NewBundleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	slotUsecase := slot.NewSlotUsecase(scheduleClient, lockService, slotClient, practitionerRoleClient, practitionerFhirClient, personFhirClient, bundleClient, bootstrap.InternalConfig, bootstrap.Logger)
+
 	paymentUsecase := payments.NewPaymentUsecase(
 		transactions.NewTransactionPostgresRepository(nil, bootstrap.Logger),
 		bootstrap.InternalConfig,
@@ -237,14 +264,28 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		personFhirClient,
 		serviceRequestStorage,
 		payment_gateway.NewOyService(bootstrap.InternalConfig, bootstrap.Logger),
+		xenditClient,
+		invoiceFhirClient,
+		practitionerRoleClient,
+		slotClient,
+		scheduleClient,
+		bundleClient,
+		slotUsecase,
 		bootstrap.Logger,
 	)
 	paymentController := controllers.NewPaymentController(bootstrap.Logger, paymentUsecase)
+
+	scheduleController := controllers.NewScheduleController(slotUsecase, bootstrap.Logger)
 
 	// Start webhook worker ticker (best-effort lock ensures single execution)
 	worker := webhook.NewWorker(bootstrap.Logger, bootstrap.InternalConfig, lockService, webhookQueueService, webhookJWT)
 	stopWorker := worker.Start(context.Background())
 	bootstrap.WorkerStop = stopWorker
+
+	// Start slot top-up worker (leader lock inside)
+	slotWorker := slot.NewWorker(bootstrap.Logger, bootstrap.InternalConfig, lockService, practitionerRoleClient, slotUsecase)
+	slotWorker.Start(context.Background())
+	bootstrap.SlotWorkerStop = slotWorker.Stop
 
 	// Setup routes with the router, configuration, middlewares, and controllers
 	routers.SetupRoutes(
@@ -255,6 +296,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		authController,
 		paymentController,
 		webhookController,
+		scheduleController,
 	)
 
 	return nil

@@ -8,6 +8,7 @@ import (
 )
 
 func attachPaymentRouter(router chi.Router, middlewares *middlewares.Middlewares, paymentController *controllers.PaymentController) {
-	router.Post("/payment-routing/callback", paymentController.PaymentRoutingCallback)
+	router.Post("/pay/callback/xendit/invoice", paymentController.XenditInvoiceCallback)
 	router.Post("/pay/service", paymentController.CreatePay)
+	router.Post("/pay/appointment", paymentController.HandleAppointmentPayment)
 }

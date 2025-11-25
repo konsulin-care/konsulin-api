@@ -121,3 +121,88 @@ func (c *personFhirClient) FindPersonByEmail(ctx context.Context, email string) 
 	)
 	return people, nil
 }
+
+// Search queries Person resources using supported search parameters.
+func (c *personFhirClient) Search(ctx context.Context, params contracts.PersonSearchInput) ([]fhir_dto.Person, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	c.Log.Info("personFhirClient.Search called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
+	urlStr := c.BaseUrl
+	if enc := params.ToQueryParam().Encode(); enc != "" {
+		urlStr += "?" + enc
+	}
+
+	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, urlStr, nil)
+	if err != nil {
+		c.Log.Error("personFhirClient.Search error creating HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrCreateHTTPRequest(err)
+	}
+	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
+
+	c.Log.Info("personFhirClient.Search built URL",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingFhirUrlKey, req.URL.String()),
+	)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		c.Log.Error("personFhirClient.Search error sending HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrSendHTTPRequest(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != constvars.StatusOK {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			c.Log.Error("personFhirClient.Search error reading response body",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePerson)
+		}
+		var outcome fhir_dto.OperationOutcome
+		_ = json.Unmarshal(bodyBytes, &outcome)
+		if len(outcome.Issue) > 0 {
+			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			c.Log.Error("personFhirClient.Search FHIR error",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(fhirErrorIssue),
+			)
+			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourcePerson)
+		}
+		return nil, exceptions.ErrGetFHIRResource(fmt.Errorf("status %d", resp.StatusCode), constvars.ResourcePerson)
+	}
+
+	var bundle struct {
+		Entry []struct {
+			Resource fhir_dto.Person `json:"resource"`
+		} `json:"entry"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&bundle); err != nil {
+		c.Log.Error("personFhirClient.Search error decoding response",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePerson)
+	}
+
+	people := make([]fhir_dto.Person, len(bundle.Entry))
+	for i, e := range bundle.Entry {
+		people[i] = e.Resource
+	}
+
+	c.Log.Info("personFhirClient.Search succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.Int(constvars.LoggingResponseCountKey, len(people)),
+	)
+	return people, nil
+}
