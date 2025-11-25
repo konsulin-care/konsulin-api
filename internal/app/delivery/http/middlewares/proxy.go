@@ -732,7 +732,7 @@ func genericOwnershipPatterns(raw json.RawMessage, oc *ownershipContext) (bool, 
 
 	// Fallback: recursive scan of all "reference" fields.
 	var refs []string
-	collectReferences(res, &refs)
+	collectReferences(res, &refs, 0)
 	for _, ref := range refs {
 		if matchesOwnedRef(ref, oc) {
 			return true, nil
@@ -841,7 +841,12 @@ func matchesOwnedRef(ref string, oc *ownershipContext) bool {
 }
 
 // collectReferences walks arbitrary JSON and collects all "reference" string fields.
-func collectReferences(v any, out *[]string) {
+func collectReferences(v any, out *[]string, depth int) {
+	// prevent infinite recursion. 30 is arbitrary.
+	if depth > 30 {
+		return
+	}
+
 	switch t := v.(type) {
 	case map[string]any:
 		for k, vv := range t {
@@ -850,12 +855,12 @@ func collectReferences(v any, out *[]string) {
 					*out = append(*out, s)
 				}
 			} else {
-				collectReferences(vv, out)
+				collectReferences(vv, out, depth+1)
 			}
 		}
 	case []any:
 		for _, vv := range t {
-			collectReferences(vv, out)
+			collectReferences(vv, out, depth+1)
 		}
 	}
 }
