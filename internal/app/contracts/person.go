@@ -8,7 +8,9 @@ import (
 
 type PersonFhirClient interface {
 	FindPersonByEmail(ctx context.Context, email string) ([]fhir_dto.Person, error)
+	Create(ctx context.Context, person *fhir_dto.Person) (*fhir_dto.Person, error)
 	Search(ctx context.Context, params PersonSearchInput) ([]fhir_dto.Person, error)
+	Update(ctx context.Context, person *fhir_dto.Person) (*fhir_dto.Person, error)
 }
 
 // PersonSearchInput captures supported Person search parameters.
