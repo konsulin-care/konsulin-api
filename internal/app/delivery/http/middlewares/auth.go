@@ -514,6 +514,12 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 
 	resourceType := utils.ExtractResourceTypeFromPath(u.Path)
 
+	// GET request can bypass pre-request ownership checks
+	// however, it might subject to post-request ownership filtering
+	if method == http.MethodGet {
+		return true
+	}
+
 	if method == "POST" {
 		return true
 	}
