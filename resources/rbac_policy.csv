@@ -3,6 +3,7 @@ p, Clinic Admin, GET, /fhir/Practitioner
 p, Clinic Admin, GET, /fhir/PractitionerRole
 p, Clinic Admin, POST, /fhir/PractitionerRole
 p, Clinic Admin, PUT, /fhir/PractitionerRole
+p, Clinic Admin, GET, /fhir/Schedule
 p, Clinic Admin, POST, /fhir/Schedule
 p, Clinic Admin, GET, /fhir/Slot
 p, Guest, GET, /fhir/Media
@@ -17,7 +18,9 @@ p, Guest, GET, /fhir/Slot
 p, Guest, GET, /fhir/metadata
 p, Patient, GET, /fhir/Appointment
 p, Patient, POST, /fhir/Appointment
+p, Patient, GET, /fhir/Condition
 p, Patient, POST, /fhir/Condition
+p, Patient, GET, /fhir/Invoice
 p, Patient, GET, /fhir/Media
 p, Patient, GET, /fhir/Schedule
 p, Patient, GET, /fhir/Observation
@@ -72,6 +75,7 @@ p, Researcher, POST, /fhir/ResearchStudy
 p, Researcher, PUT, /fhir/ResearchStudy
 p, Superadmin, POST, /fhir/Appointment
 p, Superadmin, PUT, /fhir/Condition
+p, Superadmin, GET, /fhir/Invoice
 p, Superadmin, GET, /fhir/Media
 p, Superadmin, POST, /fhir/Media
 p, Superadmin, PUT, /fhir/Media
@@ -94,6 +98,7 @@ p, Superadmin, GET, /fhir/QuestionnaireResponse
 p, Superadmin, GET, /fhir/ResearchStudy
 p, Superadmin, POST, /fhir/ResearchStudy
 p, Superadmin, PUT, /fhir/ResearchStudy
+p, Superadmin, GET, /fhir/Schedule
 p, Superadmin, POST, /fhir/Schedule
 p, Superadmin, GET, /fhir/Slot
 p, Superadmin, PUT, /fhir/Slot
