@@ -18,6 +18,7 @@ p, Guest, GET, /fhir/metadata
 p, Patient, GET, /fhir/Appointment
 p, Patient, POST, /fhir/Appointment
 p, Patient, POST, /fhir/Condition
+p, Patient, GET, /fhir/Invoice
 p, Patient, GET, /fhir/Media
 p, Patient, GET, /fhir/Schedule
 p, Patient, GET, /fhir/Observation
@@ -72,6 +73,7 @@ p, Researcher, POST, /fhir/ResearchStudy
 p, Researcher, PUT, /fhir/ResearchStudy
 p, Superadmin, POST, /fhir/Appointment
 p, Superadmin, PUT, /fhir/Condition
+p, Superadmin, GET, /fhir/Invoice
 p, Superadmin, GET, /fhir/Media
 p, Superadmin, POST, /fhir/Media
 p, Superadmin, PUT, /fhir/Media
