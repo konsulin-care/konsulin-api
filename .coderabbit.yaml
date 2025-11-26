@@ -10,5 +10,6 @@ reviews:
   poem: false
   auto_review:
     ignore_usernames: [dependabot]
+    labels: ["!wip", "!draft", "!chore"]
 chat:
   auto_reply: false
