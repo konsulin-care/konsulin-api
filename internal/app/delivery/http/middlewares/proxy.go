@@ -18,6 +18,8 @@ import (
 
 	"go.uber.org/zap"
 
+	"slices"
+
 	"github.com/andybalholm/brotli"
 )
 
@@ -98,14 +100,17 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 		if filteringRole != "" {
 			switch filteringRole {
 			case constvars.KonsulinRoleSuperadmin:
-				if b, removed, err := m.filterResponseResourceAgainsRBAC(bodyAfterRBAC, roles); err == nil {
-					bodyAfterRBAC = b
-					removedRBAC = removed
-					if removed > 0 {
-						filteredRBAC = true
-					}
-				} else {
-					m.Log.Warn("RBAC response filtering failed; returning original body", zap.Error(err))
+				b, removed, err := m.filterResponseResourceAgainsRBAC(bodyAfterRBAC, roles)
+				if err != nil {
+					m.Log.Warn("RBAC response filtering failed; resorting to fail closed on error", zap.Error(err))
+					utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerProcess(err))
+					return
+				}
+
+				bodyAfterRBAC = b
+				removedRBAC = removed
+				if removed > 0 {
+					filteredRBAC = true
 				}
 			default:
 				// other roles: no RBAC response filtering
@@ -128,21 +133,30 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 						bundle.Total = &v
 					}
 
-					if fb, eerr := encodeBundle(bundle, enc); eerr == nil {
-						bodyAfterOwnership = fb
-					} else {
-						m.Log.Warn("encodeBundle after ownership filtering failed; returning RBAC-filtered body", zap.Error(eerr))
+					fb, eerr := encodeBundle(bundle, enc)
+					if eerr != nil {
+						m.Log.Warn("encodeBundle after ownership filtering failed; resorting to fail closed on error", zap.Error(err))
+						utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerProcess(err))
+						return
 					}
+
+					bodyAfterOwnership = fb
 				}
 			} else {
 				filteredBody, allowed, ferr := m.filterSingleResourceByOwnership(r.Context(), bodyAfterRBAC, roles, fhirRole, fhirID)
 				if ferr != nil {
-					m.Log.Warn("single-resource ownership filtering failed; returning RBAC-filtered body", zap.Error(ferr))
-				} else if !allowed {
+					m.Log.Info(fmt.Sprintf("single-resource ownership filtering failed for {%s/%s}; resorting to fail closed on error", fhirRole, fhirID), zap.Error(ferr))
+					utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerProcess(ferr))
+					return
+				}
+
+				if !allowed {
 					// Deny access when ownership cannot be proven.
 					utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(fmt.Errorf("forbidden: ownership cannot be proven")))
 					return
-				} else if filteredBody != nil {
+				}
+
+				if filteredBody != nil {
 					bodyAfterOwnership = filteredBody
 				}
 			}
@@ -555,52 +569,95 @@ var resourceSpecificOwnershipCheckers = map[string]ownershipChecker{}
 
 // resourceOwnedByContext centralizes ownership checks for a single FHIR resource.
 // It is used by both bundle-level and single-resource filters.
-func resourceOwnedByContext(
+func (m *Middlewares) resourceOwnedByContext(
 	raw json.RawMessage,
 	resourceType string,
 	id string,
 	oc *ownershipContext,
-) (bool, error) {
+) bool {
 	if utils.IsPublicResource(resourceType) {
-		return true, nil
+		return true
 	}
 
 	requiresPatient := utils.RequiresPatientOwnership(resourceType)
 	requiresPract := utils.RequiresPractitionerOwnership(resourceType)
 	if !requiresPatient && !requiresPract {
-		return true, nil
+		return true
 	}
 
 	// If a resource requires *only* patient or *only* practitioner ownership,
 	// and we lack the corresponding IDs/roles, we can't prove ownership.
 	if requiresPatient && !requiresPract && len(oc.PatientIDs) == 0 && !oc.HasPatientRole {
-		return false, nil
+		return false
 	}
 	if requiresPract && !requiresPatient && len(oc.PractitionerIDs) == 0 && !oc.HasPractitionerRole {
-		return false, nil
+		return false
 	}
 
 	if simpleOwnershipCheck(resourceType, id, oc) {
-		return true, nil
+		return true
 	}
 
 	if ok, err := genericOwnershipPatterns(raw, oc); err == nil && ok {
-		return true, nil
+		return true
 	} else if err != nil {
-		// On parse error, be conservative and allow to avoid breaking clients.
-		return true, nil
+		if m.failClosedOnErrorFromResource(resourceType, id) {
+			return false
+		}
+
+		m.Log.Warn("resorting to fail open on error from resource",
+			zap.String("resourceType", resourceType),
+			zap.String("id", id),
+			zap.Error(err),
+		)
+		return true
 	}
 
 	if checker, ok := resourceSpecificOwnershipCheckers[resourceType]; ok {
 		if ok2, err := checker(raw, oc); err == nil && ok2 {
-			return true, nil
+			return true
 		} else if err != nil {
-			return true, nil
+			if m.failClosedOnErrorFromResource(resourceType, id) {
+				return false
+			}
+
+			m.Log.Warn("resorting to fail open on error from resource",
+				zap.String("resourceType", resourceType),
+				zap.String("id", id),
+				zap.Error(err),
+			)
 		}
 	}
 
 	// If we reach here, we couldn't prove ownership.
-	return false, nil
+	return false
+}
+
+// failClosedOnErrorFromResource is a function that determines if we should fail closed on error from a resource.
+// this function behaviour comes from this discussion: https://github.com/konsulin-care/konsulin-api/pull/250#discussion_r2559068460
+// This function must be used to determine if we should fail closed on error from a resource.
+func (m *Middlewares) failClosedOnErrorFromResource(resourceType string, resourceID string) bool {
+	defaultDenyResources := []string{
+		constvars.ResourcePatient,
+		constvars.ResourceCondition,
+		constvars.ResourceObservation,
+		constvars.ResourceMedicationRequest,
+		constvars.ResourceAllergyIntolerance,
+		constvars.ResourceProcedure,
+		constvars.ResourceCarePlan,
+		constvars.ResourceMedicationAdministration,
+	}
+
+	if slices.Contains(defaultDenyResources, resourceType) {
+		// if the resource is in the default deny list, we fail closed
+		m.Log.Info(fmt.Sprintf("Denying an unauthorized request to {%s/%s}", resourceType, resourceID),
+			zap.String("resourceType", resourceType),
+			zap.String("resourceID", resourceID),
+		)
+		return true
+	}
+
+	return false
 }
 
 // applyOwnershipFilterToBundle mutates bundle.Entry in-place, keeping only owned resources.
@@ -628,11 +685,8 @@ func (m *Middlewares) applyOwnershipFilterToBundle(
 		}
 		rt := env.ResourceType
 
-		owned, err := resourceOwnedByContext(e.Resource, rt, env.ID, oc)
-		if err != nil {
-			// On error, keep entry to avoid accidental data loss.
-			keep = true
-		} else if owned {
+		owned := m.resourceOwnedByContext(e.Resource, rt, env.ID, oc)
+		if owned {
 			keep = true
 		}
 
@@ -811,11 +865,7 @@ func (m *Middlewares) filterSingleResourceByOwnership(
 		return body, true, nil
 	}
 
-	owned, err := resourceOwnedByContext(bodyForFiltering, env.ResourceType, env.ID, oc)
-	if err != nil {
-		// On error, allow rather than break clients.
-		return body, true, nil
-	}
+	owned := m.resourceOwnedByContext(bodyForFiltering, env.ResourceType, env.ID, oc)
 	if !owned {
 		// Not owned → deny.
 		return nil, false, nil
