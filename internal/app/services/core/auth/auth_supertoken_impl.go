@@ -140,7 +140,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 					(*originalImplementation.ConsumeCode) = func(userInput *plessmodels.UserInputCodeWithDeviceID, linkCode *string, preAuthSessionID string, tenantId string, userContext supertokens.UserContext) (plessmodels.ConsumeCodeResponse, error) {
 						response, err := originalConsumeCode(userInput, linkCode, preAuthSessionID, tenantId, userContext)
 						if err != nil {
-							log.Println("authUsecase.SupertokenConsumeCode error while do func originalConsumeCode",
+							uc.Log.Error("authUsecase.SupertokenConsumeCode error while do func originalConsumeCode",
 								zap.Error(err),
 							)
 							return plessmodels.ConsumeCodeResponse{}, err
@@ -155,7 +155,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 
 						rolesResp, err := userroles.GetRolesForUser(uc.InternalConfig.Supertoken.KonsulinTenantID, user.ID)
 						if err != nil {
-							log.Println("authUsecase.SupertokenConsumeCode supertokens error get roles for user by tenantID & UserID",
+							uc.Log.Error("authUsecase.SupertokenConsumeCode supertokens error get roles for user by tenantID & UserID",
 								zap.Error(err),
 							)
 							return plessmodels.ConsumeCodeResponse{}, err
