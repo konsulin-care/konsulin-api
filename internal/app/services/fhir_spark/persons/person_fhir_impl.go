@@ -246,7 +246,6 @@ func (c *personFhirClient) Create(ctx context.Context, person *fhir_dto.Person) 
 
 	if resp.StatusCode != constvars.StatusCreated {
 		bodyBytes, err := io.ReadAll(resp.Body)
-		fmt.Println("full body from create person", string(bodyBytes))
 		if err != nil {
 			c.Log.Error("personFhirClient.Create error reading response body",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -330,7 +329,7 @@ func (c *personFhirClient) Update(ctx context.Context, person *fhir_dto.Person) 
 	if resp.StatusCode != constvars.StatusOK {
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
-			c.Log.Error("personFhirClient.Create error reading response body",
+			c.Log.Error("personFhirClient.Update error reading response body",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(err),
 			)
@@ -339,7 +338,7 @@ func (c *personFhirClient) Update(ctx context.Context, person *fhir_dto.Person) 
 		var outcome fhir_dto.OperationOutcome
 		err = json.Unmarshal(bodyBytes, &outcome)
 		if err != nil {
-			c.Log.Error("personFhirClient.Create error unmarshaling outcome",
+			c.Log.Error("personFhirClient.Update error unmarshaling outcome",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(err),
 			)
@@ -347,7 +346,7 @@ func (c *personFhirClient) Update(ctx context.Context, person *fhir_dto.Person) 
 		}
 		if len(outcome.Issue) > 0 {
 			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
-			c.Log.Error("personFhirClient.Create FHIR error",
+			c.Log.Error("personFhirClient.Update FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
 			)
