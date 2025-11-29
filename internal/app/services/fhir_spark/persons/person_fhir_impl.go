@@ -11,6 +11,7 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"net/http"
+	"net/url"
 	"sync"
 
 	"go.uber.org/zap"
@@ -44,8 +45,10 @@ func (c *personFhirClient) FindPersonByEmail(ctx context.Context, email string) 
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
 
+	emailEnc := url.QueryEscape(email)
+
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet,
-		fmt.Sprintf("%s?email=%s&_sort=-_lastUpdated", c.BaseUrl, email), nil)
+		fmt.Sprintf("%s?email=%s&_sort=-_lastUpdated", c.BaseUrl, emailEnc), nil)
 	if err != nil {
 		c.Log.Error("personFhirClient.FindPersonByEmail error creating HTTP request",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
