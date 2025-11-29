@@ -574,8 +574,10 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 				return true
 			}
 
-			if val := q.Get("_id"); val != "" {
-				return val == fhirID
+			if resourceType == constvars.ResourcePatient {
+				if val := q.Get("_id"); val != "" {
+					return val == fhirID
+				}
 			}
 
 			if identifier := q.Get("identifier"); identifier != "" {
@@ -799,8 +801,10 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 				return id == fhirID
 			}
 
-			if val := q.Get("_id"); val != "" {
-				return val == fhirID
+			if resourceType == constvars.ResourcePractitioner {
+				if val := q.Get("_id"); val != "" {
+					return val == fhirID
+				}
 			}
 
 			if a := q.Get("actor"); a != "" {
