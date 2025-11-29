@@ -611,7 +611,7 @@ func (uc *userUsecase) createPatientIfNotExists(ctx context.Context, email strin
 			return updatedPatient, nil
 		}
 
-		return &patients[0], nil
+		return &patient, nil
 	}
 
 	newPatientInput := &fhir_dto.Patient{
