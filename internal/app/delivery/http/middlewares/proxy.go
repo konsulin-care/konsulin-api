@@ -21,6 +21,7 @@ import (
 	"slices"
 
 	"github.com/andybalholm/brotli"
+	"github.com/klauspost/compress/zstd"
 )
 
 // bodyEncoding represents the original Content-Encoding of the proxied response body.
@@ -30,6 +31,7 @@ const (
 	bodyEncodingIdentity bodyEncoding = "identity"
 	bodyEncodingBrotli   bodyEncoding = "br"
 	bodyEncodingGzip     bodyEncoding = "gzip"
+	bodyEncodingZstd     bodyEncoding = "zstd"
 )
 
 // decodeBodyForFiltering decodes the body according to the Content-Encoding header.
@@ -58,6 +60,17 @@ func decodeBodyForFiltering(body []byte, contentEncoding string) ([]byte, bodyEn
 		return decoded, bodyEncodingGzip, nil
 	case "identity", "":
 		return body, bodyEncodingIdentity, nil
+	case "zstd":
+		zr, err := zstd.NewReader(bytes.NewReader(body))
+		if err != nil {
+			return nil, "", err
+		}
+		defer zr.Close()
+		decoded, rerr := io.ReadAll(zr)
+		if rerr != nil {
+			return nil, "", rerr
+		}
+		return decoded, bodyEncodingZstd, nil
 	default:
 		// unknown encoding -> return error to preserve fail closed behaviour
 		return nil, "", fmt.Errorf("unknown content encoding: %s", ce)
@@ -87,6 +100,20 @@ func encodeBodyFromFiltering(body []byte, enc bodyEncoding) ([]byte, error) {
 			return nil, err
 		}
 		if err := gw.Close(); err != nil {
+			return nil, err
+		}
+		return buf.Bytes(), nil
+	case bodyEncodingZstd:
+		var buf bytes.Buffer
+		zw, err := zstd.NewWriter(&buf)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := zw.Write(body); err != nil {
+			_ = zw.Close()
+			return nil, err
+		}
+		if err := zw.Close(); err != nil {
 			return nil, err
 		}
 		return buf.Bytes(), nil
