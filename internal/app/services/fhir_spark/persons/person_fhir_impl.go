@@ -355,6 +355,13 @@ func (c *personFhirClient) Update(ctx context.Context, person *fhir_dto.Person) 
 			)
 			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourcePerson)
 		}
+
+		c.Log.Error("personFhirClient.Update unexpected status code",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Int(constvars.LoggingStatusCodeKey, resp.StatusCode),
+			zap.String("body", string(bodyBytes)),
+		)
+		return nil, exceptions.ErrUpdateFHIRResource(fmt.Errorf("unexpected status code during update person: %d", resp.StatusCode), constvars.ResourcePerson)
 	}
 
 	var result fhir_dto.Person
