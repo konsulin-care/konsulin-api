@@ -23,6 +23,77 @@ import (
 	"github.com/andybalholm/brotli"
 )
 
+// bodyEncoding represents the original Content-Encoding of the proxied response body.
+type bodyEncoding string
+
+const (
+	bodyEncodingIdentity bodyEncoding = "identity"
+	bodyEncodingBrotli   bodyEncoding = "br"
+	bodyEncodingGzip     bodyEncoding = "gzip"
+)
+
+// decodeBodyForFiltering decodes the body according to the Content-Encoding header.
+// Any decoding failure results in an error so the caller can fail closed.
+func decodeBodyForFiltering(body []byte, contentEncoding string) ([]byte, bodyEncoding, error) {
+	ce := strings.ToLower(strings.TrimSpace(contentEncoding))
+
+	switch ce {
+	case "br":
+		br := brotli.NewReader(bytes.NewReader(body))
+		decoded, err := io.ReadAll(br)
+		if err != nil {
+			return nil, "", err
+		}
+		return decoded, bodyEncodingBrotli, nil
+	case "gzip":
+		gr, err := gzip.NewReader(bytes.NewReader(body))
+		if err != nil {
+			return nil, "", err
+		}
+		decoded, rerr := io.ReadAll(gr)
+		_ = gr.Close()
+		if rerr != nil {
+			return nil, "", rerr
+		}
+		return decoded, bodyEncodingGzip, nil
+	default:
+		// Treat unknown/empty encodings as identity.
+		return body, bodyEncodingIdentity, nil
+	}
+}
+
+// encodeBodyFromFiltering re-applies the original encoding to a filtered body.
+// Any encoding failure results in an error so the caller can fail closed.
+func encodeBodyFromFiltering(body []byte, enc bodyEncoding) ([]byte, error) {
+	switch enc {
+	case bodyEncodingBrotli:
+		var buf bytes.Buffer
+		bw := brotli.NewWriterLevel(&buf, brotli.BestCompression)
+		if _, err := bw.Write(body); err != nil {
+			_ = bw.Close()
+			return nil, err
+		}
+		if err := bw.Close(); err != nil {
+			return nil, err
+		}
+		return buf.Bytes(), nil
+	case bodyEncodingGzip:
+		var buf bytes.Buffer
+		gw := gzip.NewWriter(&buf)
+		if _, err := gw.Write(body); err != nil {
+			_ = gw.Close()
+			return nil, err
+		}
+		if err := gw.Close(); err != nil {
+			return nil, err
+		}
+		return buf.Bytes(), nil
+	default:
+		// unknown encoding -> return original body
+		return body, nil
+	}
+}
+
 func (m *Middlewares) Bridge(target string) http.Handler {
 	client := &http.Client{
 		Timeout:   15 * time.Second,
@@ -92,17 +163,35 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 		fhirRole, _ := r.Context().Value(keyFHIRRole).(string)
 		fhirID, _ := r.Context().Value(keyFHIRID).(string)
 
-		bodyAfterRBAC := respBody
+		originalBody := respBody
+		bodyForFilters := respBody
+		encForFilters := bodyEncodingIdentity
+
+		filteringRole := determineFilteringRole(roles)
+		needsRBAC := filteringRole != ""
+		needsOwnership := r.Method == http.MethodGet && fhirID != ""
+
+		if needsRBAC || needsOwnership {
+			decoded, enc, derr := decodeBodyForFiltering(respBody, resp.Header.Get("Content-Encoding"))
+			if derr != nil {
+				m.Log.Warn("failed to decode response body for filtering; failing closed", zap.Error(derr))
+				utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerProcess(derr))
+				return
+			}
+			bodyForFilters = decoded
+			encForFilters = enc
+		}
+
+		bodyAfterRBAC := bodyForFilters
 		filteredRBAC := false
 		removedRBAC := 0
 
-		filteringRole := determineFilteringRole(roles)
-		if filteringRole != "" {
+		if needsRBAC {
 			switch filteringRole {
 			case constvars.KonsulinRoleSuperadmin:
 				b, removed, err := m.filterResponseResourceAgainstRBAC(bodyAfterRBAC, roles)
 				if err != nil {
-					m.Log.Warn("RBAC response filtering failed; resorting to fail closed on error", zap.Error(err))
+					m.Log.Warn("RBAC response filtering failed; failing closed", zap.Error(err))
 					utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerProcess(err))
 					return
 				}
@@ -122,8 +211,8 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 		filteredOwnership := false
 		removedOwnership := 0
 
-		if r.Method == http.MethodGet && fhirRole != "" {
-			if bundle, enc, isBundle, derr := decodeBundle(bodyAfterRBAC); derr == nil && isBundle {
+		if needsOwnership {
+			if bundle, isBundle, _ := decodeBundle(bodyAfterRBAC); isBundle {
 				removedOwnership = m.applyOwnershipFilterToBundle(r.Context(), bundle, roles, fhirRole, fhirID)
 				if removedOwnership > 0 {
 					filteredOwnership = true
@@ -133,9 +222,9 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 						bundle.Total = &v
 					}
 
-					fb, eerr := encodeBundle(bundle, enc)
+					fb, eerr := encodeBundle(bundle)
 					if eerr != nil {
-						m.Log.Warn("encodeBundle after ownership filtering failed; resorting to fail closed on error", zap.Error(eerr))
+						m.Log.Warn("encodeBundle after ownership filtering failed; failing closed", zap.Error(eerr))
 						utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerProcess(eerr))
 						return
 					}
@@ -145,7 +234,7 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 			} else {
 				filteredBody, allowed, ferr := m.filterSingleResourceByOwnership(r.Context(), bodyAfterRBAC, roles, fhirRole, fhirID)
 				if ferr != nil {
-					m.Log.Info(fmt.Sprintf("single-resource ownership filtering failed for {%s/%s}; resorting to fail closed on error", fhirRole, fhirID), zap.Error(ferr))
+					m.Log.Info(fmt.Sprintf("single-resource ownership filtering failed for {%s/%s}; failing closed", fhirRole, fhirID), zap.Error(ferr))
 					utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerProcess(ferr))
 					return
 				}
@@ -180,8 +269,18 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 			)
 		}
 
-		finalBody := bodyAfterOwnership
 		mutated := filteredRBAC || filteredOwnership
+
+		finalBody := originalBody
+		if mutated {
+			encoded, eerr := encodeBodyFromFiltering(bodyAfterOwnership, encForFilters)
+			if eerr != nil {
+				m.Log.Warn("failed to encode filtered response body; failing closed", zap.Error(eerr))
+				utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerProcess(eerr))
+				return
+			}
+			finalBody = encoded
+		}
 
 		for k, v := range resp.Header {
 
@@ -224,61 +323,12 @@ func (m *Middlewares) filterResponseResourceAgainstRBAC(body []byte, roles []str
 		return body, 0, nil
 	}
 
-	type originalEncoding string
-	const (
-		encodingIdentity originalEncoding = "identity"
-		encodingBrotli   originalEncoding = "br"
-		encodingGzip     originalEncoding = "gzip"
-	)
-
-	bodyForFiltering := body
-	encDetected := encodingIdentity
-
-	tryUnmarshal := func(b []byte, v any) error { return json.Unmarshal(b, v) }
-
 	var envelope struct {
 		ResourceType string `json:"resourceType"`
 	}
-	if err := tryUnmarshal(bodyForFiltering, &envelope); err != nil {
-
-		if brReader := brotli.NewReader(bytes.NewReader(body)); brReader != nil {
-			if decompressed, derr := io.ReadAll(brReader); derr == nil {
-				if jerr := tryUnmarshal(decompressed, &envelope); jerr == nil {
-					bodyForFiltering = decompressed
-					encDetected = encodingBrotli
-				} else {
-
-					if gr, gerr := gzip.NewReader(bytes.NewReader(body)); gerr == nil {
-						decompressedGz, rerr := io.ReadAll(gr)
-						_ = gr.Close()
-						if rerr == nil && tryUnmarshal(decompressedGz, &envelope) == nil {
-							bodyForFiltering = decompressedGz
-							encDetected = encodingGzip
-						} else {
-
-							return body, 0, nil
-						}
-					} else {
-
-						return body, 0, nil
-					}
-				}
-			} else {
-
-				if gr, gerr := gzip.NewReader(bytes.NewReader(body)); gerr == nil {
-					decompressedGz, rerr := io.ReadAll(gr)
-					_ = gr.Close()
-					if rerr == nil && tryUnmarshal(decompressedGz, &envelope) == nil {
-						bodyForFiltering = decompressedGz
-						encDetected = encodingGzip
-					} else {
-						return body, 0, nil
-					}
-				} else {
-					return body, 0, nil
-				}
-			}
-		}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		// cannot inspect safely -> skip RBAC filtering
+		return body, 0, nil
 	}
 
 	if !strings.EqualFold(envelope.ResourceType, "Bundle") {
@@ -299,7 +349,7 @@ func (m *Middlewares) filterResponseResourceAgainstRBAC(body []byte, roles []str
 		Entry        []entry `json:"entry"`
 	}
 
-	if err := json.Unmarshal(bodyForFiltering, &bundle); err != nil {
+	if err := json.Unmarshal(body, &bundle); err != nil {
 		return body, 0, nil
 	}
 
@@ -344,34 +394,7 @@ func (m *Middlewares) filterResponseResourceAgainstRBAC(body []byte, roles []str
 		return body, 0, err
 	}
 
-	switch encDetected {
-	case encodingIdentity:
-		return filteredJSON, removed, nil
-	case encodingBrotli:
-		var buf bytes.Buffer
-		bw := brotli.NewWriterLevel(&buf, brotli.BestCompression)
-		if _, err := bw.Write(filteredJSON); err != nil {
-			_ = bw.Close()
-			return body, 0, err
-		}
-		if err := bw.Close(); err != nil {
-			return body, 0, err
-		}
-		return buf.Bytes(), removed, nil
-	case encodingGzip:
-		var buf bytes.Buffer
-		gw := gzip.NewWriter(&buf)
-		if _, err := gw.Write(filteredJSON); err != nil {
-			_ = gw.Close()
-			return body, 0, err
-		}
-		if err := gw.Close(); err != nil {
-			return body, 0, err
-		}
-		return buf.Bytes(), removed, nil
-	default:
-		return filteredJSON, removed, nil
-	}
+	return filteredJSON, removed, nil
 }
 
 // BundleEntry and Bundle represent a minimal FHIR Bundle envelope for filtering.
@@ -390,118 +413,36 @@ type Bundle struct {
 	Entry        []BundleEntry `json:"entry"`
 }
 
-// decodeBundle attempts to detect encoding (identity, br, gzip) and unmarshal a FHIR Bundle.
-// It returns (bundle, encoding, isBundle, error).
-func decodeBundle(body []byte) (*Bundle, string, bool, error) {
-	const (
-		encodingIdentity = "identity"
-		encodingBrotli   = "br"
-		encodingGzip     = "gzip"
-	)
-
-	enc := encodingIdentity
-	bodyForFiltering := body
-
-	tryUnmarshal := func(b []byte, v any) error { return json.Unmarshal(b, v) }
-
+// decodeBundle assumes body is already uncompressed JSON and tries to unmarshal a FHIR Bundle.
+// It returns (bundle, isBundle, error). Errors are only returned for unexpected failures;
+// JSON parse failures simply mean "not a bundle".
+func decodeBundle(body []byte) (*Bundle, bool, error) {
 	var envelope struct {
 		ResourceType string `json:"resourceType"`
 	}
-	if err := tryUnmarshal(bodyForFiltering, &envelope); err != nil {
-
-		if brReader := brotli.NewReader(bytes.NewReader(body)); brReader != nil {
-			if decompressed, derr := io.ReadAll(brReader); derr == nil {
-				if jerr := tryUnmarshal(decompressed, &envelope); jerr == nil {
-					bodyForFiltering = decompressed
-					enc = encodingBrotli
-				} else {
-
-					if gr, gerr := gzip.NewReader(bytes.NewReader(body)); gerr == nil {
-						decompressedGz, rerr := io.ReadAll(gr)
-						_ = gr.Close()
-						if rerr == nil && tryUnmarshal(decompressedGz, &envelope) == nil {
-							bodyForFiltering = decompressedGz
-							enc = encodingGzip
-						} else {
-
-							return nil, "", false, nil
-						}
-					} else {
-
-						return nil, "", false, nil
-					}
-				}
-			} else {
-
-				if gr, gerr := gzip.NewReader(bytes.NewReader(body)); gerr == nil {
-					decompressedGz, rerr := io.ReadAll(gr)
-					_ = gr.Close()
-					if rerr == nil && tryUnmarshal(decompressedGz, &envelope) == nil {
-						bodyForFiltering = decompressedGz
-						enc = encodingGzip
-					} else {
-						return nil, "", false, nil
-					}
-				} else {
-					return nil, "", false, nil
-				}
-			}
-		}
-
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return nil, false, nil
 	}
 
 	if !strings.EqualFold(envelope.ResourceType, "Bundle") {
-		return nil, "", false, nil
+		return nil, false, nil
 	}
 
 	var bundle Bundle
-	if err := json.Unmarshal(bodyForFiltering, &bundle); err != nil {
-		return nil, "", false, nil
+	if err := json.Unmarshal(body, &bundle); err != nil {
+		return nil, false, nil
 	}
-	return &bundle, enc, true, nil
+	return &bundle, true, nil
 }
 
-// encodeBundle marshals a Bundle and re-applies the original encoding.
-func encodeBundle(bundle *Bundle, enc string) ([]byte, error) {
-	const (
-		encodingIdentity = "identity"
-		encodingBrotli   = "br"
-		encodingGzip     = "gzip"
-	)
-
+// encodeBundle marshals a Bundle into JSON. Content-Encoding is handled by the caller.
+func encodeBundle(bundle *Bundle) ([]byte, error) {
 	filteredJSON, err := json.Marshal(bundle)
 	if err != nil {
 		return nil, err
 	}
 
-	switch enc {
-	case encodingIdentity, "":
-		return filteredJSON, nil
-	case encodingBrotli:
-		var buf bytes.Buffer
-		bw := brotli.NewWriterLevel(&buf, brotli.BestCompression)
-		if _, err := bw.Write(filteredJSON); err != nil {
-			_ = bw.Close()
-			return nil, err
-		}
-		if err := bw.Close(); err != nil {
-			return nil, err
-		}
-		return buf.Bytes(), nil
-	case encodingGzip:
-		var buf bytes.Buffer
-		gw := gzip.NewWriter(&buf)
-		if _, err := gw.Write(filteredJSON); err != nil {
-			_ = gw.Close()
-			return nil, err
-		}
-		if err := gw.Close(); err != nil {
-			return nil, err
-		}
-		return buf.Bytes(), nil
-	default:
-		return filteredJSON, nil
-	}
+	return filteredJSON, nil
 }
 
 // ownershipContext describes what FHIR resources (Patient / Practitioner) the caller owns.
@@ -816,48 +757,13 @@ func (m *Middlewares) filterSingleResourceByOwnership(
 
 	oc := m.buildOwnershipContext(ctx, roles, fhirRole, fhirID)
 
-	// Attempt to unmarshal directly; if it fails, try brotli / gzip like decodeBundle.
-	bodyForFiltering := body
-
-	tryUnmarshal := func(b []byte, v any) error { return json.Unmarshal(b, v) }
-
 	var env struct {
 		ResourceType string `json:"resourceType"`
 		ID           string `json:"id,omitempty"`
 	}
-	if err := tryUnmarshal(bodyForFiltering, &env); err != nil {
-		if brReader := brotli.NewReader(bytes.NewReader(body)); brReader != nil {
-			if decompressed, derr := io.ReadAll(brReader); derr == nil {
-				if jerr := tryUnmarshal(decompressed, &env); jerr == nil {
-					bodyForFiltering = decompressed
-				} else {
-					if gr, gerr := gzip.NewReader(bytes.NewReader(body)); gerr == nil {
-						decompressedGz, rerr := io.ReadAll(gr)
-						_ = gr.Close()
-						if rerr == nil && tryUnmarshal(decompressedGz, &env) == nil {
-							bodyForFiltering = decompressedGz
-						} else {
-							// cannot inspect safely → allow
-							return body, true, nil
-						}
-					} else {
-						return body, true, nil
-					}
-				}
-			} else {
-				if gr, gerr := gzip.NewReader(bytes.NewReader(body)); gerr == nil {
-					decompressedGz, rerr := io.ReadAll(gr)
-					_ = gr.Close()
-					if rerr == nil && tryUnmarshal(decompressedGz, &env) == nil {
-						bodyForFiltering = decompressedGz
-					} else {
-						return body, true, nil
-					}
-				} else {
-					return body, true, nil
-				}
-			}
-		}
+	if err := json.Unmarshal(body, &env); err != nil {
+		// cannot inspect safely → allow
+		return body, true, nil
 	}
 
 	if env.ResourceType == "" {
@@ -865,7 +771,7 @@ func (m *Middlewares) filterSingleResourceByOwnership(
 		return body, true, nil
 	}
 
-	owned := m.resourceOwnedByContext(bodyForFiltering, env.ResourceType, env.ID, oc)
+	owned := m.resourceOwnedByContext(body, env.ResourceType, env.ID, oc)
 	if !owned {
 		// Not owned → deny.
 		return nil, false, nil
