@@ -472,12 +472,13 @@ func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email 
 			if identifier.System == constvars.FhirSupertokenSystemIdentifier {
 				found = true
 				foundOnIdx = idx
-			}
-			if identifier.Value == superTokenUserID {
-				exactMatch = true
 
-				break
+				if identifier.Value == superTokenUserID {
+					exactMatch = true
+					break
+				}
 			}
+
 		}
 
 		if found && !exactMatch {
