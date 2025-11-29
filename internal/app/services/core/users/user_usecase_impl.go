@@ -526,13 +526,9 @@ func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email 
 		ResourceType: constvars.ResourcePractitioner,
 		Active:       true,
 		Identifier: []fhir_dto.Identifier{
-			{ // this is necessary because the request will fail if the identifier is not provided
+			{
 				System: constvars.FhirSupertokenSystemIdentifier,
 				Value:  superTokenUserID,
-			},
-			{
-				System: string(fhir_dto.ContactPointSystemEmail),
-				Value:  email,
 			},
 		},
 		Telecom: []fhir_dto.ContactPoint{
@@ -620,12 +616,7 @@ func (uc *userUsecase) createPatientIfNotExists(ctx context.Context, email strin
 	newPatientInput := &fhir_dto.Patient{
 		ResourceType: constvars.ResourcePatient,
 		Active:       true,
-		Identifier: []fhir_dto.Identifier{
-			{ // this is necessary because the request will fail if the identifier is not provided
-				System: string(fhir_dto.ContactPointSystemEmail),
-				Value:  email,
-			},
-		},
+		Identifier:   []fhir_dto.Identifier{},
 		Telecom: []fhir_dto.ContactPoint{
 			{
 				System: fhir_dto.ContactPointSystemEmail,
@@ -716,12 +707,7 @@ func (uc *userUsecase) createPersonIfNotExists(ctx context.Context, email string
 	newPersonInput := &fhir_dto.Person{
 		ResourceType: constvars.ResourcePerson,
 		Active:       true,
-		Identifier: []fhir_dto.Identifier{
-			{ // this is necessary because the request will fail if the identifier is not provided
-				System: string(fhir_dto.ContactPointSystemEmail),
-				Value:  email,
-			},
-		},
+		Identifier:   []fhir_dto.Identifier{},
 		Telecom: []fhir_dto.ContactPoint{
 			{
 				System: fhir_dto.ContactPointSystemEmail,
