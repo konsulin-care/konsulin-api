@@ -169,8 +169,53 @@ func (uc *authUsecase) InitializeSupertoken() error {
 						}
 
 						userRoles := rolesResp.OK.Roles
+
+						// if the user roles is empty, it means that the user
+						// registered using create code flow and thus no roles
+						// assigned to the user. We will assign the default role
+						// to the user.
 						if len(userRoles) == 0 {
-							userRoles = []string{constvars.KonsulinRolePatient}
+							roleResp, err := userroles.AddRoleToUser(
+								uc.InternalConfig.Supertoken.KonsulinTenantID,
+								user.ID,
+								constvars.KonsulinRolePatient,
+								nil,
+							)
+
+							if err != nil {
+								uc.Log.Error("authUsecase.SupertokenConsumeCode error adding role to user",
+									zap.Error(err),
+									zap.String("user_id", user.ID),
+								)
+								return plessmodels.ConsumeCodeResponse{}, err
+							}
+
+							if roleResp.OK == nil {
+								uc.Log.Error(
+									"unexpected nil response when initializing user roles after consume code",
+									zap.String("user_id", user.ID),
+								)
+								return plessmodels.ConsumeCodeResponse{}, err
+							}
+
+							newUserRolesResp, err := userroles.GetRolesForUser(uc.InternalConfig.Supertoken.KonsulinTenantID, user.ID)
+
+							if err != nil {
+								uc.Log.Error("authUsecase.SupertokenConsumeCode error getting roles for user",
+									zap.Error(err),
+									zap.String("user_id", user.ID),
+								)
+								return plessmodels.ConsumeCodeResponse{}, err
+							}
+
+							if newUserRolesResp.OK == nil {
+								uc.Log.Error("authUsecase.SupertokenConsumeCode unexpected nil response when getting roles for user",
+									zap.String("user_id", user.ID),
+								)
+								return plessmodels.ConsumeCodeResponse{}, err
+							}
+
+							userRoles = newUserRolesResp.OK.Roles
 						}
 
 						initializeFHIRResourcesInput := &contracts.InitializeNewUserFHIRResourcesInput{
