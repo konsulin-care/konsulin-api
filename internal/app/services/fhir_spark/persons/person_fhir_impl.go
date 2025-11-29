@@ -271,6 +271,13 @@ func (c *personFhirClient) Create(ctx context.Context, person *fhir_dto.Person) 
 			)
 			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourcePerson)
 		}
+
+		c.Log.Error("personFhirClient.Create unexpected status code",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Int(constvars.LoggingStatusCodeKey, resp.StatusCode),
+			zap.String("body", string(bodyBytes)),
+		)
+		return nil, exceptions.ErrCreateFHIRResource(fmt.Errorf("unexpected status code: %d", resp.StatusCode), constvars.ResourcePerson)
 	}
 
 	var result fhir_dto.Person
