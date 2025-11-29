@@ -56,9 +56,11 @@ func decodeBodyForFiltering(body []byte, contentEncoding string) ([]byte, bodyEn
 			return nil, "", rerr
 		}
 		return decoded, bodyEncodingGzip, nil
-	default:
-		// Treat unknown/empty encodings as identity.
+	case "identity":
 		return body, bodyEncodingIdentity, nil
+	default:
+		// unknown encoding -> return error to preserve fail closed behaviour
+		return nil, "", fmt.Errorf("unknown content encoding: %s", ce)
 	}
 }
 
@@ -762,8 +764,7 @@ func (m *Middlewares) filterSingleResourceByOwnership(
 		ID           string `json:"id,omitempty"`
 	}
 	if err := json.Unmarshal(body, &env); err != nil {
-		// cannot inspect safely → allow
-		return body, true, nil
+		return nil, false, err
 	}
 
 	if env.ResourceType == "" {
