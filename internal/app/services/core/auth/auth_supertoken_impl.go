@@ -179,7 +179,10 @@ func (uc *authUsecase) InitializeSupertoken() error {
 						}
 						initializeFHIRResourcesInput.ToogleByRoles(userRoles)
 
-						initializedResources, err := uc.UserUsecase.InitializeNewUserFHIRResources(context.Background(), initializeFHIRResourcesInput)
+						initializeResourceCtx, initializeResourceCtxCancel := context.WithDeadline(context.Background(), time.Now().Add(10*time.Second))
+						defer initializeResourceCtxCancel()
+
+						initializedResources, err := uc.UserUsecase.InitializeNewUserFHIRResources(initializeResourceCtx, initializeFHIRResourcesInput)
 						if err != nil {
 							uc.Log.Error("authUsecase.SupertokenConsumeCode error initializing new user FHIR resources",
 								zap.Error(err),
