@@ -100,7 +100,7 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 		if filteringRole != "" {
 			switch filteringRole {
 			case constvars.KonsulinRoleSuperadmin:
-				b, removed, err := m.filterResponseResourceAgainsRBAC(bodyAfterRBAC, roles)
+				b, removed, err := m.filterResponseResourceAgainstRBAC(bodyAfterRBAC, roles)
 				if err != nil {
 					m.Log.Warn("RBAC response filtering failed; resorting to fail closed on error", zap.Error(err))
 					utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerProcess(err))
@@ -211,7 +211,7 @@ func determineFilteringRole(roles []string) string {
 	return ""
 }
 
-func (m *Middlewares) filterResponseResourceAgainsRBAC(body []byte, roles []string) ([]byte, int, error) {
+func (m *Middlewares) filterResponseResourceAgainstRBAC(body []byte, roles []string) ([]byte, int, error) {
 
 	shouldFilter := false
 	for _, role := range roles {
