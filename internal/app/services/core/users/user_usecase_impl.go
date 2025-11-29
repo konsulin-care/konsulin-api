@@ -518,6 +518,10 @@ func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email 
 		return &practitioner, nil
 	}
 
+	if superTokenUserID == "" {
+		return nil, exceptions.ErrInvalidFormat(nil, "superTokenUserID")
+	}
+
 	newPractitionerInput := &fhir_dto.Practitioner{
 		ResourceType: constvars.ResourcePractitioner,
 		Active:       true,
