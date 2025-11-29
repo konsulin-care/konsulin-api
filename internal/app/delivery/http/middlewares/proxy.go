@@ -135,8 +135,8 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 
 					fb, eerr := encodeBundle(bundle, enc)
 					if eerr != nil {
-						m.Log.Warn("encodeBundle after ownership filtering failed; resorting to fail closed on error", zap.Error(err))
-						utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerProcess(err))
+						m.Log.Warn("encodeBundle after ownership filtering failed; resorting to fail closed on error", zap.Error(eerr))
+						utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerProcess(eerr))
 						return
 					}
 
