@@ -161,6 +161,13 @@ func (uc *authUsecase) InitializeSupertoken() error {
 							return plessmodels.ConsumeCodeResponse{}, err
 						}
 
+						if rolesResp.OK == nil {
+							uc.Log.Error("authUsecase.SupertokenConsumeCode supertokens error get roles for user by tenantID & UserID is nil",
+								zap.String("user_id", user.ID),
+							)
+							return plessmodels.ConsumeCodeResponse{}, err
+						}
+
 						userRoles := rolesResp.OK.Roles
 						if len(userRoles) == 0 {
 							userRoles = []string{constvars.KonsulinRolePatient}
