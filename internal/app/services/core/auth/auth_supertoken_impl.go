@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"time"
 
 	"github.com/supertokens/supertokens-golang/ingredients/emaildelivery"
 	"github.com/supertokens/supertokens-golang/ingredients/smsdelivery"
@@ -113,7 +114,11 @@ func (uc *authUsecase) InitializeSupertoken() error {
 						}
 						initFHIRResourcesInput.ToogleByRoles(userRoles)
 
-						initializedResources, err := uc.UserUsecase.InitializeNewUserFHIRResources(context.Background(), initFHIRResourcesInput)
+						initializeResourceCtx, initializeResourceCtxCancel := context.WithDeadline(context.Background(), time.Now().Add(10*time.Second))
+
+						defer initializeResourceCtxCancel()
+
+						initializedResources, err := uc.UserUsecase.InitializeNewUserFHIRResources(initializeResourceCtx, initFHIRResourcesInput)
 						if err != nil {
 							uc.Log.Error("authUsecase.SupertokenCreateCode error initializing new user FHIR resources",
 								zap.Error(err),
