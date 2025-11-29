@@ -56,7 +56,7 @@ func decodeBodyForFiltering(body []byte, contentEncoding string) ([]byte, bodyEn
 			return nil, "", rerr
 		}
 		return decoded, bodyEncodingGzip, nil
-	case "identity":
+	case "identity", "":
 		return body, bodyEncodingIdentity, nil
 	default:
 		// unknown encoding -> return error to preserve fail closed behaviour
