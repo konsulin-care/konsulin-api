@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
@@ -195,7 +196,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 									"unexpected nil response when initializing user roles after consume code",
 									zap.String("user_id", user.ID),
 								)
-								return plessmodels.ConsumeCodeResponse{}, err
+								return plessmodels.ConsumeCodeResponse{}, errors.New("unexpected nil response when initializing user roles after consume code")
 							}
 
 							newUserRolesResp, err := userroles.GetRolesForUser(uc.InternalConfig.Supertoken.KonsulinTenantID, user.ID)
@@ -212,7 +213,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 								uc.Log.Error("authUsecase.SupertokenConsumeCode unexpected nil response when getting roles for user",
 									zap.String("user_id", user.ID),
 								)
-								return plessmodels.ConsumeCodeResponse{}, err
+								return plessmodels.ConsumeCodeResponse{}, errors.New("unexpected nil response when getting roles for user")
 							}
 
 							userRoles = newUserRolesResp.OK.Roles
