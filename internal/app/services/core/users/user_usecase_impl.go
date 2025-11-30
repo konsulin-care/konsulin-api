@@ -573,10 +573,14 @@ func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email 
 		return nil, exceptions.ErrInvalidFormat(nil, "superTokenUserID")
 	}
 
-	userChatwootContact, err := uc.callWebhookSvcKonsulinOmnichannel(ctx, email, "")
-	if err != nil {
-		return nil, err
+	userChatwootContact, chatwootErr := uc.callWebhookSvcKonsulinOmnichannel(ctx, email, "")
+	if chatwootErr != nil {
+		// log the error but continue the process
+		uc.Log.Error("userUsecase.createPractitionerIfNotExists error calling webhook svc konsulin omnichannel",
+			zap.Error(err),
+		)
 	}
+
 	chatwootID := strconv.Itoa(userChatwootContact.ChatwootID)
 
 	newPractitionerInput := &fhir_dto.Practitioner{
@@ -587,10 +591,6 @@ func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email 
 				System: constvars.FhirSupertokenSystemIdentifier,
 				Value:  superTokenUserID,
 			},
-			{
-				System: constvars.KonsulinOmnichannelSystemIdentifier,
-				Value:  chatwootID,
-			},
 		},
 		Telecom: []fhir_dto.ContactPoint{
 			{
@@ -599,6 +599,13 @@ func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email 
 				Use:    "work",
 			},
 		},
+	}
+
+	if chatwootErr == nil {
+		newPractitionerInput.Identifier = append(newPractitionerInput.Identifier, fhir_dto.Identifier{
+			System: constvars.KonsulinOmnichannelSystemIdentifier,
+			Value:  chatwootID,
+		})
 	}
 
 	newPractitioner, err := uc.PractitionerFhirClient.CreatePractitioner(ctx, newPractitionerInput)
