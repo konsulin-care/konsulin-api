@@ -201,6 +201,11 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	slotClient := slotFhir.NewSlotFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	serviceRequestFhirClient := service_requests.NewServiceRequestFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 
+	jwtManager, err := jwtmanager.NewJWTManager(bootstrap.InternalConfig, bootstrap.Logger)
+	if err != nil {
+		return err
+	}
+
 	// Ensure default FHIR Groups exist for ServiceRequest subjects
 	_ = serviceRequestFhirClient.EnsureAllNecessaryGroupsExists(context.Background())
 
@@ -217,6 +222,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		bootstrap.InternalConfig,
 		bootstrap.Logger,
 		lockService,
+		jwtManager,
 	)
 
 	// Initialize Auth usecase with dependencies
@@ -257,16 +263,12 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	}
 
 	// Initialize webhook components
-	webhookJWT, err := jwtmanager.NewJWTManager(bootstrap.InternalConfig, bootstrap.Logger)
-	if err != nil {
-		return err
-	}
 	webhookLimiter := ratelimiter.NewHookRateLimiter(redisRepository, bootstrap.Logger, bootstrap.InternalConfig)
 	webhookQueueService, err := webhookqueue.NewService(bootstrap.RabbitMQ, bootstrap.Logger, bootstrap.InternalConfig.Webhook.MaxQueue)
 	if err != nil {
 		return err
 	}
-	webhookUsecase := webhook.NewUsecase(bootstrap.Logger, bootstrap.InternalConfig, webhookQueueService, webhookJWT, patientFhirClient, practitionerFhirClient, serviceRequestFhirClient)
+	webhookUsecase := webhook.NewUsecase(bootstrap.Logger, bootstrap.InternalConfig, webhookQueueService, jwtManager, patientFhirClient, practitionerFhirClient, serviceRequestFhirClient)
 	webhookController := controllers.NewWebhookController(bootstrap.Logger, webhookUsecase, webhookLimiter, bootstrap.InternalConfig)
 	// Initialize payment usecase and controller (inject JWT manager)
 	serviceRequestStorage := storageKonsulin.NewServiceRequestStorage(serviceRequestFhirClient, bootstrap.Logger)
@@ -278,7 +280,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	paymentUsecase := payments.NewPaymentUsecase(
 		transactions.NewTransactionPostgresRepository(nil, bootstrap.Logger),
 		bootstrap.InternalConfig,
-		webhookJWT,
+		jwtManager,
 		patientFhirClient,
 		practitionerFhirClient,
 		personFhirClient,
@@ -309,7 +311,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	orgController := controllers.NewOrganizationController(bootstrap.Logger, orgUsecase)
 
 	// Start webhook worker ticker (best-effort lock ensures single execution)
-	worker := webhook.NewWorker(bootstrap.Logger, bootstrap.InternalConfig, lockService, webhookQueueService, webhookJWT)
+	worker := webhook.NewWorker(bootstrap.Logger, bootstrap.InternalConfig, lockService, webhookQueueService, jwtManager)
 	stopWorker := worker.Start(context.Background())
 	bootstrap.WorkerStop = stopWorker
 
