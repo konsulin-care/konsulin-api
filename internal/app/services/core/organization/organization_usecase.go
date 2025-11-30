@@ -86,13 +86,23 @@ func (uc *Usecase) RegisterPractitionerRoleAndSchedule(ctx context.Context, in c
 		)
 	}
 
-	_, err := uc.organizationClient.FindOrganizationByID(ctx, in.OrganizationID)
+	organization, err := uc.organizationClient.FindOrganizationByID(ctx, in.OrganizationID)
 	if err != nil {
+		notFoundErr := exceptions.BuildNewCustomError(
+			err,
+			constvars.StatusInternalServerError,
+			constvars.ErrClientCannotProcessRequest,
+			"failed to find organization by id",
+		)
+		return nil, notFoundErr
+	}
+
+	if organization == nil {
 		notFoundErr := exceptions.BuildNewCustomError(
 			errors.New("organization not found"),
 			constvars.StatusNotFound,
 			constvars.ErrClientCannotProcessRequest,
-			fmt.Sprintf("organization %s does not exists", in.OrganizationID),
+			"organization not found",
 		)
 		return nil, notFoundErr
 	}
