@@ -146,7 +146,7 @@ func loadInternalConfigWithEnv() *InternalConfig {
 			HTTPTimeoutInSeconds:              utils.GetEnvInt("HOOK_HTTP_TIMEOUT", 10),
 			JWTAlg:                            utils.GetEnvString("HOOK_JWT_ALG", "ES256"),
 			JWTHookKey:                        utils.GetEnvString("JWT_HOOK_KEY", ""),
-			KonsulinOmnichannelContactSyncURL: utils.GetEnvString("HOOK_KONSULIN_OMNICHANNEL_CONTACT_SYNC_URL", ""),
+			KonsulinOmnichannelContactSyncURL: utils.GetEnvString("HOOK_SERVICE_OMNICHANNEL_SYNC", ""),
 		},
 		Xendit: AppXendit{
 			APIKey:       utils.GetEnvString("APP_XENDIT_API_KEY", ""),
@@ -162,6 +162,10 @@ func loadInternalConfigWithEnv() *InternalConfig {
 		cfg.ServicePricing.PerformanceReportBasePrice <= 0 ||
 		cfg.ServicePricing.AccessDatasetBasePrice <= 0 {
 		log.Fatalf("invalid service base price configuration: all BASE_PRICE_* must be > 0")
+	}
+
+	if cfg.Webhook.KonsulinOmnichannelContactSyncURL == "" {
+		log.Fatalf("invalid webhook configuration: HOOK_SERVICE_OMNICHANNEL_SYNC must be set")
 	}
 
 	// Validate/normalize cron spec now; default to @daily if empty or invalid

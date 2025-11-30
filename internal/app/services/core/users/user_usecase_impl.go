@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
@@ -1080,7 +1081,7 @@ func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, em
 		return callWebhookSvcKonsulinOmnichannelOutput{}, err
 	}
 
-	url := uc.webhookSvcKonsulinOmnichannelURL
+	url := fmt.Sprintf("%s%s", uc.InternalConfig.Webhook.URL, uc.InternalConfig.Webhook.KonsulinOmnichannelContactSyncURL)
 
 	body := struct {
 		Email    string `json:"email"`
