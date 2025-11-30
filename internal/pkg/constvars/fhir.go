@@ -105,5 +105,6 @@ const (
 )
 
 const (
-	FhirSupertokenSystemIdentifier = "https://login.konsulin.care/userid"
+	FhirSupertokenSystemIdentifier      = "https://login.konsulin.care/userid"
+	KonsulinOmnichannelSystemIdentifier = "https://login.konsulin.care/chatwoot-id"
 )
