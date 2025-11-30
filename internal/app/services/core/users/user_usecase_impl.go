@@ -40,8 +40,6 @@ type userUsecase struct {
 	Log                        *zap.Logger
 	LockerService              contracts.LockerService
 	JWTTokenManager            *jwtmanager.JWTManager
-
-	webhookSvcKonsulinOmnichannelURL string
 }
 
 var (
@@ -79,8 +77,6 @@ func NewUserUsecase(
 			Log:                        logger,
 			LockerService:              lockerService,
 			JWTTokenManager:            jwtManager,
-
-			webhookSvcKonsulinOmnichannelURL: internalConfig.Webhook.KonsulinOmnichannelContactSyncURL,
 		}
 		userUsecaseInstance = instance
 	})
