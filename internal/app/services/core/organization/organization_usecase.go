@@ -186,8 +186,8 @@ func (uc *Usecase) ensureClinicAdminManagesOrganization(ctx context.Context, uid
 		return exceptions.BuildNewCustomError(
 			err,
 			constvars.StatusInternalServerError,
-			err.Error(),
-			err.Error(),
+			constvars.ErrClientSomethingWrongWithApplication,
+			"error searching for person by identifier",
 		)
 	}
 	if len(people) != 1 {
