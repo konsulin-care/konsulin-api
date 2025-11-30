@@ -12,6 +12,7 @@ import (
 	"konsulin-service/internal/app/drivers/messaging"
 	"konsulin-service/internal/app/drivers/storage"
 	"konsulin-service/internal/app/services/core/auth"
+	"konsulin-service/internal/app/services/core/organization"
 	"konsulin-service/internal/app/services/core/payments"
 	"konsulin-service/internal/app/services/core/session"
 	"konsulin-service/internal/app/services/core/slot"
@@ -20,6 +21,7 @@ import (
 	"konsulin-service/internal/app/services/core/webhook"
 	bundle "konsulin-service/internal/app/services/fhir_spark/bundle"
 	invoicesFhir "konsulin-service/internal/app/services/fhir_spark/invoices"
+	organizationsFhir "konsulin-service/internal/app/services/fhir_spark/organizations"
 	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/persons"
 	practitionerRoleFhir "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
@@ -194,6 +196,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	practitionerRoleClient := practitionerRoleFhir.NewPractitionerRoleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	personFhirClient := persons.NewPersonFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	organizationFhirClient := organizationsFhir.NewOrganizationFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	scheduleClient := scheduleFhir.NewScheduleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	slotClient := slotFhir.NewSlotFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	serviceRequestFhirClient := service_requests.NewServiceRequestFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
@@ -294,6 +297,17 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 
 	scheduleController := controllers.NewScheduleController(slotUsecase, bootstrap.Logger)
 
+	// Initialize organization usecase and controller
+	orgUsecase := organization.NewOrganizationUsecase(
+		practitionerFhirClient,
+		personFhirClient,
+		organizationFhirClient,
+		bundleClient,
+		bootstrap.InternalConfig,
+		bootstrap.Logger,
+	)
+	orgController := controllers.NewOrganizationController(bootstrap.Logger, orgUsecase)
+
 	// Start webhook worker ticker (best-effort lock ensures single execution)
 	worker := webhook.NewWorker(bootstrap.Logger, bootstrap.InternalConfig, lockService, webhookQueueService, webhookJWT)
 	stopWorker := worker.Start(context.Background())
@@ -314,6 +328,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		paymentController,
 		webhookController,
 		scheduleController,
+		orgController,
 	)
 
 	return nil
