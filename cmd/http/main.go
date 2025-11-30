@@ -16,6 +16,7 @@ import (
 	"konsulin-service/internal/app/services/core/session"
 	"konsulin-service/internal/app/services/core/slot"
 	"konsulin-service/internal/app/services/core/transactions"
+	"konsulin-service/internal/app/services/core/users"
 	"konsulin-service/internal/app/services/core/webhook"
 	bundle "konsulin-service/internal/app/services/fhir_spark/bundle"
 	invoicesFhir "konsulin-service/internal/app/services/fhir_spark/invoices"
@@ -200,12 +201,28 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	// Ensure default FHIR Groups exist for ServiceRequest subjects
 	_ = serviceRequestFhirClient.EnsureAllNecessaryGroupsExists(context.Background())
 
+	userUsecase := users.NewUserUsecase(
+		nil, // userMongoRepository, not used yet
+		patientFhirClient,
+		practitionerFhirClient,
+		personFhirClient,
+		practitionerRoleClient,
+		nil, // organizationFhirClient, not used yet
+		redisRepository,
+		sessionService,
+		minioStorage,
+		bootstrap.InternalConfig,
+		bootstrap.Logger,
+		lockService,
+	)
+
 	// Initialize Auth usecase with dependencies
 	authUseCase, err := auth.NewAuthUsecase(
 		redisRepository,
 		sessionService,
 		patientFhirClient,
 		practitionerFhirClient,
+		userUsecase,
 		mailerService,
 		whatsAppService,
 		minioStorage,
