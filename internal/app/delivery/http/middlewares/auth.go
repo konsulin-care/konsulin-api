@@ -471,21 +471,35 @@ func validateResourceOwnership(ctx context.Context, fhirID, role, resourceType s
 			if len(sch.Actor) < 1 {
 				return false
 			}
-			firstActor := sch.Actor[0].Reference
-			if strings.HasPrefix(firstActor, "PractitionerRole/") {
-				roleID := strings.TrimPrefix(firstActor, "PractitionerRole/")
-				pr, err := practitionerRoleClient.FindPractitionerRoleByID(ctx, roleID)
-				if err != nil {
-					return false
+
+			for _, actor := range sch.Actor {
+				actorRef := actor.Reference
+
+				if strings.HasPrefix(actorRef, "PractitionerRole/") {
+					roleID := strings.TrimPrefix(actorRef, "PractitionerRole/")
+					pr, err := practitionerRoleClient.FindPractitionerRoleByID(ctx, roleID)
+					if err != nil {
+						return false
+					}
+					pracRef := pr.Practitioner.Reference
+					if strings.HasPrefix(pracRef, "Practitioner/") {
+						pid := strings.TrimPrefix(pracRef, "Practitioner/")
+						fmt.Println("pid", pid)
+						fmt.Println("fhirID", fhirID)
+						if pid == fhirID {
+							return true
+						}
+					}
 				}
-				pracRef := pr.Practitioner.Reference
-				if strings.HasPrefix(pracRef, "Practitioner/") {
-					pid := strings.TrimPrefix(pracRef, "Practitioner/")
-					if pid == fhirID {
+
+				if strings.HasPrefix(actorRef, "Practitioner/") {
+					practitionerID := strings.TrimPrefix(actorRef, "Practitioner/")
+					if practitionerID == fhirID {
 						return true
 					}
 				}
 			}
+
 		}
 
 		practitionerRefs := []string{
