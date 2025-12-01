@@ -573,7 +573,7 @@ func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email 
 	if chatwootErr != nil {
 		// log the error but continue the process
 		uc.Log.Error("userUsecase.createPractitionerIfNotExists error calling webhook svc konsulin omnichannel",
-			zap.Error(err),
+			zap.Error(chatwootErr),
 		)
 	}
 
