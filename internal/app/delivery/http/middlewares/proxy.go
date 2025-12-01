@@ -480,6 +480,7 @@ type ownershipContext struct {
 	HasPractitionerRole bool
 	PatientIDs          map[string]struct{}
 	PractitionerIDs     map[string]struct{}
+	PractitionerRoleIDs []string
 }
 
 // buildOwnershipContext resolves owned Patient / Practitioner IDs once per request.
@@ -489,8 +490,9 @@ func (m *Middlewares) buildOwnershipContext(
 	fhirRole, fhirID string,
 ) *ownershipContext {
 	oc := &ownershipContext{
-		PatientIDs:      make(map[string]struct{}),
-		PractitionerIDs: make(map[string]struct{}),
+		PatientIDs:          make(map[string]struct{}),
+		PractitionerIDs:     make(map[string]struct{}),
+		PractitionerRoleIDs: make([]string, 0),
 	}
 
 	for _, r := range roles {
@@ -523,6 +525,18 @@ func (m *Middlewares) buildOwnershipContext(
 						oc.PatientIDs[p.ID] = struct{}{}
 					}
 				}
+			}
+		}
+
+		practitionerRoles, err := m.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerID(ctx, fhirID)
+		if err != nil {
+			m.Log.Warn("failed to find practitioner roles by practitioner ID. skipping practitioner role population", zap.String("practitionerID", fhirID), zap.Error(err))
+			return oc
+		}
+
+		for _, pr := range practitionerRoles {
+			if pr.ID != "" {
+				oc.PractitionerRoleIDs = append(oc.PractitionerRoleIDs, pr.ID)
 			}
 		}
 	}
@@ -821,6 +835,14 @@ func matchesOwnedRef(ref string, oc *ownershipContext) bool {
 		_, ok := oc.PractitionerIDs[id]
 		return ok
 	}
+
+	if strings.HasPrefix(ref, "PractitionerRole/") {
+		id := strings.TrimPrefix(ref, "PractitionerRole/")
+		if slices.Contains(oc.PractitionerRoleIDs, id) {
+			return true
+		}
+	}
+
 	return false
 }
 
