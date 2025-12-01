@@ -471,21 +471,33 @@ func validateResourceOwnership(ctx context.Context, fhirID, role, resourceType s
 			if len(sch.Actor) < 1 {
 				return false
 			}
-			firstActor := sch.Actor[0].Reference
-			if strings.HasPrefix(firstActor, "PractitionerRole/") {
-				roleID := strings.TrimPrefix(firstActor, "PractitionerRole/")
-				pr, err := practitionerRoleClient.FindPractitionerRoleByID(ctx, roleID)
-				if err != nil {
-					return false
+
+			for _, actor := range sch.Actor {
+				actorRef := actor.Reference
+
+				if strings.HasPrefix(actorRef, "PractitionerRole/") {
+					roleID := strings.TrimPrefix(actorRef, "PractitionerRole/")
+					pr, err := practitionerRoleClient.FindPractitionerRoleByID(ctx, roleID)
+					if err != nil {
+						continue
+					}
+					pracRef := pr.Practitioner.Reference
+					if strings.HasPrefix(pracRef, "Practitioner/") {
+						pid := strings.TrimPrefix(pracRef, "Practitioner/")
+						if pid == fhirID {
+							return true
+						}
+					}
 				}
-				pracRef := pr.Practitioner.Reference
-				if strings.HasPrefix(pracRef, "Practitioner/") {
-					pid := strings.TrimPrefix(pracRef, "Practitioner/")
-					if pid == fhirID {
+
+				if strings.HasPrefix(actorRef, "Practitioner/") {
+					practitionerID := strings.TrimPrefix(actorRef, "Practitioner/")
+					if practitionerID == fhirID {
 						return true
 					}
 				}
 			}
+
 		}
 
 		practitionerRefs := []string{
@@ -844,14 +856,11 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 
 			// add support email based query
 			if email := q.Get("email"); email != "" {
-				fmt.Println("email", email)
 				practitioners, err := practitionerClient.FindPractitionerByEmail(ctx, email)
 
 				if err != nil {
 					return false
 				}
-
-				fmt.Println("practitioners", practitioners)
 
 				// guard against multiple practitioners found
 				// or no practitioners found at all
