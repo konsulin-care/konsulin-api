@@ -484,8 +484,6 @@ func validateResourceOwnership(ctx context.Context, fhirID, role, resourceType s
 					pracRef := pr.Practitioner.Reference
 					if strings.HasPrefix(pracRef, "Practitioner/") {
 						pid := strings.TrimPrefix(pracRef, "Practitioner/")
-						fmt.Println("pid", pid)
-						fmt.Println("fhirID", fhirID)
 						if pid == fhirID {
 							return true
 						}
@@ -858,14 +856,11 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 
 			// add support email based query
 			if email := q.Get("email"); email != "" {
-				fmt.Println("email", email)
 				practitioners, err := practitionerClient.FindPractitionerByEmail(ctx, email)
 
 				if err != nil {
 					return false
 				}
-
-				fmt.Println("practitioners", practitioners)
 
 				// guard against multiple practitioners found
 				// or no practitioners found at all
