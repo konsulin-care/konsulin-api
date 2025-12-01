@@ -718,7 +718,7 @@ func (uc *userUsecase) createPatientIfNotExists(ctx context.Context, email strin
 	if chatwootErr != nil {
 		// log the error but continue the process
 		uc.Log.Error("userUsecase.createPatientIfNotExists error calling webhook svc konsulin omnichannel",
-			zap.Error(err),
+			zap.Error(chatwootErr),
 		)
 	}
 	chatwootID := strconv.Itoa(userChatwootContact.ChatwootID)
@@ -1115,7 +1115,7 @@ func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, em
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{
-		Timeout: 10 * time.Second,
+		Timeout: time.Duration(uc.InternalConfig.Webhook.HTTPTimeoutInSeconds) * time.Second,
 	}
 
 	resp, err := client.Do(req)
