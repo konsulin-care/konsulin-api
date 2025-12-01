@@ -22,7 +22,6 @@ import (
 
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
-	"github.com/tidwall/gjson"
 )
 
 // bodyEncoding represents the original Content-Encoding of the proxied response body.
@@ -550,21 +549,7 @@ type ownershipChecker func(raw json.RawMessage, oc *ownershipContext) (bool, err
 
 // resourceSpecificOwnershipCheckers holds resource-specific ownership logic.
 // add your own custom ownership checkers here if needed
-var resourceSpecificOwnershipCheckers = map[string]ownershipChecker{
-	constvars.ResourceInvoice: func(raw json.RawMessage, oc *ownershipContext) (bool, error) {
-		invoiceParticipants := gjson.Get(string(raw), "participant").Array()
-		for _, participant := range invoiceParticipants {
-			actorRef := participant.Get("actor.reference").String()
-			if strings.HasPrefix(actorRef, "PractitionerRole/") {
-				roleID := strings.TrimPrefix(actorRef, "PractitionerRole/")
-				if slices.Contains(oc.PractitionerRoleIDs, roleID) {
-					return true, nil
-				}
-			}
-		}
-		return false, nil
-	},
-}
+var resourceSpecificOwnershipCheckers = map[string]ownershipChecker{}
 
 // resourceOwnedByContext centralizes ownership checks for a single FHIR resource.
 // It is used by both bundle-level and single-resource filters.
@@ -850,6 +835,14 @@ func matchesOwnedRef(ref string, oc *ownershipContext) bool {
 		_, ok := oc.PractitionerIDs[id]
 		return ok
 	}
+
+	if strings.HasPrefix(ref, "PractitionerRole/") {
+		id := strings.TrimPrefix(ref, "PractitionerRole/")
+		if slices.Contains(oc.PractitionerRoleIDs, id) {
+			return true
+		}
+	}
+
 	return false
 }
 
