@@ -22,6 +22,7 @@ import (
 
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
+	"github.com/tidwall/gjson"
 )
 
 // bodyEncoding represents the original Content-Encoding of the proxied response body.
@@ -480,6 +481,7 @@ type ownershipContext struct {
 	HasPractitionerRole bool
 	PatientIDs          map[string]struct{}
 	PractitionerIDs     map[string]struct{}
+	PractitionerRoleIDs []string
 }
 
 // buildOwnershipContext resolves owned Patient / Practitioner IDs once per request.
@@ -489,8 +491,9 @@ func (m *Middlewares) buildOwnershipContext(
 	fhirRole, fhirID string,
 ) *ownershipContext {
 	oc := &ownershipContext{
-		PatientIDs:      make(map[string]struct{}),
-		PractitionerIDs: make(map[string]struct{}),
+		PatientIDs:          make(map[string]struct{}),
+		PractitionerIDs:     make(map[string]struct{}),
+		PractitionerRoleIDs: make([]string, 0),
 	}
 
 	for _, r := range roles {
@@ -525,6 +528,18 @@ func (m *Middlewares) buildOwnershipContext(
 				}
 			}
 		}
+
+		practitionerRoles, err := m.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerID(ctx, fhirID)
+		if err != nil {
+			m.Log.Warn("failed to find practitioner roles by practitioner ID. skipping practitioner role population", zap.String("practitionerID", fhirID), zap.Error(err))
+			return oc
+		}
+
+		for _, pr := range practitionerRoles {
+			if pr.ID != "" {
+				oc.PractitionerRoleIDs = append(oc.PractitionerRoleIDs, pr.ID)
+			}
+		}
 	}
 
 	return oc
@@ -535,7 +550,21 @@ type ownershipChecker func(raw json.RawMessage, oc *ownershipContext) (bool, err
 
 // resourceSpecificOwnershipCheckers holds resource-specific ownership logic.
 // add your own custom ownership checkers here if needed
-var resourceSpecificOwnershipCheckers = map[string]ownershipChecker{}
+var resourceSpecificOwnershipCheckers = map[string]ownershipChecker{
+	constvars.ResourceInvoice: func(raw json.RawMessage, oc *ownershipContext) (bool, error) {
+		invoiceParticipants := gjson.Get(string(raw), "participant").Array()
+		for _, participant := range invoiceParticipants {
+			actorRef := participant.Get("actor.reference").String()
+			if strings.HasPrefix(actorRef, "PractitionerRole/") {
+				roleID := strings.TrimPrefix(actorRef, "PractitionerRole/")
+				if slices.Contains(oc.PractitionerRoleIDs, roleID) {
+					return true, nil
+				}
+			}
+		}
+		return false, nil
+	},
+}
 
 // resourceOwnedByContext centralizes ownership checks for a single FHIR resource.
 // It is used by both bundle-level and single-resource filters.
