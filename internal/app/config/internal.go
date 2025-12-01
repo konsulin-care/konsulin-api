@@ -129,10 +129,12 @@ type AppWebhook struct {
 	JWTAlg string `mapstructure:"jwt_alg"`
 	// JWTHookKey is the private key PEM for signing webhook JWTs
 	JWTHookKey string `mapstructure:"jwt_hook_key"`
+	// KonsulinOmnichannelContactSyncURL is the full URL of the Konsulin Omnichannel Contact Sync service endpoint
+	KonsulinOmnichannelContactSyncURL string `mapstructure:"konsulin_omnichannel_contact_sync_url"`
 }
 
 // AppXendit holds Xendit SDK configuration
 type AppXendit struct {
-	APIKey      string `mapstructure:"api_key"`
+	APIKey       string `mapstructure:"api_key"`
 	WebhookToken string `mapstructure:"webhook_token"`
 }
