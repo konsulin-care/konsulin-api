@@ -479,7 +479,7 @@ func validateResourceOwnership(ctx context.Context, fhirID, role, resourceType s
 					roleID := strings.TrimPrefix(actorRef, "PractitionerRole/")
 					pr, err := practitionerRoleClient.FindPractitionerRoleByID(ctx, roleID)
 					if err != nil {
-						return false
+						continue
 					}
 					pracRef := pr.Practitioner.Reference
 					if strings.HasPrefix(pracRef, "Practitioner/") {
