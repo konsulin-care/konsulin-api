@@ -536,7 +536,8 @@ func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email 
 		}
 
 		// only attempt to update the practitioner identifier with the chatwoot ID if the chatwoot call was successful
-		if chatwootCallErr == nil {
+		// and the chatwoot ID is not 0 (which can means that the user is not yet added to the chatwoot workspace or the API call failed)
+		if chatwootCallErr == nil && userChatwootContact.ChatwootID != 0 {
 			if !foundChatwootID {
 				mustUpdatePractitioner = true
 				practitioner.Identifier = append(practitioner.Identifier, fhir_dto.Identifier{
@@ -597,7 +598,7 @@ func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email 
 		},
 	}
 
-	if chatwootErr == nil {
+	if chatwootErr == nil && userChatwootContact.ChatwootID != 0 {
 		newPractitionerInput.Identifier = append(newPractitionerInput.Identifier, fhir_dto.Identifier{
 			System: constvars.KonsulinOmnichannelSystemIdentifier,
 			Value:  chatwootID,
@@ -682,7 +683,8 @@ func (uc *userUsecase) createPatientIfNotExists(ctx context.Context, email strin
 		}
 
 		// only attempt to update the patient identifier with the chatwoot ID if the chatwoot call was successful
-		if chatwootCallErr == nil {
+		// and the chatwoot ID is not 0 (which can means that the user is not yet added to the chatwoot workspace or the API call failed)
+		if chatwootCallErr == nil && userChatwootContact.ChatwootID != 0 {
 			if !foundChatwootID {
 				mustUpdatePatient = true
 				patient.Identifier = append(patient.Identifier, fhir_dto.Identifier{
@@ -741,7 +743,7 @@ func (uc *userUsecase) createPatientIfNotExists(ctx context.Context, email strin
 		})
 	}
 
-	if chatwootErr == nil {
+	if chatwootErr == nil && userChatwootContact.ChatwootID != 0 {
 		newPatientInput.Identifier = append(newPatientInput.Identifier, fhir_dto.Identifier{
 			System: constvars.KonsulinOmnichannelSystemIdentifier,
 			Value:  chatwootID,
