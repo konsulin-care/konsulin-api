@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"konsulin-service/internal/pkg/utils"
 	"log"
+	"net/url"
 	"os"
 	"strings"
 
@@ -166,6 +167,12 @@ func loadInternalConfigWithEnv() *InternalConfig {
 
 	if cfg.Webhook.KonsulinOmnichannelContactSyncURL == "" {
 		log.Fatalf("invalid webhook configuration: HOOK_SERVICE_OMNICHANNEL_SYNC must be set")
+	}
+
+	konsulinOmnichannelContactSyncURL := cfg.Webhook.URL + cfg.Webhook.KonsulinOmnichannelContactSyncURL
+	_, err := url.Parse(konsulinOmnichannelContactSyncURL)
+	if err != nil {
+		log.Fatalf("invalid webhook configuration: HOOK_SERVICE_OMNICHANNEL_SYNC must be a valid URL: %s", err)
 	}
 
 	// Validate/normalize cron spec now; default to @daily if empty or invalid
