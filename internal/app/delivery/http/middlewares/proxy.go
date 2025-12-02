@@ -673,6 +673,10 @@ func (m *Middlewares) resourceOwnedByContext(
 // this function behaviour comes from this discussion: https://github.com/konsulin-care/konsulin-api/pull/250#discussion_r2559068460
 // This function must be used to determine if we should fail closed on error from a resource.
 func (m *Middlewares) failClosedOnErrorFromResource(resourceType string, resourceID string) bool {
+	if resourceType == "" {
+		return false
+	}
+
 	defaultDenyResources := []string{
 		constvars.ResourcePatient,
 		constvars.ResourceCondition,
