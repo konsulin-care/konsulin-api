@@ -22,7 +22,6 @@ import (
 
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
-	"github.com/tidwall/gjson"
 )
 
 // bodyEncoding represents the original Content-Encoding of the proxied response body.
@@ -552,54 +551,38 @@ type ownershipChecker func(raw json.RawMessage, oc *ownershipContext) (bool, err
 // add your own custom ownership checkers here if needed
 var resourceSpecificOwnershipCheckers = map[string]ownershipChecker{
 	constvars.ResourceInvoice: func(raw json.RawMessage, oc *ownershipContext) (bool, error) {
-		// slices below contains all the actors reference in invoice that if
-		// the invoice only have these actors, then the invoice is public. Otherwise,
-		// will directly return false, nil to indicate that the invoice is not owned by the requester.
-		// and extra ownership checking is needed.
-		publicResourceIfOwnedByTheseActors := []string{
-			constvars.ResourcePractitioner,
-			constvars.ResourcePractitionerRole,
-			constvars.ResourceDevice,
+		// Invoice is public only if ALL references point to whitelisted resource types.
+		publicResourceIfOwnedByTheseActors := map[string]struct{}{
+			constvars.ResourcePractitioner:     {},
+			constvars.ResourcePractitionerRole: {},
+			constvars.ResourceDevice:           {},
 		}
 
-		isPublicRef := func(ref string) bool {
-			for _, publicActor := range publicResourceIfOwnedByTheseActors {
-				if strings.HasPrefix(ref, publicActor) {
-					return true
-				}
-			}
-			return false
+		var resMap map[string]any
+		if err := json.Unmarshal(raw, &resMap); err != nil {
+			return false, err
 		}
 
-		hasPublicReference := false
+		var refs []string
+		collectReferences(resMap, &refs, 0)
+		if len(refs) == 0 {
+			return false, nil
+		}
 
-		// Check subject.reference if it exists
-		if subjectRef := gjson.Get(string(raw), "subject.reference").String(); subjectRef != "" {
-			if !isPublicRef(subjectRef) {
+		for _, ref := range refs {
+			parts := strings.SplitN(ref, "/", 2)
+			if len(parts) == 0 {
 				return false, nil
 			}
-			hasPublicReference = true
-		}
 
-		participants := gjson.Get(string(raw), "participant").Array()
-
-		for _, participant := range participants {
-			actorRef := participant.Get("actor.reference").String()
-			if actorRef == "" {
-				continue
-			}
-
-			if !isPublicRef(actorRef) {
+			if _, ok := publicResourceIfOwnedByTheseActors[parts[0]]; !ok {
+				// Found a non-whitelisted reference
 				return false, nil
 			}
-			hasPublicReference = true
 		}
 
-		if hasPublicReference {
-			return true, nil
-		}
-
-		return false, nil
+		// All references are whitelisted means the invoice is public.
+		return true, nil
 	},
 }
 
