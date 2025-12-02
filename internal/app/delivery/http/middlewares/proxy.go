@@ -657,7 +657,7 @@ func (m *Middlewares) resourceOwnedByContext(
 // This function must be used to determine if we should fail closed on error from a resource.
 func (m *Middlewares) failClosedOnErrorFromResource(resourceType string, resourceID string) bool {
 	if resourceType == "" {
-		return false
+		return true
 	}
 
 	defaultDenyResources := []string{
