@@ -680,30 +680,83 @@ func (m *Middlewares) applyOwnershipFilterToBundle(
 ) int {
 	oc := m.buildOwnershipContext(ctx, roles, fhirRole, fhirID)
 
-	removed := 0
-	filtered := make([]BundleEntry, 0, len(bundle.Entry))
+	// struct to cache resource info to avoid double unmarshalling
+	type entryInfo struct {
+		idx          int
+		owned        bool
+		resourceType string
+		id           string
+	}
 
-	for _, e := range bundle.Entry {
-		keep := false
+	infos := make([]entryInfo, len(bundle.Entry))
+	// allowedRefs tracks the IDs of resources that are referenced by owned resources
+	allowedRefs := make(map[string]struct{})
+
+	// Determine direct ownership and collect outgoing references from owned resources
+	for i, e := range bundle.Entry {
 		var env struct {
 			ResourceType string `json:"resourceType"`
 			ID           string `json:"id,omitempty"`
 		}
 		if err := json.Unmarshal(e.Resource, &env); err != nil || env.ResourceType == "" {
-			// can't inspect safely → keep
+			if m.failClosedOnErrorFromResource(env.ResourceType, env.ID) {
+				infos[i] = entryInfo{idx: i, owned: false}
+			} else {
+				infos[i] = entryInfo{idx: i, owned: true}
+			}
+			continue
+		}
+
+		owned := m.resourceOwnedByContext(e.Resource, env.ResourceType, env.ID, oc)
+		infos[i] = entryInfo{
+			idx:          i,
+			owned:        owned,
+			resourceType: env.ResourceType,
+			id:           env.ID,
+		}
+
+		if owned {
+			// If we own this resource, we should also be allowed to see resources it references.
+			// We scan the owned resource for all "reference" fields.
+			// however, this feature will only be available if the requester has a practitioner role
+			// as per the requirement
+			if !oc.HasPractitionerRole {
+				continue
+			}
+
+			var resMap map[string]any
+			if err := json.Unmarshal(e.Resource, &resMap); err == nil {
+				var refs []string
+				collectReferences(resMap, &refs, 0)
+				for _, r := range refs {
+					allowedRefs[r] = struct{}{}
+				}
+			}
+		}
+	}
+
+	removed := 0
+	filtered := make([]BundleEntry, 0, len(bundle.Entry))
+
+	// Filter based on direct ownership OR if referenced by an owned resource
+	for i, e := range bundle.Entry {
+		info := infos[i]
+		if info.owned {
 			filtered = append(filtered, e)
 			continue
 		}
-		rt := env.ResourceType
 
-		owned := m.resourceOwnedByContext(e.Resource, rt, env.ID, oc)
-		if owned {
-			keep = true
-		}
+		// If not directly owned, check if this resource was referenced by an owned resource.
+		// We check standard "ResourceType/ID" format.
+		refKey := fmt.Sprintf("%s/%s", info.resourceType, info.id)
 
-		if keep {
+		// Check if the resource's relative reference (ResourceType/ID) is in allowed list
+		_, isReferenced := allowedRefs[refKey]
+
+		if isReferenced {
 			filtered = append(filtered, e)
 		} else {
+			m.Log.Info("removing resource from bundle", zap.String("resourceType", info.resourceType), zap.String("resourceID", info.id))
 			removed++
 		}
 	}
