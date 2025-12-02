@@ -553,25 +553,50 @@ type ownershipChecker func(raw json.RawMessage, oc *ownershipContext) (bool, err
 var resourceSpecificOwnershipCheckers = map[string]ownershipChecker{
 	constvars.ResourceInvoice: func(raw json.RawMessage, oc *ownershipContext) (bool, error) {
 		// slices below contains all the actors reference in invoice that if
-		// the invoice only have these actors, then the invoice is public.
-		// otherwise, extra ownership checking is needed.
+		// the invoice only have these actors, then the invoice is public. Otherwise,
+		// will directly return false, nil to indicate that the invoice is not owned by the requester.
+		// and extra ownership checking is needed.
 		publicResourceIfOwnedByTheseActors := []string{
 			constvars.ResourcePractitioner,
 			constvars.ResourcePractitionerRole,
 			constvars.ResourceDevice,
 		}
 
+		isPublicRef := func(ref string) bool {
+			for _, publicActor := range publicResourceIfOwnedByTheseActors {
+				if strings.HasPrefix(ref, publicActor) {
+					return true
+				}
+			}
+			return false
+		}
+
+		hasPublicReference := false
+
+		// Check subject.reference if it exists
+		if subjectRef := gjson.Get(string(raw), "subject.reference").String(); subjectRef != "" {
+			if !isPublicRef(subjectRef) {
+				return false, nil
+			}
+			hasPublicReference = true
+		}
+
 		participants := gjson.Get(string(raw), "participant").Array()
 
 		for _, participant := range participants {
-			actor := participant.Get("actor")
-			actorRef := actor.Get("reference").String()
-
-			for _, publicResourceActor := range publicResourceIfOwnedByTheseActors {
-				if strings.HasPrefix(actorRef, publicResourceActor) {
-					return true, nil
-				}
+			actorRef := participant.Get("actor.reference").String()
+			if actorRef == "" {
+				continue
 			}
+
+			if !isPublicRef(actorRef) {
+				return false, nil
+			}
+			hasPublicReference = true
+		}
+
+		if hasPublicReference {
+			return true, nil
 		}
 
 		return false, nil
