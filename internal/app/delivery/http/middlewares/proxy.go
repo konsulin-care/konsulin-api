@@ -22,6 +22,7 @@ import (
 
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
+	"github.com/tidwall/gjson"
 )
 
 // bodyEncoding represents the original Content-Encoding of the proxied response body.
@@ -549,7 +550,33 @@ type ownershipChecker func(raw json.RawMessage, oc *ownershipContext) (bool, err
 
 // resourceSpecificOwnershipCheckers holds resource-specific ownership logic.
 // add your own custom ownership checkers here if needed
-var resourceSpecificOwnershipCheckers = map[string]ownershipChecker{}
+var resourceSpecificOwnershipCheckers = map[string]ownershipChecker{
+	constvars.ResourceInvoice: func(raw json.RawMessage, oc *ownershipContext) (bool, error) {
+		// slices below contains all the actors reference in invoice that if
+		// the invoice only have these actors, then the invoice is public.
+		// otherwise, extra ownership checking is needed.
+		publicResourceIfOwnedByTheseActors := []string{
+			constvars.ResourcePractitioner,
+			constvars.ResourcePractitionerRole,
+			constvars.ResourceDevice,
+		}
+
+		participants := gjson.Get(string(raw), "participant").Array()
+
+		for _, participant := range participants {
+			actor := participant.Get("actor")
+			actorRef := actor.Get("reference").String()
+
+			for _, publicResourceActor := range publicResourceIfOwnedByTheseActors {
+				if strings.HasPrefix(actorRef, publicResourceActor) {
+					return true, nil
+				}
+			}
+		}
+
+		return false, nil
+	},
+}
 
 // resourceOwnedByContext centralizes ownership checks for a single FHIR resource.
 // It is used by both bundle-level and single-resource filters.
