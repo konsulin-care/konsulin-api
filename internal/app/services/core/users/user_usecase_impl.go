@@ -1,15 +1,24 @@
 package users
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/models"
+	"konsulin-service/internal/app/services/shared/jwtmanager"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/utils"
+	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -21,6 +30,7 @@ type userUsecase struct {
 	UserRepository             contracts.UserRepository
 	PatientFhirClient          contracts.PatientFhirClient
 	PractitionerFhirClient     contracts.PractitionerFhirClient
+	PersonFhirClient           contracts.PersonFhirClient
 	PractitionerRoleFhirClient contracts.PractitionerRoleFhirClient
 	OrganizationFhirClient     contracts.OrganizationFhirClient
 	RedisRepository            contracts.RedisRepository
@@ -28,6 +38,8 @@ type userUsecase struct {
 	MinioStorage               contracts.Storage
 	InternalConfig             *config.InternalConfig
 	Log                        *zap.Logger
+	LockerService              contracts.LockerService
+	JWTTokenManager            *jwtmanager.JWTManager
 }
 
 var (
@@ -39,6 +51,7 @@ func NewUserUsecase(
 	userMongoRepository contracts.UserRepository,
 	patientFhirClient contracts.PatientFhirClient,
 	practitionerFhirClient contracts.PractitionerFhirClient,
+	personFhirClient contracts.PersonFhirClient,
 	practitionerRoleFhirClient contracts.PractitionerRoleFhirClient,
 	organizationFhirClient contracts.OrganizationFhirClient,
 	redisRepository contracts.RedisRepository,
@@ -46,12 +59,15 @@ func NewUserUsecase(
 	minioStorage contracts.Storage,
 	internalConfig *config.InternalConfig,
 	logger *zap.Logger,
+	lockerService contracts.LockerService,
+	jwtManager *jwtmanager.JWTManager,
 ) contracts.UserUsecase {
 	onceUserUsecase.Do(func() {
 		instance := &userUsecase{
 			UserRepository:             userMongoRepository,
 			PatientFhirClient:          patientFhirClient,
 			PractitionerFhirClient:     practitionerFhirClient,
+			PersonFhirClient:           personFhirClient,
 			PractitionerRoleFhirClient: practitionerRoleFhirClient,
 			OrganizationFhirClient:     organizationFhirClient,
 			RedisRepository:            redisRepository,
@@ -59,6 +75,8 @@ func NewUserUsecase(
 			MinioStorage:               minioStorage,
 			InternalConfig:             internalConfig,
 			Log:                        logger,
+			LockerService:              lockerService,
+			JWTTokenManager:            jwtManager,
 		}
 		userUsecaseInstance = instance
 	})
@@ -371,6 +389,38 @@ func (uc *userUsecase) DeactivateUserBySession(ctx context.Context, sessionData 
 	}
 }
 
+func (uc *userUsecase) InitializeNewUserFHIRResources(ctx context.Context, input *contracts.InitializeNewUserFHIRResourcesInput) (*contracts.InitializeNewUserFHIRResourcesOutput, error) {
+	if err := input.Validate(); err != nil {
+		return nil, exceptions.ErrInvalidFormat(err, "email")
+	}
+
+	output := &contracts.InitializeNewUserFHIRResourcesOutput{}
+
+	for _, resource := range input.Resources() {
+		switch resource {
+		case constvars.ResourcePractitioner:
+			practitioner, err := uc.createPractitionerIfNotExists(ctx, input.Email, input.SuperTokenUserID)
+			if err != nil {
+				return nil, err
+			}
+			output.PractitionerID = practitioner.ID
+		case constvars.ResourcePatient:
+			patient, err := uc.createPatientIfNotExists(ctx, input.Email, input.SuperTokenUserID)
+			if err != nil {
+				return nil, err
+			}
+			output.PatientID = patient.ID
+		case constvars.ResourcePerson:
+			person, err := uc.createPersonIfNotExists(ctx, input.Email, input.SuperTokenUserID)
+			if err != nil {
+				return nil, err
+			}
+			output.PersonID = person.ID
+		}
+	}
+	return output, nil
+}
+
 func (uc *userUsecase) deactivatePractitionerFhirData(ctx context.Context, user *models.User) error {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	uc.Log.Info("userUsecase.deactivatePractitionerFhirData called",
@@ -415,6 +465,388 @@ func (uc *userUsecase) deactivatePatientFhirData(ctx context.Context, user *mode
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
 	return nil
+}
+
+func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email string, superTokenUserID string) (*fhir_dto.Practitioner, error) {
+	practitioners, err := uc.PractitionerFhirClient.FindPractitionerByEmail(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(practitioners) > 0 {
+		practitioner := practitioners[0]
+
+		// if the chatwoot call fails, we don't need to update the practitioner identifier with the chatwoot ID
+		// but the process must continue, just not update the practitioner identifier with the chatwoot ID
+		userChatwootContact, chatwootCallErr := uc.callWebhookSvcKonsulinOmnichannel(ctx, email, practitioner.FullName())
+		if chatwootCallErr != nil {
+			uc.Log.Error("userUsecase.createPractitionerIfNotExists error calling webhook svc konsulin omnichannel",
+				zap.Error(chatwootCallErr),
+			)
+		}
+
+		chatwootID := strconv.Itoa(userChatwootContact.ChatwootID)
+
+		mustUpdatePractitioner := false
+
+		foundSupertokenSysId := false
+		foundSupertokenSysIdOnIdx := -1
+		supertokenSysIdExactMatch := false
+
+		foundChatwootID := false
+		foundChatwootIDOnIdx := -1
+		chatwootIDExactMatch := false
+
+		for idx, identifier := range practitioner.Identifier {
+			if identifier.System == constvars.FhirSupertokenSystemIdentifier {
+				foundSupertokenSysId = true
+				foundSupertokenSysIdOnIdx = idx
+
+				if identifier.Value == superTokenUserID {
+					supertokenSysIdExactMatch = true
+				}
+			}
+
+			if identifier.System == constvars.KonsulinOmnichannelSystemIdentifier {
+				foundChatwootID = true
+				foundChatwootIDOnIdx = idx
+
+				if identifier.Value == chatwootID {
+					chatwootIDExactMatch = true
+				}
+			}
+		}
+
+		if superTokenUserID != "" {
+			if foundSupertokenSysId && !supertokenSysIdExactMatch {
+				mustUpdatePractitioner = true
+				practitioner.Identifier[foundSupertokenSysIdOnIdx] = fhir_dto.Identifier{
+					System: constvars.FhirSupertokenSystemIdentifier,
+					Value:  superTokenUserID,
+				}
+			}
+
+			if !foundSupertokenSysId {
+				mustUpdatePractitioner = true
+				practitioner.Identifier = append(practitioner.Identifier, fhir_dto.Identifier{
+					System: constvars.FhirSupertokenSystemIdentifier,
+					Value:  superTokenUserID,
+				})
+			}
+		}
+
+		// only attempt to update the practitioner identifier with the chatwoot ID if the chatwoot call was successful
+		// and the chatwoot ID is not 0 (which can means that the user is not yet added to the chatwoot workspace or the API call failed)
+		if chatwootCallErr == nil && userChatwootContact.ChatwootID != 0 {
+			if !foundChatwootID {
+				mustUpdatePractitioner = true
+				practitioner.Identifier = append(practitioner.Identifier, fhir_dto.Identifier{
+					System: constvars.KonsulinOmnichannelSystemIdentifier,
+					Value:  chatwootID,
+				})
+			}
+
+			if foundChatwootID && !chatwootIDExactMatch {
+				mustUpdatePractitioner = true
+				practitioner.Identifier[foundChatwootIDOnIdx] = fhir_dto.Identifier{
+					System: constvars.KonsulinOmnichannelSystemIdentifier,
+					Value:  chatwootID,
+				}
+			}
+		}
+
+		if mustUpdatePractitioner {
+			updatedPractitioner, err := uc.PractitionerFhirClient.UpdatePractitioner(ctx, &practitioner)
+			if err != nil {
+				return nil, err
+			}
+			return updatedPractitioner, nil
+		}
+
+		return &practitioner, nil
+	}
+
+	if superTokenUserID == "" {
+		return nil, exceptions.ErrInvalidFormat(nil, "superTokenUserID")
+	}
+
+	userChatwootContact, chatwootErr := uc.callWebhookSvcKonsulinOmnichannel(ctx, email, "")
+	if chatwootErr != nil {
+		// log the error but continue the process
+		uc.Log.Error("userUsecase.createPractitionerIfNotExists error calling webhook svc konsulin omnichannel",
+			zap.Error(chatwootErr),
+		)
+	}
+
+	chatwootID := strconv.Itoa(userChatwootContact.ChatwootID)
+
+	newPractitionerInput := &fhir_dto.Practitioner{
+		ResourceType: constvars.ResourcePractitioner,
+		Active:       true,
+		Identifier: []fhir_dto.Identifier{
+			{
+				System: constvars.FhirSupertokenSystemIdentifier,
+				Value:  superTokenUserID,
+			},
+		},
+		Telecom: []fhir_dto.ContactPoint{
+			{
+				System: fhir_dto.ContactPointSystemEmail,
+				Value:  email,
+				Use:    "work",
+			},
+		},
+	}
+
+	if chatwootErr == nil && userChatwootContact.ChatwootID != 0 {
+		newPractitionerInput.Identifier = append(newPractitionerInput.Identifier, fhir_dto.Identifier{
+			System: constvars.KonsulinOmnichannelSystemIdentifier,
+			Value:  chatwootID,
+		})
+	}
+
+	newPractitioner, err := uc.PractitionerFhirClient.CreatePractitioner(ctx, newPractitionerInput)
+	if err != nil {
+		return nil, err
+	}
+
+	return newPractitioner, nil
+}
+
+func (uc *userUsecase) createPatientIfNotExists(ctx context.Context, email string, superTokenUserID string) (*fhir_dto.Patient, error) {
+	patients, err := uc.PatientFhirClient.FindPatientByEmail(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(patients) > 0 {
+		patient := patients[0]
+
+		// if the chatwoot call fails, we don't need to update the patient identifier with the chatwoot ID
+		// but the process must continue, just not update the patient identifier with the chatwoot ID
+		userChatwootContact, chatwootCallErr := uc.callWebhookSvcKonsulinOmnichannel(ctx, email, patient.FullName())
+		if chatwootCallErr != nil {
+			// log the error but continue the process
+			uc.Log.Error("userUsecase.createPatientIfNotExists error calling webhook svc konsulin omnichannel",
+				zap.Error(chatwootCallErr),
+			)
+		}
+
+		chatwootID := strconv.Itoa(userChatwootContact.ChatwootID)
+
+		mustUpdatePatient := false
+
+		foundSupertokenSysId := false
+		foundSupertokenSysIdOnIdx := -1
+		supertokenSysIdExactMatch := false
+
+		foundChatwootID := false
+		foundChatwootIDOnIdx := -1
+		chatwootIDExactMatch := false
+
+		for idx, identifier := range patient.Identifier {
+			if identifier.System == constvars.FhirSupertokenSystemIdentifier {
+				foundSupertokenSysId = true
+				foundSupertokenSysIdOnIdx = idx
+
+				if identifier.Value == superTokenUserID {
+					supertokenSysIdExactMatch = true
+				}
+			}
+
+			if identifier.System == constvars.KonsulinOmnichannelSystemIdentifier {
+				foundChatwootID = true
+				foundChatwootIDOnIdx = idx
+
+				if identifier.Value == chatwootID {
+					chatwootIDExactMatch = true
+				}
+			}
+		}
+
+		if superTokenUserID != "" {
+			if foundSupertokenSysId && !supertokenSysIdExactMatch {
+				mustUpdatePatient = true
+				patient.Identifier[foundSupertokenSysIdOnIdx] = fhir_dto.Identifier{
+					System: constvars.FhirSupertokenSystemIdentifier,
+					Value:  superTokenUserID,
+				}
+			}
+
+			if !foundSupertokenSysId {
+				mustUpdatePatient = true
+				patient.Identifier = append(patient.Identifier, fhir_dto.Identifier{
+					System: constvars.FhirSupertokenSystemIdentifier,
+					Value:  superTokenUserID,
+				})
+			}
+		}
+
+		// only attempt to update the patient identifier with the chatwoot ID if the chatwoot call was successful
+		// and the chatwoot ID is not 0 (which can means that the user is not yet added to the chatwoot workspace or the API call failed)
+		if chatwootCallErr == nil && userChatwootContact.ChatwootID != 0 {
+			if !foundChatwootID {
+				mustUpdatePatient = true
+				patient.Identifier = append(patient.Identifier, fhir_dto.Identifier{
+					System: constvars.KonsulinOmnichannelSystemIdentifier,
+					Value:  chatwootID,
+				})
+			}
+
+			if foundChatwootID && !chatwootIDExactMatch {
+				mustUpdatePatient = true
+				patient.Identifier[foundChatwootIDOnIdx] = fhir_dto.Identifier{
+					System: constvars.KonsulinOmnichannelSystemIdentifier,
+					Value:  chatwootID,
+				}
+			}
+		}
+
+		if mustUpdatePatient {
+			updatedPatient, err := uc.PatientFhirClient.UpdatePatient(ctx, &patient)
+			if err != nil {
+				return nil, err
+			}
+
+			return updatedPatient, nil
+		}
+
+		return &patient, nil
+	}
+
+	userChatwootContact, chatwootErr := uc.callWebhookSvcKonsulinOmnichannel(ctx, email, "")
+	if chatwootErr != nil {
+		// log the error but continue the process
+		uc.Log.Error("userUsecase.createPatientIfNotExists error calling webhook svc konsulin omnichannel",
+			zap.Error(chatwootErr),
+		)
+	}
+	chatwootID := strconv.Itoa(userChatwootContact.ChatwootID)
+
+	newPatientInput := &fhir_dto.Patient{
+		ResourceType: constvars.ResourcePatient,
+		Active:       true,
+		Identifier:   []fhir_dto.Identifier{},
+		Telecom: []fhir_dto.ContactPoint{
+			{
+				System: fhir_dto.ContactPointSystemEmail,
+				Value:  email,
+				Use:    "work",
+			},
+		},
+	}
+
+	if superTokenUserID != "" {
+		newPatientInput.Identifier = append(newPatientInput.Identifier, fhir_dto.Identifier{
+			System: constvars.FhirSupertokenSystemIdentifier,
+			Value:  superTokenUserID,
+		})
+	}
+
+	if chatwootErr == nil && userChatwootContact.ChatwootID != 0 {
+		newPatientInput.Identifier = append(newPatientInput.Identifier, fhir_dto.Identifier{
+			System: constvars.KonsulinOmnichannelSystemIdentifier,
+			Value:  chatwootID,
+		})
+	}
+
+	newPatient, err := uc.PatientFhirClient.CreatePatient(ctx, newPatientInput)
+	if err != nil {
+		return nil, err
+	}
+
+	return newPatient, nil
+}
+
+func (uc *userUsecase) createPersonIfNotExists(ctx context.Context, email string, superTokenUserID string) (*fhir_dto.Person, error) {
+	person, err := uc.PersonFhirClient.FindPersonByEmail(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+	if len(person) > 0 {
+		person := person[0]
+
+		found := false
+		foundOnIdx := -1
+		exactMatch := false
+
+		for idx, identifier := range person.Identifier {
+			if identifier.System == constvars.FhirSupertokenSystemIdentifier {
+				found = true
+				foundOnIdx = idx
+
+				if identifier.Value == superTokenUserID {
+					exactMatch = true
+					break
+				}
+			}
+		}
+
+		if found && !exactMatch {
+			if superTokenUserID == "" {
+				return &person, nil
+			}
+
+			person.Identifier[foundOnIdx] = fhir_dto.Identifier{
+				System: constvars.FhirSupertokenSystemIdentifier,
+				Value:  superTokenUserID,
+			}
+
+			updatedPerson, err := uc.PersonFhirClient.Update(ctx, &person)
+			if err != nil {
+				return nil, err
+			}
+
+			return updatedPerson, nil
+		}
+
+		if !found {
+			if superTokenUserID == "" {
+				return &person, nil
+			}
+
+			person.Identifier = append(person.Identifier, fhir_dto.Identifier{
+				System: constvars.FhirSupertokenSystemIdentifier,
+				Value:  superTokenUserID,
+			})
+
+			updatedPerson, err := uc.PersonFhirClient.Update(ctx, &person)
+			if err != nil {
+				return nil, err
+			}
+
+			return updatedPerson, nil
+		}
+
+		return &person, nil
+	}
+
+	newPersonInput := &fhir_dto.Person{
+		ResourceType: constvars.ResourcePerson,
+		Active:       true,
+		Identifier:   []fhir_dto.Identifier{},
+		Telecom: []fhir_dto.ContactPoint{
+			{
+				System: fhir_dto.ContactPointSystemEmail,
+				Value:  email,
+				Use:    "work",
+			},
+		},
+	}
+
+	if superTokenUserID != "" {
+		newPersonInput.Identifier = append(newPersonInput.Identifier, fhir_dto.Identifier{
+			System: constvars.FhirSupertokenSystemIdentifier,
+			Value:  superTokenUserID,
+		})
+	}
+
+	newPerson, err := uc.PersonFhirClient.Create(ctx, newPersonInput)
+	if err != nil {
+		return nil, err
+	}
+
+	return newPerson, nil
 }
 
 func (uc *userUsecase) updatePatientFhirProfile(ctx context.Context, user *models.User, session *models.Session, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error) {
@@ -636,4 +1068,79 @@ func (uc *userUsecase) uploadProfilePicture(ctx context.Context, username string
 		zap.String("profile_picture_url", profilePictureURL),
 	)
 	return profilePictureURL, nil
+}
+
+type callWebhookSvcKonsulinOmnichannelOutput struct {
+	ChatwootID int    `json:"chatwoot_id"`
+	Email      string `json:"email"`
+}
+
+func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, email, username string) (callWebhookSvcKonsulinOmnichannelOutput, error) {
+	lastUsername := username
+	if lastUsername == "" {
+		lastUsername = strings.Split(email, "@")[0]
+	}
+
+	tokenOut, err := uc.JWTTokenManager.CreateToken(
+		ctx,
+		&jwtmanager.CreateTokenInput{
+			Subject: constvars.KonsulinOmnichannelSystemIdentifier,
+		},
+	)
+	if err != nil {
+		return callWebhookSvcKonsulinOmnichannelOutput{}, err
+	}
+
+	url := fmt.Sprintf("%s%s", uc.InternalConfig.Webhook.URL, uc.InternalConfig.Webhook.KonsulinOmnichannelContactSyncURL)
+
+	body := struct {
+		Email    string `json:"email"`
+		Username string `json:"username"`
+	}{
+		Email:    email,
+		Username: lastUsername,
+	}
+
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		return callWebhookSvcKonsulinOmnichannelOutput{}, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(bodyBytes))
+	if err != nil {
+		return callWebhookSvcKonsulinOmnichannelOutput{}, err
+	}
+
+	req.Header.Set(constvars.HeaderAuthorization, "Bearer "+tokenOut.Token)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{
+		Timeout: time.Duration(uc.InternalConfig.Webhook.HTTPTimeoutInSeconds) * time.Second,
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return callWebhookSvcKonsulinOmnichannelOutput{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return callWebhookSvcKonsulinOmnichannelOutput{}, errors.New("failed to call webhook svc konsulin omnichannel")
+	}
+
+	bodyBytesResp, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return callWebhookSvcKonsulinOmnichannelOutput{}, err
+	}
+
+	var outputs []callWebhookSvcKonsulinOmnichannelOutput
+	if err = json.Unmarshal(bodyBytesResp, &outputs); err != nil {
+		return callWebhookSvcKonsulinOmnichannelOutput{}, err
+	}
+	if len(outputs) == 0 {
+		return callWebhookSvcKonsulinOmnichannelOutput{}, errors.New("webhook svc konsulin omnichannel returned empty response")
+	}
+
+	output := outputs[0]
+	return output, nil
 }

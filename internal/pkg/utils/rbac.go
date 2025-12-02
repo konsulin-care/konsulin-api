@@ -52,7 +52,6 @@ func RequiresPatientOwnership(resourceType string) bool {
 		"Patient":                  true,
 		"Appointment":              true,
 		"Observation":              true,
-		"QuestionnaireResponse":    true,
 		"Encounter":                true,
 		"Condition":                true,
 		"AllergyIntolerance":       true,
@@ -92,7 +91,6 @@ func RequiresPractitionerOwnership(resourceType string) bool {
 		"Procedure":                   true,
 		"MedicationRequest":           true,
 		"CarePlan":                    true,
-		"QuestionnaireResponse":       true,
 		"DocumentReference":           true,
 		"Communication":               true,
 		"CommunicationRequest":        true,
@@ -116,6 +114,7 @@ func RequiresPractitionerOwnership(resourceType string) bool {
 
 func IsPublicResource(resourceType string) bool {
 	publicResources := map[string]bool{
+		"Practitioner":            true,
 		"Questionnaire":           true,
 		"ResearchStudy":           true,
 		"Organization":            true,
@@ -150,6 +149,7 @@ func IsPublicResource(resourceType string) bool {
 		"SpecimenDefinition":      true,
 		"NamingSystem":            true,
 		"TerminologyCapabilities": true,
+		"Media":                   true,
 	}
 
 	return publicResources[resourceType]

@@ -3,39 +3,37 @@ package constvars
 type ResourceType string
 
 const (
-	FhirSystemSupertokenIdentifier = "https://login.konsulin.care/userid"
-)
-
-const (
-	ResourcePatient               = "Patient"
-	ResourceGroup                 = "Group"
-	ResourceClinician             = "Clinician"
-	ResourceObservation           = "Observation"
-	ResourceCondition             = "Condition"
-	ResourceMedication            = "Medication"
-	ResourceProcedure             = "Procedure"
-	ResourceEncounter             = "Encounter"
-	ResourceAllergyIntolerance    = "AllergyIntolerance"
-	ResourceImmunization          = "Immunization"
-	ResourceAppointment           = "Appointment"
-	ResourceCarePlan              = "CarePlan"
-	ResourceChargeItemDefinition  = "ChargeItemDefinition"
-	ResourceDiagnosticReport      = "DiagnosticReport"
-	ResourcePractitionerRole      = "PractitionerRole"
-	ResourcePractitioner          = "Practitioner"
-	ResourceSchedule              = "Schedule"
-	ResourceSlot                  = "Slot"
-	ResourceOrganization          = "Organization"
-	ResourceQuestionnaire         = "Questionnaire"
-	ResourceQuestionnaireResponse = "QuestionnaireResponse"
-	ResourceResearchStudy         = "ResearchStudy"
-	ResourceDevice                = "Device"
-	ResourceLocation              = "Location"
-	ResourceHealthcareService     = "HealthcareService"
-	ResourceServiceRequest        = "ServiceRequest"
-	ResourceInvoice               = "Invoice"
-	ResourcePaymentReconciliation = "PaymentReconciliation"
-	ResourcePaymentNotice         = "PaymentNotice"
+	ResourcePatient                  = "Patient"
+	ResourceGroup                    = "Group"
+	ResourceClinician                = "Clinician"
+	ResourceObservation              = "Observation"
+	ResourceCondition                = "Condition"
+	ResourceMedication               = "Medication"
+	ResourceProcedure                = "Procedure"
+	ResourceEncounter                = "Encounter"
+	ResourceAllergyIntolerance       = "AllergyIntolerance"
+	ResourceImmunization             = "Immunization"
+	ResourceAppointment              = "Appointment"
+	ResourceCarePlan                 = "CarePlan"
+	ResourceChargeItemDefinition     = "ChargeItemDefinition"
+	ResourceDiagnosticReport         = "DiagnosticReport"
+	ResourcePractitionerRole         = "PractitionerRole"
+	ResourcePractitioner             = "Practitioner"
+	ResourceSchedule                 = "Schedule"
+	ResourceSlot                     = "Slot"
+	ResourceOrganization             = "Organization"
+	ResourceQuestionnaire            = "Questionnaire"
+	ResourceQuestionnaireResponse    = "QuestionnaireResponse"
+	ResourceResearchStudy            = "ResearchStudy"
+	ResourceDevice                   = "Device"
+	ResourceLocation                 = "Location"
+	ResourceHealthcareService        = "HealthcareService"
+	ResourceServiceRequest           = "ServiceRequest"
+	ResourceInvoice                  = "Invoice"
+	ResourcePaymentReconciliation    = "PaymentReconciliation"
+	ResourcePaymentNotice            = "PaymentNotice"
+	ResourceMedicationRequest        = "MedicationRequest"
+	ResourceMedicationAdministration = "MedicationAdministration"
 )
 
 const (
@@ -103,5 +101,6 @@ const (
 )
 
 const (
-	FhirSupertokenSystemIdentifier = "https://login.konsulin.care/userid"
+	FhirSupertokenSystemIdentifier      = "https://login.konsulin.care/userid"
+	KonsulinOmnichannelSystemIdentifier = "https://login.konsulin.care/chatwoot-id"
 )

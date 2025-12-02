@@ -322,6 +322,14 @@ func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []str
 
 func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, roles []string, fhirID string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient, practitionerRoleClient contracts.PractitionerRoleFhirClient, scheduleClient contracts.ScheduleFhirClient, resource []byte) error {
 	normalizedPath := normalizePath(url)
+	resourceType := utils.ExtractResourceTypeFromPath(normalizedPath)
+
+	// direct request to public resource is allowed to bypass RBAC checks
+	// but only for GET requests to avoid unwanted modifications
+	if utils.IsPublicResource(resourceType) && method == http.MethodGet {
+		return nil
+	}
+
 	for _, role := range roles {
 		if allowed(e, role, method, normalizedPath) {
 
@@ -463,21 +471,33 @@ func validateResourceOwnership(ctx context.Context, fhirID, role, resourceType s
 			if len(sch.Actor) < 1 {
 				return false
 			}
-			firstActor := sch.Actor[0].Reference
-			if strings.HasPrefix(firstActor, "PractitionerRole/") {
-				roleID := strings.TrimPrefix(firstActor, "PractitionerRole/")
-				pr, err := practitionerRoleClient.FindPractitionerRoleByID(ctx, roleID)
-				if err != nil {
-					return false
+
+			for _, actor := range sch.Actor {
+				actorRef := actor.Reference
+
+				if strings.HasPrefix(actorRef, "PractitionerRole/") {
+					roleID := strings.TrimPrefix(actorRef, "PractitionerRole/")
+					pr, err := practitionerRoleClient.FindPractitionerRoleByID(ctx, roleID)
+					if err != nil {
+						continue
+					}
+					pracRef := pr.Practitioner.Reference
+					if strings.HasPrefix(pracRef, "Practitioner/") {
+						pid := strings.TrimPrefix(pracRef, "Practitioner/")
+						if pid == fhirID {
+							return true
+						}
+					}
 				}
-				pracRef := pr.Practitioner.Reference
-				if strings.HasPrefix(pracRef, "Practitioner/") {
-					pid := strings.TrimPrefix(pracRef, "Practitioner/")
-					if pid == fhirID {
+
+				if strings.HasPrefix(actorRef, "Practitioner/") {
+					practitionerID := strings.TrimPrefix(actorRef, "Practitioner/")
+					if practitionerID == fhirID {
 						return true
 					}
 				}
 			}
+
 		}
 
 		practitionerRefs := []string{
@@ -505,6 +525,12 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 	}
 
 	resourceType := utils.ExtractResourceTypeFromPath(u.Path)
+
+	// GET request can bypass pre-request ownership checks
+	// however, it might subject to post-request ownership filtering
+	if method == http.MethodGet {
+		return true
+	}
 
 	if method == "POST" {
 		return true
@@ -558,6 +584,12 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 
 			if qr := q.Get("questionnaire"); qr != "" {
 				return true
+			}
+
+			if resourceType == constvars.ResourcePatient {
+				if val := q.Get("_id"); val != "" {
+					return val == fhirID
+				}
 			}
 
 			if identifier := q.Get("identifier"); identifier != "" {
@@ -781,6 +813,12 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 				return id == fhirID
 			}
 
+			if resourceType == constvars.ResourcePractitioner {
+				if val := q.Get("_id"); val != "" {
+					return val == fhirID
+				}
+			}
+
 			if a := q.Get("actor"); a != "" {
 				id := strings.TrimPrefix(a, "Practitioner/")
 				return id == fhirID
@@ -818,14 +856,11 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 
 			// add support email based query
 			if email := q.Get("email"); email != "" {
-				fmt.Println("email", email)
 				practitioners, err := practitionerClient.FindPractitionerByEmail(ctx, email)
 
 				if err != nil {
 					return false
 				}
-
-				fmt.Println("practitioners", practitioners)
 
 				// guard against multiple practitioners found
 				// or no practitioners found at all

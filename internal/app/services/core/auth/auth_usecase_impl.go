@@ -21,6 +21,7 @@ type authUsecase struct {
 	RedisRepository        contracts.RedisRepository
 	SessionService         contracts.SessionService
 	RoleRepository         contracts.RoleRepository
+	UserUsecase            contracts.UserUsecase
 	PatientFhirClient      contracts.PatientFhirClient
 	PractitionerFhirClient contracts.PractitionerFhirClient
 	MailerService          contracts.MailerService
@@ -29,7 +30,6 @@ type authUsecase struct {
 	InternalConfig         *config.InternalConfig
 	DriverConfig           *config.DriverConfig
 	Roles                  map[string]*models.Role
-	mu                     sync.RWMutex
 	Log                    *zap.Logger
 }
 
@@ -44,6 +44,7 @@ func NewAuthUsecase(
 	sessionService contracts.SessionService,
 	patientFhirClient contracts.PatientFhirClient,
 	practitionerFhirClient contracts.PractitionerFhirClient,
+	userUsecase contracts.UserUsecase,
 	mailerService contracts.MailerService,
 	whatsAppService contracts.WhatsAppService,
 	minioStorage contracts.Storage,
@@ -57,6 +58,7 @@ func NewAuthUsecase(
 			SessionService:         sessionService,
 			PatientFhirClient:      patientFhirClient,
 			PractitionerFhirClient: practitionerFhirClient,
+			UserUsecase:            userUsecase,
 			MailerService:          mailerService,
 			MinioStorage:           minioStorage,
 			WhatsAppService:        whatsAppService,
@@ -207,12 +209,25 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Su
 		return err
 	}
 
+	initializeResourcesInput := &contracts.InitializeNewUserFHIRResourcesInput{
+		Email:            request.Email,
+		SuperTokenUserID: plessResponse.User.ID,
+	}
+	initializeResourcesInput.ToogleByRoles(request.Roles)
+	initializeResources, err := uc.UserUsecase.InitializeNewUserFHIRResources(context.Background(), initializeResourcesInput)
+	if err != nil {
+		return err
+	}
+
 	uc.Log.Info("Magic link creation completed successfully",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String(constvars.LoggingEmailKey, request.Email),
 		zap.Strings(constvars.LoggingRolesKey, request.Roles),
 		zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
 		zap.Bool(constvars.LoggingSuccessKey, true),
+		zap.String("initialized_resources_patient_id", initializeResources.PatientID),
+		zap.String("initialized_resources_practitioner_id", initializeResources.PractitionerID),
+		zap.String("initialized_resources_person_id", initializeResources.PersonID),
 	)
 	return nil
 }
