@@ -114,6 +114,7 @@ func RequiresPractitionerOwnership(resourceType string) bool {
 
 func IsPublicResource(resourceType string) bool {
 	publicResources := map[string]bool{
+		"Practitioner":            true,
 		"Questionnaire":           true,
 		"ResearchStudy":           true,
 		"Organization":            true,
