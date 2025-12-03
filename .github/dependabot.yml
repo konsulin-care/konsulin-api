@@ -11,17 +11,17 @@ updates:
     schedule:
       interval: "weekly"
     groups:
-      all-updates:
-        patterns:
-          - "*"
+      update-types:
+        - "minor"
+        - "patch"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "monthly"
     groups:
-      all-updates:
-        patterns:
-          - "*"
+      update-types:
+        - "minor"
+        - "patch"
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
@@ -29,6 +29,6 @@ updates:
     allow:
       - dependency-type: "direct"
     groups:
-      all-updates:
-        patterns:
-          - "*"
+      update-types:
+        - "minor"
+        - "patch"
