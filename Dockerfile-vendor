@@ -1,4 +1,4 @@
-FROM golang:1.22 as gobuild
+FROM golang:1.25 as gobuild
 LABEL maintainer="Muhammad Febrian Ardiansyah <mfardiansyah.id@gmail.com>"
 LABEL stage=gobuild
 
