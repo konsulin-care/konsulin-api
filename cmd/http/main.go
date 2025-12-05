@@ -310,6 +310,8 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	)
 	orgController := controllers.NewOrganizationController(bootstrap.Logger, orgUsecase)
 
+	orgUsecase.InitializeKonsulinOrganizationResource(context.Background())
+
 	// Start webhook worker ticker (best-effort lock ensures single execution)
 	worker := webhook.NewWorker(bootstrap.Logger, bootstrap.InternalConfig, lockService, webhookQueueService, jwtManager)
 	stopWorker := worker.Start(context.Background())

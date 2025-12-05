@@ -33,4 +33,9 @@ type OrganizationUsecase interface {
 	// Practitioner (resolved by email) to an Organization by creating a
 	// PractitionerRole and Schedule in FHIR, subject to role and org checks.
 	RegisterPractitionerRoleAndSchedule(ctx context.Context, in RegisterPractitionerRoleInput) (*RegisterPractitionerRoleOutput, error)
+
+	// InitializeKonsulinOrganizationResource initializes the Konsulin organization resource in the FHIR server.
+	// After executing this function, the Konsulin organization resource will be created if it doesn't exist,
+	// and ready to be used for reference.
+	InitializeKonsulinOrganizationResource(ctx context.Context) error
 }
