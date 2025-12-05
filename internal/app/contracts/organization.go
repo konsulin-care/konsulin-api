@@ -8,6 +8,7 @@ import (
 type OrganizationFhirClient interface {
 	FindAll(ctx context.Context, organizationName, fetchType string, page, pageSize int) ([]fhir_dto.Organization, int, error)
 	FindOrganizationByID(ctx context.Context, organizationID string) (*fhir_dto.Organization, error)
+	Update(ctx context.Context, organization fhir_dto.Organization) (*fhir_dto.Organization, error)
 }
 
 // RegisterPractitionerRoleInput captures the minimal data required to
