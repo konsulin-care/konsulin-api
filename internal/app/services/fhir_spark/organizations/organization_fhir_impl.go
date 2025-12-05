@@ -1,6 +1,7 @@
 package organizations
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -205,6 +206,97 @@ func (c *organizationFhirClient) FindOrganizationByID(ctx context.Context, organ
 	}
 
 	c.Log.Info("organizationFhirClient.FindOrganizationByID succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingOrganizationIDKey, organizationFhir.ID),
+	)
+	return organizationFhir, nil
+}
+
+func (c *organizationFhirClient) Update(ctx context.Context, organization fhir_dto.Organization) (*fhir_dto.Organization, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	c.Log.Info("organizationFhirClient.Update called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingOrganizationIDKey, organization.ID),
+	)
+
+	bodyBytes, err := json.Marshal(organization)
+	if err != nil {
+		c.Log.Error("organizationFhirClient.Update error marshaling request body",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrCreateHTTPRequest(err)
+	}
+
+	url := fmt.Sprintf("%s/%s", c.BaseUrl, organization.ID)
+	req, err := http.NewRequestWithContext(ctx, constvars.MethodPut, url, bytes.NewBuffer(bodyBytes))
+	if err != nil {
+		c.Log.Error("organizationFhirClient.Update error creating HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrCreateHTTPRequest(err)
+	}
+	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		c.Log.Error("organizationFhirClient.Update error sending HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrSendHTTPRequest(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != constvars.StatusOK && resp.StatusCode != constvars.StatusCreated {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			c.Log.Error("organizationFhirClient.Update error reading response body",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceOrganization)
+		}
+
+		var outcome fhir_dto.OperationOutcome
+		err = json.Unmarshal(bodyBytes, &outcome)
+		if err != nil {
+			c.Log.Error("organizationFhirClient.Update error unmarshaling outcome",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceOrganization)
+		}
+
+		if len(outcome.Issue) > 0 {
+			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			c.Log.Error("organizationFhirClient.Update FHIR error",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(fhirErrorIssue),
+			)
+			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourceOrganization)
+		}
+
+		c.Log.Error("organizationFhirClient.Update unknown error",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Int("status_code", resp.StatusCode),
+		)
+		return nil, fmt.Errorf("unknown error with status code: %d", resp.StatusCode)
+	}
+
+	organizationFhir := new(fhir_dto.Organization)
+	err = json.NewDecoder(resp.Body).Decode(&organizationFhir)
+	if err != nil {
+		c.Log.Error("organizationFhirClient.Update error decoding response",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourceOrganization)
+	}
+
+	c.Log.Info("organizationFhirClient.Update succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String(constvars.LoggingOrganizationIDKey, organizationFhir.ID),
 	)
