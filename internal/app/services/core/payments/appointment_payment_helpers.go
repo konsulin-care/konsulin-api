@@ -53,7 +53,7 @@ func (uc *paymentUsecase) buildAppointmentPaymentBundle(
 			Reference: req.PractitionerRoleID,
 		},
 		PaymentIssuer: &fhir_dto.Reference{
-			Reference: "Organization/Konsulin",
+			Reference: constvars.ResourceOrganization + "/" + constvars.KonsulinOrganizationResourceID,
 		},
 	}
 	entries = append(entries, map[string]any{
@@ -82,7 +82,7 @@ func (uc *paymentUsecase) buildAppointmentPaymentBundle(
 			Reference: constvars.ResourcePaymentReconciliation + "/" + paymentReconID,
 		},
 		Recipient: &fhir_dto.Reference{
-			Reference: "Organization/Konsulin",
+			Reference: constvars.ResourceOrganization + "/" + constvars.KonsulinOrganizationResourceID,
 		},
 		Amount: *precond.Invoice.TotalNet,
 	}
