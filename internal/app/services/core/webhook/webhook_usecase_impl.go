@@ -774,6 +774,9 @@ func rootString(m map[string]interface{}, key string) string {
 		return ""
 	}
 	if v, ok := m[key]; ok {
+		if v == nil {
+			return ""
+		}
 		if reflect.TypeOf(v).Kind() == reflect.String {
 			return strings.TrimSpace(v.(string))
 		}
