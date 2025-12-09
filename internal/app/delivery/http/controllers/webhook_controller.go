@@ -22,10 +22,11 @@ import (
 )
 
 type WebhookController struct {
-	Log       *zap.Logger
-	Usecase   webhook.Usecase
-	Limiter   *ratelimiter.HookRateLimiter
-	AppConfig *config.InternalConfig
+	Log                           *zap.Logger
+	Usecase                       webhook.Usecase
+	Limiter                       *ratelimiter.HookRateLimiter
+	SynchronousServiceRateLimiter *ratelimiter.ResourceLimiter
+	AppConfig                     *config.InternalConfig
 }
 
 // AsyncServiceResultRequest represents the request body for async service result callback.
@@ -58,11 +59,87 @@ var (
 	onceWebhookController     sync.Once
 )
 
-func NewWebhookController(logger *zap.Logger, uc webhook.Usecase, limiter *ratelimiter.HookRateLimiter, cfg *config.InternalConfig) *WebhookController {
+func NewWebhookController(logger *zap.Logger, uc webhook.Usecase, limiter *ratelimiter.HookRateLimiter, syncLimiter *ratelimiter.ResourceLimiter, cfg *config.InternalConfig) *WebhookController {
 	onceWebhookController.Do(func() {
-		webhookControllerInstance = &WebhookController{Log: logger, Usecase: uc, Limiter: limiter, AppConfig: cfg}
+		webhookControllerInstance = &WebhookController{
+			Log:                           logger,
+			Usecase:                       uc,
+			Limiter:                       limiter,
+			SynchronousServiceRateLimiter: syncLimiter,
+			AppConfig:                     cfg,
+		}
 	})
 	return webhookControllerInstance
+}
+
+// HandleSynchronousWebHook processes POST /api/v1/hook/synchronous/{service_name}
+func (ctrl *WebhookController) HandleSynchronousWebHook(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.BuildNewCustomError(nil, constvars.StatusMethodNotAllowed, "Only POST is allowed", "WEBHOOK_METHOD_NOT_ALLOWED"))
+		return
+	}
+
+	if !strings.HasPrefix(r.Header.Get(constvars.HeaderContentType), constvars.MIMEApplicationJSON) {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.BuildNewCustomError(nil, constvars.StatusUnsupportedMediaType, "Content-Type must be application/json", "WEBHOOK_UNSUPPORTED_MEDIA_TYPE"))
+		return
+	}
+
+	serviceName := chi.URLParam(r, "service")
+	if len(serviceName) == 0 || len(serviceName) > 256 {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrClientCustomMessage(exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, "Invalid service name", "WEBHOOK_INVALID_SERVICE_NAME")))
+		return
+	}
+	if ok, _ := regexp.MatchString(`^[A-Za-z0-9-]+$`, serviceName); !ok {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrClientCustomMessage(exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, "Invalid service name", "WEBHOOK_INVALID_SERVICE_NAME")))
+		return
+	}
+
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrReadBody(err))
+		return
+	}
+	defer r.Body.Close()
+
+	var tmp map[string]interface{}
+	if err := json.Unmarshal(raw, &tmp); err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+		return
+	}
+
+	// Simple rate limiting for synchronous services
+	if ctrl.SynchronousServiceRateLimiter != nil {
+		limiterCfg := ctrl.AppConfig.Webhook
+		eval, err := ctrl.SynchronousServiceRateLimiter.ApplyResourceLimiter(r.Context(), &ratelimiter.ApplyResourceLimiterInput{
+			ResourceName:      serviceName,
+			LimiterGroupName:  "HOOK_SYNCHRONOUS_SERVICE",
+			WindowDurationSec: limiterCfg.SynchronousServiceWindowSeconds,
+			MaxQuota:          limiterCfg.SynchronousServiceRateLimit,
+		})
+		if err == nil && eval != nil && !eval.Allowed {
+			retryAfter := eval.RetryAfterSecs
+			if retryAfter < 0 {
+				retryAfter = 0
+			}
+			w.Header().Set(constvars.HeaderRetryAfter, fmt.Sprintf("%d", retryAfter))
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.BuildNewCustomError(nil, constvars.StatusTooManyRequests, "Too many requests", "WEBHOOK_SYNC_RATE_LIMITED"))
+			return
+		}
+	}
+
+	ctx := context.WithValue(r.Context(), webhook.JWTForwardedFromPaymentServiceHeader, r.Header.Get(webhook.JWTForwardedFromPaymentServiceHeader))
+	out, err := ctrl.Usecase.HandleSynchronousWebhookService(ctx, &webhook.HandleSynchronousWebhookServiceInput{
+		ServiceName: serviceName,
+		Method:      constvars.MethodPost,
+		RawJSON:     raw,
+	})
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	w.WriteHeader(out.StatusCode)
+	_, _ = w.Write(out.Body)
 }
 
 // HandleEnqueueWebHook processes POST /api/v1/hook/{service_name}
