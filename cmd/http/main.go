@@ -264,12 +264,13 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 
 	// Initialize webhook components
 	webhookLimiter := ratelimiter.NewHookRateLimiter(redisRepository, bootstrap.Logger, bootstrap.InternalConfig)
+	resourceLimiter := ratelimiter.NewResourceLimiter(redisRepository, bootstrap.Logger)
 	webhookQueueService, err := webhookqueue.NewService(bootstrap.RabbitMQ, bootstrap.Logger, bootstrap.InternalConfig.Webhook.MaxQueue)
 	if err != nil {
 		return err
 	}
-	webhookUsecase := webhook.NewUsecase(bootstrap.Logger, bootstrap.InternalConfig, webhookQueueService, jwtManager, patientFhirClient, practitionerFhirClient, serviceRequestFhirClient)
-	webhookController := controllers.NewWebhookController(bootstrap.Logger, webhookUsecase, webhookLimiter, bootstrap.InternalConfig)
+	webhookUsecase := webhook.NewUsecase(bootstrap.Logger, bootstrap.InternalConfig, webhookQueueService, jwtManager, patientFhirClient, practitionerFhirClient, personFhirClient, serviceRequestFhirClient, middlewares.Enforcer)
+	webhookController := controllers.NewWebhookController(bootstrap.Logger, webhookUsecase, webhookLimiter, resourceLimiter, bootstrap.InternalConfig)
 	// Initialize payment usecase and controller (inject JWT manager)
 	serviceRequestStorage := storageKonsulin.NewServiceRequestStorage(serviceRequestFhirClient, bootstrap.Logger)
 	invoiceFhirClient := invoicesFhir.NewInvoiceFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
