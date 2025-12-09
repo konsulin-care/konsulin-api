@@ -15,7 +15,6 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"net/http"
-	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -772,15 +771,11 @@ func rootString(m map[string]interface{}, key string) string {
 		if v == nil {
 			return ""
 		}
-		if reflect.TypeOf(v).Kind() == reflect.String {
-			return strings.TrimSpace(v.(string))
-		}
-		if reflect.TypeOf(v).Kind() == reflect.Int {
-			return strconv.Itoa(v.(int))
-		}
-		if reflect.TypeOf(v).Kind() == reflect.Float64 {
-			intVal := int(v.(float64))
-			return strconv.Itoa(intVal)
+		switch val := v.(type) {
+		case string:
+			return strings.TrimSpace(val)
+		case float64:
+			return strconv.Itoa(int(val))
 		}
 	}
 	return ""
