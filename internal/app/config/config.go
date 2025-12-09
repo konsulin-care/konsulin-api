@@ -141,6 +141,10 @@ func loadInternalConfigWithEnv() *InternalConfig {
 			RateLimitedServices:               utils.GetEnvString("HOOK_RATE_LIMITED_SERVICES", ""),
 			PaidOnlyServices:                  utils.GetEnvString("HOOK_PAID_ONLY_SERVICES", ""),
 			AsyncServiceNames:                 parseCSVToLowerSlice(utils.GetEnvString("HOOK_ASYNC_SERVICE_NAMES", "")),
+			SynchronousServiceNames:           parseCSVToLowerSlice(utils.GetEnvString("HOOK_SYNC_SERVICE_NAMES", "")),
+			SynchronousServiceRateLimit:       utils.GetEnvInt("HOOK_SYNCHRONOUS_SERVICE_RATE_LIMIT", 60),
+			SynchronousServiceWindowSeconds:   utils.GetEnvInt("HOOK_SYNCHRONOUS_SERVICE_WINDOW_SECONDS", 60),
+			SynchronousServiceFailurePolicy:   strings.ToLower(strings.TrimSpace(utils.GetEnvString("HOOK_SYNCHRONOUS_SERVICE_FAILURE_POLICY", "return_error"))),
 			MaxQueue:                          utils.GetEnvInt("HOOK_MAX_QUEUE", 1),
 			ThrottleRetry:                     utils.GetEnvInt("HOOK_THROTTLE_RETRY", 15),
 			URL:                               utils.GetEnvString("HOOK_URL", ""),
@@ -167,6 +171,21 @@ func loadInternalConfigWithEnv() *InternalConfig {
 
 	if cfg.Webhook.KonsulinOmnichannelContactSyncURL == "" {
 		log.Fatalf("invalid webhook configuration: HOOK_SERVICE_OMNICHANNEL_SYNC must be set")
+	}
+
+	if len(cfg.Webhook.SynchronousServiceNames) == 0 {
+		log.Fatalf("invalid webhook configuration: HOOK_SYNC_SERVICE_NAMES must be set and non-empty")
+	}
+	if cfg.Webhook.SynchronousServiceRateLimit <= 0 {
+		cfg.Webhook.SynchronousServiceRateLimit = 60
+	}
+	if cfg.Webhook.SynchronousServiceWindowSeconds <= 0 {
+		cfg.Webhook.SynchronousServiceWindowSeconds = 60
+	}
+	switch cfg.Webhook.SynchronousServiceFailurePolicy {
+	case "return_error", "enqueue_request":
+	default:
+		cfg.Webhook.SynchronousServiceFailurePolicy = "return_error"
 	}
 
 	konsulinOmnichannelContactSyncURL := cfg.Webhook.URL + cfg.Webhook.KonsulinOmnichannelContactSyncURL
