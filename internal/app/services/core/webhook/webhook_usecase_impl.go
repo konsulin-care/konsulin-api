@@ -169,8 +169,9 @@ type HandleSynchronousWebhookServiceInput struct {
 
 // HandleSynchronousWebhookServiceOutput carries upstream response back to caller.
 type HandleSynchronousWebhookServiceOutput struct {
-	StatusCode int
-	Body       []byte
+	StatusCode  int
+	Body        []byte
+	ContentType string
 }
 
 // Enqueue validates, rate-limits, and enqueues the message.
@@ -651,10 +652,13 @@ func (u *usecase) forwardSynchronous(ctx context.Context, service, method string
 	}
 	defer resp.Body.Close()
 
+	respContentType := resp.Header.Get(constvars.HeaderContentType)
+
 	respBody, _ := io.ReadAll(resp.Body)
 	return &HandleSynchronousWebhookServiceOutput{
-		StatusCode: resp.StatusCode,
-		Body:       respBody,
+		StatusCode:  resp.StatusCode,
+		Body:        respBody,
+		ContentType: respContentType,
 	}, nil
 }
 

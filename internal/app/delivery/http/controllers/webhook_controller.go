@@ -145,6 +145,7 @@ func (ctrl *WebhookController) HandleSynchronousWebHook(w http.ResponseWriter, r
 	}
 
 	w.WriteHeader(out.StatusCode)
+	w.Header().Set(constvars.HeaderContentType, out.ContentType)
 	_, _ = w.Write(out.Body)
 }
 
