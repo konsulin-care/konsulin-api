@@ -116,6 +116,12 @@ func (ctrl *WebhookController) HandleSynchronousWebHook(w http.ResponseWriter, r
 			WindowDurationSec: limiterCfg.SynchronousServiceWindowSeconds,
 			MaxQuota:          limiterCfg.SynchronousServiceRateLimit,
 		})
+
+		if err != nil {
+			utils.BuildErrorResponse(ctrl.Log, w, err)
+			return
+		}
+
 		if err == nil && eval != nil && !eval.Allowed {
 			retryAfter := eval.RetryAfterSecs
 			if retryAfter < 0 {

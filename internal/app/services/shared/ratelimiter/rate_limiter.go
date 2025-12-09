@@ -88,9 +88,15 @@ func (l *ResourceLimiter) ApplyResourceLimiter(ctx context.Context, in *ApplyRes
 
 	ttl := time.Duration(windowSec)*time.Second + time.Second
 	if current == 0 {
-		_ = l.redis.Set(ctx, key, 1, ttl)
+		err := l.redis.Set(ctx, key, 1, ttl)
+		if err != nil {
+			return nil, err
+		}
 	} else {
-		_ = l.redis.Increment(ctx, key)
+		err := l.redis.Increment(ctx, key)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &ApplyResourceLimiterOutput{Allowed: true}, nil
