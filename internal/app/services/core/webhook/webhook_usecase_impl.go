@@ -654,7 +654,11 @@ func (u *usecase) forwardSynchronous(ctx context.Context, service, method string
 
 	respContentType := resp.Header.Get(constvars.HeaderContentType)
 
-	respBody, _ := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, exceptions.ErrServerProcess(err)
+	}
+
 	return &HandleSynchronousWebhookServiceOutput{
 		StatusCode:  resp.StatusCode,
 		Body:        respBody,
