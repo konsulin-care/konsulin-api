@@ -73,10 +73,16 @@ func (l *ResourceLimiter) ApplyResourceLimiter(ctx context.Context, in *ApplyRes
 	windowID := now.Unix() / int64(windowSec)
 	key := fmt.Sprintf("%s:%s:%d", group, resource, windowID)
 
-	currentStr, _ := l.redis.Get(ctx, key)
+	currentStr, err := l.redis.Get(ctx, key)
+	if err != nil {
+		return nil, err
+	}
 	var current int
 	if currentStr != "" {
-		_ = json.Unmarshal([]byte(currentStr), &current)
+		err := json.Unmarshal([]byte(currentStr), &current)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	nextWindowStart := (windowID + 1) * int64(windowSec)
