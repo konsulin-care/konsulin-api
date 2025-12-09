@@ -2,7 +2,6 @@ package ratelimiter
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"konsulin-service/internal/app/contracts"
 	"strings"
@@ -73,36 +72,20 @@ func (l *ResourceLimiter) ApplyResourceLimiter(ctx context.Context, in *ApplyRes
 	windowID := now.Unix() / int64(windowSec)
 	key := fmt.Sprintf("%s:%s:%d", group, resource, windowID)
 
-	currentStr, err := l.redis.Get(ctx, key)
+	ttl := time.Duration(windowSec)*time.Second + time.Second
+	newCount, err := l.redis.IncrementWithTTL(ctx, key, ttl)
 	if err != nil {
-		return nil, err
-	}
-	var current int
-	if currentStr != "" {
-		err := json.Unmarshal([]byte(currentStr), &current)
-		if err != nil {
-			return nil, err
-		}
+		l.log.Error("ResourceLimiter.ApplyResourceLimiter increment failed",
+			zap.String("key", key),
+			zap.Error(err))
+		return &ApplyResourceLimiterOutput{Allowed: false}, err
 	}
 
 	nextWindowStart := (windowID + 1) * int64(windowSec)
 	retryAfter := int(nextWindowStart-now.Unix()) + 1
 
-	if current >= maxQuota {
+	if newCount > maxQuota {
 		return &ApplyResourceLimiterOutput{Allowed: false, RetryAfterSecs: retryAfter}, nil
-	}
-
-	ttl := time.Duration(windowSec)*time.Second + time.Second
-	if current == 0 {
-		err := l.redis.Set(ctx, key, 1, ttl)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		err := l.redis.Increment(ctx, key)
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	return &ApplyResourceLimiterOutput{Allowed: true}, nil
