@@ -266,11 +266,6 @@ func (u *usecase) HandleSynchronousWebhookService(ctx context.Context, in *Handl
 		return u.applySynchronousFailurePolicy(ctx, service, in)
 	}
 
-	// when the upstream return non 2xx code, will also apply the fallback policy
-	if out.StatusCode < 200 || out.StatusCode >= 300 {
-		return u.applySynchronousFailurePolicy(ctx, service, in)
-	}
-
 	return out, nil
 }
 
