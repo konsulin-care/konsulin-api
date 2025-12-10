@@ -3,6 +3,7 @@ package questionnaire_responses
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"konsulin-service/internal/app/contracts"
@@ -85,13 +86,15 @@ func (c *questionnaireResponseFhirClient) FindQuestionnaireResponseByID(ctx cont
 		}
 
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := errors.New(outcome.Issue[0].Diagnostics)
 			c.Log.Error("questionnaireResponseFhirClient.FindQuestionnaireResponseByID FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
 			)
 			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourceQuestionnaireResponse)
 		}
+
+		return nil, exceptions.ErrGetFHIRResource(fmt.Errorf("unexpected status code during find questionnaire response: %d", resp.StatusCode), constvars.ResourceQuestionnaireResponse)
 	}
 
 	qr := new(fhir_dto.QuestionnaireResponse)
