@@ -35,6 +35,7 @@ p, Patient, GET, /fhir/PractitionerRole
 p, Patient, GET, /fhir/Questionnaire
 p, Patient, GET, /fhir/QuestionnaireResponse
 p, Patient, POST, /fhir/QuestionnaireResponse
+p, Patient, PUT, /fhir/QuestionnaireResponse
 p, Patient, GET, /fhir/ResearchStudy
 p, Patient, GET, /fhir/Slot
 p, Patient, PUT, /fhir/Slot
