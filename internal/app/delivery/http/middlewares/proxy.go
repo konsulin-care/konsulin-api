@@ -584,6 +584,7 @@ var resourceSpecificOwnershipCheckers = map[string]ownershipChecker{
 		// All references are whitelisted means the invoice is public.
 		return true, nil
 	},
+	// TODO: This is a temporary rule and should be removed in the future.
 	// this special rules was created to temporarily allow any practitioner to access patient
 	// resource for SOAP note creation. In the future, this may be removed and replaced with
 	// other methods that makes practitioner still able to access patient but more secure.
