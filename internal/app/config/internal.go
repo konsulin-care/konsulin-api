@@ -117,6 +117,8 @@ type AppWebhook struct {
 	PaidOnlyServices string `mapstructure:"paid_only_services"`
 	// AsyncServiceNames is a parsed list of service names that trigger async ServiceRequest creation
 	AsyncServiceNames []string
+	// SynchronousServiceNames is a parsed list of service names allowed for synchronous routing
+	SynchronousServiceNames []string
 	// MaxQueue defines how many items the worker processes per tick
 	MaxQueue int `mapstructure:"max_queue"`
 	// ThrottleRetry is the failedCount threshold before sending to DLQ
@@ -125,12 +127,16 @@ type AppWebhook struct {
 	URL string `mapstructure:"url"`
 	// HTTPTimeoutInSeconds is the HTTP client timeout when calling the webhook
 	HTTPTimeoutInSeconds int `mapstructure:"http_timeout_in_seconds"`
+	// SynchronousServiceRateLimit controls requests allowed per window for synchronous services
+	SynchronousServiceRateLimit int `mapstructure:"synchronous_service_rate_limit"`
+	// SynchronousServiceWindowSeconds is the limiter window duration in seconds for synchronous services
+	SynchronousServiceWindowSeconds int `mapstructure:"synchronous_service_window_seconds"`
+	// SynchronousServiceFailurePolicy configures fallback behavior when synchronous forwarding fails
+	SynchronousServiceFailurePolicy string `mapstructure:"synchronous_service_failure_policy"`
 	// JWTAlg selects the signing algorithm (ES256|RS256)
 	JWTAlg string `mapstructure:"jwt_alg"`
 	// JWTHookKey is the private key PEM for signing webhook JWTs
 	JWTHookKey string `mapstructure:"jwt_hook_key"`
-	// KonsulinOmnichannelContactSyncURL is the full URL of the Konsulin Omnichannel Contact Sync service endpoint
-	KonsulinOmnichannelContactSyncURL string `mapstructure:"konsulin_omnichannel_contact_sync_url"`
 }
 
 // AppXendit holds Xendit SDK configuration
