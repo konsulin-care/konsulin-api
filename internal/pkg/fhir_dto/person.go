@@ -51,3 +51,31 @@ func (p Person) FullName() string {
 	}
 	return strings.TrimSpace(strings.Join(parts, " "))
 }
+
+// GetEmailAddresses returns all email values from Telecom where system == email.
+func (p Person) GetEmailAddresses() []string {
+	if len(p.Telecom) == 0 {
+		return nil
+	}
+	emails := make([]string, 0, len(p.Telecom))
+	for _, tp := range p.Telecom {
+		if tp.System == ContactPointSystemEmail && tp.Value != "" {
+			emails = append(emails, tp.Value)
+		}
+	}
+	return emails
+}
+
+// GetPhoneNumbers returns all phone values from Telecom where system == phone.
+func (p Person) GetPhoneNumbers() []string {
+	if len(p.Telecom) == 0 {
+		return nil
+	}
+	phones := make([]string, 0, len(p.Telecom))
+	for _, tp := range p.Telecom {
+		if tp.System == ContactPointSystemPhone && tp.Value != "" {
+			phones = append(phones, tp.Value)
+		}
+	}
+	return phones
+}

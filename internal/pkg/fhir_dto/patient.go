@@ -77,3 +77,17 @@ func (p Patient) GetEmailAddresses() []string {
 	}
 	return emails
 }
+
+// GetPhoneNumbers returns all phone values from Telecom where system == phone.
+func (p Patient) GetPhoneNumbers() []string {
+	if len(p.Telecom) == 0 {
+		return nil
+	}
+	phones := make([]string, 0, len(p.Telecom))
+	for _, tp := range p.Telecom {
+		if tp.System == ContactPointSystemPhone && tp.Value != "" {
+			phones = append(phones, tp.Value)
+		}
+	}
+	return phones
+}

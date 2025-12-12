@@ -40,6 +40,8 @@ p, Patient, GET, /fhir/ResearchStudy
 p, Patient, GET, /fhir/Slot
 p, Patient, PUT, /fhir/Slot
 p, Patient, PUT, /fhir/Condition
+p, Patient, POST, /hook/synchronous/modify-profile
+p, Patient, POST, /hook/synchronous/update-avatar
 p, Practitioner, GET, /fhir/Appointment
 p, Practitioner, GET, /fhir/Condition
 p, Practitioner, GET, /fhir/Invoice
@@ -64,6 +66,8 @@ p, Practitioner, GET, /fhir/QuestionnaireResponse
 p, Practitioner, GET, /fhir/ResearchStudy
 p, Practitioner, GET, /fhir/Slot
 p, Practitioner, PUT, /fhir/Schedule
+p, Practitioner, POST, /hook/synchronous/modify-profile
+p, Practitioner, POST, /hook/synchronous/update-avatar
 p, Researcher, GET, /fhir/PlanDefinition
 p, Researcher, POST, /fhir/PlanDefinition
 p, Researcher, PUT, /fhir/PlanDefinition

@@ -8,6 +8,9 @@ import (
 )
 
 func attachWebhookRouter(router chi.Router, middlewares *middlewares.Middlewares, ctrl *controllers.WebhookController) {
+	// POST /hook/synchronous/{service}
+	router.Post("/hook/synchronous/{service}", ctrl.HandleSynchronousWebHook)
+
 	// POST /hook/{service}
 	router.Post("/hook/{service}", ctrl.HandleEnqueueWebHook)
 

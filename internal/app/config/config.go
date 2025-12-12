@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"konsulin-service/internal/pkg/utils"
 	"log"
-	"net/url"
 	"os"
 	"strings"
 
@@ -136,18 +135,21 @@ func loadInternalConfigWithEnv() *InternalConfig {
 			AccessDatasetBasePrice:     utils.GetEnvInt("BASE_PRICE_ACCESS_DATASET", 0),
 		},
 		Webhook: AppWebhook{
-			RateLimit:                         utils.GetEnvInt("HOOK_RATE_LIMIT", 0),
-			MonthlyQuota:                      utils.GetEnvInt("HOOK_QUOTA", 0),
-			RateLimitedServices:               utils.GetEnvString("HOOK_RATE_LIMITED_SERVICES", ""),
-			PaidOnlyServices:                  utils.GetEnvString("HOOK_PAID_ONLY_SERVICES", ""),
-			AsyncServiceNames:                 parseCSVToLowerSlice(utils.GetEnvString("HOOK_ASYNC_SERVICE_NAMES", "")),
-			MaxQueue:                          utils.GetEnvInt("HOOK_MAX_QUEUE", 1),
-			ThrottleRetry:                     utils.GetEnvInt("HOOK_THROTTLE_RETRY", 15),
-			URL:                               utils.GetEnvString("HOOK_URL", ""),
-			HTTPTimeoutInSeconds:              utils.GetEnvInt("HOOK_HTTP_TIMEOUT", 10),
-			JWTAlg:                            utils.GetEnvString("HOOK_JWT_ALG", "ES256"),
-			JWTHookKey:                        utils.GetEnvString("JWT_HOOK_KEY", ""),
-			KonsulinOmnichannelContactSyncURL: utils.GetEnvString("HOOK_SERVICE_OMNICHANNEL_SYNC", ""),
+			RateLimit:                       utils.GetEnvInt("HOOK_RATE_LIMIT", 0),
+			MonthlyQuota:                    utils.GetEnvInt("HOOK_QUOTA", 0),
+			RateLimitedServices:             utils.GetEnvString("HOOK_RATE_LIMITED_SERVICES", ""),
+			PaidOnlyServices:                utils.GetEnvString("HOOK_PAID_ONLY_SERVICES", ""),
+			AsyncServiceNames:               parseCSVToLowerSlice(utils.GetEnvString("HOOK_ASYNC_SERVICE_NAMES", "")),
+			SynchronousServiceNames:         parseCSVToLowerSlice(utils.GetEnvString("HOOK_SYNC_SERVICE_NAMES", "")),
+			SynchronousServiceRateLimit:     utils.GetEnvInt("HOOK_SYNCHRONOUS_SERVICE_RATE_LIMIT", 60),
+			SynchronousServiceWindowSeconds: utils.GetEnvInt("HOOK_SYNCHRONOUS_SERVICE_WINDOW_SECONDS", 60),
+			SynchronousServiceFailurePolicy: strings.ToLower(strings.TrimSpace(utils.GetEnvString("HOOK_SYNCHRONOUS_SERVICE_FAILURE_POLICY", "return_error"))),
+			MaxQueue:                        utils.GetEnvInt("HOOK_MAX_QUEUE", 1),
+			ThrottleRetry:                   utils.GetEnvInt("HOOK_THROTTLE_RETRY", 15),
+			URL:                             utils.GetEnvString("HOOK_URL", ""),
+			HTTPTimeoutInSeconds:            utils.GetEnvInt("HOOK_HTTP_TIMEOUT", 10),
+			JWTAlg:                          utils.GetEnvString("HOOK_JWT_ALG", "ES256"),
+			JWTHookKey:                      utils.GetEnvString("JWT_HOOK_KEY", ""),
 		},
 		Xendit: AppXendit{
 			APIKey:       utils.GetEnvString("APP_XENDIT_API_KEY", ""),
@@ -165,14 +167,19 @@ func loadInternalConfigWithEnv() *InternalConfig {
 		log.Fatalf("invalid service base price configuration: all BASE_PRICE_* must be > 0")
 	}
 
-	if cfg.Webhook.KonsulinOmnichannelContactSyncURL == "" {
-		log.Fatalf("invalid webhook configuration: HOOK_SERVICE_OMNICHANNEL_SYNC must be set")
+	if len(cfg.Webhook.SynchronousServiceNames) == 0 {
+		log.Fatalf("invalid webhook configuration: HOOK_SYNC_SERVICE_NAMES must be set and non-empty")
 	}
-
-	konsulinOmnichannelContactSyncURL := cfg.Webhook.URL + cfg.Webhook.KonsulinOmnichannelContactSyncURL
-	_, err := url.Parse(konsulinOmnichannelContactSyncURL)
-	if err != nil {
-		log.Fatalf("invalid webhook configuration: HOOK_SERVICE_OMNICHANNEL_SYNC must be a valid URL: %s", err)
+	if cfg.Webhook.SynchronousServiceRateLimit <= 0 {
+		cfg.Webhook.SynchronousServiceRateLimit = 60
+	}
+	if cfg.Webhook.SynchronousServiceWindowSeconds <= 0 {
+		cfg.Webhook.SynchronousServiceWindowSeconds = 60
+	}
+	switch cfg.Webhook.SynchronousServiceFailurePolicy {
+	case "return_error", "enqueue_request":
+	default:
+		cfg.Webhook.SynchronousServiceFailurePolicy = "return_error"
 	}
 
 	// Validate/normalize cron spec now; default to @daily if empty or invalid
