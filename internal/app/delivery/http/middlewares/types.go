@@ -16,9 +16,10 @@ func NewMiddlewares(
 	authUsecase contracts.AuthUsecase,
 	internalConfig *config.InternalConfig,
 	practitionerFhirClient contracts.PractitionerFhirClient,
-    patientFhirClient contracts.PatientFhirClient,
-    practitionerRoleFhirClient contracts.PractitionerRoleFhirClient,
-    scheduleFhirClient contracts.ScheduleFhirClient,
+	patientFhirClient contracts.PatientFhirClient,
+	practitionerRoleFhirClient contracts.PractitionerRoleFhirClient,
+	scheduleFhirClient contracts.ScheduleFhirClient,
+	questionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient,
 ) *Middlewares {
 	enforcer, err := casbin.NewEnforcer("resources/rbac_model.conf", "resources/rbac_policy.csv")
 	if err != nil {
@@ -69,29 +70,31 @@ func NewMiddlewares(
 	}
 
 	return &Middlewares{
-		Log:                    logger,
-		SessionService:         sessionService,
-		AuthUsecase:            authUsecase,
-		InternalConfig:         internalConfig,
-		PractitionerFhirClient: practitionerFhirClient,
-		PatientFhirClient:      patientFhirClient,
-        PractitionerRoleFhirClient: practitionerRoleFhirClient,
-        ScheduleFhirClient:         scheduleFhirClient,
-		Enforcer:               enforcer,
+		Log:                             logger,
+		SessionService:                  sessionService,
+		AuthUsecase:                     authUsecase,
+		InternalConfig:                  internalConfig,
+		PractitionerFhirClient:          practitionerFhirClient,
+		PatientFhirClient:               patientFhirClient,
+		PractitionerRoleFhirClient:      practitionerRoleFhirClient,
+		ScheduleFhirClient:              scheduleFhirClient,
+		QuestionnaireResponseFhirClient: questionnaireResponseFhirClient,
+		Enforcer:                        enforcer,
 	}
 }
 
 type ContextKey string
 type Middlewares struct {
-	Log                    *zap.Logger
-	AuthUsecase            contracts.AuthUsecase
-	SessionService         contracts.SessionService
-	InternalConfig         *config.InternalConfig
-	PractitionerFhirClient contracts.PractitionerFhirClient
-	PatientFhirClient      contracts.PatientFhirClient
-    PractitionerRoleFhirClient contracts.PractitionerRoleFhirClient
-    ScheduleFhirClient         contracts.ScheduleFhirClient
-	Enforcer               *casbin.Enforcer
+	Log                             *zap.Logger
+	AuthUsecase                     contracts.AuthUsecase
+	SessionService                  contracts.SessionService
+	InternalConfig                  *config.InternalConfig
+	PractitionerFhirClient          contracts.PractitionerFhirClient
+	PatientFhirClient               contracts.PatientFhirClient
+	PractitionerRoleFhirClient      contracts.PractitionerRoleFhirClient
+	ScheduleFhirClient              contracts.ScheduleFhirClient
+	QuestionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient
+	Enforcer                        *casbin.Enforcer
 }
 
 type User struct {
