@@ -127,7 +127,7 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	userExists, err := ctrl.AuthUsecase.CheckUserExists(ctx, request.Email)
+	userExistsOutput, err := ctrl.AuthUsecase.CheckUserExists(ctx, request.Email)
 	if err != nil {
 		ctrl.Log.Error("AuthController.MagicLink error checking user existence",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -136,6 +136,8 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
 		return
 	}
+
+	userExists := userExistsOutput != nil && userExistsOutput.SupertokenUser != nil
 
 	// If user doesn't exist, roles are mandatory
 	if !userExists && (len(request.Roles) == 0) {
