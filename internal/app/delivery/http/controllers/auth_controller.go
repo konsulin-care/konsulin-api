@@ -273,11 +273,19 @@ func (ctrl *AuthController) PasswordlessEmailExists(w http.ResponseWriter, r *ht
 
 	exists := output != nil && output.SupertokenUser != nil
 
+	patientIds := []string{}
+	practitionerIds := []string{}
+
+	if output != nil {
+		patientIds = output.PatientIds
+		practitionerIds = output.PractitionerIds
+	}
+
 	response := map[string]interface{}{
 		"exists":          exists,
 		"status":          "OK",
-		"patientIds":      output.PatientIds,
-		"practitionerIds": output.PractitionerIds,
+		"patientIds":      patientIds,
+		"practitionerIds": practitionerIds,
 	}
 
 	ctrl.Log.Info("AuthController.PasswordlessEmailExists succeeded",
