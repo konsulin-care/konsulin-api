@@ -9,6 +9,7 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -229,4 +230,61 @@ func (ctrl *AuthController) CreateAnonymousSession(w http.ResponseWriter, r *htt
 		zap.String("session_handle", sessionHandle),
 	)
 	utils.BuildSuccessResponse(w, constvars.StatusOK, "Anonymous session created successfully", response)
+}
+
+// PasswordlessEmailExists exposes the SuperTokens passwordless email lookup
+// endpoint so we can extend it with custom logic later.
+func (ctrl *AuthController) PasswordlessEmailExists(w http.ResponseWriter, r *http.Request) {
+	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	if !ok || requestID == "" {
+		ctrl.Log.Error("AuthController.PasswordlessEmailExists requestID not found in context")
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingRequestID(nil))
+		return
+	}
+
+	email := strings.TrimSpace(r.URL.Query().Get("email"))
+	if email == "" {
+		ctrl.Log.Error("AuthController.PasswordlessEmailExists missing email query",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(fmt.Errorf("email is required")))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	output, err := ctrl.AuthUsecase.CheckUserExists(ctx, email)
+	if err != nil {
+		ctrl.Log.Error("AuthController.PasswordlessEmailExists error checking user",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingEmailKey, email),
+			zap.Error(err),
+		)
+		if err == context.DeadlineExceeded {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	exists := output != nil && output.SupertokenUser != nil
+
+	response := map[string]interface{}{
+		"exists":          exists,
+		"status":          "OK",
+		"patientIds":      output.PatientIds,
+		"practitionerIds": output.PractitionerIds,
+	}
+
+	ctrl.Log.Info("AuthController.PasswordlessEmailExists succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingEmailKey, email),
+		zap.Bool("exists", exists),
+	)
+
+	w.Header().Set(constvars.HeaderContentType, constvars.MIMEApplicationJSON)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
 }
