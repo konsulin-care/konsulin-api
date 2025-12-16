@@ -1,7 +1,6 @@
 package controllers
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -95,9 +94,8 @@ func (ctrl *WebhookController) HandleSynchronousWebHook(w http.ResponseWriter, r
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrReadBody(err))
 		return
 	}
-	_ = r.Body.Close()
-	// Restore body for ParseMultipartForm if needed
-	r.Body = io.NopCloser(bytes.NewReader(raw))
+
+	defer r.Body.Close()
 
 	contentType := r.Header.Get(constvars.HeaderContentType)
 
