@@ -591,22 +591,24 @@ func (u *usecase) validateSynchronousBody(ctx context.Context, roles []string, u
 		chatwoot = rootString(tmp, "chatwoot_id")
 	case constvars.MIMEMultipartForm:
 		boundary, ok := params["boundary"]
-		if ok {
-			mr := multipart.NewReader(bytes.NewReader(body), boundary)
-			form, err := mr.ReadForm(32 << 20)
-			if err != nil {
-				return exceptions.ErrCannotParseMultipartForm(err)
-			}
+		if !ok {
+			return exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, "boundary is required for multipart/form-data", "WEBHOOK_INVALID_CONTENT_TYPE")
+		}
 
-			if v, ok := form.Value["email"]; ok && len(v) > 0 {
-				email = v[0]
-			}
-			if v, ok := form.Value["phone_number"]; ok && len(v) > 0 {
-				phone = v[0]
-			}
-			if v, ok := form.Value["chatwoot_id"]; ok && len(v) > 0 {
-				chatwoot = v[0]
-			}
+		mr := multipart.NewReader(bytes.NewReader(body), boundary)
+		form, err := mr.ReadForm(32 << 20)
+		if err != nil {
+			return exceptions.ErrCannotParseMultipartForm(err)
+		}
+
+		if v, ok := form.Value["email"]; ok && len(v) > 0 {
+			email = v[0]
+		}
+		if v, ok := form.Value["phone_number"]; ok && len(v) > 0 {
+			phone = v[0]
+		}
+		if v, ok := form.Value["chatwoot_id"]; ok && len(v) > 0 {
+			chatwoot = v[0]
 		}
 	default:
 		return exceptions.BuildNewCustomError(nil, constvars.StatusUnsupportedMediaType, "Content-Type must be application/json or multipart/form-data", "WEBHOOK_UNSUPPORTED_MEDIA_TYPE")
