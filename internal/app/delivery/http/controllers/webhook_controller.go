@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -79,11 +80,6 @@ func (ctrl *WebhookController) HandleSynchronousWebHook(w http.ResponseWriter, r
 		return
 	}
 
-	if !strings.HasPrefix(r.Header.Get(constvars.HeaderContentType), constvars.MIMEApplicationJSON) {
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.BuildNewCustomError(nil, constvars.StatusUnsupportedMediaType, "Content-Type must be application/json", "WEBHOOK_UNSUPPORTED_MEDIA_TYPE"))
-		return
-	}
-
 	serviceName := chi.URLParam(r, "service")
 	if len(serviceName) == 0 || len(serviceName) > 256 {
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrClientCustomMessage(exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, "Invalid service name", "WEBHOOK_INVALID_SERVICE_NAME")))
@@ -99,13 +95,11 @@ func (ctrl *WebhookController) HandleSynchronousWebHook(w http.ResponseWriter, r
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrReadBody(err))
 		return
 	}
-	defer r.Body.Close()
+	_ = r.Body.Close()
+	// Restore body for ParseMultipartForm if needed
+	r.Body = io.NopCloser(bytes.NewReader(raw))
 
-	var tmp map[string]interface{}
-	if err := json.Unmarshal(raw, &tmp); err != nil {
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
-		return
-	}
+	contentType := r.Header.Get(constvars.HeaderContentType)
 
 	// Simple rate limiting for synchronous services
 	if ctrl.SynchronousServiceRateLimiter != nil {
@@ -137,7 +131,8 @@ func (ctrl *WebhookController) HandleSynchronousWebHook(w http.ResponseWriter, r
 	out, err := ctrl.Usecase.HandleSynchronousWebhookService(ctx, &webhook.HandleSynchronousWebhookServiceInput{
 		ServiceName: serviceName,
 		Method:      constvars.MethodPost,
-		RawJSON:     raw,
+		Body:        raw,
+		ContentType: contentType,
 	})
 	if err != nil {
 		utils.BuildErrorResponse(ctrl.Log, w, err)

@@ -14,6 +14,8 @@ import (
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"strconv"
 	"strings"
@@ -161,9 +163,10 @@ const synchronousHookPathPrefix = "/hook/synchronous"
 
 // HandleSynchronousWebhookServiceInput captures input for synchronous webhook processing.
 type HandleSynchronousWebhookServiceInput struct {
-	ServiceName string          `validate:"required"`
-	Method      string          `validate:"required"`
-	RawJSON     json.RawMessage `validate:"required"`
+	ServiceName string `validate:"required"`
+	Method      string `validate:"required"`
+	Body        []byte `validate:"required"`
+	ContentType string `validate:"required"`
 }
 
 // HandleSynchronousWebhookServiceOutput carries upstream response back to caller.
@@ -225,6 +228,7 @@ func (u *usecase) HandleSynchronousWebhookService(ctx context.Context, in *Handl
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String("service_name", in.ServiceName),
 		zap.String("method", in.Method),
+		zap.String("content_type", in.ContentType),
 	)
 
 	if err := validator.New().Struct(in); err != nil {
@@ -256,11 +260,11 @@ func (u *usecase) HandleSynchronousWebhookService(ctx context.Context, in *Handl
 		return nil, err
 	}
 
-	if err := u.validateSynchronousBody(ctx, roles, userIdentifier, in.RawJSON); err != nil {
+	if err := u.validateSynchronousBody(ctx, roles, userIdentifier, in.Body, in.ContentType); err != nil {
 		return nil, err
 	}
 
-	out, err := u.forwardSynchronous(ctx, service, in.Method, in.RawJSON)
+	out, err := u.forwardSynchronous(ctx, service, in.Method, in.Body, in.ContentType)
 	if err != nil {
 		return u.applySynchronousFailurePolicy(ctx, service, in)
 	}
@@ -562,15 +566,48 @@ func (u *usecase) authorizeSynchronous(ctx context.Context, roles []string, meth
 	return exceptions.BuildNewCustomError(nil, constvars.StatusForbidden, "Not authorized", "WEBHOOK_SYNC_FORBIDDEN")
 }
 
-func (u *usecase) validateSynchronousBody(ctx context.Context, roles []string, userIdentifierId string, raw json.RawMessage) error {
+func (u *usecase) validateSynchronousBody(ctx context.Context, roles []string, userIdentifierId string, body []byte, contentType string) error {
 	if containsRole(roles, constvars.KonsulinRoleGuest) || containsRole(roles, constvars.KonsulinRoleSuperadmin) {
 		return nil
 	}
 
-	email, phone, chatwoot, err := parseRootContactFields(raw)
+	var email, phone, chatwoot string
+
+	// Parse body based on content type
+	mediaType, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
-		return err
+		return exceptions.BuildNewCustomError(err, constvars.StatusBadRequest, "Invalid content type", "WEBHOOK_INVALID_CONTENT_TYPE")
 	}
+
+	switch mediaType {
+	case constvars.MIMEApplicationJSON:
+		var tmp map[string]interface{}
+		if err := json.Unmarshal(body, &tmp); err == nil {
+			email = rootString(tmp, "email")
+			phone = rootString(tmp, "phone_number")
+			chatwoot = rootString(tmp, "chatwoot_id")
+		}
+	case constvars.MIMEMultipartForm:
+		boundary, ok := params["boundary"]
+		if ok {
+			mr := multipart.NewReader(bytes.NewReader(body), boundary)
+			form, err := mr.ReadForm(32 << 20)
+			if err == nil {
+				if v, ok := form.Value["email"]; ok && len(v) > 0 {
+					email = v[0]
+				}
+				if v, ok := form.Value["phone_number"]; ok && len(v) > 0 {
+					phone = v[0]
+				}
+				if v, ok := form.Value["chatwoot_id"]; ok && len(v) > 0 {
+					chatwoot = v[0]
+				}
+			}
+		}
+	default:
+		return exceptions.BuildNewCustomError(nil, constvars.StatusUnsupportedMediaType, "Content-Type must be application/json or multipart/form-data", "WEBHOOK_UNSUPPORTED_MEDIA_TYPE")
+	}
+
 	if email == "" && phone == "" && chatwoot == "" {
 		return nil
 	}
@@ -626,13 +663,13 @@ func (u *usecase) validateSynchronousBody(ctx context.Context, roles []string, u
 	}
 }
 
-func (u *usecase) forwardSynchronous(ctx context.Context, service, method string, body []byte) (*HandleSynchronousWebhookServiceOutput, error) {
+func (u *usecase) forwardSynchronous(ctx context.Context, service, method string, body []byte, contentType string) (*HandleSynchronousWebhookServiceOutput, error) {
 	url := fmt.Sprintf("%s/%s", strings.TrimRight(u.cfg.Webhook.URL, "/"), service)
 	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, exceptions.ErrCreateHTTPRequest(err)
 	}
-	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationJSON)
+	req.Header.Set(constvars.HeaderContentType, contentType)
 
 	tokenOut, err := u.jwtManager.CreateToken(ctx, &jwtmanager.CreateTokenInput{Subject: service})
 	if err != nil {
@@ -670,6 +707,24 @@ func (u *usecase) enqueueFallback(ctx context.Context, service, method string, b
 	}
 	_, err := u.queue.Enqueue(ctx, &webhookqueue.EnqueueToWebhookServiceQueueInput{Message: msg})
 	return err
+}
+
+func rootString(m map[string]interface{}, key string) string {
+	if m == nil {
+		return ""
+	}
+	if v, ok := m[key]; ok {
+		if v == nil {
+			return ""
+		}
+		switch val := v.(type) {
+		case string:
+			return strings.TrimSpace(val)
+		case float64:
+			return strconv.Itoa(int(val))
+		}
+	}
+	return ""
 }
 
 func selectRoleForValidation(roles []string) string {
@@ -749,47 +804,16 @@ func findIdentifierValue(ids []fhir_dto.Identifier, system string) (string, bool
 	return "", false
 }
 
-func parseRootContactFields(raw json.RawMessage) (email, phone, chatwoot string, err error) {
-	if len(raw) == 0 {
-		return "", "", "", nil
-	}
-	var payload map[string]interface{}
-	if err := json.Unmarshal(raw, &payload); err != nil {
-		return "", "", "", exceptions.ErrCannotParseJSON(err)
-	}
-	email = rootString(payload, "email")
-	phone = rootString(payload, "phone_number")
-	chatwoot = rootString(payload, "chatwoot_id")
-	return
-}
-
-func rootString(m map[string]interface{}, key string) string {
-	if m == nil {
-		return ""
-	}
-	if v, ok := m[key]; ok {
-		if v == nil {
-			return ""
-		}
-		switch val := v.(type) {
-		case string:
-			return strings.TrimSpace(val)
-		case float64:
-			return strconv.Itoa(int(val))
-		}
-	}
-	return ""
-}
-
 func (u *usecase) applySynchronousFailurePolicy(ctx context.Context, service string, in *HandleSynchronousWebhookServiceInput) (*HandleSynchronousWebhookServiceOutput, error) {
 	switch u.failurePolicy {
 	case SyncFailurePolicyEnqueueRequest:
-		if enqueueErr := u.enqueueFallback(ctx, service, in.Method, in.RawJSON); enqueueErr != nil {
+		if enqueueErr := u.enqueueFallback(ctx, service, in.Method, in.Body); enqueueErr != nil {
 			return nil, enqueueErr
 		}
 		return &HandleSynchronousWebhookServiceOutput{
-			StatusCode: constvars.StatusAccepted,
-			Body:       []byte(`{"status":"enqueued"}`),
+			StatusCode:  constvars.StatusAccepted,
+			Body:        []byte(`{"status":"enqueued"}`),
+			ContentType: constvars.MIMEApplicationJSON,
 		}, nil
 	default:
 		return nil, exceptions.BuildNewCustomError(nil, constvars.StatusInternalServerError, "failed to forward synchronous webhook service", "WEBHOOK_SYNC_FAILURE_POLICY_RETURN_ERROR")
