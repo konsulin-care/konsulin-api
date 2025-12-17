@@ -249,7 +249,7 @@ func (uc *authUsecase) CreateAnonymousSession(ctx context.Context) (string, erro
 	return sessionID, nil
 }
 
-func (uc *authUsecase) CheckUserExists(ctx context.Context, email string) (bool, error) {
+func (uc *authUsecase) CheckUserExists(ctx context.Context, email string) (*contracts.CheckUserExistsOutput, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	uc.Log.Info("authUsecase.CheckUserExists called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -263,15 +263,54 @@ func (uc *authUsecase) CheckUserExists(ctx context.Context, email string) (bool,
 			zap.String("email", email),
 			zap.Error(err),
 		)
-		return false, err
+		return nil, err
 	}
 
 	exists := user != nil
+	output := &contracts.CheckUserExistsOutput{
+		SupertokenUser:  user,
+		PatientIds:      []string{},
+		PractitionerIds: []string{},
+	}
+
+	if user != nil {
+		identifier := fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, user.ID)
+
+		patients, err := uc.PatientFhirClient.FindPatientByIdentifier(ctx, identifier)
+		if err != nil {
+			uc.Log.Error("authUsecase.CheckUserExists error finding patient by identifier",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.String("identifier", identifier),
+				zap.Error(err),
+			)
+			return nil, err
+		}
+		for _, p := range patients {
+			if p.ID != "" {
+				output.PatientIds = append(output.PatientIds, p.ID)
+			}
+		}
+
+		practitioners, err := uc.PractitionerFhirClient.FindPractitionerByIdentifier(ctx, constvars.FhirSupertokenSystemIdentifier, user.ID)
+		if err != nil {
+			uc.Log.Error("authUsecase.CheckUserExists error finding practitioner by identifier",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.String("identifier", user.ID),
+				zap.Error(err),
+			)
+			return nil, err
+		}
+		for _, prac := range practitioners {
+			if prac.ID != "" {
+				output.PractitionerIds = append(output.PractitionerIds, prac.ID)
+			}
+		}
+	}
 	uc.Log.Info("authUsecase.CheckUserExists completed",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String("email", email),
 		zap.Bool("exists", exists),
 	)
 
-	return exists, nil
+	return output, nil
 }

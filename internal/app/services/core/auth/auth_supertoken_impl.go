@@ -246,6 +246,11 @@ func (uc *authUsecase) InitializeSupertoken() error {
 					}
 					return originalImplementation
 				},
+				APIs: func(originalImplementation plessmodels.APIInterface) plessmodels.APIInterface {
+					// Disable SuperTokens' built-in email existence endpoint so our chi handler can take over.
+					originalImplementation.EmailExistsGET = nil
+					return originalImplementation
+				},
 			},
 			EmailDelivery: &emaildelivery.TypeInput{},
 			SmsDelivery: &smsdelivery.TypeInput{

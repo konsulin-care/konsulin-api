@@ -544,6 +544,7 @@ func validateResourceOwnership(ctx context.Context, fhirID, role, resourceType s
 			gjson.Get(resourceStr, "practitioner.reference").String(),
 			gjson.Get(resourceStr, "actor.reference").String(),
 			gjson.Get(resourceStr, "performer.reference").String(),
+			gjson.Get(resourceStr, "author.reference").String(),
 		}
 		for _, ref := range practitionerRefs {
 			if strings.HasPrefix(ref, "Practitioner/") {
