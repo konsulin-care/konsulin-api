@@ -16,6 +16,7 @@ p, Guest, POST, /fhir/QuestionnaireResponse
 p, Guest, GET, /fhir/ResearchStudy
 p, Guest, GET, /fhir/Slot
 p, Guest, GET, /fhir/metadata
+p, Guest, POST, /hook/synchronous/modify-profile
 p, Patient, GET, /fhir/Appointment
 p, Patient, POST, /fhir/Appointment
 p, Patient, GET, /fhir/Condition
