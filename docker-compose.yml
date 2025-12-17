@@ -34,6 +34,19 @@ services:
     volumes:
       - redis_data:/bitnami/redis/data
 
+  rabbitmq-core-konsulin:
+    image: rabbitmq:3.12-management-alpine
+    container_name: rabbitmq-core-konsulin
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: password
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
   blaze-core-konsulin:
     image: samply/blaze:latest
     container_name: blaze-core-konsulin
@@ -63,5 +76,6 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  rabbitmq_data:
   blaze_data:
   # supertokens_data:
