@@ -35,7 +35,7 @@ services:
       - redis_data:/bitnami/redis/data
 
   rabbitmq-core-konsulin:
-    image: rabbitmq:3.12-management-alpine
+    image: rabbitmq:4.0-management-alpine
     container_name: rabbitmq-core-konsulin
     restart: unless-stopped
     ports:
