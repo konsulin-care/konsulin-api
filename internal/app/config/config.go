@@ -223,7 +223,7 @@ func loadDriverConfigWithEnv() *DriverConfig {
 			Host:     utils.GetEnvString("RABBITMQ_HOST", "localhost"),
 			Port:     utils.GetEnvString("RABBITMQ_PORT", "5672"),
 			Username: utils.GetEnvString("RABBITMQ_USERNAME", "guest"),
-			Password: utils.GetEnvString("RABBITMQ_PASSWORD", "guest"),
+			Password: utils.GetEnvString("RABBITMQ_PASSWORD", "password"), // Updated default as per issue 204																																		
 		},
 		Minio: Minio{
 			Host:     utils.GetEnvString("MINIO_HOST", "localhost"),
