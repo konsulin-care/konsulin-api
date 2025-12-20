@@ -29,7 +29,7 @@ func init() {
 	}
 
 	internalCfg = loadInternalConfigWithEnv()
-	
+
 	driverCfg = loadDriverConfigWithEnv()
 }
 
@@ -52,7 +52,7 @@ func loadInternalConfigWithYAML() *InternalConfig {
 func loadInternalConfigWithEnv() *InternalConfig {
 	cfg := &InternalConfig{
 		App: App{
-			
+
 			// General App Settings with Defaults
 			Env:            utils.GetEnvString("APP_ENV", "local"),
 			Port:           utils.GetEnvString("APP_PORT", "3200"),
@@ -64,12 +64,10 @@ func loadInternalConfigWithEnv() *InternalConfig {
 			EndpointPrefix: utils.GetEnvString("APP_ENDPOINT_PREFIX", "api"),
 
 			// URLs & Timeouts
-			RequestBodyLimitInMegabyte:                     utils.GetEnvInt("APP_REQUEST_BODY_LIMIT_IN_MEGABYTE", 30),
-			PaymentExpiredTimeInMinutes:                    utils.GetEnvInt("APP_PAYMENT_EXPIRED_TIME_IN_MINUTES", 60),
-			PaymentGatewayRequestTimeoutInSeconds:          utils.GetEnvInt("APP_PAYMENT_GATEWAY_REQUEST_TIMEOUT_IN_SECONDS", 120),
-			AccountDeactivationAgeInDays:                   utils.GetEnvInt("APP_ACCOUNT_DEACTIVATION_AGE_IN_DAYS", 30),
-			
-
+			RequestBodyLimitInMegabyte:            utils.GetEnvInt("APP_REQUEST_BODY_LIMIT_IN_MEGABYTE", 30),
+			PaymentExpiredTimeInMinutes:           utils.GetEnvInt("APP_PAYMENT_EXPIRED_TIME_IN_MINUTES", 60),
+			PaymentGatewayRequestTimeoutInSeconds: utils.GetEnvInt("APP_PAYMENT_GATEWAY_REQUEST_TIMEOUT_IN_SECONDS", 120),
+			AccountDeactivationAgeInDays:          utils.GetEnvInt("APP_ACCOUNT_DEACTIVATION_AGE_IN_DAYS", 30),
 
 			// Sensitive / Key Logic
 			SuperadminAPIKey:           utils.GetEnvString("SUPERADMIN_API_KEY", ""), // no default for security
@@ -108,7 +106,7 @@ func loadInternalConfigWithEnv() *InternalConfig {
 		PaymentGateway: AppPaymentGateway{
 			Username:                utils.GetEnvString("APP_PAYMENT_GATEWAY_USERNAME", ""), // Sensitive
 			ApiKey:                  utils.GetEnvString("APP_PAYMENT_GATEWAY_API_KEY", ""),  // Sensitive
-			BaseUrl:                 utils.GetEnvString("APP_PAYMENT_GATEWAY_BASE_URL", "https://api-stg.oyindonesia.com/api/"),
+			BaseUrl:                 utils.GetEnvString("APP_PAYMENT_GATEWAY_BASE_URL", ""),
 			ListEnablePaymentMethod: utils.GetEnvString("OY_LIST_ENABLE_PAYMENT_METHOD", "BANK_TRANSFER,QRIS,EWALLET,CARDS"),
 			ListEnableSOF:           utils.GetEnvString("OY_LIST_ENABLE_SOF", "QRIS,dana_ewallet,ovo_ewallet,shopeepay_ewallet,linkaja_ewallet,CC_DC"),
 		},
@@ -143,20 +141,23 @@ func loadInternalConfigWithEnv() *InternalConfig {
 	}
 
 	// Validate mandatory sensitive fields in non-dev environments
-    if cfg.App.Env != "local" && cfg.App.Env != "development" {
-        if cfg.JWT.Secret == "" {
-            log.Fatalf("APP_JWT_SECRET is required in %s environment", cfg.App.Env)
-        }
-        if cfg.Webhook.JWTHookKey == "" {
-            log.Fatalf("JWT_HOOK_KEY is required in %s environment", cfg.App.Env)
-        }
-        if cfg.PaymentGateway.Username == "" || cfg.PaymentGateway.ApiKey == "" {
-            log.Fatalf("Payment gateway credentials (APP_PAYMENT_GATEWAY_USERNAME, APP_PAYMENT_GATEWAY_API_KEY) are required in %s environment", cfg.App.Env)
-        }
-        if cfg.Xendit.APIKey == "" {
-            log.Fatalf("APP_XENDIT_API_KEY is required in %s environment", cfg.App.Env)
-        }
-    }
+	if cfg.App.Env != "local" && cfg.App.Env != "development" {
+		if cfg.JWT.Secret == "" {
+			log.Fatalf("APP_JWT_SECRET is required in %s environment", cfg.App.Env)
+		}
+		if cfg.Webhook.JWTHookKey == "" {
+			log.Fatalf("JWT_HOOK_KEY is required in %s environment", cfg.App.Env)
+		}
+		if cfg.PaymentGateway.Username == "" || cfg.PaymentGateway.ApiKey == "" {
+			log.Fatalf("Payment gateway credentials (APP_PAYMENT_GATEWAY_USERNAME, APP_PAYMENT_GATEWAY_API_KEY) are required in %s environment", cfg.App.Env)
+		}
+		if cfg.Xendit.APIKey == "" {
+			log.Fatalf("APP_XENDIT_API_KEY is required in %s environment", cfg.App.Env)
+		}
+		if cfg.PaymentGateway.BaseUrl == "" {
+			log.Fatalf("APP_PAYMENT_GATEWAY_BASE_URL is required in %s environment", cfg.App.Env)
+		}
+	}
 
 	// this is a safe guard to ensure that no base price is left unset
 	// this must be prevented because it will trigger failed payment
@@ -206,49 +207,58 @@ func loadDriverConfigWithYAML() *DriverConfig {
 }
 
 func loadDriverConfigWithEnv() *DriverConfig {
-    cfg := &DriverConfig{
-        Redis: Redis{
-            Host:     utils.GetEnvString("REDIS_HOST", "localhost"),
-            Port:     utils.GetEnvString("REDIS_PORT", "6379"),
-            Password: utils.GetEnvString("REDIS_PASSWORD", ""),
-        },
-        Logger: Logger{
-            Level:               utils.GetEnvString("LOGGER_LEVEL", "info"),
-            OutputFileName:      utils.GetEnvString("LOGGER_OUTPUT_FILE_NAME", "logger.log"),
-            OutputErrorFileName: utils.GetEnvString("LOGGER_OUTPUT_ERROR_FILE_NAME", "logger-error.log"),
-        },
-        RabbitMQ: RabbitMQ{
-            // Defaults for connectivity (Standard Localhost)
-            Host: utils.GetEnvString("RABBITMQ_HOST", "localhost"),
-            Port: utils.GetEnvString("RABBITMQ_PORT", "5672"),
-            // These must be set in .env
-            Username: utils.GetEnvString("RABBITMQ_USERNAME", ""),
-            Password: utils.GetEnvString("RABBITMQ_PASSWORD", ""),
-        },
-        Supertoken: Supertoken{
-            ApiBasePath:     utils.GetEnvString("SUPERTOKEN_API_BASE_PATH", "/auth"),
-            WebsiteBasePath: utils.GetEnvString("SUPERTOKEN_WEBSITE_BASE_PATH", "/auth"),
-            ConnectionURI:   utils.GetEnvString("SUPERTOKEN_CONNECTION_URI", "http://localhost:3567"),
-            AppName:         utils.GetEnvString("SUPERTOKEN_APP_NAME", "Konsulin"),
-            ApiDomain:       utils.GetEnvString("SUPERTOKEN_API_DOMAIN", "http://localhost:3000"),
-            WebsiteDomain:   utils.GetEnvString("SUPERTOKEN_WEBSITE_DOMAIN", "http://localhost:3000"),
-        },
-    }
+	cfg := &DriverConfig{
+		Redis: Redis{
+			Host:     utils.GetEnvString("REDIS_HOST", "localhost"),
+			Port:     utils.GetEnvString("REDIS_PORT", "6379"),
+			Password: utils.GetEnvString("REDIS_PASSWORD", ""),
+		},
+		Logger: Logger{
+			Level:               utils.GetEnvString("LOGGER_LEVEL", "info"),
+			OutputFileName:      utils.GetEnvString("LOGGER_OUTPUT_FILE_NAME", "logger.log"),
+			OutputErrorFileName: utils.GetEnvString("LOGGER_OUTPUT_ERROR_FILE_NAME", "logger-error.log"),
+		},
+		RabbitMQ: RabbitMQ{
+			// Defaults for connectivity (Standard Localhost)
+			Host: utils.GetEnvString("RABBITMQ_HOST", "localhost"),
+			Port: utils.GetEnvString("RABBITMQ_PORT", "5672"),
+			// These must be set in .env
+			Username: utils.GetEnvString("RABBITMQ_USERNAME", ""),
+			Password: utils.GetEnvString("RABBITMQ_PASSWORD", ""),
+		},
+		Supertoken: Supertoken{
+			ApiBasePath:     utils.GetEnvString("SUPERTOKEN_API_BASE_PATH", "/auth"),
+			WebsiteBasePath: utils.GetEnvString("SUPERTOKEN_WEBSITE_BASE_PATH", "/auth"),
+			ConnectionURI:   utils.GetEnvString("SUPERTOKEN_CONNECTION_URI", "http://localhost:3567"),
+			AppName:         utils.GetEnvString("SUPERTOKEN_APP_NAME", "Konsulin"),
+			ApiDomain:       utils.GetEnvString("SUPERTOKEN_API_DOMAIN", "http://localhost:3000"),
+			WebsiteDomain:   utils.GetEnvString("SUPERTOKEN_WEBSITE_DOMAIN", "http://localhost:3000"),
+		},
+	}
 
-    // Check current environment
-    env := os.Getenv("APP_ENV")
-    if env == "" {
-        env = "local"
-    }
+	// Check current environment
+	env := os.Getenv("APP_ENV")
+	if env == "" {
+		env = "local"
+	}
 
-    // If NOT local/dev, strictly enforce credentials
-    if env != "local" && env != "development" {
-        if cfg.RabbitMQ.Username == "" || cfg.RabbitMQ.Password == "" {
-            log.Fatalf("RabbitMQ credentials (RABBITMQ_USERNAME, RABBITMQ_PASSWORD) are required in %s environment", env)
-        }
-    }
+	if cfg.Redis.Password == "" {
+		log.Fatalf("REDIS_PASSWORD is required in %s environment", env)
+	}
 
-    return cfg
+	if env != "local" && env != "dev" && env != "development" && env != "test" {
+		// Validate Redis Password
+		if cfg.Redis.Password == "" {
+			log.Fatalf("REDIS_PASSWORD is required in %s environment", env)
+		}
+
+		// Validate RabbitMQ Credentials
+		if cfg.RabbitMQ.Username == "" || cfg.RabbitMQ.Password == "" {
+			log.Fatalf("RabbitMQ credentials (RABBITMQ_USERNAME, RABBITMQ_PASSWORD) are required in %s environment", env)
+		}
+	}
+
+	return cfg
 }
 
 func NewInternalConfig() *InternalConfig {
