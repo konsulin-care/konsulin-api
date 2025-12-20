@@ -242,9 +242,6 @@ func loadDriverConfigWithEnv() *DriverConfig {
 		env = "local"
 	}
 
-	if cfg.Redis.Password == "" {
-		log.Fatalf("REDIS_PASSWORD is required in %s environment", env)
-	}
 
 	if env != "local" && env != "dev" && env != "development" && env != "test" {
 		// Validate Redis Password
