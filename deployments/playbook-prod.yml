@@ -1,0 +1,104 @@
+# code: language=ansible
+---
+- name: Deploy API Production
+  hosts: all
+  become: true
+
+  vars:
+    ansible_user: konsulin
+    ansible_python_interpreter: /usr/bin/python3.12
+    docker_service_name: prod-api
+    deployment_path: "/home/konsulin/infrastructure/production/konsulin-app"
+    deployment_env: "production"
+    config_file_name: "config.production.yaml"
+
+    image_repository: konsulin/api-service
+    image_tag: ""
+
+    logging:
+      driver: "json-file"
+      options:
+        maxSize: "200k"
+        maxFile: "10"
+
+    domain:
+      virtual_host: api.konsulin.care
+      letsencrypt_host: api.konsulin.care
+      letsencrypt_email: mfardiansyah.id@gmail.com
+
+    internal_config:
+      app:
+        env: "production"
+        port: 3001
+        version: "v1"
+        address: "0.0.0.0"
+        base_url: "https://api.konsulin.care/"
+        timezone: "Asia/Jakarta"
+        endpoint_prefix: "api"
+        reset_password_url: "https://app.konsulin.care/reset-password-form?token="
+        max_requests: 15
+        shutdown_timeout_in_seconds: 3
+        max_time_requests_per_seconds: 30
+        request_body_limit_in_megabyte: 30
+        account_deactivation_age_in_days: 30
+        login_session_expired_time_in_hours: 2
+        forgot_password_token_expired_time_in_minutes: 2
+        minio_pre_signed_url_object_expiry_time_in_hours: 1
+        questionnaire_guest_response_response_expired_time_in_minutes: 10
+
+      fhir:
+        base_url: "https://blaze.konsulin.care/fhir/"
+
+      jwt:
+        secret: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          38643934333636373965633033613335656131346165623133613664656330313130326239303936
+          3864373266613663333134646436663165356461363630320a306438333432646364366364326239
+          32373234636261313731353332303338376235313139376637383436613837613439626435326466
+          3936643734363933300a313063306338623038366363306134386431323739646435633865613135
+          32396462633635646466623864643632613861383163613837313835373436653361
+        exp_time_in_hour: 1
+      mailer:
+        email_sender: "funlab.ardihikaru@gmail.com"
+      rabbitmq:
+        mailer_queue: "prod.email"
+        whatsapp_queue: "dev.whatsapp"
+    driver_config:
+      redis:
+        host: "37.27.46.214"
+        port: 6379
+        password: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          33623035623132303335396639626331646661626365356635633065656466666465666366643734
+          6661303430613366326132373537383637333231633831380a646230393834336335643839623239
+          62383439393233363464646533323533373834373130316533636163653766303735666261343331
+          3230396663363130640a643564303235316364626636363963396632326461613166303234346164
+          37643363343730316531663536343135393036333430623365346638633636323863
+
+      logger:
+        level: "debug"
+        output_file_name: "logger.log"
+        output_error_file_name: "logger_error.log"
+
+      rabbitmq:
+        port: 5672
+        host: "37.27.46.214"
+        username: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          38343661306631643832336663303963306662653530653238643337306262653736666434373664
+          3461316139633438643238666431643563623939353634630a343837323732666233363866336264
+          39343263643664363961343834313361633539643234623030326336303737396364306337626538
+          3337386138356238390a666566383164323834326132636461393035653939626365373561323531
+          3261
+        password: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          32633232356430383939303238653163393265343236393637336563623062366431383131626365
+          3466643466303633373166303137666432393738313830640a613532396332306337313665613633
+          31306233666131306330366165663761396535656461336566303936333832303230646461343736
+          3730616661613664380a336535643465623163626630353062346638613466376335336231663730
+          63626630613238393364306237353137393233323638323862633038613761303965
+
+
+  tasks:
+    - name: Include deployment tasks
+      include_tasks: deploy-task.yml

@@ -1,0 +1,45 @@
+name: PR Build Check (Docker)
+
+on:
+  pull_request:
+    branches: [develop]
+
+env:
+  IMAGE_NAMESPACE: konsulin
+  IMAGE_NAME: konsulin-api
+
+jobs:
+  build-docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Get Short SHA
+        run: echo "SHORT_SHA=${GITHUB_SHA::8}" >> $GITHUB_ENV
+
+      - name: Build Vendor Image
+        run: |
+          docker build \
+            -t ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}-vendor:pr-${{ env.SHORT_SHA }} \
+            -f Dockerfile-vendor .
+
+      - name: Replace FROM to use local vendor pr-tag
+        run: |
+          sed -i -E "s|^[[:space:]]*FROM[[:space:]]+.*[[:space:]]+[Aa][Ss][[:space:]]+gobuild|FROM ${IMAGE_NAMESPACE}/${IMAGE_NAME}-vendor:pr-${SHORT_SHA} as gobuild|" Dockerfile
+
+      - name: Verify FROM replacement
+        run: |
+          echo "Dockerfile gobuild line after sed:"
+          grep -i "from" Dockerfile | grep gobuild
+
+
+      - name: Build Main Docker Image
+        run: |
+          docker build \
+            -t ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}:pr-${{ env.SHORT_SHA }} \
+            -f Dockerfile .
+
+      - name: Verify Built Images
+        run: |
+          docker images | grep ${{ env.IMAGE_NAME }}

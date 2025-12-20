@@ -1,0 +1,29 @@
+name: Check Container Status
+
+on:
+  workflow_call:
+    secrets:
+      SSH_HOST:
+        required: true
+      SSH_USERNAME:
+        required: true
+      SSH_KEY:
+        required: true
+      COOLIFY_TRIGGER_URL:
+        required: false
+      COOLIFY_TOKEN:
+        required: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH Check Konsulin API Container Status 1
+        uses: appleboy/ssh-action@v1.2.4
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            echo "Check Konsulin API Container Status..."
+            docker ps -a | grep "konsulin-api" || echo "Container not found or SSH failed"

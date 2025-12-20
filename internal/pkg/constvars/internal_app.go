@@ -1,0 +1,80 @@
+package constvars
+
+const (
+	ResourceUsers           = "users"
+	ResourceRoles           = "roles"
+	ResourceAuth            = "auth"
+	ResourceClinics         = "clinics"
+	ResourceGenders         = "genders"
+	ResourceEducationLevels = "education-levels"
+	ResourcePerson          = "Person"
+)
+
+const (
+	RespondentTypeUser  = "user"
+	RespondentTypeGuest = "guest"
+)
+
+const (
+	AppPaginationUrlFormat = "%s?page=%d&page_size=%d"
+)
+
+const (
+	WHATSAPP_OTP_LENGTH = 6
+)
+const (
+	TIME_DIFFERENCE_JAKARTA       = 7
+	TIME_DIFFERENCE_BANGKOK       = 7
+	TIME_DIFFERENCE_NEW_YORK      = -5
+	TIME_DIFFERENCE_LONDON        = 0
+	TIME_DIFFERENCE_TOKYO         = 9
+	TIME_DIFFERENCE_SYDNEY        = 11
+	TIME_DIFFERENCE_DUBAI         = 4
+	TIME_DIFFERENCE_SINGAPORE     = 8
+	TIME_DIFFERENCE_HONG_KONG     = 8
+	TIME_DIFFERENCE_BEIJING       = 8
+	TIME_DIFFERENCE_DELHI         = 5.5
+	TIME_DIFFERENCE_KARACHI       = 5
+	TIME_DIFFERENCE_CAPE_TOWN     = 2
+	TIME_DIFFERENCE_MOSCOW        = 3
+	TIME_DIFFERENCE_RIO           = -3
+	TIME_DIFFERENCE_SAN_FRANCISCO = -8
+	TIME_DIFFERENCE_PARIS         = 1
+	TIME_DIFFERENCE_BERLIN        = 1
+	TIME_DIFFERENCE_ROME          = 1
+	TIME_DIFFERENCE_CAIRO         = 2
+)
+
+// ContextKey is a custom type enum-style value to be used to
+// interact with context embedded value. This is the better and preferred
+// implementation than using untyped string constants.
+type ContextKey string
+
+const (
+	CONTEXT_REQUEST_ID_KEY           ContextKey = "request_id"
+	CONTEXT_SESSION_DATA_KEY         ContextKey = "session_data"
+	CONTEXT_IS_CLIENT_REQUEST_ID_KEY ContextKey = "is_client_request_id"
+	CONTEXT_STEPS_KEY                ContextKey = "steps"
+	CONTEXT_RAW_BODY                 ContextKey = "raw_body"
+	CONTEXT_FHIR_ROLE                ContextKey = "fhir_role"
+	CONTEXT_UID                      ContextKey = "uid"
+)
+
+const (
+	REQUEST_ID_PREFIX = "KNSLN_SVC_"
+)
+
+const (
+	KonsulinRoleGuest        = "Guest"
+	KonsulinRolePatient      = "Patient"
+	KonsulinRoleClinician    = "Clinician"
+	KonsulinRoleResearcher   = "Researcher"
+	KonsulinRoleSuperadmin   = "Superadmin"
+	KonsulinRoleClinicAdmin  = "Clinic Admin"
+	KonsulinRolePractitioner = "Practitioner"
+)
+
+// KonsulinOrganizationResourceID is the ID of Organization resource for Konsulin.
+// This resource ID is used to reference the Konsulin organization in the FHIR resources.
+// For now, it is used in the payment service as the recipient and issuer for the payment service.
+const KonsulinOrganizationResourceID = "Konsulin"

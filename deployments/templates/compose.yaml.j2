@@ -1,0 +1,27 @@
+version: '3.7'
+
+networks:
+  proxy:
+    external: true
+    name: nginx-proxy
+
+services:
+  {{ docker_service_name }}:
+    image: "{{ image_repository }}:{{ image_tag }}"
+    restart: always
+    logging:
+      driver: "{{ logging.driver | default('json-file') }}"
+      options:
+        max-size: "{{ logging.options.maxSize | default('200k') }}"
+        max-file: "{{ logging.options.maxFile | default('10') }}"
+    volumes:
+      - "{{ deployment_path }}/{{ config_file_name }}:/app/{{ config_file_name }}"
+      - "{{ deployment_path }}/.env:/app/.env"
+    environment:
+      APP_ENV: {{ internal_config.app.env }}
+      VIRTUAL_PORT: {{ internal_config.app.port }}
+      VIRTUAL_HOST: {{ domain.virtual_host }}
+      LETSENCRYPT_HOST: {{ domain.letsencrypt_host }}
+      LETSENCRYPT_EMAIL: {{ domain.letsencrypt_email }}
+    networks:
+      - proxy
