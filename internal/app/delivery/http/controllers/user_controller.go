@@ -123,7 +123,40 @@ func (ctrl *UserController) UpdateUserBySession(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	
+	if reqPayload.ProfilePicture != "" {
+		data, ext, err := utils.DecodeBase64Image(reqPayload.ProfilePicture)
+		if err != nil {
+			ctrl.Log.Error("Failed to decode base64 image",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.String(constvars.LoggingErrorTypeKey, "image processing"),
+				zap.Error(err),
+			)
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrImageValidation(err))
+			return
+		}
+		if err := utils.ValidateImageFormat(ext, constvars.ImageAllowedProfilePictureFormats); err != nil {
+			ctrl.Log.Error("Invalid image format",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.String("image_extension", ext),
+				zap.String(constvars.LoggingErrorTypeKey, "image validation"),
+				zap.Error(err),
+			)
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrImageValidation(err))
+			return
+		}
+		if err := utils.ValidateImageSize(data, ctrl.InternalConfig.Minio.ProfilePictureMaxUploadSizeInMB); err != nil {
+			ctrl.Log.Error("Image size exceeds limit",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Int("max_size_mb", ctrl.InternalConfig.Minio.ProfilePictureMaxUploadSizeInMB),
+				zap.String(constvars.LoggingErrorTypeKey, "image validation"),
+				zap.Error(err),
+			)
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrImageValidation(err))
+			return
+		}
+		reqPayload.ProfilePictureData = data
+		reqPayload.ProfilePictureExtension = ext
+	}
 
 	utils.SanitizeUpdateProfileRequest(reqPayload)
 

@@ -10,6 +10,7 @@ import (
 	"konsulin-service/internal/app/drivers/database"
 	"konsulin-service/internal/app/drivers/logger"
 	"konsulin-service/internal/app/drivers/messaging"
+	"konsulin-service/internal/app/drivers/storage"
 	"konsulin-service/internal/app/services/core/auth"
 	"konsulin-service/internal/app/services/core/organization"
 	"konsulin-service/internal/app/services/core/payments"
@@ -37,6 +38,7 @@ import (
 	redisKonsulin "konsulin-service/internal/app/services/shared/redis"
 	storageKonsulin "konsulin-service/internal/app/services/shared/storage"
 	"konsulin-service/internal/app/services/shared/webhookqueue"
+	"konsulin-service/internal/app/services/shared/whatsapp"
 	"log"
 	"net/http"
 	"os"
@@ -78,6 +80,8 @@ func main() {
 	// Initialize RabbitMQ connection
 	rabbitMQ := messaging.NewRabbitMQ(driverConfig)
 
+	// Initialize Minio client for storage
+	minio := storage.NewMinio(driverConfig)
 
 	// Create a new router
 	chiRouter := chi.NewRouter()
@@ -87,6 +91,7 @@ func main() {
 		Router:         chiRouter,
 		Redis:          redis,
 		Logger:         logger,
+		Minio:          minio,
 		RabbitMQ:       rabbitMQ,
 		InternalConfig: internalConfig,
 		DriverConfig:   driverConfig,
@@ -166,11 +171,20 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		return err
 	}
 
+	// Initialize the whatsApp service with RabbitMQ
+	whatsAppService, err := whatsapp.NewWhatsAppService(bootstrap.RabbitMQ, bootstrap.Logger, bootstrap.InternalConfig.RabbitMQ.WhatsAppQueue)
+	if err != nil {
+		return err
+	}
+
 	// Initialize oy service (kept for backward-compatibility; not used for creation)
 	_ = payment_gateway.NewOyService(bootstrap.InternalConfig, bootstrap.Logger)
 
 	// Initialize Xendit client (reusable)
 	xenditClient := xendit.NewClient(bootstrap.InternalConfig.Xendit.APIKey)
+
+	// Initialize Minio storage
+	minioStorage := storageKonsulin.NewMinioStorage(bootstrap.Minio)
 
 	// Initialize session service with Redis repository
 	sessionService := session.NewSessionService(redisRepository, bootstrap.Logger)
@@ -206,6 +220,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		nil, // organizationFhirClient, not used yet
 		redisRepository,
 		sessionService,
+		minioStorage,
 		bootstrap.InternalConfig,
 		bootstrap.Logger,
 		lockService,
@@ -220,6 +235,8 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		practitionerFhirClient,
 		userUsecase,
 		mailerService,
+		whatsAppService,
+		minioStorage,
 		bootstrap.InternalConfig,
 		bootstrap.DriverConfig,
 		bootstrap.Logger,
