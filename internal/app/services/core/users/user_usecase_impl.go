@@ -35,7 +35,6 @@ type userUsecase struct {
 	OrganizationFhirClient     contracts.OrganizationFhirClient
 	RedisRepository            contracts.RedisRepository
 	SessionService             contracts.SessionService
-	MinioStorage               contracts.Storage
 	InternalConfig             *config.InternalConfig
 	Log                        *zap.Logger
 	LockerService              contracts.LockerService
@@ -56,7 +55,6 @@ func NewUserUsecase(
 	organizationFhirClient contracts.OrganizationFhirClient,
 	redisRepository contracts.RedisRepository,
 	sessionService contracts.SessionService,
-	minioStorage contracts.Storage,
 	internalConfig *config.InternalConfig,
 	logger *zap.Logger,
 	lockerService contracts.LockerService,
@@ -72,7 +70,6 @@ func NewUserUsecase(
 			OrganizationFhirClient:     organizationFhirClient,
 			RedisRepository:            redisRepository,
 			SessionService:             sessionService,
-			MinioStorage:               minioStorage,
 			InternalConfig:             internalConfig,
 			Log:                        logger,
 			LockerService:              lockerService,
@@ -123,24 +120,7 @@ func (uc *userUsecase) GetUserProfileBySession(ctx context.Context, sessionData 
 		return nil, exceptions.ErrUserNotExist(nil)
 	}
 
-	var preSignedUrl string
-	if existingUser.ProfilePictureName != "" {
-		objectUrlExpiryTime := time.Duration(uc.InternalConfig.App.MinioPreSignedUrlObjectExpiryTimeInHours) * time.Hour
-		preSignedUrl, err = uc.MinioStorage.GetObjectUrlWithExpiryTime(ctx, uc.InternalConfig.Minio.BucketName, existingUser.ProfilePictureName, objectUrlExpiryTime)
-		if err != nil {
-			uc.Log.Error("Failed to generate pre-signed URL",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.String(constvars.LoggingErrorTypeKey, "storage service"),
-				zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
-				zap.Error(err),
-			)
-			return nil, err
-		}
-		uc.Log.Debug("Generated pre-signed URL for profile picture",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingPreSignedUrlKey, preSignedUrl),
-		)
-	}
+	
 
 	switch session.RoleName {
 	case constvars.RoleTypePractitioner:
@@ -148,13 +128,13 @@ func (uc *userUsecase) GetUserProfileBySession(ctx context.Context, sessionData 
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String(constvars.LoggingUserIDKey, session.UserID),
 		)
-		return uc.getPractitionerProfile(ctx, session, preSignedUrl)
+		return uc.getPractitionerProfile(ctx, session, "")
 	case constvars.RoleTypePatient:
 		uc.Log.Debug("Processing patient profile",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String(constvars.LoggingUserIDKey, session.UserID),
 		)
-		return uc.getPatientProfile(ctx, session, preSignedUrl)
+		return uc.getPatientProfile(ctx, session, "")
 	default:
 		uc.Log.Error("Invalid role type",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -200,23 +180,6 @@ func (uc *userUsecase) UpdateUserProfileBySession(ctx context.Context, sessionDa
 		}
 	}
 
-	if request.ProfilePicture != "" {
-		uc.Log.Info("userUsecase.UpdateUserProfileBySession uploading new profile picture",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-		)
-		request.ProfilePictureObjectName, err = uc.uploadProfilePicture(ctx, session.Username, request)
-		if err != nil {
-			uc.Log.Error("userUsecase.UpdateUserProfileBySession error uploading profile picture",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, err
-		}
-		uc.Log.Info("userUsecase.UpdateUserProfileBySession profile picture uploaded",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("object_name", request.ProfilePictureObjectName),
-		)
-	}
 
 	existingUser, err := uc.UserRepository.FindByID(ctx, session.UserID)
 	if err != nil {
@@ -1035,40 +998,7 @@ func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *mode
 	return response, nil
 }
 
-func (uc *userUsecase) uploadProfilePicture(ctx context.Context, username string, request *requests.UpdateProfile) (string, error) {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	uc.Log.Info("userUsecase.uploadProfilePicture called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String("username", username),
-	)
 
-	fileName := utils.GenerateFileName(constvars.ImageProfilePicturePrefix, username, request.ProfilePictureExtension)
-	uc.Log.Info("userUsecase.uploadProfilePicture generated file name",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String("file_name", fileName),
-	)
-
-	profilePictureURL, err := uc.MinioStorage.UploadBase64Image(
-		ctx,
-		request.ProfilePictureData,
-		uc.InternalConfig.Minio.BucketName,
-		fileName,
-		request.ProfilePictureExtension,
-	)
-	if err != nil {
-		uc.Log.Error("userUsecase.uploadProfilePicture error uploading image",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return "", err
-	}
-
-	uc.Log.Info("userUsecase.uploadProfilePicture succeeded",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String("profile_picture_url", profilePictureURL),
-	)
-	return profilePictureURL, nil
-}
 
 type callWebhookSvcKonsulinOmnichannelOutput struct {
 	ChatwootID int    `json:"chatwoot_id"`
