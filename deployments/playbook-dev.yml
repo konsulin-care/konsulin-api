@@ -48,7 +48,6 @@
         login_session_expired_time_in_hours: 2
         whatsapp_otp_expired_time_in_minutes: 1
         forgot_password_token_expired_time_in_minutes: 2
-        minio_pre_signed_url_object_expiry_time_in_hours: 1
         questionnaire_guest_response_response_expired_time_in_minutes: 10
 
       fhir:

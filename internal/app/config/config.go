@@ -143,7 +143,7 @@ func loadInternalConfigWithEnv() *InternalConfig {
 	}
 
 	// Validate mandatory sensitive fields in non-dev environments
-	if cfg.App.Env != "local" && cfg.App.Env != "development" {
+	if cfg.App.Env != "local" && cfg.App.Env != "dev" && cfg.App.Env != "development" && cfg.App.Env != "test" {
 		if cfg.JWT.Secret == "" {
 			log.Fatalf("APP_JWT_SECRET is required in %s environment", cfg.App.Env)
 		}
