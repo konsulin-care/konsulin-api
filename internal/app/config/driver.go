@@ -4,6 +4,7 @@ type DriverConfig struct {
 	Redis      Redis      `mapstructure:"redis"`
 	Logger     Logger     `mapstructure:"logger"`
 	RabbitMQ   RabbitMQ   `mapstructure:"rabbitmq"`
+	Minio      Minio      `mapstructure:"minio"`
 	Supertoken Supertoken `mapstructure:"supertoken"`
 }
 type Redis struct {
@@ -23,6 +24,14 @@ type RabbitMQ struct {
 	Host     string `mapstructure:"host"`
 	Username string `mapstructure:"username"`
 	Password string `mapstructure:"password"`
+}
+
+type Minio struct {
+	Port     string `mapstructure:"port"`
+	Host     string `mapstructure:"host"`
+	Username string `mapstructure:"username"`
+	Password string `mapstructure:"password"`
+	UseSSL   bool   `mapstructure:"use_ssl"`
 }
 
 type Supertoken struct {
