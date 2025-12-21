@@ -32,6 +32,10 @@ internal_config:
   mailer:
     email_sender: {{ internal_config.mailer.email_sender | default('') }}
 
+  minio:
+    profile_picture_max_upload_size_in_mb: {{ internal_config.minio.profile_picture_max_upload_size_in_mb | default('') }}
+    bucket_name: {{ internal_config.minio.bucket_name | default('') }}
+
   rabbitmq:
     mailer_queue: {{ internal_config.rabbitmq.mailer_queue | default('') }}
     whatsapp_queue: {{ internal_config.rabbitmq.whatsapp_queue | default('') }}
@@ -77,3 +81,9 @@ driver_config:
     username: {{ driver_config.rabbitmq.username | default('') }}
     password: {{ driver_config.rabbitmq.password | default('') }}
 
+  minio:
+    port: {{ driver_config.minio.port | default('') }}
+    host: {{ driver_config.minio.host | default('') }}
+    username: {{ driver_config.minio.username | default('') }}
+    password: {{ driver_config.minio.password | default('') }}
+    use_ssl: {{ driver_config.minio.use_ssl | default('') }}  

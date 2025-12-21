@@ -9,13 +9,8 @@ import (
 
 func getEnv(key string, defaultValue interface{}) interface{} {
 	value, exists := os.LookupEnv(key)
-
-	// If the key is missing OR the value is empty, immediately return the default.
-	if !exists || value == "" {
-		if !exists {
-			log.Printf(constvars.ErrEnvKeyNotExist, key)
-		}
-		return defaultValue
+	if !exists {
+		log.Printf(constvars.ErrEnvKeyNotExist, key)
 	}
 
 	switch defaultValue.(type) {
