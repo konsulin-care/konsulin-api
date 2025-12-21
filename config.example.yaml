@@ -15,7 +15,6 @@ internal_config:
     account_deactivation_age_in_days: 
     login_session_expired_time_in_hours: 
     forgot_password_token_expired_time_in_minutes: 
-    minio_pre_signed_url_object_expiry_time_in_hours: 
     questionnaire_guest_response_response_expired_time_in_minutes: 
     superadmin_api_key: 
     superadmin_api_key_rate_limit: 
@@ -29,10 +28,6 @@ internal_config:
 
   mailer:
     email_sender: 
-
-  minio:
-    profile_picture_max_upload_size_in_mb: 
-    bucket_name: 
 
   rabbitmq:
     mailer_queue: 
@@ -82,10 +77,3 @@ driver_config:
     host: 
     username: 
     password: 
-
-  minio:
-    port: 
-    host: 
-    username: 
-    password: 
-    use_ssl: 
