@@ -22,7 +22,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
 	"go.uber.org/zap"
 )
 
@@ -128,13 +127,13 @@ func (uc *userUsecase) GetUserProfileBySession(ctx context.Context, sessionData 
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String(constvars.LoggingUserIDKey, session.UserID),
 		)
-		return uc.getPractitionerProfile(ctx, session, "")
+		return uc.getPractitionerProfile(ctx, session, nil)
 	case constvars.RoleTypePatient:
 		uc.Log.Debug("Processing patient profile",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String(constvars.LoggingUserIDKey, session.UserID),
 		)
-		return uc.getPatientProfile(ctx, session, "")
+		return uc.getPatientProfile(ctx, session, nil)
 	default:
 		uc.Log.Error("Invalid role type",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -906,7 +905,7 @@ func (uc *userUsecase) updatePractitionerFhirProfile(ctx context.Context, user *
 	return response, nil
 }
 
-func (uc *userUsecase) getPatientProfile(ctx context.Context, session *models.Session, preSignedUrl string) (*responses.UserProfile, error) {
+func (uc *userUsecase) getPatientProfile(ctx context.Context, session *models.Session, preSignedUrl *string) (*responses.UserProfile, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	uc.Log.Info("userUsecase.getPatientProfile called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -931,7 +930,7 @@ func (uc *userUsecase) getPatientProfile(ctx context.Context, session *models.Se
 	return response, nil
 }
 
-func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *models.Session, preSignedUrl string) (*responses.UserProfile, error) {
+func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *models.Session, preSignedUrl *string) (*responses.UserProfile, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	uc.Log.Info("userUsecase.getPractitionerProfile called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -949,6 +948,7 @@ func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *mode
 
 	response := utils.BuildPractitionerProfileResponse(practitionerFhir)
 	response.ProfilePicture = preSignedUrl
+
 
 	practitionerRoles, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerID(ctx, session.PractitionerID)
 	if err != nil {
@@ -998,7 +998,13 @@ func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *mode
 	return response, nil
 }
 
-
+func stringPtrOrNil(s string) *string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	return &s
+}
 
 type callWebhookSvcKonsulinOmnichannelOutput struct {
 	ChatwootID int    `json:"chatwoot_id"`
@@ -1073,4 +1079,7 @@ func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, em
 
 	output := outputs[0]
 	return output, nil
+
+
+	
 }
