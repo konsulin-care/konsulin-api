@@ -998,13 +998,6 @@ func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *mode
 	return response, nil
 }
 
-func stringPtrOrNil(s string) *string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return nil
-	}
-	return &s
-}
 
 type callWebhookSvcKonsulinOmnichannelOutput struct {
 	ChatwootID int    `json:"chatwoot_id"`
