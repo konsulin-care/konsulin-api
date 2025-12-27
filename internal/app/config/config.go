@@ -232,7 +232,7 @@ func loadDriverConfigWithEnv() *DriverConfig {
 			ApiBasePath:     utils.GetEnvString("SUPERTOKEN_API_BASE_PATH", "/auth"),
 			WebsiteBasePath: utils.GetEnvString("SUPERTOKEN_WEBSITE_BASE_PATH", "/auth"),
 			ConnectionURI:   utils.GetEnvString("SUPERTOKEN_CONNECTION_URI", "http://localhost:3567"),
-			APIKey:          utils.GetEnvString("SUPERTOKENS_API_KEY", ""),
+			APIKey:          utils.GetEnvString("SUPERTOKEN_API_KEY", ""),
 			AppName:         utils.GetEnvString("SUPERTOKEN_APP_NAME", "Konsulin"),
 			ApiDomain:       utils.GetEnvString("SUPERTOKEN_API_DOMAIN", "http://localhost:3000"),
 			WebsiteDomain:   utils.GetEnvString("SUPERTOKEN_WEBSITE_DOMAIN", "http://localhost:3000"),
