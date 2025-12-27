@@ -256,12 +256,10 @@ func loadDriverConfigWithEnv() *DriverConfig {
 		if cfg.RabbitMQ.Username == "" || cfg.RabbitMQ.Password == "" {
 			log.Fatalf("RabbitMQ credentials (RABBITMQ_USERNAME, RABBITMQ_PASSWORD) are required in %s environment", env)
 		}
-
 		// Validate SuperTokens API key Credentials
 		if cfg.Supertoken.APIKey == "" {
-        	log.Fatalf("Supertoken API key is required in %s environment", env)
+		log.Fatalf("Supertoken API key is required in %s environment", env)
 		}
-
 	}
 
 	return cfg
