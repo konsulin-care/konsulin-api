@@ -1,10 +1,12 @@
 package webhook
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/services/shared/jwtmanager"
@@ -12,9 +14,15 @@ import (
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
+	"mime"
+	"mime/multipart"
+	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/casbin/casbin/v2"
+	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 
 	"slices"
@@ -30,6 +38,8 @@ type Usecase interface {
 	HandleAsyncServiceResult(ctx context.Context, in *HandleAsyncServiceResultInput) error
 	// GetAsyncServiceResult retrieves the result of an async service request.
 	GetAsyncServiceResult(ctx context.Context, id string) (*GetAsyncServiceResultOutput, error)
+	// HandleSynchronousWebhookService forwards synchronous webhook services with RBAC and validation.
+	HandleSynchronousWebhookService(ctx context.Context, in *HandleSynchronousWebhookServiceInput) (*HandleSynchronousWebhookServiceOutput, error)
 }
 
 type usecase struct {
@@ -39,11 +49,37 @@ type usecase struct {
 	jwtManager         *jwtmanager.JWTManager
 	patientFhir        contracts.PatientFhirClient
 	practitionerFhir   contracts.PractitionerFhirClient
+	personFhir         contracts.PersonFhirClient
 	serviceRequestFhir contracts.ServiceRequestFhirClient
+	enforcer           *casbin.Enforcer
+	syncServiceSet     map[string]struct{}
+	httpClient         *http.Client
+	failurePolicy      SyncFailurePolicy
 }
 
 // NewUsecase creates a new webhook usecase instance.
-func NewUsecase(log *zap.Logger, cfg *config.InternalConfig, queue *webhookqueue.Service, jwtMgr *jwtmanager.JWTManager, patient contracts.PatientFhirClient, practitioner contracts.PractitionerFhirClient, sr contracts.ServiceRequestFhirClient) Usecase {
+func NewUsecase(log *zap.Logger, cfg *config.InternalConfig, queue *webhookqueue.Service, jwtMgr *jwtmanager.JWTManager, patient contracts.PatientFhirClient, practitioner contracts.PractitionerFhirClient, person contracts.PersonFhirClient, sr contracts.ServiceRequestFhirClient, enforcer *casbin.Enforcer) Usecase {
+	syncSet := make(map[string]struct{})
+	for _, s := range cfg.Webhook.SynchronousServiceNames {
+		name := strings.ToLower(strings.TrimSpace(s))
+		if name != "" {
+			syncSet[name] = struct{}{}
+		}
+	}
+
+	timeout := time.Duration(cfg.Webhook.HTTPTimeoutInSeconds) * time.Second
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+
+	policy := SyncFailurePolicyReturnError
+	switch strings.ToLower(strings.TrimSpace(cfg.Webhook.SynchronousServiceFailurePolicy)) {
+	case string(SyncFailurePolicyEnqueueRequest):
+		policy = SyncFailurePolicyEnqueueRequest
+	default:
+		policy = SyncFailurePolicyReturnError
+	}
+
 	return &usecase{
 		log:                log,
 		cfg:                cfg,
@@ -51,7 +87,12 @@ func NewUsecase(log *zap.Logger, cfg *config.InternalConfig, queue *webhookqueue
 		jwtManager:         jwtMgr,
 		patientFhir:        patient,
 		practitionerFhir:   practitioner,
+		personFhir:         person,
 		serviceRequestFhir: sr,
+		enforcer:           enforcer,
+		syncServiceSet:     syncSet,
+		httpClient:         &http.Client{Timeout: timeout},
+		failurePolicy:      policy,
 	}
 }
 
@@ -107,6 +148,34 @@ const JWTForwardedFromPaymentServiceHeader = "X-Forwarded-From-Payment-Service"
 // PAYMENT_SERVICE_SUB is the expected JWT subject for forwarded requests from payment service
 const PAYMENT_SERVICE_SUB = "payment-service"
 
+// SyncFailurePolicy represents fallback behavior for synchronous webhook failures.
+type SyncFailurePolicy string
+
+// all known failure policies
+const (
+	SyncFailurePolicyReturnError    SyncFailurePolicy = "return_error"
+	SyncFailurePolicyEnqueueRequest SyncFailurePolicy = "enqueue_request"
+)
+
+// synchronousHookPathPrefix is used only to interact with RBAC rules, not
+// representing the actual path in the router.
+const synchronousHookPathPrefix = "/hook/synchronous"
+
+// HandleSynchronousWebhookServiceInput captures input for synchronous webhook processing.
+type HandleSynchronousWebhookServiceInput struct {
+	ServiceName string `validate:"required"`
+	Method      string `validate:"required"`
+	Body        []byte `validate:"required"`
+	ContentType string `validate:"required"`
+}
+
+// HandleSynchronousWebhookServiceOutput carries upstream response back to caller.
+type HandleSynchronousWebhookServiceOutput struct {
+	StatusCode  int
+	Body        []byte
+	ContentType string
+}
+
 // Enqueue validates, rate-limits, and enqueues the message.
 func (u *usecase) Enqueue(ctx context.Context, in *EnqueueInput) (*EnqueueOutput, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
@@ -152,12 +221,71 @@ func (u *usecase) Enqueue(ctx context.Context, in *EnqueueInput) (*EnqueueOutput
 	return &EnqueueOutput{}, nil
 }
 
+// HandleSynchronousWebhookService forwards synchronous webhook services with RBAC/body validation.
+func (u *usecase) HandleSynchronousWebhookService(ctx context.Context, in *HandleSynchronousWebhookServiceInput) (*HandleSynchronousWebhookServiceOutput, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	u.log.Info("webhook.usecase.HandleSynchronousWebhookService called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("service_name", in.ServiceName),
+		zap.String("method", in.Method),
+		zap.String("content_type", in.ContentType),
+	)
+
+	if err := validator.New().Struct(in); err != nil {
+		return nil, exceptions.ErrInputValidation(err)
+	}
+
+	service := strings.ToLower(strings.TrimSpace(in.ServiceName))
+	if !u.isSyncService(service) {
+		return nil, exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, "service is not enabled for synchronous processing", "WEBHOOK_SYNC_SERVICE_NOT_ALLOWED")
+	}
+
+	forwarded := ""
+	if v := ctx.Value(JWTForwardedFromPaymentServiceHeader); v != nil {
+		if s, ok := v.(string); ok {
+			forwarded = s
+		}
+	}
+	if err := u.evaluateWebhookAuth(ctx, &evaluateAuthInput{ServiceName: service, ForwardedJWT: forwarded}); err != nil {
+		return nil, err
+	}
+
+	roles, _ := ctx.Value(constvars.CONTEXT_FHIR_ROLE).([]string)
+	if len(roles) == 0 {
+		roles = []string{constvars.KonsulinRoleGuest}
+	}
+	userIdentifier, _ := ctx.Value(constvars.CONTEXT_UID).(string)
+
+	if err := u.authorizeSynchronous(ctx, roles, in.Method, service); err != nil {
+		return nil, err
+	}
+
+	if err := u.validateSynchronousBody(ctx, roles, userIdentifier, in.Body, in.ContentType); err != nil {
+		return nil, err
+	}
+
+	out, err := u.forwardSynchronous(ctx, service, in.Method, in.Body, in.ContentType)
+	if err != nil {
+		return u.applySynchronousFailurePolicy(ctx, service, in)
+	}
+
+	return out, nil
+}
+
 func (u *usecase) isAsyncService(svc string) bool {
 	if strings.TrimSpace(svc) == "" {
 		return false
 	}
 	target := strings.ToLower(strings.TrimSpace(svc))
 	return slices.Contains(u.cfg.Webhook.AsyncServiceNames, target)
+}
+
+func (u *usecase) isSyncService(svc string) bool {
+	if strings.TrimSpace(svc) == "" {
+		return false
+	}
+	_, ok := u.syncServiceSet[strings.ToLower(strings.TrimSpace(svc))]
+	return ok
 }
 
 // determineSubjectFromRequester returns a FHIR reference string:
@@ -415,4 +543,285 @@ func (u *usecase) GetAsyncServiceResult(ctx context.Context, id string) (*GetAsy
 		zap.String("service_request_id", id),
 	)
 	return output, nil
+}
+
+func (u *usecase) authorizeSynchronous(ctx context.Context, roles []string, method, service string) error {
+	if u.enforcer == nil {
+		return exceptions.BuildNewCustomError(nil, constvars.StatusForbidden, "Not authorized", "WEBHOOK_SYNC_RBAC_DISABLED")
+	}
+	path := fmt.Sprintf("%s/%s", synchronousHookPathPrefix, service)
+	for _, role := range roles {
+		normalized := strings.TrimSpace(role)
+		if normalized == "" {
+			continue
+		}
+		ok, err := u.enforcer.Enforce(normalized, method, path)
+		if err != nil {
+			return err
+		}
+		if ok {
+			return nil
+		}
+	}
+	return exceptions.BuildNewCustomError(nil, constvars.StatusForbidden, "Not authorized", "WEBHOOK_SYNC_FORBIDDEN")
+}
+
+func (u *usecase) validateSynchronousBody(ctx context.Context, roles []string, userIdentifierId string, body []byte, contentType string) error {
+	if containsRole(roles, constvars.KonsulinRoleGuest) || containsRole(roles, constvars.KonsulinRoleSuperadmin) {
+		return nil
+	}
+
+	var email, phone, chatwoot string
+
+	// Parse body based on content type
+	mediaType, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return exceptions.BuildNewCustomError(err, constvars.StatusBadRequest, "Invalid content type", "WEBHOOK_INVALID_CONTENT_TYPE")
+	}
+
+	switch mediaType {
+	case constvars.MIMEApplicationJSON:
+		var tmp map[string]interface{}
+		if err := json.Unmarshal(body, &tmp); err != nil {
+			return exceptions.ErrCannotParseJSON(err)
+		}
+
+		email = rootString(tmp, "email")
+		phone = rootString(tmp, "phone_number")
+		chatwoot = rootString(tmp, "chatwoot_id")
+	case constvars.MIMEMultipartForm:
+		boundary, ok := params["boundary"]
+		if !ok {
+			return exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, "boundary is required for multipart/form-data", "WEBHOOK_INVALID_CONTENT_TYPE")
+		}
+
+		mr := multipart.NewReader(bytes.NewReader(body), boundary)
+		form, err := mr.ReadForm(32 << 20)
+		if err != nil {
+			return exceptions.ErrCannotParseMultipartForm(err)
+		}
+
+		if v, ok := form.Value["email"]; ok && len(v) > 0 {
+			email = v[0]
+		}
+		if v, ok := form.Value["phone_number"]; ok && len(v) > 0 {
+			phone = v[0]
+		}
+		if v, ok := form.Value["chatwoot_id"]; ok && len(v) > 0 {
+			chatwoot = v[0]
+		}
+	default:
+		return exceptions.BuildNewCustomError(nil, constvars.StatusUnsupportedMediaType, "Content-Type must be application/json or multipart/form-data", "WEBHOOK_UNSUPPORTED_MEDIA_TYPE")
+	}
+
+	if email == "" && phone == "" && chatwoot == "" {
+		return nil
+	}
+
+	role := selectRoleForValidation(roles)
+	if role == "" {
+		return exceptions.BuildNewCustomError(nil, constvars.StatusUnauthorized, "Not authorized", "WEBHOOK_SYNC_UNSUPPORTED_ROLE")
+	}
+
+	if strings.TrimSpace(userIdentifierId) == "" || strings.EqualFold(userIdentifierId, "anonymous") {
+		return exceptions.BuildNewCustomError(nil, constvars.StatusUnauthorized, "Not authorized", "WEBHOOK_SYNC_MISSING_UID")
+	}
+
+	switch role {
+	case constvars.KonsulinRolePractitioner, constvars.KonsulinRoleClinician:
+		pracs, err := u.practitionerFhir.FindPractitionerByIdentifier(ctx, constvars.FhirSupertokenSystemIdentifier, userIdentifierId)
+		if err != nil {
+			return err
+		}
+		if len(pracs) == 0 {
+			return exceptions.BuildNewCustomError(nil, constvars.StatusNotFound, "practitioner not found", "WEBHOOK_SYNC_USER_NOT_FOUND")
+		}
+
+		prac := pracs[0]
+
+		return validateContactFields(email, phone, chatwoot, prac.GetEmailAddresses(), prac.GetPhoneNumbers(), prac.Identifier, constvars.ResourcePractitioner)
+	case constvars.KonsulinRoleClinicAdmin:
+		persons, err := u.personFhir.Search(ctx, contracts.PersonSearchInput{
+			Identifier: fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, userIdentifierId),
+		})
+		if err != nil {
+			return err
+		}
+		if len(persons) == 0 {
+			return exceptions.BuildNewCustomError(nil, constvars.StatusNotFound, "person not found", "WEBHOOK_SYNC_USER_NOT_FOUND")
+		}
+		person := persons[0]
+		return validateContactFields(email, phone, chatwoot, person.GetEmailAddresses(), person.GetPhoneNumbers(), person.Identifier, constvars.ResourcePerson)
+	case constvars.KonsulinRolePatient:
+		pats, err := u.patientFhir.FindPatientByIdentifier(ctx, fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, userIdentifierId))
+		if err != nil {
+			return err
+		}
+		if len(pats) == 0 {
+			return exceptions.BuildNewCustomError(nil, constvars.StatusNotFound, "patient not found", "WEBHOOK_SYNC_USER_NOT_FOUND")
+		}
+
+		pat := pats[0]
+
+		return validateContactFields(email, phone, chatwoot, pat.GetEmailAddresses(), pat.GetPhoneNumbers(), pat.Identifier, constvars.ResourcePatient)
+	default:
+		return exceptions.BuildNewCustomError(nil, constvars.StatusUnauthorized, "Not authorized", "WEBHOOK_SYNC_UNSUPPORTED_ROLE")
+	}
+}
+
+func (u *usecase) forwardSynchronous(ctx context.Context, service, method string, body []byte, contentType string) (*HandleSynchronousWebhookServiceOutput, error) {
+	url := fmt.Sprintf("%s/%s", strings.TrimRight(u.cfg.Webhook.URL, "/"), service)
+	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, exceptions.ErrCreateHTTPRequest(err)
+	}
+	req.Header.Set(constvars.HeaderContentType, contentType)
+
+	tokenOut, err := u.jwtManager.CreateToken(ctx, &jwtmanager.CreateTokenInput{Subject: service})
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set(constvars.HeaderAuthorization, "Bearer "+tokenOut.Token)
+
+	resp, err := u.httpClient.Do(req)
+	if err != nil {
+		return nil, exceptions.ErrSendHTTPRequest(err)
+	}
+	defer resp.Body.Close()
+
+	respContentType := resp.Header.Get(constvars.HeaderContentType)
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, exceptions.ErrServerProcess(err)
+	}
+
+	return &HandleSynchronousWebhookServiceOutput{
+		StatusCode:  resp.StatusCode,
+		Body:        respBody,
+		ContentType: respContentType,
+	}, nil
+}
+
+func (u *usecase) enqueueFallback(ctx context.Context, service, method string, body []byte) error {
+	msg := webhookqueue.WebhookQueueMessage{
+		ID:          uuid.NewString(),
+		Method:      method,
+		ServiceName: strings.ToLower(strings.TrimSpace(service)),
+		Body:        json.RawMessage(body),
+		FailedCount: 0,
+	}
+	_, err := u.queue.Enqueue(ctx, &webhookqueue.EnqueueToWebhookServiceQueueInput{Message: msg})
+	return err
+}
+
+func rootString(m map[string]interface{}, key string) string {
+	if m == nil {
+		return ""
+	}
+	if v, ok := m[key]; ok {
+		if v == nil {
+			return ""
+		}
+		switch val := v.(type) {
+		case string:
+			return strings.TrimSpace(val)
+		case float64:
+			return strconv.Itoa(int(val))
+		}
+	}
+	return ""
+}
+
+func selectRoleForValidation(roles []string) string {
+	for _, r := range roles {
+		if strings.EqualFold(r, constvars.KonsulinRolePractitioner) || strings.EqualFold(r, constvars.KonsulinRoleClinician) {
+			return constvars.KonsulinRolePractitioner
+		}
+	}
+	for _, r := range roles {
+		if strings.EqualFold(r, constvars.KonsulinRoleClinicAdmin) {
+			return constvars.KonsulinRoleClinicAdmin
+		}
+	}
+	for _, r := range roles {
+		if strings.EqualFold(r, constvars.KonsulinRolePatient) {
+			return constvars.KonsulinRolePatient
+		}
+	}
+	return ""
+}
+
+func containsRole(roles []string, target string) bool {
+	for _, r := range roles {
+		if strings.EqualFold(r, target) {
+			return true
+		}
+	}
+	return false
+}
+
+func validateContactFields(email, phone, chatwoot string, emails []string, phones []string, identifiers []fhir_dto.Identifier, resource string) error {
+	if email != "" {
+		if len(emails) == 0 {
+			return exceptions.BuildNewCustomError(nil, constvars.StatusNotFound, fmt.Sprintf("email not found on %s resource", resource), "WEBHOOK_SYNC_CONTACT_NOT_FOUND")
+		}
+		if !containsCaseInsensitive(emails, email) {
+			return exceptions.BuildNewCustomError(nil, constvars.StatusUnauthorized, "email does not match authenticated user", "WEBHOOK_SYNC_CONTACT_MISMATCH")
+		}
+	}
+
+	if phone != "" {
+		if len(phones) == 0 {
+			return exceptions.BuildNewCustomError(nil, constvars.StatusNotFound, fmt.Sprintf("phone_number not found on %s resource", resource), "WEBHOOK_SYNC_CONTACT_NOT_FOUND")
+		}
+		if !containsCaseInsensitive(phones, phone) {
+			return exceptions.BuildNewCustomError(nil, constvars.StatusUnauthorized, "phone_number does not match authenticated user", "WEBHOOK_SYNC_CONTACT_MISMATCH")
+		}
+	}
+
+	if chatwoot != "" {
+		value, found := findIdentifierValue(identifiers, constvars.KonsulinOmnichannelSystemIdentifier)
+		if !found {
+			return exceptions.BuildNewCustomError(nil, constvars.StatusNotFound, fmt.Sprintf("chatwoot_id not found on %s resource", resource), "WEBHOOK_SYNC_CONTACT_NOT_FOUND")
+		}
+		if !strings.EqualFold(strings.TrimSpace(value), strings.TrimSpace(chatwoot)) {
+			return exceptions.BuildNewCustomError(nil, constvars.StatusUnauthorized, "chatwoot_id does not match authenticated user", "WEBHOOK_SYNC_CONTACT_MISMATCH")
+		}
+	}
+	return nil
+}
+
+func containsCaseInsensitive(list []string, target string) bool {
+	for _, v := range list {
+		if strings.EqualFold(strings.TrimSpace(v), strings.TrimSpace(target)) {
+			return true
+		}
+	}
+	return false
+}
+
+func findIdentifierValue(ids []fhir_dto.Identifier, system string) (string, bool) {
+	for _, id := range ids {
+		if strings.EqualFold(strings.TrimSpace(id.System), strings.TrimSpace(system)) && strings.TrimSpace(id.Value) != "" {
+			return id.Value, true
+		}
+	}
+	return "", false
+}
+
+func (u *usecase) applySynchronousFailurePolicy(ctx context.Context, service string, in *HandleSynchronousWebhookServiceInput) (*HandleSynchronousWebhookServiceOutput, error) {
+	switch u.failurePolicy {
+	case SyncFailurePolicyEnqueueRequest:
+		if enqueueErr := u.enqueueFallback(ctx, service, in.Method, in.Body); enqueueErr != nil {
+			return nil, enqueueErr
+		}
+		return &HandleSynchronousWebhookServiceOutput{
+			StatusCode:  constvars.StatusAccepted,
+			Body:        []byte(`{"status":"enqueued"}`),
+			ContentType: constvars.MIMEApplicationJSON,
+		}, nil
+	default:
+		return nil, exceptions.BuildNewCustomError(nil, constvars.StatusInternalServerError, "failed to forward synchronous webhook service", "WEBHOOK_SYNC_FAILURE_POLICY_RETURN_ERROR")
+	}
 }

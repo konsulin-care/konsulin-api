@@ -301,3 +301,26 @@ func (uc *Usecase) callMagicLink(ctx context.Context, email string) error {
 	}
 	return nil
 }
+
+func (uc *Usecase) InitializeKonsulinOrganizationResource(ctx context.Context) error {
+	existing, err := uc.organizationClient.FindOrganizationByID(ctx, constvars.KonsulinOrganizationResourceID)
+	if err == nil && existing != nil {
+		uc.log.Info("Konsulin organization resource already exists", zap.String("organization_id", constvars.KonsulinOrganizationResourceID))
+	}
+
+	uc.log.Info("unable to verify if Konsulin organization resource exists, will try to create it", zap.Error(err))
+
+	konsulinOrg := fhir_dto.Organization{
+		ResourceType: constvars.ResourceOrganization,
+		ID:           constvars.KonsulinOrganizationResourceID,
+		Active:       true,
+	}
+
+	_, upsertErr := uc.organizationClient.Update(ctx, konsulinOrg)
+	if upsertErr != nil {
+		return exceptions.ErrUpdateFHIRResource(upsertErr, constvars.ResourceOrganization)
+	}
+
+	uc.log.Info("Konsulin organization resource created", zap.String("organization_id", constvars.KonsulinOrganizationResourceID))
+	return nil
+}

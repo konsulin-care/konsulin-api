@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"konsulin-service/internal/pkg/utils"
 	"log"
-	"net/url"
 	"os"
 	"strings"
 
@@ -30,6 +29,7 @@ func init() {
 	}
 
 	internalCfg = loadInternalConfigWithEnv()
+
 	driverCfg = loadDriverConfigWithEnv()
 }
 
@@ -52,30 +52,28 @@ func loadInternalConfigWithYAML() *InternalConfig {
 func loadInternalConfigWithEnv() *InternalConfig {
 	cfg := &InternalConfig{
 		App: App{
-			Env:                                      utils.GetEnvString("APP_ENV", ""),
-			Port:                                     utils.GetEnvString("APP_PORT", ""),
-			Version:                                  utils.GetEnvString("APP_VERSION", ""),
-			Address:                                  utils.GetEnvString("APP_ADDRESS", ""),
-			BaseUrl:                                  utils.GetEnvString("APP_BASE_URL", ""),
-			Timezone:                                 utils.GetEnvString("APP_TIMEZONE", ""),
-			FrontendDomain:                           utils.GetEnvString("APP_FRONTEND_DOMAIN", ""),
-			EndpointPrefix:                           utils.GetEnvString("APP_ENDPOINT_PREFIX", ""),
-			ResetPasswordUrl:                         utils.GetEnvString("APP_RESET_PASSWORD_URL", ""),
-			MaxRequests:                              utils.GetEnvInt("APP_MAX_REQUESTS", 0),
-			ShutdownTimeoutInSeconds:                 utils.GetEnvInt("APP_SHUTDOWN_TIMEOUT_IN_SECONDS", 0),
-			MaxTimeRequestsPerSeconds:                utils.GetEnvInt("APP_MAX_TIME_REQUESTS_PER_SECONDS", 0),
-			SessionMultiplierInMinutes:               utils.GetEnvInt("APP_SESSION_MULTIPLIER_IN_MINUTES", 0),
-			RequestBodyLimitInMegabyte:               utils.GetEnvInt("APP_REQUEST_BODY_LIMIT_IN_MEGABYTE", 0),
-			PaymentExpiredTimeInMinutes:              utils.GetEnvInt("APP_PAYMENT_EXPIRED_TIME_IN_MINUTES", 0),
-			PaymentGatewayRequestTimeoutInSeconds:    utils.GetEnvInt("APP_PAYMENT_GATEWAY_REQUEST_TIMEOUT_IN_SECONDS", 60),
-			AccountDeactivationAgeInDays:             utils.GetEnvInt("APP_ACCOUNT_DEACTIVATION_AGE_IN_DAYS", 0),
-			LoginSessionExpiredTimeInHours:           utils.GetEnvInt("APP_LOGIN_SESSION_EXPIRED_TIME_IN_HOURS", 0),
-			WhatsAppOTPExpiredTimeInMinutes:          utils.GetEnvInt("APP_WHATSAPP_OTP_EXPIRED_TIME_IN_MINUTES", 0),
-			ForgotPasswordTokenExpiredTimeInMinutes:  utils.GetEnvInt("APP_FORGOT_PASSWORD_TOKEN_EXPIRED_TIME_IN_MINUTES", 0),
-			MinioPreSignedUrlObjectExpiryTimeInHours: utils.GetEnvInt("APP_MINIO_PRE_SIGNED_URL_OBJECT_EXPIRY_TIME_IN_HOURS", 0),
-			QuestionnaireGuestResponseExpiredTimeInMinutes: utils.GetEnvInt("APP_QUESTIONNAIRE_GUEST_RESPONSE_EXPIRED_TIME_IN_MINUTES", 0),
-			SuperadminAPIKey:           utils.GetEnvString("SUPERADMIN_API_KEY", ""),
-			SuperadminAPIKeyRateLimit:  utils.GetEnvInt("SUPERADMIN_API_KEY_RATE_LIMIT", 100),
+
+			// General App Settings with Defaults
+			Env:            utils.GetEnvString("APP_ENV", "local"),
+			Port:           utils.GetEnvString("APP_PORT", "3200"),
+			Version:        utils.GetEnvString("APP_VERSION", "v1"),
+			Address:        utils.GetEnvString("APP_ADDRESS", "localhost"),
+			BaseUrl:        utils.GetEnvString("APP_BASE_URL", "http://localhost:3000/api/v1"),
+			Timezone:       utils.GetEnvString("APP_TIMEZONE", "Asia/Jakarta"),
+			FrontendDomain: utils.GetEnvString("APP_FRONTEND_DOMAIN", "http://localhost:3000"),
+			EndpointPrefix: utils.GetEnvString("APP_ENDPOINT_PREFIX", "api"),
+
+			// URLs & Timeouts
+			MaxRequests:               			   utils.GetEnvInt("APP_MAX_REQUESTS", 20),
+			MaxTimeRequestsPerSeconds: 			   utils.GetEnvInt("APP_MAX_TIME_REQUESTS_PER_SECONDS", 30),
+			RequestBodyLimitInMegabyte:            utils.GetEnvInt("APP_REQUEST_BODY_LIMIT_IN_MEGABYTE", 30),
+			PaymentExpiredTimeInMinutes:           utils.GetEnvInt("APP_PAYMENT_EXPIRED_TIME_IN_MINUTES", 60),
+			PaymentGatewayRequestTimeoutInSeconds: utils.GetEnvInt("APP_PAYMENT_GATEWAY_REQUEST_TIMEOUT_IN_SECONDS", 120),
+			AccountDeactivationAgeInDays:          utils.GetEnvInt("APP_ACCOUNT_DEACTIVATION_AGE_IN_DAYS", 30),
+
+			// Sensitive / Key Logic
+			SuperadminAPIKey:           utils.GetEnvString("SUPERADMIN_API_KEY", ""), // Sensitive
+			SuperadminAPIKeyRateLimit:  utils.GetEnvInt("SUPERADMIN_API_KEY_RATE_LIMIT", 10),
 			WebhookInstantiateBasePath: utils.GetEnvString("APP_WEBHOOK_INSTANTIATE_BASE_PATH", "/api/v1/hook"),
 			SlotWindowDays: func() int {
 				v := utils.GetEnvInt("SLOT_WINDOW_DAYS", 30)
@@ -84,75 +82,83 @@ func loadInternalConfigWithEnv() *InternalConfig {
 				}
 				return v
 			}(),
-			SlotWorkerCronSpec: func() string {
-				// read raw env; validation below
-				return utils.GetEnvString("SLOT_WORKER_CRON_SPEC", "")
-			}(),
+			SlotWorkerCronSpec: utils.GetEnvString("SLOT_WORKER_CRON_SPEC", "@daily"),
 		},
 		FHIR: AppFHIR{
-			BaseUrl: utils.GetEnvString("APP_FHIR_BASE_URL", ""),
+			BaseUrl: utils.GetEnvString("APP_FHIR_BASE_URL", "http://localhost:8080/fhir/"),
 		},
 		JWT: AppJWT{
 			Secret:        utils.GetEnvString("APP_JWT_SECRET", ""),
-			ExpTimeInHour: utils.GetEnvInt("APP_JWT_EXP_TIME_IN_HOUR", 0),
+			ExpTimeInHour: utils.GetEnvInt("APP_JWT_EXP_TIME_IN_HOUR", 1),
 		},
 		Mailer: AppMailer{
-			EmailSender: utils.GetEnvString("APP_MAILER_EMAIL_SENDER", ""),
-		},
-		Minio: AppMinio{
-			ProfilePictureMaxUploadSizeInMB: utils.GetEnvInt("APP_MINIO_PROFILE_PICTURE_MAX_UPLOAD_SIZE_IN_MB", 0),
-			BucketName:                      utils.GetEnvString("APP_MINIO_BUCKET_NAME", ""),
-		},
-		RabbitMQ: AppRabbitMQ{
-			MailerQueue:   utils.GetEnvString("APP_RABBITMQ_MAILER_QUEUE", ""),
-			WhatsAppQueue: utils.GetEnvString("APP_RABBITMQ_WHATSAPP_QUEUE", ""),
-		},
-		MongoDB: AppMongoDB{
-			FhirDBName:     utils.GetEnvString("APP_MONGODB_FHIR_DB_NAME", ""),
-			KonsulinDBName: utils.GetEnvString("APP_MONGODB_KONSULIN_DB_NAME", ""),
+			EmailSender: utils.GetEnvString("APP_MAILER_EMAIL_SENDER", "konsulin.care@gmail.com"),
 		},
 		Konsulin: AppKonsulin{
-			BankCode:           utils.GetEnvString("APP_KONSULIN_BANK_CODE", ""),
+			BankCode:           utils.GetEnvString("APP_KONSULIN_BANK_CODE", "014"),
 			BankAccountNumber:  utils.GetEnvString("APP_KONSULIN_BANK_ACCOUNT_NUMBER", ""),
 			FinanceEmail:       utils.GetEnvString("APP_KONSULIN_FINANCE_EMAIL", ""),
-			PaymentDisplayName: utils.GetEnvString("APP_KONSULIN_PAYMENT_DISPLAY_NAME", ""),
+			PaymentDisplayName: utils.GetEnvString("APP_KONSULIN_PAYMENT_DISPLAY_NAME", "Konsulin"),
 		},
 		Supertoken: AppSupertoken{
-			MagiclinkBaseUrl:           utils.GetEnvString("APP_SUPERTOKEN_MAGICLINK_BASE_URL", ""),
-			KonsulinTenantID:           utils.GetEnvString("APP_SUPERTOKEN_KONSULIN_TENANT_ID", ""),
+			MagiclinkBaseUrl:           utils.GetEnvString("APP_SUPERTOKEN_MAGICLINK_BASE_URL", "http://localhost:3000/auth/verify"),
+			KonsulinTenantID:           utils.GetEnvString("APP_SUPERTOKEN_KONSULIN_TENANT_ID", "public"),
 			KonsulinDasboardAdminEmail: utils.GetEnvString("APP_SUPERTOKEN_KONSULIN_DASHBOARD_ADMIN_EMAIL", ""),
 		},
 		PaymentGateway: AppPaymentGateway{
-			Username:                utils.GetEnvString("APP_PAYMENT_GATEWAY_USERNAME", ""),
-			ApiKey:                  utils.GetEnvString("APP_PAYMENT_GATEWAY_API_KEY", ""),
+			Username:                utils.GetEnvString("APP_PAYMENT_GATEWAY_USERNAME", ""), // Sensitive
+			ApiKey:                  utils.GetEnvString("APP_PAYMENT_GATEWAY_API_KEY", ""),  // Sensitive
 			BaseUrl:                 utils.GetEnvString("APP_PAYMENT_GATEWAY_BASE_URL", ""),
-			ListEnablePaymentMethod: utils.GetEnvString("OY_LIST_ENABLE_PAYMENT_METHOD", ""),
-			ListEnableSOF:           utils.GetEnvString("OY_LIST_ENABLE_SOF", ""),
+			ListEnablePaymentMethod: utils.GetEnvString("OY_LIST_ENABLE_PAYMENT_METHOD", "BANK_TRANSFER,QRIS,EWALLET,CARDS"),
+			ListEnableSOF:           utils.GetEnvString("OY_LIST_ENABLE_SOF", "QRIS,dana_ewallet,ovo_ewallet,shopeepay_ewallet,linkaja_ewallet,CC_DC"),
 		},
 		ServicePricing: AppServicePricing{
-			AnalyzeBasePrice:           utils.GetEnvInt("BASE_PRICE_ANALYZE", 0),
-			ReportBasePrice:            utils.GetEnvInt("BASE_PRICE_REPORT", 0),
-			PerformanceReportBasePrice: utils.GetEnvInt("BASE_PRICE_PERFORMANCE_REPORT", 0),
-			AccessDatasetBasePrice:     utils.GetEnvInt("BASE_PRICE_ACCESS_DATASET", 0),
+			// Default Pricing fallback
+			AnalyzeBasePrice:           utils.GetEnvInt("BASE_PRICE_ANALYZE", 5000),
+			ReportBasePrice:            utils.GetEnvInt("BASE_PRICE_REPORT", 20000),
+			PerformanceReportBasePrice: utils.GetEnvInt("BASE_PRICE_PERFORMANCE_REPORT", 50000),
+			AccessDatasetBasePrice:     utils.GetEnvInt("BASE_PRICE_ACCESS_DATASET", 100000),
 		},
 		Webhook: AppWebhook{
-			RateLimit:                         utils.GetEnvInt("HOOK_RATE_LIMIT", 0),
-			MonthlyQuota:                      utils.GetEnvInt("HOOK_QUOTA", 0),
-			RateLimitedServices:               utils.GetEnvString("HOOK_RATE_LIMITED_SERVICES", ""),
-			PaidOnlyServices:                  utils.GetEnvString("HOOK_PAID_ONLY_SERVICES", ""),
-			AsyncServiceNames:                 parseCSVToLowerSlice(utils.GetEnvString("HOOK_ASYNC_SERVICE_NAMES", "")),
-			MaxQueue:                          utils.GetEnvInt("HOOK_MAX_QUEUE", 1),
-			ThrottleRetry:                     utils.GetEnvInt("HOOK_THROTTLE_RETRY", 15),
-			URL:                               utils.GetEnvString("HOOK_URL", ""),
-			HTTPTimeoutInSeconds:              utils.GetEnvInt("HOOK_HTTP_TIMEOUT", 10),
-			JWTAlg:                            utils.GetEnvString("HOOK_JWT_ALG", "ES256"),
-			JWTHookKey:                        utils.GetEnvString("JWT_HOOK_KEY", ""),
-			KonsulinOmnichannelContactSyncURL: utils.GetEnvString("HOOK_SERVICE_OMNICHANNEL_SYNC", ""),
+			RateLimit:                       utils.GetEnvInt("HOOK_RATE_LIMIT", -1),
+			MonthlyQuota:                    utils.GetEnvInt("HOOK_QUOTA", -1),
+			RateLimitedServices:             utils.GetEnvString("HOOK_RATE_LIMITED_SERVICES", "analyze,interpret"),
+			PaidOnlyServices:                utils.GetEnvString("HOOK_PAID_ONLY_SERVICES", "analyze"),
+			AsyncServiceNames:               parseCSVToLowerSlice(utils.GetEnvString("HOOK_ASYNC_SERVICE_NAMES", "")),
+			SynchronousServiceNames:         parseCSVToLowerSlice(utils.GetEnvString("HOOK_SYNC_SERVICE_NAMES", "analyze")), // we default to "analyze" for satisfying the non-empty validation check
+			SynchronousServiceRateLimit:     utils.GetEnvInt("HOOK_SYNCHRONOUS_SERVICE_RATE_LIMIT", 60),
+			SynchronousServiceWindowSeconds: utils.GetEnvInt("HOOK_SYNCHRONOUS_SERVICE_WINDOW_SECONDS", 60),
+			SynchronousServiceFailurePolicy: strings.ToLower(strings.TrimSpace(utils.GetEnvString("HOOK_SYNCHRONOUS_SERVICE_FAILURE_POLICY", "return_error"))),
+			MaxQueue:                        utils.GetEnvInt("HOOK_MAX_QUEUE", 150),
+			ThrottleRetry:                   utils.GetEnvInt("HOOK_THROTTLE_RETRY", 3),
+			URL:                             utils.GetEnvString("HOOK_URL", ""),
+			HTTPTimeoutInSeconds:            utils.GetEnvInt("HOOK_HTTP_TIMEOUT", 5),
+			JWTAlg:                          utils.GetEnvString("HOOK_JWT_ALG", "ES256"),
+			JWTHookKey:                      utils.GetEnvString("JWT_HOOK_KEY", ""), // Sensitive
 		},
 		Xendit: AppXendit{
-			APIKey:       utils.GetEnvString("APP_XENDIT_API_KEY", ""),
+			APIKey:       utils.GetEnvString("APP_XENDIT_API_KEY", ""), // Sensitive
 			WebhookToken: utils.GetEnvString("APP_XENDIT_WEBHOOK_TOKEN", ""),
 		},
+	}
+
+	// Validate mandatory sensitive fields in non-dev environments
+	if cfg.App.Env != "local" && cfg.App.Env != "dev" && cfg.App.Env != "development" && cfg.App.Env != "test" {
+		if cfg.JWT.Secret == "" {
+			log.Fatalf("APP_JWT_SECRET is required in %s environment", cfg.App.Env)
+		}
+		if cfg.Webhook.JWTHookKey == "" {
+			log.Fatalf("JWT_HOOK_KEY is required in %s environment", cfg.App.Env)
+		}
+		if cfg.PaymentGateway.Username == "" || cfg.PaymentGateway.ApiKey == "" {
+			log.Fatalf("Payment gateway credentials (APP_PAYMENT_GATEWAY_USERNAME, APP_PAYMENT_GATEWAY_API_KEY) are required in %s environment", cfg.App.Env)
+		}
+		if cfg.Xendit.APIKey == "" {
+			log.Fatalf("APP_XENDIT_API_KEY is required in %s environment", cfg.App.Env)
+		}
+		if cfg.PaymentGateway.BaseUrl == "" {
+			log.Fatalf("APP_PAYMENT_GATEWAY_BASE_URL is required in %s environment", cfg.App.Env)
+		}
 	}
 
 	// this is a safe guard to ensure that no base price is left unset
@@ -165,22 +171,24 @@ func loadInternalConfigWithEnv() *InternalConfig {
 		log.Fatalf("invalid service base price configuration: all BASE_PRICE_* must be > 0")
 	}
 
-	if cfg.Webhook.KonsulinOmnichannelContactSyncURL == "" {
-		log.Fatalf("invalid webhook configuration: HOOK_SERVICE_OMNICHANNEL_SYNC must be set")
+	if len(cfg.Webhook.SynchronousServiceNames) == 0 {
+		log.Fatalf("invalid webhook configuration: HOOK_SYNC_SERVICE_NAMES must be set and non-empty")
 	}
-
-	konsulinOmnichannelContactSyncURL := cfg.Webhook.URL + cfg.Webhook.KonsulinOmnichannelContactSyncURL
-	_, err := url.Parse(konsulinOmnichannelContactSyncURL)
-	if err != nil {
-		log.Fatalf("invalid webhook configuration: HOOK_SERVICE_OMNICHANNEL_SYNC must be a valid URL: %s", err)
+	if cfg.Webhook.SynchronousServiceRateLimit <= 0 {
+		cfg.Webhook.SynchronousServiceRateLimit = 60
+	}
+	if cfg.Webhook.SynchronousServiceWindowSeconds <= 0 {
+		cfg.Webhook.SynchronousServiceWindowSeconds = 60
+	}
+	switch cfg.Webhook.SynchronousServiceFailurePolicy {
+	case "return_error", "enqueue_request":
+	default:
+		cfg.Webhook.SynchronousServiceFailurePolicy = "return_error"
 	}
 
 	// Validate/normalize cron spec now; default to @daily if empty or invalid
 	spec := cfg.App.SlotWorkerCronSpec
-	if spec == "" {
-		log.Printf("slot worker: empty cron spec, defaulting to @daily")
-		spec = "@daily"
-	}
+
 	if _, err := cron.ParseStandard(spec); err != nil {
 		log.Printf("slot worker: invalid cron spec '%s': %v, defaulting to @daily", spec, err)
 		spec = "@daily"
@@ -201,7 +209,7 @@ func loadDriverConfigWithYAML() *DriverConfig {
 }
 
 func loadDriverConfigWithEnv() *DriverConfig {
-	return &DriverConfig{
+	cfg := &DriverConfig{
 		Redis: Redis{
 			Host:     utils.GetEnvString("REDIS_HOST", "localhost"),
 			Port:     utils.GetEnvString("REDIS_PORT", "6379"),
@@ -209,31 +217,47 @@ func loadDriverConfigWithEnv() *DriverConfig {
 		},
 		Logger: Logger{
 			Level:               utils.GetEnvString("LOGGER_LEVEL", "info"),
-			OutputFileName:      utils.GetEnvString("LOGGER_OUTPUT_FILE_NAME", "app.log"),
-			OutputErrorFileName: utils.GetEnvString("LOGGER_OUTPUT_ERROR_FILE_NAME", "error.log"),
+			OutputFileName:      utils.GetEnvString("LOGGER_OUTPUT_FILE_NAME", "logger.log"),
+			OutputErrorFileName: utils.GetEnvString("LOGGER_OUTPUT_ERROR_FILE_NAME", "logger-error.log"),
 		},
 		RabbitMQ: RabbitMQ{
-			Host:     utils.GetEnvString("RABBITMQ_HOST", "localhost"),
-			Port:     utils.GetEnvString("RABBITMQ_PORT", "5672"),
-			Username: utils.GetEnvString("RABBITMQ_USERNAME", "guest"),
-			Password: utils.GetEnvString("RABBITMQ_PASSWORD", "guest"),
-		},
-		Minio: Minio{
-			Host:     utils.GetEnvString("MINIO_HOST", "localhost"),
-			Port:     utils.GetEnvString("MINIO_PORT", "9000"),
-			Username: utils.GetEnvString("MINIO_USERNAME", "minioadmin"),
-			Password: utils.GetEnvString("MINIO_PASSWORD", "minioadmin"),
-			UseSSL:   utils.GetEnvBool("MINIO_USE_SSL", false),
+			// Defaults for connectivity (Standard Localhost)
+			Host: utils.GetEnvString("RABBITMQ_HOST", "localhost"),
+			Port: utils.GetEnvString("RABBITMQ_PORT", "5672"),
+			// These must be set in .env
+			Username: utils.GetEnvString("RABBITMQ_USERNAME", ""),
+			Password: utils.GetEnvString("RABBITMQ_PASSWORD", ""),
 		},
 		Supertoken: Supertoken{
 			ApiBasePath:     utils.GetEnvString("SUPERTOKEN_API_BASE_PATH", "/auth"),
-			WebsiteBasePath: utils.GetEnvString("SUPERTOKEN_WEBSITE_BASE_PATH", "/"),
-			ConnectionURI:   utils.GetEnvString("SUPERTOKEN_CONNECTION_URI", ""),
-			AppName:         utils.GetEnvString("SUPERTOKEN_APP_NAME", "MyApp"),
+			WebsiteBasePath: utils.GetEnvString("SUPERTOKEN_WEBSITE_BASE_PATH", "/auth"),
+			ConnectionURI:   utils.GetEnvString("SUPERTOKEN_CONNECTION_URI", "http://localhost:3567"),
+			AppName:         utils.GetEnvString("SUPERTOKEN_APP_NAME", "Konsulin"),
 			ApiDomain:       utils.GetEnvString("SUPERTOKEN_API_DOMAIN", "http://localhost:3000"),
-			WebsiteDomain:   utils.GetEnvString("SUPERTOKEN_WEBSITE_DOMAIN", "http://localhost:3001"),
+			WebsiteDomain:   utils.GetEnvString("SUPERTOKEN_WEBSITE_DOMAIN", "http://localhost:3000"),
 		},
 	}
+
+	// Check current environment
+	env := os.Getenv("APP_ENV")
+	if env == "" {
+		env = "local"
+	}
+
+
+	if env != "local" && env != "dev" && env != "development" && env != "test" {
+		// Validate Redis Password
+		if cfg.Redis.Password == "" {
+			log.Fatalf("REDIS_PASSWORD is required in %s environment", env)
+		}
+
+		// Validate RabbitMQ Credentials
+		if cfg.RabbitMQ.Username == "" || cfg.RabbitMQ.Password == "" {
+			log.Fatalf("RabbitMQ credentials (RABBITMQ_USERNAME, RABBITMQ_PASSWORD) are required in %s environment", env)
+		}
+	}
+
+	return cfg
 }
 
 func NewInternalConfig() *InternalConfig {

@@ -10,7 +10,6 @@ import (
 	"konsulin-service/internal/app/drivers/database"
 	"konsulin-service/internal/app/drivers/logger"
 	"konsulin-service/internal/app/drivers/messaging"
-	"konsulin-service/internal/app/drivers/storage"
 	"konsulin-service/internal/app/services/core/auth"
 	"konsulin-service/internal/app/services/core/organization"
 	"konsulin-service/internal/app/services/core/payments"
@@ -26,6 +25,7 @@ import (
 	"konsulin-service/internal/app/services/fhir_spark/persons"
 	practitionerRoleFhir "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
+	questionnaireResponsesFhir "konsulin-service/internal/app/services/fhir_spark/questionnaire_responses"
 	scheduleFhir "konsulin-service/internal/app/services/fhir_spark/schedules"
 	"konsulin-service/internal/app/services/fhir_spark/service_requests"
 	slotFhir "konsulin-service/internal/app/services/fhir_spark/slots"
@@ -37,7 +37,6 @@ import (
 	redisKonsulin "konsulin-service/internal/app/services/shared/redis"
 	storageKonsulin "konsulin-service/internal/app/services/shared/storage"
 	"konsulin-service/internal/app/services/shared/webhookqueue"
-	"konsulin-service/internal/app/services/shared/whatsapp"
 	"log"
 	"net/http"
 	"os"
@@ -79,8 +78,6 @@ func main() {
 	// Initialize RabbitMQ connection
 	rabbitMQ := messaging.NewRabbitMQ(driverConfig)
 
-	// Initialize Minio client for storage
-	minio := storage.NewMinio(driverConfig)
 
 	// Create a new router
 	chiRouter := chi.NewRouter()
@@ -90,7 +87,6 @@ func main() {
 		Router:         chiRouter,
 		Redis:          redis,
 		Logger:         logger,
-		Minio:          minio,
 		RabbitMQ:       rabbitMQ,
 		InternalConfig: internalConfig,
 		DriverConfig:   driverConfig,
@@ -170,20 +166,11 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		return err
 	}
 
-	// Initialize the whatsApp service with RabbitMQ
-	whatsAppService, err := whatsapp.NewWhatsAppService(bootstrap.RabbitMQ, bootstrap.Logger, bootstrap.InternalConfig.RabbitMQ.WhatsAppQueue)
-	if err != nil {
-		return err
-	}
-
 	// Initialize oy service (kept for backward-compatibility; not used for creation)
 	_ = payment_gateway.NewOyService(bootstrap.InternalConfig, bootstrap.Logger)
 
 	// Initialize Xendit client (reusable)
 	xenditClient := xendit.NewClient(bootstrap.InternalConfig.Xendit.APIKey)
-
-	// Initialize Minio storage
-	minioStorage := storageKonsulin.NewMinioStorage(bootstrap.Minio)
 
 	// Initialize session service with Redis repository
 	sessionService := session.NewSessionService(redisRepository, bootstrap.Logger)
@@ -200,6 +187,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	scheduleClient := scheduleFhir.NewScheduleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	slotClient := slotFhir.NewSlotFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	serviceRequestFhirClient := service_requests.NewServiceRequestFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	questionnaireResponseFhirClient := questionnaireResponsesFhir.NewQuestionnaireResponseFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 
 	jwtManager, err := jwtmanager.NewJWTManager(bootstrap.InternalConfig, bootstrap.Logger)
 	if err != nil {
@@ -218,7 +206,6 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		nil, // organizationFhirClient, not used yet
 		redisRepository,
 		sessionService,
-		minioStorage,
 		bootstrap.InternalConfig,
 		bootstrap.Logger,
 		lockService,
@@ -233,8 +220,6 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		practitionerFhirClient,
 		userUsecase,
 		mailerService,
-		whatsAppService,
-		minioStorage,
 		bootstrap.InternalConfig,
 		bootstrap.DriverConfig,
 		bootstrap.Logger,
@@ -254,6 +239,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		patientFhirClient,
 		practitionerRoleClient,
 		scheduleClient,
+		questionnaireResponseFhirClient,
 	)
 
 	// Initialize supertokens
@@ -264,12 +250,13 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 
 	// Initialize webhook components
 	webhookLimiter := ratelimiter.NewHookRateLimiter(redisRepository, bootstrap.Logger, bootstrap.InternalConfig)
+	resourceLimiter := ratelimiter.NewResourceLimiter(redisRepository, bootstrap.Logger)
 	webhookQueueService, err := webhookqueue.NewService(bootstrap.RabbitMQ, bootstrap.Logger, bootstrap.InternalConfig.Webhook.MaxQueue)
 	if err != nil {
 		return err
 	}
-	webhookUsecase := webhook.NewUsecase(bootstrap.Logger, bootstrap.InternalConfig, webhookQueueService, jwtManager, patientFhirClient, practitionerFhirClient, serviceRequestFhirClient)
-	webhookController := controllers.NewWebhookController(bootstrap.Logger, webhookUsecase, webhookLimiter, bootstrap.InternalConfig)
+	webhookUsecase := webhook.NewUsecase(bootstrap.Logger, bootstrap.InternalConfig, webhookQueueService, jwtManager, patientFhirClient, practitionerFhirClient, personFhirClient, serviceRequestFhirClient, middlewares.Enforcer)
+	webhookController := controllers.NewWebhookController(bootstrap.Logger, webhookUsecase, webhookLimiter, resourceLimiter, bootstrap.InternalConfig)
 	// Initialize payment usecase and controller (inject JWT manager)
 	serviceRequestStorage := storageKonsulin.NewServiceRequestStorage(serviceRequestFhirClient, bootstrap.Logger)
 	invoiceFhirClient := invoicesFhir.NewInvoiceFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
@@ -309,6 +296,10 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		bootstrap.Logger,
 	)
 	orgController := controllers.NewOrganizationController(bootstrap.Logger, orgUsecase)
+
+	if err := orgUsecase.InitializeKonsulinOrganizationResource(context.Background()); err != nil {
+		log.Fatalf("Error initializing Konsulin organization resource: %v", err)
+	}
 
 	// Start webhook worker ticker (best-effort lock ensures single execution)
 	worker := webhook.NewWorker(bootstrap.Logger, bootstrap.InternalConfig, lockService, webhookQueueService, jwtManager)

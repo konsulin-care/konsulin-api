@@ -16,6 +16,7 @@ p, Guest, POST, /fhir/QuestionnaireResponse
 p, Guest, GET, /fhir/ResearchStudy
 p, Guest, GET, /fhir/Slot
 p, Guest, GET, /fhir/metadata
+p, Guest, POST, /hook/synchronous/modify-profile
 p, Patient, GET, /fhir/Appointment
 p, Patient, POST, /fhir/Appointment
 p, Patient, GET, /fhir/Condition
@@ -35,10 +36,13 @@ p, Patient, GET, /fhir/PractitionerRole
 p, Patient, GET, /fhir/Questionnaire
 p, Patient, GET, /fhir/QuestionnaireResponse
 p, Patient, POST, /fhir/QuestionnaireResponse
+p, Patient, PUT, /fhir/QuestionnaireResponse
 p, Patient, GET, /fhir/ResearchStudy
 p, Patient, GET, /fhir/Slot
 p, Patient, PUT, /fhir/Slot
 p, Patient, PUT, /fhir/Condition
+p, Patient, POST, /hook/synchronous/modify-profile
+p, Patient, POST, /hook/synchronous/update-avatar
 p, Practitioner, GET, /fhir/Appointment
 p, Practitioner, GET, /fhir/Condition
 p, Practitioner, GET, /fhir/Invoice
@@ -63,6 +67,8 @@ p, Practitioner, GET, /fhir/QuestionnaireResponse
 p, Practitioner, GET, /fhir/ResearchStudy
 p, Practitioner, GET, /fhir/Slot
 p, Practitioner, PUT, /fhir/Schedule
+p, Practitioner, POST, /hook/synchronous/modify-profile
+p, Practitioner, POST, /hook/synchronous/update-avatar
 p, Researcher, GET, /fhir/PlanDefinition
 p, Researcher, POST, /fhir/PlanDefinition
 p, Researcher, PUT, /fhir/PlanDefinition

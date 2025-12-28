@@ -5,9 +5,7 @@ type InternalConfig struct {
 	FHIR           AppFHIR           `mapstructure:"fhir"`
 	JWT            AppJWT            `mapstructure:"jwt"`
 	Mailer         AppMailer         `mapstructure:"mailer"`
-	Minio          AppMinio          `mapstructure:"minio"`
 	RabbitMQ       AppRabbitMQ       `mapstructure:"rabbitmq"`
-	MongoDB        AppMongoDB        `mapstructure:"mongodb"`
 	Konsulin       AppKonsulin       `mapstructure:"konsulin"`
 	Supertoken     AppSupertoken     `mapstructure:"supertoken"`
 	PaymentGateway AppPaymentGateway `mapstructure:"payment_gateway"`
@@ -25,20 +23,15 @@ type App struct {
 	Timezone                                       string `mapstructure:"timezone"`
 	FrontendDomain                                 string `mapstructure:"frontend_domain"`
 	EndpointPrefix                                 string `mapstructure:"endpoint_prefix"`
-	ResetPasswordUrl                               string `mapstructure:"reset_password_url"`
 	MaxRequests                                    int    `mapstructure:"max_requests"`
 	ShutdownTimeoutInSeconds                       int    `mapstructure:"shutdown_timeout_in_seconds"`
 	MaxTimeRequestsPerSeconds                      int    `mapstructure:"max_time_requests_per_seconds"`
-	SessionMultiplierInMinutes                     int    `mapstructure:"session_multiplier_in_minutes"`
 	RequestBodyLimitInMegabyte                     int    `mapstructure:"request_body_limit_in_megabyte"`
 	PaymentExpiredTimeInMinutes                    int    `mapstructure:"payment_expired_time_in_minutes"`
 	PaymentGatewayRequestTimeoutInSeconds          int    `mapstructure:"payment_gateway_request_timeout_in_seconds"`
 	AccountDeactivationAgeInDays                   int    `mapstructure:"account_deactivation_age_in_days"`
-	LoginSessionExpiredTimeInHours                 int    `mapstructure:"login_session_expired_time_in_hours"`
-	WhatsAppOTPExpiredTimeInMinutes                int    `mapstructure:"whatsapp_otp_expired_time_in_minutes"`
 	ForgotPasswordTokenExpiredTimeInMinutes        int    `mapstructure:"forgot_password_token_expired_time_in_minutes"`
 	MinioPreSignedUrlObjectExpiryTimeInHours       int    `mapstructure:"minio_pre_signed_url_object_expiry_time_in_hours"`
-	QuestionnaireGuestResponseExpiredTimeInMinutes int    `mapstructure:"questionnaire_guest_response_expired_time_in_minutes"`
 	SuperadminAPIKey                               string `mapstructure:"superadmin_api_key"`
 	SuperadminAPIKeyRateLimit                      int    `mapstructure:"superadmin_api_key_rate_limit"`
 	WebhookInstantiateBasePath                     string `mapstructure:"webhook_instantiate_base_path"`
@@ -61,19 +54,9 @@ type AppMailer struct {
 	EmailSender string `mapstructure:"email_sender"`
 }
 
-type AppMinio struct {
-	ProfilePictureMaxUploadSizeInMB int    `mapstructure:"profile_picture_max_upload_size_in_mb"`
-	BucketName                      string `mapstructure:"bucket_name"`
-}
-
 type AppRabbitMQ struct {
 	MailerQueue   string `mapstructure:"mailer_queue"`
 	WhatsAppQueue string `mapstructure:"whatsapp_queue"`
-}
-
-type AppMongoDB struct {
-	FhirDBName     string `mapstructure:"fhir_db_name"`
-	KonsulinDBName string `mapstructure:"konsulin_db_name"`
 }
 
 type AppKonsulin struct {
@@ -117,6 +100,8 @@ type AppWebhook struct {
 	PaidOnlyServices string `mapstructure:"paid_only_services"`
 	// AsyncServiceNames is a parsed list of service names that trigger async ServiceRequest creation
 	AsyncServiceNames []string
+	// SynchronousServiceNames is a parsed list of service names allowed for synchronous routing
+	SynchronousServiceNames []string
 	// MaxQueue defines how many items the worker processes per tick
 	MaxQueue int `mapstructure:"max_queue"`
 	// ThrottleRetry is the failedCount threshold before sending to DLQ
@@ -125,12 +110,16 @@ type AppWebhook struct {
 	URL string `mapstructure:"url"`
 	// HTTPTimeoutInSeconds is the HTTP client timeout when calling the webhook
 	HTTPTimeoutInSeconds int `mapstructure:"http_timeout_in_seconds"`
+	// SynchronousServiceRateLimit controls requests allowed per window for synchronous services
+	SynchronousServiceRateLimit int `mapstructure:"synchronous_service_rate_limit"`
+	// SynchronousServiceWindowSeconds is the limiter window duration in seconds for synchronous services
+	SynchronousServiceWindowSeconds int `mapstructure:"synchronous_service_window_seconds"`
+	// SynchronousServiceFailurePolicy configures fallback behavior when synchronous forwarding fails
+	SynchronousServiceFailurePolicy string `mapstructure:"synchronous_service_failure_policy"`
 	// JWTAlg selects the signing algorithm (ES256|RS256)
 	JWTAlg string `mapstructure:"jwt_alg"`
 	// JWTHookKey is the private key PEM for signing webhook JWTs
 	JWTHookKey string `mapstructure:"jwt_hook_key"`
-	// KonsulinOmnichannelContactSyncURL is the full URL of the Konsulin Omnichannel Contact Sync service endpoint
-	KonsulinOmnichannelContactSyncURL string `mapstructure:"konsulin_omnichannel_contact_sync_url"`
 }
 
 // AppXendit holds Xendit SDK configuration

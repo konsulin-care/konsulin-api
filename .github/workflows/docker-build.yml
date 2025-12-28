@@ -60,7 +60,7 @@ jobs:
           echo "DOCKER_PASSWORD: [MASKED]"
 
       - name: Checkout Source
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           fetch-tags: true

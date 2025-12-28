@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"fmt"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
@@ -133,6 +134,47 @@ func (r *redisRepository) Increment(ctx context.Context, key string) error {
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String(constvars.LoggingRedisKey, key))
 	return err
+}
+
+// IncrementWithTTL atomically increments the key and sets TTL when first created.
+func (r *redisRepository) IncrementWithTTL(ctx context.Context, key string, exp time.Duration) (int, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	r.Log.Info("redisRepository.IncrementWithTTL called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingRedisKey, key),
+		zap.Duration(constvars.LoggingRedisExpirationTimeKey, exp))
+
+	script := redis.NewScript(`
+		local v = redis.call("INCR", KEYS[1])
+		if v == 1 then
+			redis.call("PEXPIRE", KEYS[1], ARGV[1])
+		end
+		return v
+	`)
+
+	res, err := script.Run(ctx, r.Client, []string{key}, exp.Milliseconds()).Result()
+	if err != nil {
+		r.Log.Error("redisRepository.IncrementWithTTL error",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingRedisKey, key),
+			zap.Error(err))
+		return 0, exceptions.ErrRedisIncrement(err)
+	}
+
+	val, ok := res.(int64)
+	if !ok {
+		r.Log.Error("redisRepository.IncrementWithTTL unexpected result type",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingRedisKey, key),
+			zap.Any("result", res))
+		return 0, exceptions.ErrRedisIncrement(fmt.Errorf("unexpected result type %T", res))
+	}
+
+	r.Log.Info("redisRepository.IncrementWithTTL succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingRedisKey, key),
+		zap.Int64("new_value", val))
+	return int(val), nil
 }
 
 func (r *redisRepository) PushToList(ctx context.Context, key string, values ...interface{}) error {

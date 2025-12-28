@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"konsulin-service/internal/app/config"
+	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/delivery/http/controllers"
 	"konsulin-service/internal/app/delivery/http/middlewares"
 	"konsulin-service/internal/pkg/constvars"
@@ -16,11 +17,22 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/supertokens/supertokens-golang/recipe/passwordless/plessmodels"
 	"go.uber.org/zap"
 )
 
 type MockAuthUsecase struct {
 	mock.Mock
+}
+
+func makeUserExistsOutput(email string) *contracts.CheckUserExistsOutput {
+	return &contracts.CheckUserExistsOutput{
+		SupertokenUser: &plessmodels.User{
+			Email: &email,
+		},
+		PatientIds:      []string{},
+		PractitionerIds: []string{},
+	}
 }
 
 func (m *MockAuthUsecase) InitializeSupertoken() error {
@@ -43,9 +55,13 @@ func (m *MockAuthUsecase) LogoutUser(ctx context.Context, sessionData string) er
 	return args.Error(0)
 }
 
-func (m *MockAuthUsecase) CheckUserExists(ctx context.Context, email string) (bool, error) {
+func (m *MockAuthUsecase) CheckUserExists(ctx context.Context, email string) (*contracts.CheckUserExistsOutput, error) {
 	args := m.Called(ctx, email)
-	return args.Bool(0), args.Error(1)
+	var out *contracts.CheckUserExistsOutput
+	if v := args.Get(0); v != nil {
+		out = v.(*contracts.CheckUserExistsOutput)
+	}
+	return out, args.Error(1)
 }
 
 func TestAuthRouter_MagicLinkEndpoint(t *testing.T) {
@@ -68,11 +84,19 @@ func TestAuthRouter_MagicLinkEndpoint(t *testing.T) {
 	}
 
 	router := chi.NewRouter()
+	// Inject a request ID so controllers pass their preliminary checks without
+	// needing the real RequestID middleware stack.
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), constvars.CONTEXT_REQUEST_ID_KEY, "test-request-id")
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	})
 	attachAuthRoutes(router, middlewareInstance, authController)
 
 	t.Run("MagicLink with Valid API Key", func(t *testing.T) {
 
-		mockAuthUsecase.On("CheckUserExists", mock.Anything, "test@example.com").Return(false, nil)
+		mockAuthUsecase.On("CheckUserExists", mock.Anything, "test@example.com").Return(nil, nil)
 		mockAuthUsecase.On("CreateMagicLink", mock.Anything, mock.AnythingOfType("*requests.SupertokenPasswordlessCreateMagicLink")).Return(nil)
 
 		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
@@ -434,7 +458,7 @@ func TestAuthRouter_ErrorHandling(t *testing.T) {
 
 	t.Run("MagicLink for Existing User without Roles", func(t *testing.T) {
 
-		mockAuthUsecase.On("CheckUserExists", mock.Anything, "existing@example.com").Return(true, nil)
+		mockAuthUsecase.On("CheckUserExists", mock.Anything, "existing@example.com").Return(makeUserExistsOutput("existing@example.com"), nil)
 		mockAuthUsecase.On("CreateMagicLink", mock.Anything, mock.AnythingOfType("*requests.SupertokenPasswordlessCreateMagicLink")).Return(nil)
 
 		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
@@ -457,7 +481,7 @@ func TestAuthRouter_ErrorHandling(t *testing.T) {
 
 	t.Run("MagicLink for New User without Roles", func(t *testing.T) {
 
-		mockAuthUsecase.On("CheckUserExists", mock.Anything, "newuser@example.com").Return(false, nil)
+		mockAuthUsecase.On("CheckUserExists", mock.Anything, "newuser@example.com").Return(nil, nil)
 
 		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
 			Email: "newuser@example.com",
@@ -479,7 +503,7 @@ func TestAuthRouter_ErrorHandling(t *testing.T) {
 
 	t.Run("MagicLink for New User with Empty Roles", func(t *testing.T) {
 
-		mockAuthUsecase.On("CheckUserExists", mock.Anything, "newuser@example.com").Return(false, nil)
+		mockAuthUsecase.On("CheckUserExists", mock.Anything, "newuser@example.com").Return(nil, nil)
 
 		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
 			Email: "newuser@example.com",
@@ -501,7 +525,7 @@ func TestAuthRouter_ErrorHandling(t *testing.T) {
 
 	t.Run("MagicLink for Existing User with Roles", func(t *testing.T) {
 
-		mockAuthUsecase.On("CheckUserExists", mock.Anything, "existing@example.com").Return(true, nil)
+		mockAuthUsecase.On("CheckUserExists", mock.Anything, "existing@example.com").Return(makeUserExistsOutput("existing@example.com"), nil)
 		mockAuthUsecase.On("CreateMagicLink", mock.Anything, mock.AnythingOfType("*requests.SupertokenPasswordlessCreateMagicLink")).Return(nil)
 
 		requestBody := requests.SupertokenPasswordlessCreateMagicLink{

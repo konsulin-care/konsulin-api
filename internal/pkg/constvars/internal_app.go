@@ -73,3 +73,8 @@ const (
 	KonsulinRoleClinicAdmin  = "Clinic Admin"
 	KonsulinRolePractitioner = "Practitioner"
 )
+
+// KonsulinOrganizationResourceID is the ID of Organization resource for Konsulin.
+// This resource ID is used to reference the Konsulin organization in the FHIR resources.
+// For now, it is used in the payment service as the recipient and issuer for the payment service.
+const KonsulinOrganizationResourceID = "Konsulin"
