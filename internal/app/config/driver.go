@@ -29,6 +29,7 @@ type Supertoken struct {
 	ApiBasePath     string `mapstructure:"api_base_path"`
 	WebsiteBasePath string `mapstructure:"website_base_path"`
 	ConnectionURI   string `mapstructure:"connection_uri"`
+	APIKey          string `mapstructure:"api_key"`
 	AppName         string `mapstructure:"app_name"`
 	ApiDomain       string `mapstructure:"api_domain"`
 	WebsiteDomain   string `mapstructure:"website_domain"`

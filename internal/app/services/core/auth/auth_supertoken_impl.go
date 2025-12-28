@@ -43,6 +43,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 
 	supertokenConnectionInfo := &supertokens.ConnectionInfo{
 		ConnectionURI: uc.DriverConfig.Supertoken.ConnectionURI,
+		APIKey:        uc.DriverConfig.Supertoken.APIKey,
 	}
 
 	supertokenAppInfo := supertokens.AppInfo{
