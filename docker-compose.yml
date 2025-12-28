@@ -59,7 +59,7 @@ services:
     volumes:
       - blaze_data:/app/data
 
-supertokens-core-konsulin:
+  supertokens-core-konsulin:
     image: registry.supertokens.io/supertokens/supertokens-postgresql:latest
     container_name: supertokens-core-konsulin
     restart: unless-stopped
