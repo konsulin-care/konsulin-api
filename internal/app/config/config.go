@@ -232,6 +232,7 @@ func loadDriverConfigWithEnv() *DriverConfig {
 			ApiBasePath:     utils.GetEnvString("SUPERTOKEN_API_BASE_PATH", "/auth"),
 			WebsiteBasePath: utils.GetEnvString("SUPERTOKEN_WEBSITE_BASE_PATH", "/auth"),
 			ConnectionURI:   utils.GetEnvString("SUPERTOKEN_CONNECTION_URI", "http://localhost:3567"),
+			APIKey:          utils.GetEnvString("SUPERTOKEN_API_KEY", ""),
 			AppName:         utils.GetEnvString("SUPERTOKEN_APP_NAME", "Konsulin"),
 			ApiDomain:       utils.GetEnvString("SUPERTOKEN_API_DOMAIN", "http://localhost:3000"),
 			WebsiteDomain:   utils.GetEnvString("SUPERTOKEN_WEBSITE_DOMAIN", "http://localhost:3000"),
@@ -254,6 +255,10 @@ func loadDriverConfigWithEnv() *DriverConfig {
 		// Validate RabbitMQ Credentials
 		if cfg.RabbitMQ.Username == "" || cfg.RabbitMQ.Password == "" {
 			log.Fatalf("RabbitMQ credentials (RABBITMQ_USERNAME, RABBITMQ_PASSWORD) are required in %s environment", env)
+		}
+		// Validate SuperTokens API key Credentials
+		if cfg.Supertoken.APIKey == "" {
+		log.Fatalf("Supertoken API key is required in %s environment", env)
 		}
 	}
 
