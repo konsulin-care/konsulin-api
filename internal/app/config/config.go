@@ -64,8 +64,8 @@ func loadInternalConfigWithEnv() *InternalConfig {
 			EndpointPrefix: utils.GetEnvString("APP_ENDPOINT_PREFIX", "api"),
 
 			// URLs & Timeouts
-			MaxRequests:               			   utils.GetEnvInt("APP_MAX_REQUESTS", 20),
-			MaxTimeRequestsPerSeconds: 			   utils.GetEnvInt("APP_MAX_TIME_REQUESTS_PER_SECONDS", 30),
+			MaxRequests:                           utils.GetEnvInt("APP_MAX_REQUESTS", 20),
+			MaxTimeRequestsPerSeconds:             utils.GetEnvInt("APP_MAX_TIME_REQUESTS_PER_SECONDS", 30),
 			RequestBodyLimitInMegabyte:            utils.GetEnvInt("APP_REQUEST_BODY_LIMIT_IN_MEGABYTE", 30),
 			PaymentExpiredTimeInMinutes:           utils.GetEnvInt("APP_PAYMENT_EXPIRED_TIME_IN_MINUTES", 60),
 			PaymentGatewayRequestTimeoutInSeconds: utils.GetEnvInt("APP_PAYMENT_GATEWAY_REQUEST_TIMEOUT_IN_SECONDS", 120),
@@ -85,7 +85,8 @@ func loadInternalConfigWithEnv() *InternalConfig {
 			SlotWorkerCronSpec: utils.GetEnvString("SLOT_WORKER_CRON_SPEC", "@daily"),
 		},
 		FHIR: AppFHIR{
-			BaseUrl: utils.GetEnvString("APP_FHIR_BASE_URL", "http://localhost:8080/fhir/"),
+			BaseUrl:                  utils.GetEnvString("APP_FHIR_BASE_URL", "http://localhost:8080/fhir/"),
+			TerminologyServerBaseUrl: utils.GetEnvString("APP_TERMINOLOGY_BASE_URL", "https://tx.konsulin.care/fhir"),
 		},
 		JWT: AppJWT{
 			Secret:        utils.GetEnvString("APP_JWT_SECRET", ""),
@@ -245,7 +246,6 @@ func loadDriverConfigWithEnv() *DriverConfig {
 		env = "local"
 	}
 
-
 	if env != "local" && env != "dev" && env != "development" && env != "test" {
 		// Validate Redis Password
 		if cfg.Redis.Password == "" {
@@ -258,7 +258,7 @@ func loadDriverConfigWithEnv() *DriverConfig {
 		}
 		// Validate SuperTokens API key Credentials
 		if cfg.Supertoken.APIKey == "" {
-		log.Fatalf("Supertoken API key is required in %s environment", env)
+			log.Fatalf("Supertoken API key is required in %s environment", env)
 		}
 	}
 
