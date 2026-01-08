@@ -74,6 +74,8 @@ func SetupRoutes(
 			attachScheduleRouter(r, middlewares, scheduleController)
 			attachWebhookRouter(r, middlewares, webhookController)
 			attachOrganizationRoutes(r, middlewares, organizationController)
+
+			r.Mount("/tx", middlewares.TxProxy(internalConfig.FHIR.TerminologyServerBaseUrl))
 		})
 	})
 

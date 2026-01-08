@@ -938,6 +938,80 @@ func matchesOwnedRef(ref string, oc *ownershipContext) bool {
 	return false
 }
 
+func (m *Middlewares) TxProxy(target string) http.Handler {
+	client := &http.Client{
+		Timeout: 15 * time.Second,
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		roles, ok := r.Context().Value(keyRoles).([]string)
+		if !ok || len(roles) == 0 {
+			utils.BuildErrorResponse(m.Log, w, exceptions.ErrTokenMissing(nil))
+			return
+		}
+
+		allowAccess := false
+		path := r.URL.Path
+		method := r.Method
+
+		for _, role := range roles {
+			if ok, _ := m.Enforcer.Enforce(role, method, path); ok {
+				allowAccess = true
+				break
+			}
+		}
+
+		if !allowAccess {
+			utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(fmt.Errorf("forbidden: role not allowed to access terminology service")))
+			return
+		}
+
+		// Remove the /api/v1/tx prefix to get the relative path
+		// We expect the router mount to be at /api/v1/tx, so we trim that prefix
+		relativePath := strings.TrimPrefix(r.URL.Path, fmt.Sprintf("/%s/%s/tx", m.InternalConfig.App.EndpointPrefix, m.InternalConfig.App.Version))
+
+		fullURL := target + relativePath
+		if r.URL.RawQuery != "" {
+			fullURL += "?" + r.URL.RawQuery
+		}
+
+		req, err := http.NewRequestWithContext(r.Context(), r.Method, fullURL, r.Body)
+		if err != nil {
+			utils.BuildErrorResponse(m.Log, w, exceptions.ErrCreateHTTPRequest(err))
+			return
+		}
+
+		req.Header.Set("Accept", "application/fhir+json")
+
+		if contentType := r.Header.Get("Content-Type"); contentType != "" {
+			req.Header.Set("Content-Type", contentType)
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			utils.BuildErrorResponse(m.Log, w, exceptions.ErrSendHTTPRequest(err))
+			return
+		}
+		defer resp.Body.Close()
+
+		for k, v := range resp.Header {
+			if strings.HasPrefix(k, "Access-Control-") {
+				continue
+			}
+			if k == "Content-Length" || k == "Connection" {
+				continue
+			}
+
+			for _, val := range v {
+				w.Header().Add(k, val)
+			}
+		}
+
+		w.WriteHeader(resp.StatusCode)
+		io.Copy(w, resp.Body)
+	})
+}
+
 // collectReferences walks arbitrary JSON and collects all "reference" string fields.
 func collectReferences(v any, out *[]string, depth int) {
 	// prevent infinite recursion. 30 is arbitrary.
