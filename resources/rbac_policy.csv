@@ -69,6 +69,7 @@ p, Practitioner, GET, /fhir/Slot
 p, Practitioner, PUT, /fhir/Schedule
 p, Practitioner, POST, /hook/synchronous/modify-profile
 p, Practitioner, POST, /hook/synchronous/update-avatar
+p, Practitioner, GET, /api/v1/tx
 p, Researcher, GET, /fhir/PlanDefinition
 p, Researcher, POST, /fhir/PlanDefinition
 p, Researcher, PUT, /fhir/PlanDefinition
@@ -109,3 +110,4 @@ p, Superadmin, POST, /fhir/Schedule
 p, Superadmin, GET, /fhir/Slot
 p, Superadmin, PUT, /fhir/Slot
 p, Superadmin, GET, /fhir/metadata
+p, Superadmin, GET, /api/v1/tx
