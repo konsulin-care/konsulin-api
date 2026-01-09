@@ -975,7 +975,12 @@ func (m *Middlewares) TxProxy(target string) http.Handler {
 			fullURL += "?" + r.URL.RawQuery
 		}
 
-		req, err := http.NewRequestWithContext(r.Context(), r.Method, fullURL, r.Body)
+		bodyBytes, _ := r.Context().Value(constvars.CONTEXT_RAW_BODY).([]byte)
+		if bodyBytes == nil {
+			bodyBytes = []byte{}
+		}
+
+		req, err := http.NewRequestWithContext(r.Context(), r.Method, fullURL, bytes.NewReader(bodyBytes))
 		if err != nil {
 			utils.BuildErrorResponse(m.Log, w, exceptions.ErrCreateHTTPRequest(err))
 			return
