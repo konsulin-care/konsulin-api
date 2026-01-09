@@ -1014,7 +1014,10 @@ func (m *Middlewares) TxProxy(target string) http.Handler {
 		}
 
 		w.WriteHeader(resp.StatusCode)
-		io.Copy(w, resp.Body)
+		_, err = io.Copy(w, resp.Body)
+		if err != nil {
+			m.Log.Warn("failed to copy response body", zap.Error(err))
+		}
 	})
 }
 
