@@ -4,6 +4,8 @@ import (
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/utils"
+	"net/http"
+	"time"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/fsnotify/fsnotify"
@@ -69,6 +71,11 @@ func NewMiddlewares(
 		logger.Error("failed to watch policy file", zap.Error(err))
 	}
 
+	httpClient := &http.Client{
+		Timeout:   15 * time.Second,
+		Transport: &http.Transport{MaxIdleConnsPerHost: 100},
+	}
+
 	return &Middlewares{
 		Log:                             logger,
 		SessionService:                  sessionService,
@@ -80,6 +87,7 @@ func NewMiddlewares(
 		ScheduleFhirClient:              scheduleFhirClient,
 		QuestionnaireResponseFhirClient: questionnaireResponseFhirClient,
 		Enforcer:                        enforcer,
+		HTTPClient:                      httpClient,
 	}
 }
 
@@ -95,6 +103,9 @@ type Middlewares struct {
 	ScheduleFhirClient              contracts.ScheduleFhirClient
 	QuestionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient
 	Enforcer                        *casbin.Enforcer
+
+	// HTTPClient is a client for sending HTTP requests and can be reused for all requests.
+	HTTPClient *http.Client
 }
 
 type User struct {
