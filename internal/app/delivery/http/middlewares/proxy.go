@@ -940,7 +940,8 @@ func matchesOwnedRef(ref string, oc *ownershipContext) bool {
 
 func (m *Middlewares) TxProxy(target string) http.Handler {
 	client := &http.Client{
-		Timeout: 15 * time.Second,
+		Timeout:   15 * time.Second,
+		Transport: &http.Transport{MaxIdleConnsPerHost: 100},
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
