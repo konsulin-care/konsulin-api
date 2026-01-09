@@ -6,6 +6,7 @@ import (
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/models"
+	"konsulin-service/internal/app/services/shared/jwtmanager"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"sync"
@@ -27,6 +28,7 @@ type authUsecase struct {
 	MailerService          contracts.MailerService
 	WhatsAppService        contracts.WhatsAppService
 	MinioStorage           contracts.Storage
+	JWTManager             *jwtmanager.JWTManager
 	InternalConfig         *config.InternalConfig
 	DriverConfig           *config.DriverConfig
 	Roles                  map[string]*models.Role
@@ -46,6 +48,7 @@ func NewAuthUsecase(
 	practitionerFhirClient contracts.PractitionerFhirClient,
 	userUsecase contracts.UserUsecase,
 	mailerService contracts.MailerService,
+	jwtManager *jwtmanager.JWTManager,
 	internalConfig *config.InternalConfig,
 	driverConfig *config.DriverConfig,
 	logger *zap.Logger,
@@ -58,6 +61,7 @@ func NewAuthUsecase(
 			PractitionerFhirClient: practitionerFhirClient,
 			UserUsecase:            userUsecase,
 			MailerService:          mailerService,
+			JWTManager:             jwtManager,
 			InternalConfig:         internalConfig,
 			DriverConfig:           driverConfig,
 			Roles:                  make(map[string]*models.Role),
@@ -186,6 +190,19 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Su
 		)
 	}
 
+	initializeResourcesInput := &contracts.InitializeNewUserFHIRResourcesInput{
+		Email:            request.Email,
+		SuperTokenUserID: plessResponse.User.ID,
+	}
+	initializeResourcesInput.ToogleByRoles(request.Roles)
+	initializeResources, err := uc.UserUsecase.InitializeNewUserFHIRResources(context.Background(), initializeResourcesInput)
+	if err != nil {
+		return err
+	}
+
+	// NOTE: this must run after we call webhook [base]/api/v1/hook/synchronous/modify-profile
+	// because the underlying email delivery service relies on the result
+	// of profile synchronization (omnichannel service).
 	emailData := emaildelivery.EmailType{
 		PasswordlessLogin: &emaildelivery.PasswordlessLoginType{
 			Email:           request.Email,
@@ -202,16 +219,6 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Su
 			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
 			zap.Error(err),
 		)
-		return err
-	}
-
-	initializeResourcesInput := &contracts.InitializeNewUserFHIRResourcesInput{
-		Email:            request.Email,
-		SuperTokenUserID: plessResponse.User.ID,
-	}
-	initializeResourcesInput.ToogleByRoles(request.Roles)
-	initializeResources, err := uc.UserUsecase.InitializeNewUserFHIRResources(context.Background(), initializeResourcesInput)
-	if err != nil {
 		return err
 	}
 
