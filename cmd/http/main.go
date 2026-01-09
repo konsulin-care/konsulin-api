@@ -78,7 +78,6 @@ func main() {
 	// Initialize RabbitMQ connection
 	rabbitMQ := messaging.NewRabbitMQ(driverConfig)
 
-
 	// Create a new router
 	chiRouter := chi.NewRouter()
 
@@ -220,6 +219,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		practitionerFhirClient,
 		userUsecase,
 		mailerService,
+		jwtManager,
 		bootstrap.InternalConfig,
 		bootstrap.DriverConfig,
 		bootstrap.Logger,
