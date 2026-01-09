@@ -219,6 +219,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		practitionerFhirClient,
 		userUsecase,
 		mailerService,
+		jwtManager,
 		bootstrap.InternalConfig,
 		bootstrap.DriverConfig,
 		bootstrap.Logger,
