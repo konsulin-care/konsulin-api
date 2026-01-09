@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"konsulin-service/internal/app/contracts"
-	webhooksvc "konsulin-service/internal/app/services/core/webhook"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"log"
@@ -276,7 +275,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
 						defer cancel()
 
-						err := webhooksvc.SendMagicLink(ctx, uc.JWTManager, webhooksvc.SendMagicLinkInput{
+						err := uc.MagicLinkDelivery.SendMagicLink(ctx, contracts.SendMagicLinkInput{
 							URL:   *input.PasswordlessLogin.UrlWithLinkCode,
 							Email: input.PasswordlessLogin.Email,
 						})

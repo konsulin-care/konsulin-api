@@ -6,7 +6,6 @@ import (
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/models"
-	"konsulin-service/internal/app/services/shared/jwtmanager"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"sync"
@@ -28,7 +27,7 @@ type authUsecase struct {
 	MailerService          contracts.MailerService
 	WhatsAppService        contracts.WhatsAppService
 	MinioStorage           contracts.Storage
-	JWTManager             *jwtmanager.JWTManager
+	MagicLinkDelivery      contracts.MagicLinkDeliveryService
 	InternalConfig         *config.InternalConfig
 	DriverConfig           *config.DriverConfig
 	Roles                  map[string]*models.Role
@@ -48,7 +47,7 @@ func NewAuthUsecase(
 	practitionerFhirClient contracts.PractitionerFhirClient,
 	userUsecase contracts.UserUsecase,
 	mailerService contracts.MailerService,
-	jwtManager *jwtmanager.JWTManager,
+	magicLinkDelivery contracts.MagicLinkDeliveryService,
 	internalConfig *config.InternalConfig,
 	driverConfig *config.DriverConfig,
 	logger *zap.Logger,
@@ -61,7 +60,7 @@ func NewAuthUsecase(
 			PractitionerFhirClient: practitionerFhirClient,
 			UserUsecase:            userUsecase,
 			MailerService:          mailerService,
-			JWTManager:             jwtManager,
+			MagicLinkDelivery:      magicLinkDelivery,
 			InternalConfig:         internalConfig,
 			DriverConfig:           driverConfig,
 			Roles:                  make(map[string]*models.Role),
