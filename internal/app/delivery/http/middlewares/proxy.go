@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -962,6 +963,17 @@ func (m *Middlewares) TxProxy(target string) http.Handler {
 			return
 		}
 
+		// Require at least one of: filter, count query params. If none present, will return 202 without
+		// proxying the request to the terminology server.
+		// This behaviour is requested here: https://github.com/konsulin-care/konsulin-api/pull/291#issuecomment-3728978396
+		q := r.URL.Query()
+		hasFilter := strings.TrimSpace(q.Get("filter")) != ""
+		hasCount := strings.TrimSpace(q.Get("count")) != ""
+		if !hasFilter && !hasCount {
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
+
 		// Remove the /api/v1/tx prefix to get the relative path
 		// We expect the router mount to be at /api/v1/tx, so we trim that prefix
 		relativePath := strings.TrimPrefix(r.URL.Path, fmt.Sprintf("/%s/%s/tx", m.InternalConfig.App.EndpointPrefix, m.InternalConfig.App.Version))
@@ -976,7 +988,13 @@ func (m *Middlewares) TxProxy(target string) http.Handler {
 			bodyBytes = []byte{}
 		}
 
-		req, err := http.NewRequestWithContext(r.Context(), r.Method, fullURL, bytes.NewReader(bodyBytes))
+		// Hard timeout for upstream terminology server requests.
+		// If a request/connection is ongoing for > 5 minutes, cancel it and return 504.
+		// this behaviour is requested here: https://github.com/konsulin-care/konsulin-api/pull/291#issuecomment-3728978396
+		proxyCtx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+		defer cancel()
+
+		req, err := http.NewRequestWithContext(proxyCtx, r.Method, fullURL, bytes.NewReader(bodyBytes))
 		if err != nil {
 			utils.BuildErrorResponse(m.Log, w, exceptions.ErrCreateHTTPRequest(err))
 			return
@@ -990,6 +1008,11 @@ func (m *Middlewares) TxProxy(target string) http.Handler {
 
 		resp, err := m.HTTPClient.Do(req)
 		if err != nil {
+			// Return 504 on deadline exceeded.
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(proxyCtx.Err(), context.DeadlineExceeded) {
+				utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+				return
+			}
 			utils.BuildErrorResponse(m.Log, w, exceptions.ErrSendHTTPRequest(err))
 			return
 		}
