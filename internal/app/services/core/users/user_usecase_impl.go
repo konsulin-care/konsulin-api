@@ -781,6 +781,16 @@ func (uc *userUsecase) createPersonIfNotExists(ctx context.Context, email string
 		return &person, nil
 	}
 
+	userChatwootContact, chatwootErr := uc.callWebhookSvcKonsulinOmnichannel(ctx, email, "")
+	if chatwootErr != nil {
+		// log the error but continue the process
+		uc.Log.Error("userUsecase.createPatientIfNotExists error calling webhook svc konsulin omnichannel",
+			zap.Error(chatwootErr),
+		)
+	}
+
+	chatwootID := strconv.Itoa(userChatwootContact.ChatwootID)
+
 	newPersonInput := &fhir_dto.Person{
 		ResourceType: constvars.ResourcePerson,
 		Active:       true,
@@ -798,6 +808,13 @@ func (uc *userUsecase) createPersonIfNotExists(ctx context.Context, email string
 		newPersonInput.Identifier = append(newPersonInput.Identifier, fhir_dto.Identifier{
 			System: constvars.FhirSupertokenSystemIdentifier,
 			Value:  superTokenUserID,
+		})
+	}
+
+	if chatwootErr == nil && userChatwootContact.ChatwootID != 0 {
+		newPersonInput.Identifier = append(newPersonInput.Identifier, fhir_dto.Identifier{
+			System: constvars.KonsulinOmnichannelSystemIdentifier,
+			Value:  chatwootID,
 		})
 	}
 
