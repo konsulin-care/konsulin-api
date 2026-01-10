@@ -193,7 +193,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		return err
 	}
 
-	magicLinkDelivery := webhook.NewMagicLinkDeliveryService(bootstrap.InternalConfig, jwtManager)
+	magicLinkDelivery := webhook.NewMagicLinkDeliveryService(bootstrap.InternalConfig, jwtManager, bootstrap.Logger)
 
 	// Ensure default FHIR Groups exist for ServiceRequest subjects
 	_ = serviceRequestFhirClient.EnsureAllNecessaryGroupsExists(context.Background())

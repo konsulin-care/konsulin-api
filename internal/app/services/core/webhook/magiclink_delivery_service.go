@@ -14,6 +14,8 @@ import (
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/services/shared/jwtmanager"
 	"konsulin-service/internal/pkg/constvars"
+
+	"go.uber.org/zap"
 )
 
 const (
@@ -27,6 +29,7 @@ const (
 )
 
 type magicLinkDeliveryService struct {
+	log        *zap.Logger
 	cfg        *config.InternalConfig
 	jwtManager *jwtmanager.JWTManager
 	httpClient *http.Client
@@ -34,7 +37,7 @@ type magicLinkDeliveryService struct {
 
 // NewMagicLinkDeliveryService constructs an internal-only delivery service for passwordless magic links.
 // It is NOT exposed as an HTTP endpoint; intended usage is via internal components like SuperTokens overrides.
-func NewMagicLinkDeliveryService(cfg *config.InternalConfig, jwtManager *jwtmanager.JWTManager) contracts.MagicLinkDeliveryService {
+func NewMagicLinkDeliveryService(cfg *config.InternalConfig, jwtManager *jwtmanager.JWTManager, logger *zap.Logger) contracts.MagicLinkDeliveryService {
 	timeoutSeconds := 10
 	if cfg != nil && cfg.Webhook.HTTPTimeoutInSeconds > 0 {
 		timeoutSeconds = cfg.Webhook.HTTPTimeoutInSeconds
@@ -42,6 +45,7 @@ func NewMagicLinkDeliveryService(cfg *config.InternalConfig, jwtManager *jwtmana
 
 	return &magicLinkDeliveryService{
 		cfg:        cfg,
+		log:        logger,
 		jwtManager: jwtManager,
 		httpClient: &http.Client{Timeout: time.Duration(timeoutSeconds) * time.Second},
 	}
@@ -103,6 +107,7 @@ func (s *magicLinkDeliveryService) SendMagicLink(ctx context.Context, in contrac
 	if err != nil {
 		return err
 	}
+
 	req.Header.Set(constvars.HeaderAuthorization, "Bearer "+tokenOut.Token)
 
 	resp, err := s.httpClient.Do(req)
@@ -112,6 +117,10 @@ func (s *magicLinkDeliveryService) SendMagicLink(ctx context.Context, in contrac
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNoContent {
+		requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+		s.log.Info("magiclink webhook sent successfully",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
 		return nil
 	}
 
@@ -119,7 +128,10 @@ func (s *magicLinkDeliveryService) SendMagicLink(ctx context.Context, in contrac
 	const maxBody = 4096
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, maxBody))
 	if len(b) == 0 {
+		s.log.Error("magiclink webhook returned status %d", zap.Int("status_code", resp.StatusCode))
 		return fmt.Errorf("magiclink webhook returned status %d", resp.StatusCode)
 	}
+
+	s.log.Error("magiclink webhook returned status %d: %s", zap.Int("status_code", resp.StatusCode), zap.String("body", string(b)))
 	return fmt.Errorf("magiclink webhook returned status %d: %s", resp.StatusCode, string(b))
 }
