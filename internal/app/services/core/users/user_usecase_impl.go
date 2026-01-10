@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+
 	"go.uber.org/zap"
 )
 
@@ -119,8 +120,6 @@ func (uc *userUsecase) GetUserProfileBySession(ctx context.Context, sessionData 
 		return nil, exceptions.ErrUserNotExist(nil)
 	}
 
-	
-
 	switch session.RoleName {
 	case constvars.RoleTypePractitioner:
 		uc.Log.Debug("Processing practitioner profile",
@@ -178,7 +177,6 @@ func (uc *userUsecase) UpdateUserProfileBySession(ctx context.Context, sessionDa
 			return nil, exceptions.ErrEmailAlreadyExist(nil)
 		}
 	}
-
 
 	existingUser, err := uc.UserRepository.FindByID(ctx, session.UserID)
 	if err != nil {
@@ -949,7 +947,6 @@ func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *mode
 	response := utils.BuildPractitionerProfileResponse(practitionerFhir)
 	response.ProfilePicture = preSignedUrl
 
-
 	practitionerRoles, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerID(ctx, session.PractitionerID)
 	if err != nil {
 		uc.Log.Error("userUsecase.getPractitionerProfile error fetching practitioner roles",
@@ -998,7 +995,6 @@ func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *mode
 	return response, nil
 }
 
-
 type callWebhookSvcKonsulinOmnichannelOutput struct {
 	ChatwootID int    `json:"chatwoot_id"`
 	Email      string `json:"email"`
@@ -1023,11 +1019,11 @@ func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, em
 	url := fmt.Sprintf("%s%ssynchronous/modify-profile", uc.InternalConfig.App.BaseUrl, uc.InternalConfig.App.WebhookInstantiateBasePath)
 
 	body := struct {
-		Email    string `json:"email"`
-		Username string `json:"username"`
+		Email string `json:"email"`
+		Name  string `json:"name"`
 	}{
-		Email:    email,
-		Username: lastUsername,
+		Email: email,
+		Name:  lastUsername,
 	}
 
 	bodyBytes, err := json.Marshal(body)
@@ -1072,7 +1068,4 @@ func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, em
 
 	output := outputs[0]
 	return output, nil
-
-
-	
 }
