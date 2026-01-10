@@ -253,7 +253,43 @@ func (uc *authUsecase) InitializeSupertoken() error {
 					return originalImplementation
 				},
 			},
-			EmailDelivery: &emaildelivery.TypeInput{},
+			EmailDelivery: &emaildelivery.TypeInput{
+				Override: func(originalImplementation emaildelivery.EmailDeliveryInterface) emaildelivery.EmailDeliveryInterface {
+					originalSendEmail := *originalImplementation.SendEmail
+					(*originalImplementation.SendEmail) = func(input emaildelivery.EmailType, userContext supertokens.UserContext) error {
+						// Only intercept passwordless magic-link emails; for anything else, fall back to default.
+						if input.PasswordlessLogin == nil {
+							return originalSendEmail(input, userContext)
+						}
+
+						if input.PasswordlessLogin.UrlWithLinkCode == nil {
+							return errors.New("passwordless email delivery: missing UrlWithLinkCode")
+						}
+
+						// NOTE: SuperTokens' email delivery interface does not provide request context.
+						// Use Background context with timeout (from InternalConfig) for now.
+						timeoutSeconds := uc.InternalConfig.Webhook.HTTPTimeoutInSeconds
+						if timeoutSeconds <= 0 {
+							timeoutSeconds = 10
+						}
+						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
+						defer cancel()
+
+						err := uc.MagicLinkDelivery.SendMagicLink(ctx, contracts.SendMagicLinkInput{
+							URL:   *input.PasswordlessLogin.UrlWithLinkCode,
+							Email: input.PasswordlessLogin.Email,
+						})
+						if err != nil {
+							uc.Log.Error("authUsecase.EmailDelivery.SendEmail error calling magiclink webhook",
+								zap.Error(err),
+							)
+							return err
+						}
+						return nil
+					}
+					return originalImplementation
+				},
+			},
 			SmsDelivery: &smsdelivery.TypeInput{
 				Override: func(originalImplementation smsdelivery.SmsDeliveryInterface) smsdelivery.SmsDeliveryInterface {
 					(*originalImplementation.SendSms) = func(input smsdelivery.SmsType, userContext supertokens.UserContext) error {
