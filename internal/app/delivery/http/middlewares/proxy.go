@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -936,6 +937,106 @@ func matchesOwnedRef(ref string, oc *ownershipContext) bool {
 	}
 
 	return false
+}
+
+func (m *Middlewares) TxProxy(target string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		roles, ok := r.Context().Value(keyRoles).([]string)
+		if !ok || len(roles) == 0 {
+			utils.BuildErrorResponse(m.Log, w, exceptions.ErrTokenMissing(nil))
+			return
+		}
+
+		allowAccess := false
+		path := r.URL.Path
+		method := r.Method
+
+		for _, role := range roles {
+			if ok, _ := m.Enforcer.Enforce(role, method, path); ok {
+				allowAccess = true
+				break
+			}
+		}
+
+		if !allowAccess {
+			utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(fmt.Errorf("forbidden: role not allowed to access terminology service")))
+			return
+		}
+
+		// Require at least one of: filter, count query params. If none present, will return 202 without
+		// proxying the request to the terminology server.
+		// This behaviour is requested here: https://github.com/konsulin-care/konsulin-api/pull/291#issuecomment-3728978396
+		q := r.URL.Query()
+		hasFilter := strings.TrimSpace(q.Get("filter")) != ""
+		hasCount := strings.TrimSpace(q.Get("count")) != ""
+		if !hasFilter && !hasCount {
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
+
+		// Remove the /api/v1/tx prefix to get the relative path
+		// We expect the router mount to be at /api/v1/tx, so we trim that prefix
+		relativePath := strings.TrimPrefix(r.URL.Path, fmt.Sprintf("/%s/%s/tx", m.InternalConfig.App.EndpointPrefix, m.InternalConfig.App.Version))
+
+		fullURL := target + relativePath
+		if r.URL.RawQuery != "" {
+			fullURL += "?" + r.URL.RawQuery
+		}
+
+		bodyBytes, _ := r.Context().Value(constvars.CONTEXT_RAW_BODY).([]byte)
+		if bodyBytes == nil {
+			bodyBytes = []byte{}
+		}
+
+		// Hard timeout for upstream terminology server requests.
+		// If a request/connection is ongoing for > 5 minutes, cancel it and return 504.
+		// this behaviour is requested here: https://github.com/konsulin-care/konsulin-api/pull/291#issuecomment-3728978396
+		proxyCtx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+		defer cancel()
+
+		req, err := http.NewRequestWithContext(proxyCtx, r.Method, fullURL, bytes.NewReader(bodyBytes))
+		if err != nil {
+			utils.BuildErrorResponse(m.Log, w, exceptions.ErrCreateHTTPRequest(err))
+			return
+		}
+
+		req.Header.Set("Accept", "application/fhir+json")
+
+		if contentType := r.Header.Get("Content-Type"); contentType != "" {
+			req.Header.Set("Content-Type", contentType)
+		}
+
+		resp, err := m.HTTPClient.Do(req)
+		if err != nil {
+			// Return 504 on deadline exceeded.
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(proxyCtx.Err(), context.DeadlineExceeded) {
+				utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+				return
+			}
+			utils.BuildErrorResponse(m.Log, w, exceptions.ErrSendHTTPRequest(err))
+			return
+		}
+		defer resp.Body.Close()
+
+		for k, v := range resp.Header {
+			if strings.HasPrefix(k, "Access-Control-") {
+				continue
+			}
+			if k == "Content-Length" || k == "Connection" {
+				continue
+			}
+
+			for _, val := range v {
+				w.Header().Add(k, val)
+			}
+		}
+
+		w.WriteHeader(resp.StatusCode)
+		_, err = io.Copy(w, resp.Body)
+		if err != nil {
+			m.Log.Warn("failed to copy response body", zap.Error(err))
+		}
+	})
 }
 
 // collectReferences walks arbitrary JSON and collects all "reference" string fields.
