@@ -270,7 +270,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 						// Use Background context with timeout (from InternalConfig) for now.
 						timeoutSeconds := uc.InternalConfig.Webhook.HTTPTimeoutInSeconds
 						if timeoutSeconds <= 0 {
-							timeoutSeconds = 15
+							timeoutSeconds = 10
 						}
 						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
 						defer cancel()

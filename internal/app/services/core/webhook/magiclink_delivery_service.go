@@ -38,7 +38,7 @@ type magicLinkDeliveryService struct {
 // NewMagicLinkDeliveryService constructs an internal-only delivery service for passwordless magic links.
 // It is NOT exposed as an HTTP endpoint; intended usage is via internal components like SuperTokens overrides.
 func NewMagicLinkDeliveryService(cfg *config.InternalConfig, jwtManager *jwtmanager.JWTManager, logger *zap.Logger) contracts.MagicLinkDeliveryService {
-	timeoutSeconds := 10
+	timeoutSeconds := 15
 	if cfg != nil && cfg.Webhook.HTTPTimeoutInSeconds > 0 {
 		timeoutSeconds = cfg.Webhook.HTTPTimeoutInSeconds
 	}
