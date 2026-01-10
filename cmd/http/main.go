@@ -78,7 +78,6 @@ func main() {
 	// Initialize RabbitMQ connection
 	rabbitMQ := messaging.NewRabbitMQ(driverConfig)
 
-
 	// Create a new router
 	chiRouter := chi.NewRouter()
 

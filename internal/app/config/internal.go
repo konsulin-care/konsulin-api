@@ -15,26 +15,26 @@ type InternalConfig struct {
 }
 
 type App struct {
-	Env                                            string `mapstructure:"env"`
-	Port                                           string `mapstructure:"port"`
-	Version                                        string `mapstructure:"version"`
-	Address                                        string `mapstructure:"address"`
-	BaseUrl                                        string `mapstructure:"base_url"`
-	Timezone                                       string `mapstructure:"timezone"`
-	FrontendDomain                                 string `mapstructure:"frontend_domain"`
-	EndpointPrefix                                 string `mapstructure:"endpoint_prefix"`
-	MaxRequests                                    int    `mapstructure:"max_requests"`
-	ShutdownTimeoutInSeconds                       int    `mapstructure:"shutdown_timeout_in_seconds"`
-	MaxTimeRequestsPerSeconds                      int    `mapstructure:"max_time_requests_per_seconds"`
-	RequestBodyLimitInMegabyte                     int    `mapstructure:"request_body_limit_in_megabyte"`
-	PaymentExpiredTimeInMinutes                    int    `mapstructure:"payment_expired_time_in_minutes"`
-	PaymentGatewayRequestTimeoutInSeconds          int    `mapstructure:"payment_gateway_request_timeout_in_seconds"`
-	AccountDeactivationAgeInDays                   int    `mapstructure:"account_deactivation_age_in_days"`
-	ForgotPasswordTokenExpiredTimeInMinutes        int    `mapstructure:"forgot_password_token_expired_time_in_minutes"`
-	MinioPreSignedUrlObjectExpiryTimeInHours       int    `mapstructure:"minio_pre_signed_url_object_expiry_time_in_hours"`
-	SuperadminAPIKey                               string `mapstructure:"superadmin_api_key"`
-	SuperadminAPIKeyRateLimit                      int    `mapstructure:"superadmin_api_key_rate_limit"`
-	WebhookInstantiateBasePath                     string `mapstructure:"webhook_instantiate_base_path"`
+	Env                                      string `mapstructure:"env"`
+	Port                                     string `mapstructure:"port"`
+	Version                                  string `mapstructure:"version"`
+	Address                                  string `mapstructure:"address"`
+	BaseUrl                                  string `mapstructure:"base_url"`
+	Timezone                                 string `mapstructure:"timezone"`
+	FrontendDomain                           string `mapstructure:"frontend_domain"`
+	EndpointPrefix                           string `mapstructure:"endpoint_prefix"`
+	MaxRequests                              int    `mapstructure:"max_requests"`
+	ShutdownTimeoutInSeconds                 int    `mapstructure:"shutdown_timeout_in_seconds"`
+	MaxTimeRequestsPerSeconds                int    `mapstructure:"max_time_requests_per_seconds"`
+	RequestBodyLimitInMegabyte               int    `mapstructure:"request_body_limit_in_megabyte"`
+	PaymentExpiredTimeInMinutes              int    `mapstructure:"payment_expired_time_in_minutes"`
+	PaymentGatewayRequestTimeoutInSeconds    int    `mapstructure:"payment_gateway_request_timeout_in_seconds"`
+	AccountDeactivationAgeInDays             int    `mapstructure:"account_deactivation_age_in_days"`
+	ForgotPasswordTokenExpiredTimeInMinutes  int    `mapstructure:"forgot_password_token_expired_time_in_minutes"`
+	MinioPreSignedUrlObjectExpiryTimeInHours int    `mapstructure:"minio_pre_signed_url_object_expiry_time_in_hours"`
+	SuperadminAPIKey                         string `mapstructure:"superadmin_api_key"`
+	SuperadminAPIKeyRateLimit                int    `mapstructure:"superadmin_api_key_rate_limit"`
+	WebhookInstantiateBasePath               string `mapstructure:"webhook_instantiate_base_path"`
 	// SlotWindowDays controls rolling window days for Slot generation (default 30 if unset)
 	SlotWindowDays int `mapstructure:"slot_window_days"`
 	// SlotWorkerCronSpec defines the cron expression for the slot worker schedule (e.g., "@daily")
@@ -42,7 +42,8 @@ type App struct {
 }
 
 type AppFHIR struct {
-	BaseUrl string `mapstructure:"base_url"`
+	BaseUrl                  string `mapstructure:"base_url"`
+	TerminologyServerBaseUrl string `mapstructure:"terminology_server_base_url"`
 }
 
 type AppJWT struct {
