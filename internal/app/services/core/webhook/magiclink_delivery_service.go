@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -128,10 +129,10 @@ func (s *magicLinkDeliveryService) SendMagicLink(ctx context.Context, in contrac
 	const maxBody = 4096
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, maxBody))
 	if len(b) == 0 {
-		s.log.Error("magiclink webhook returned status %d", zap.Int("status_code", resp.StatusCode))
+		s.log.Error("magiclink webhook returned status", zap.String("status_code", strconv.Itoa(resp.StatusCode)))
 		return fmt.Errorf("magiclink webhook returned status %d", resp.StatusCode)
 	}
 
-	s.log.Error("magiclink webhook returned status %d: %s", zap.Int("status_code", resp.StatusCode), zap.String("body", string(b)))
+	s.log.Error("magiclink webhook returned status", zap.String("status_code", strconv.Itoa(resp.StatusCode)), zap.String("body", string(b)))
 	return fmt.Errorf("magiclink webhook returned status %d: %s", resp.StatusCode, string(b))
 }

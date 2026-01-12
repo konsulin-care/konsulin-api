@@ -784,7 +784,7 @@ func (uc *userUsecase) createPersonIfNotExists(ctx context.Context, email string
 	userChatwootContact, chatwootErr := uc.callWebhookSvcKonsulinOmnichannel(ctx, email, "")
 	if chatwootErr != nil {
 		// log the error but continue the process
-		uc.Log.Error("userUsecase.createPatientIfNotExists error calling webhook svc konsulin omnichannel",
+		uc.Log.Error("userUsecase.createPersonIfNotExists error calling webhook svc konsulin omnichannel",
 			zap.Error(chatwootErr),
 		)
 	}
