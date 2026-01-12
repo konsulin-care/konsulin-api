@@ -194,10 +194,17 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Su
 		SuperTokenUserID: plessResponse.User.ID,
 	}
 	initializeResourcesInput.ToogleByRoles(request.Roles)
-	initializeResourceCtx, initializeResourceCtxCancel := context.WithDeadline(context.Background(), time.Now().Add(10*time.Second))
+	initializeResourceCtx, initializeResourceCtxCancel := context.WithDeadline(ctx, time.Now().Add(10*time.Second))
 	defer initializeResourceCtxCancel()
 	initializeResources, err := uc.UserUsecase.InitializeNewUserFHIRResources(initializeResourceCtx, initializeResourcesInput)
 	if err != nil {
+		uc.Log.Error("Failed to initialize new user FHIR resources",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingEmailKey, request.Email),
+			zap.String(constvars.LoggingErrorTypeKey, "FHIR resources initialization"),
+			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
+			zap.Error(err),
+		)
 		return err
 	}
 
