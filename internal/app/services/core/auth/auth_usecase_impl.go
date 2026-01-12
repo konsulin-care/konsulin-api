@@ -194,7 +194,9 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Su
 		SuperTokenUserID: plessResponse.User.ID,
 	}
 	initializeResourcesInput.ToogleByRoles(request.Roles)
-	initializeResources, err := uc.UserUsecase.InitializeNewUserFHIRResources(context.Background(), initializeResourcesInput)
+	initializeResourceCtx, initializeResourceCtxCancel := context.WithDeadline(context.Background(), time.Now().Add(10*time.Second))
+	defer initializeResourceCtxCancel()
+	initializeResources, err := uc.UserUsecase.InitializeNewUserFHIRResources(initializeResourceCtx, initializeResourcesInput)
 	if err != nil {
 		return err
 	}
