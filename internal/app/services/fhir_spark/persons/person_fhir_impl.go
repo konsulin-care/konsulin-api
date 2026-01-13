@@ -126,6 +126,94 @@ func (c *personFhirClient) FindPersonByEmail(ctx context.Context, email string) 
 	return people, nil
 }
 
+// FindPersonByPhone queries Person by phone search parameter.
+func (c *personFhirClient) FindPersonByPhone(ctx context.Context, phone string) ([]fhir_dto.Person, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	c.Log.Info("personFhirClient.FindPersonByPhone called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
+	phoneEnc := url.QueryEscape(phone)
+
+	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet,
+		fmt.Sprintf("%s?phone=%s&_sort=-_lastUpdated", c.BaseUrl, phoneEnc), nil)
+	if err != nil {
+		c.Log.Error("personFhirClient.FindPersonByPhone error creating HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrCreateHTTPRequest(err)
+	}
+	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		c.Log.Error("personFhirClient.FindPersonByPhone error sending HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrSendHTTPRequest(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != constvars.StatusOK {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			c.Log.Error("personFhirClient.FindPersonByPhone error reading response body",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePerson)
+		}
+		var outcome fhir_dto.OperationOutcome
+		err = json.Unmarshal(bodyBytes, &outcome)
+		if err != nil {
+			c.Log.Error("personFhirClient.FindPersonByPhone error unmarshaling outcome",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePerson)
+		}
+		if len(outcome.Issue) > 0 {
+			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			c.Log.Error("personFhirClient.FindPersonByPhone FHIR error",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(fhirErrorIssue),
+			)
+			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourcePerson)
+		}
+	}
+
+	var result struct {
+		Total        int    `json:"total"`
+		ResourceType string `json:"resourceType"`
+		Entry        []struct {
+			FullUrl  string          `json:"fullUrl"`
+			Resource fhir_dto.Person `json:"resource"`
+		} `json:"entry"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	if err != nil {
+		c.Log.Error("personFhirClient.FindPersonByPhone error decoding response",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePerson)
+	}
+
+	people := make([]fhir_dto.Person, len(result.Entry))
+	for i, entry := range result.Entry {
+		people[i] = entry.Resource
+	}
+
+	c.Log.Info("personFhirClient.FindPersonByPhone succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.Int(constvars.LoggingResponseCountKey, len(people)),
+	)
+	return people, nil
+}
+
 // Search queries Person resources using supported search parameters.
 func (c *personFhirClient) Search(ctx context.Context, params contracts.PersonSearchInput) ([]fhir_dto.Person, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
