@@ -19,4 +19,7 @@ const (
 	RegexIndonesiaPhoneNumber         = `^(?:\+62|62|0)8[1-9][0-9]{6,10}$`
 	RegexIndonesiaZIPCode             = `^\d{5}$`
 	RegexPhoneNumberGeneral           = `^\+[1-9]\d{9,14}$`
+	// RegexPhoneNumberDigitsInternational matches "E.164 without plus", digits only.
+	// 10-15 digits, cannot start with 0.
+	RegexPhoneNumberDigitsInternational = `^[1-9]\d{9,14}$`
 )
