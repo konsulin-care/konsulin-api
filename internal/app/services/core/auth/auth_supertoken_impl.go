@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/dto/requests"
 	"log"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/supertokens/supertokens-golang/ingredients/emaildelivery"
@@ -69,20 +69,33 @@ func (uc *authUsecase) InitializeSupertoken() error {
 						}
 
 						userEmail := ""
-						if email == nil {
-							uc.Log.Warn("authUsecase.SupertokenCreateCode email is nil, nothing can be done")
-							return response, nil
+						userPhoneNumber := ""
+						userRecord := &plessmodels.User{}
+
+						if email != nil {
+							userEmail = *email
+
+							userRecord, err = passwordless.GetUserByEmail(uc.InternalConfig.Supertoken.KonsulinTenantID, userEmail)
+							if err != nil {
+								uc.Log.Error("authUsecase.SupertokenCreateCode failed to fetch user by email",
+									zap.String("email", userEmail),
+									zap.Error(err),
+								)
+								return response, err
+							}
 						}
 
-						userEmail = *email
+						if phoneNumber != nil {
+							userPhoneNumber = *phoneNumber
 
-						userRecord, err := passwordless.GetUserByEmail(uc.InternalConfig.Supertoken.KonsulinTenantID, userEmail)
-						if err != nil {
-							uc.Log.Error("authUsecase.SupertokenCreateCode failed to fetch user by email",
-								zap.String("email", userEmail),
-								zap.Error(err),
-							)
-							return response, err
+							userRecord, err = passwordless.GetUserByPhoneNumber(uc.InternalConfig.Supertoken.KonsulinTenantID, userPhoneNumber)
+							if err != nil {
+								uc.Log.Error("authUsecase.SupertokenCreateCode failed to fetch user by phone number",
+									zap.String("phone_number", userPhoneNumber),
+									zap.Error(err),
+								)
+								return response, err
+							}
 						}
 
 						// by default, always assumes the user roles is Patient
@@ -112,6 +125,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 
 						initFHIRResourcesInput := &contracts.InitializeNewUserFHIRResourcesInput{
 							Email:            userEmail,
+							Phone:            userPhoneNumber,
 							SuperTokenUserID: userID,
 						}
 						initFHIRResourcesInput.ToogleByRoles(userRoles)
@@ -220,8 +234,22 @@ func (uc *authUsecase) InitializeSupertoken() error {
 							userRoles = newUserRolesResp.OK.Roles
 						}
 
+						// this was made to prevent accidental access to nil values
+						// that might happen because we need to support both email and phone number based login.
+						userEmail := ""
+						userPhoneNumber := ""
+
+						if user.Email != nil {
+							userEmail = *user.Email
+						}
+
+						if user.PhoneNumber != nil {
+							userPhoneNumber = *user.PhoneNumber
+						}
+
 						initializeFHIRResourcesInput := &contracts.InitializeNewUserFHIRResourcesInput{
-							Email:            *user.Email,
+							Email:            userEmail,
+							Phone:            userPhoneNumber,
 							SuperTokenUserID: user.ID,
 						}
 						initializeFHIRResourcesInput.ToogleByRoles(userRoles)
