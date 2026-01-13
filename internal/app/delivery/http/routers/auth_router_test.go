@@ -64,6 +64,15 @@ func (m *MockAuthUsecase) CheckUserExists(ctx context.Context, email string) (*c
 	return out, args.Error(1)
 }
 
+func (m *MockAuthUsecase) CheckUserExistsByPhone(ctx context.Context, phone string) (*contracts.CheckUserExistsOutput, error) {
+	args := m.Called(ctx, phone)
+	var out *contracts.CheckUserExistsOutput
+	if v := args.Get(0); v != nil {
+		out = v.(*contracts.CheckUserExistsOutput)
+	}
+	return out, args.Error(1)
+}
+
 func TestAuthRouter_MagicLinkEndpoint(t *testing.T) {
 	logger := zap.NewNop()
 
@@ -76,7 +85,7 @@ func TestAuthRouter_MagicLinkEndpoint(t *testing.T) {
 
 	mockAuthUsecase := new(MockAuthUsecase)
 
-	authController := controllers.NewAuthController(logger, mockAuthUsecase)
+	authController := &controllers.AuthController{Log: logger, AuthUsecase: mockAuthUsecase}
 
 	middlewareInstance := &middlewares.Middlewares{
 		Log:            logger,
@@ -95,6 +104,8 @@ func TestAuthRouter_MagicLinkEndpoint(t *testing.T) {
 	attachAuthRoutes(router, middlewareInstance, authController)
 
 	t.Run("MagicLink with Valid API Key", func(t *testing.T) {
+		mockAuthUsecase.ExpectedCalls = nil
+		mockAuthUsecase.Calls = nil
 
 		mockAuthUsecase.On("CheckUserExists", mock.Anything, "test@example.com").Return(nil, nil)
 		mockAuthUsecase.On("CreateMagicLink", mock.Anything, mock.AnythingOfType("*requests.SupertokenPasswordlessCreateMagicLink")).Return(nil)
@@ -114,6 +125,30 @@ func TestAuthRouter_MagicLinkEndpoint(t *testing.T) {
 		router.ServeHTTP(rr, req)
 
 		assert.Equal(t, http.StatusOK, rr.Code, "should return 200 OK for valid API key")
+		mockAuthUsecase.AssertExpectations(t)
+	})
+
+	t.Run("MagicLink with Valid API Key (Phone)", func(t *testing.T) {
+		mockAuthUsecase.ExpectedCalls = nil
+		mockAuthUsecase.Calls = nil
+		mockAuthUsecase.On("CheckUserExistsByPhone", mock.Anything, "628111234567").Return(nil, nil)
+		mockAuthUsecase.On("CreateMagicLink", mock.Anything, mock.AnythingOfType("*requests.SupertokenPasswordlessCreateMagicLink")).Return(nil)
+
+		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
+			Phone: "628111234567",
+			Roles: []string{"Practitioner"},
+		}
+		jsonBody, _ := json.Marshal(requestBody)
+
+		req := httptest.NewRequest("POST", "/magiclink", bytes.NewBuffer(jsonBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-api-key", testAPIKey)
+
+		rr := httptest.NewRecorder()
+
+		router.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code, "should return 200 OK for valid API key (phone)")
 		mockAuthUsecase.AssertExpectations(t)
 	})
 
@@ -206,7 +241,7 @@ func TestAuthRouter_ContextPropagation(t *testing.T) {
 
 	mockAuthUsecase := new(MockAuthUsecase)
 
-	authController := controllers.NewAuthController(logger, mockAuthUsecase)
+	authController := &controllers.AuthController{Log: logger, AuthUsecase: mockAuthUsecase}
 
 	middlewareInstance := &middlewares.Middlewares{
 		Log:            logger,
@@ -214,9 +249,20 @@ func TestAuthRouter_ContextPropagation(t *testing.T) {
 	}
 
 	router := chi.NewRouter()
+	// Inject a request ID so controllers pass their preliminary checks without
+	// needing the real RequestID middleware stack.
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), constvars.CONTEXT_REQUEST_ID_KEY, "test-request-id")
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	})
 	attachAuthRoutes(router, middlewareInstance, authController)
 
 	t.Run("Context Values Propagated to Controller", func(t *testing.T) {
+		mockAuthUsecase.ExpectedCalls = nil
+		mockAuthUsecase.Calls = nil
+		mockAuthUsecase.On("CheckUserExists", mock.Anything, "test@example.com").Return(nil, nil)
 
 		mockAuthUsecase.On("CreateMagicLink", mock.MatchedBy(func(ctx context.Context) bool {
 
@@ -269,7 +315,7 @@ func TestAuthRouter_ErrorHandling(t *testing.T) {
 
 	mockAuthUsecase := new(MockAuthUsecase)
 
-	authController := controllers.NewAuthController(logger, mockAuthUsecase)
+	authController := &controllers.AuthController{Log: logger, AuthUsecase: mockAuthUsecase}
 
 	middlewareInstance := &middlewares.Middlewares{
 		Log:            logger,
@@ -277,9 +323,19 @@ func TestAuthRouter_ErrorHandling(t *testing.T) {
 	}
 
 	router := chi.NewRouter()
+	// Inject a request ID so controllers pass their preliminary checks without
+	// needing the real RequestID middleware stack.
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), constvars.CONTEXT_REQUEST_ID_KEY, "test-request-id")
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	})
 	attachAuthRoutes(router, middlewareInstance, authController)
 
 	t.Run("Invalid JSON Body", func(t *testing.T) {
+		mockAuthUsecase.ExpectedCalls = nil
+		mockAuthUsecase.Calls = nil
 
 		req := httptest.NewRequest("POST", "/magiclink", bytes.NewBufferString("invalid json"))
 		req.Header.Set("Content-Type", "application/json")
@@ -295,6 +351,8 @@ func TestAuthRouter_ErrorHandling(t *testing.T) {
 	})
 
 	t.Run("Missing Email Field", func(t *testing.T) {
+		mockAuthUsecase.ExpectedCalls = nil
+		mockAuthUsecase.Calls = nil
 
 		requestBody := map[string]interface{}{
 			"roles": []string{"Practitioner"},
@@ -315,6 +373,9 @@ func TestAuthRouter_ErrorHandling(t *testing.T) {
 	})
 
 	t.Run("Missing Roles Field", func(t *testing.T) {
+		mockAuthUsecase.ExpectedCalls = nil
+		mockAuthUsecase.Calls = nil
+		mockAuthUsecase.On("CheckUserExists", mock.Anything, "test@example.com").Return(nil, nil)
 
 		requestBody := map[string]interface{}{
 			"email": "test@example.com",
@@ -335,6 +396,9 @@ func TestAuthRouter_ErrorHandling(t *testing.T) {
 	})
 
 	t.Run("Empty Roles Array", func(t *testing.T) {
+		mockAuthUsecase.ExpectedCalls = nil
+		mockAuthUsecase.Calls = nil
+		mockAuthUsecase.On("CheckUserExists", mock.Anything, "test@example.com").Return(nil, nil)
 
 		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
 			Email: "test@example.com",
@@ -356,6 +420,9 @@ func TestAuthRouter_ErrorHandling(t *testing.T) {
 	})
 
 	t.Run("Invalid Role", func(t *testing.T) {
+		mockAuthUsecase.ExpectedCalls = nil
+		mockAuthUsecase.Calls = nil
+		mockAuthUsecase.On("CheckUserExists", mock.Anything, "test@example.com").Return(nil, nil)
 
 		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
 			Email: "test@example.com",
@@ -377,6 +444,9 @@ func TestAuthRouter_ErrorHandling(t *testing.T) {
 	})
 
 	t.Run("Multiple Valid Roles", func(t *testing.T) {
+		mockAuthUsecase.ExpectedCalls = nil
+		mockAuthUsecase.Calls = nil
+		mockAuthUsecase.On("CheckUserExists", mock.Anything, "test@example.com").Return(nil, nil)
 
 		mockAuthUsecase.On("CreateMagicLink", mock.Anything, mock.AnythingOfType("*requests.SupertokenPasswordlessCreateMagicLink")).Return(nil)
 
@@ -399,6 +469,9 @@ func TestAuthRouter_ErrorHandling(t *testing.T) {
 	})
 
 	t.Run("All Valid Roles", func(t *testing.T) {
+		mockAuthUsecase.ExpectedCalls = nil
+		mockAuthUsecase.Calls = nil
+		mockAuthUsecase.On("CheckUserExists", mock.Anything, "test@example.com").Return(nil, nil)
 
 		mockAuthUsecase.On("CreateMagicLink", mock.Anything, mock.AnythingOfType("*requests.SupertokenPasswordlessCreateMagicLink")).Return(nil)
 
@@ -421,6 +494,9 @@ func TestAuthRouter_ErrorHandling(t *testing.T) {
 	})
 
 	t.Run("Email and Roles Sanitization", func(t *testing.T) {
+		mockAuthUsecase.ExpectedCalls = nil
+		mockAuthUsecase.Calls = nil
+		mockAuthUsecase.On("CheckUserExists", mock.Anything, "test@example.com").Return(nil, nil)
 
 		mockAuthUsecase.On("CreateMagicLink", mock.Anything, mock.MatchedBy(func(req *requests.SupertokenPasswordlessCreateMagicLink) bool {
 			// Verify that email is sanitized (lowercase, trimmed)
@@ -457,6 +533,8 @@ func TestAuthRouter_ErrorHandling(t *testing.T) {
 	})
 
 	t.Run("MagicLink for Existing User without Roles", func(t *testing.T) {
+		mockAuthUsecase.ExpectedCalls = nil
+		mockAuthUsecase.Calls = nil
 
 		mockAuthUsecase.On("CheckUserExists", mock.Anything, "existing@example.com").Return(makeUserExistsOutput("existing@example.com"), nil)
 		mockAuthUsecase.On("CreateMagicLink", mock.Anything, mock.AnythingOfType("*requests.SupertokenPasswordlessCreateMagicLink")).Return(nil)
@@ -480,6 +558,8 @@ func TestAuthRouter_ErrorHandling(t *testing.T) {
 	})
 
 	t.Run("MagicLink for New User without Roles", func(t *testing.T) {
+		mockAuthUsecase.ExpectedCalls = nil
+		mockAuthUsecase.Calls = nil
 
 		mockAuthUsecase.On("CheckUserExists", mock.Anything, "newuser@example.com").Return(nil, nil)
 
@@ -502,6 +582,8 @@ func TestAuthRouter_ErrorHandling(t *testing.T) {
 	})
 
 	t.Run("MagicLink for New User with Empty Roles", func(t *testing.T) {
+		mockAuthUsecase.ExpectedCalls = nil
+		mockAuthUsecase.Calls = nil
 
 		mockAuthUsecase.On("CheckUserExists", mock.Anything, "newuser@example.com").Return(nil, nil)
 
@@ -524,6 +606,8 @@ func TestAuthRouter_ErrorHandling(t *testing.T) {
 	})
 
 	t.Run("MagicLink for Existing User with Roles", func(t *testing.T) {
+		mockAuthUsecase.ExpectedCalls = nil
+		mockAuthUsecase.Calls = nil
 
 		mockAuthUsecase.On("CheckUserExists", mock.Anything, "existing@example.com").Return(makeUserExistsOutput("existing@example.com"), nil)
 		mockAuthUsecase.On("CreateMagicLink", mock.Anything, mock.AnythingOfType("*requests.SupertokenPasswordlessCreateMagicLink")).Return(nil)

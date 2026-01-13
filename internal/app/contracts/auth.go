@@ -19,6 +19,7 @@ type AuthUsecase interface {
 	CreateMagicLink(ctx context.Context, request *requests.SupertokenPasswordlessCreateMagicLink) error
 	CreateAnonymousSession(ctx context.Context) (string, error)
 	CheckUserExists(ctx context.Context, email string) (*CheckUserExistsOutput, error)
+	CheckUserExistsByPhone(ctx context.Context, phone string) (*CheckUserExistsOutput, error)
 }
 
 type AuthRepository interface{}
