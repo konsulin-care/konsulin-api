@@ -314,7 +314,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 				},
 			},
 			FlowType: "MAGIC_LINK",
-			ContactMethodEmail: plessmodels.ContactMethodEmailConfig{
+			ContactMethodEmailOrPhone: plessmodels.ContactMethodEmailOrPhoneConfig{
 				Enabled: true,
 				ValidateEmailAddress: func(email interface{}, tenantId string) *string {
 					emailStr, ok := email.(string)
@@ -326,6 +326,22 @@ func (uc *authUsecase) InitializeSupertoken() error {
 					matched, err := regexp.MatchString(constvars.RegexEmail, emailStr)
 					if err != nil || !matched {
 						msg := "invalid email address"
+						return &msg
+					}
+
+					return nil
+				},
+				ValidatePhoneNumber: func(phoneNumber interface{}, tenantId string) *string {
+					phoneStr, ok := phoneNumber.(string)
+					if !ok {
+						msg := "invalid phone format"
+						return &msg
+					}
+					phoneStr = strings.TrimSpace(phoneStr)
+
+					matched, err := regexp.MatchString(constvars.RegexPhoneNumberDigitsInternational, phoneStr)
+					if err != nil || !matched {
+						msg := "invalid phone number"
 						return &msg
 					}
 
