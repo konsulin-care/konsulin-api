@@ -293,18 +293,39 @@ func (uc *authUsecase) InitializeSupertoken() error {
 			SmsDelivery: &smsdelivery.TypeInput{
 				Override: func(originalImplementation smsdelivery.SmsDeliveryInterface) smsdelivery.SmsDeliveryInterface {
 					(*originalImplementation.SendSms) = func(input smsdelivery.SmsType, userContext supertokens.UserContext) error {
-						phoneNumber := input.PasswordlessLogin.PhoneNumber
-						urlWithLinkCode := input.PasswordlessLogin.UrlWithLinkCode
-
-						whatsappRequest := &requests.WhatsAppMessage{
-							To:        phoneNumber,
-							Message:   *urlWithLinkCode,
-							WithImage: false,
+						if input.PasswordlessLogin == nil {
+							return errors.New("passwordless sms delivery: missing PasswordlessLogin payload")
+						}
+						if input.PasswordlessLogin.UrlWithLinkCode == nil {
+							return errors.New("passwordless sms delivery: missing UrlWithLinkCode")
 						}
 
-						ctx := context.Background()
-						err := uc.WhatsAppService.SendWhatsAppMessage(ctx, whatsappRequest)
+						phoneDigits := strings.TrimSpace(input.PasswordlessLogin.PhoneNumber)
+						if phoneDigits == "" {
+							return errors.New("passwordless sms delivery: missing PhoneNumber")
+						}
+
+						// Validate "E.164 without +": digits only, 10-15 length, must not start with 0.
+						matched, err := regexp.MatchString(constvars.RegexPhoneNumberDigitsInternational, phoneDigits)
+						if err != nil || !matched {
+							return errors.New("invalid phone number")
+						}
+
+						timeoutSeconds := uc.InternalConfig.Webhook.HTTPTimeoutInSeconds
+						if timeoutSeconds <= 0 {
+							timeoutSeconds = 10
+						}
+						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
+						defer cancel()
+
+						err = uc.MagicLinkDelivery.SendMagicLink(ctx, contracts.SendMagicLinkInput{
+							URL:   *input.PasswordlessLogin.UrlWithLinkCode,
+							Phone: phoneDigits,
+						})
 						if err != nil {
+							uc.Log.Error("authUsecase.SmsDelivery.SendSms error calling magiclink webhook",
+								zap.Error(err),
+							)
 							return err
 						}
 
