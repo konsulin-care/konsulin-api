@@ -457,7 +457,11 @@ func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email 
 		userChatwootContact := callWebhookSvcKonsulinOmnichannelOutput{}
 		chatwootCallErr := error(nil)
 		if strings.TrimSpace(email) != "" {
-			userChatwootContact, chatwootCallErr = uc.callWebhookSvcKonsulinOmnichannel(ctx, email, practitioner.FullName())
+			userChatwootContact, chatwootCallErr = uc.callWebhookSvcKonsulinOmnichannel(ctx, callWebhookSvcKonsulinOmnichannelInput{
+				Email:    email,
+				Username: practitioner.FullName(),
+				Phone:    phone,
+			})
 			if chatwootCallErr != nil {
 				uc.Log.Error("userUsecase.createPractitionerIfNotExists error calling webhook svc konsulin omnichannel",
 					zap.Error(chatwootCallErr),
@@ -553,7 +557,11 @@ func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email 
 	userChatwootContact := callWebhookSvcKonsulinOmnichannelOutput{}
 	chatwootErr := error(nil)
 	if strings.TrimSpace(email) != "" {
-		userChatwootContact, chatwootErr = uc.callWebhookSvcKonsulinOmnichannel(ctx, email, "")
+		userChatwootContact, chatwootErr = uc.callWebhookSvcKonsulinOmnichannel(ctx, callWebhookSvcKonsulinOmnichannelInput{
+			Email:    email,
+			Username: "",
+			Phone:    phone,
+		})
 		if chatwootErr != nil {
 			// log the error but continue the process
 			uc.Log.Error("userUsecase.createPractitionerIfNotExists error calling webhook svc konsulin omnichannel",
@@ -641,7 +649,11 @@ func (uc *userUsecase) createPatientIfNotExists(ctx context.Context, email strin
 		userChatwootContact := callWebhookSvcKonsulinOmnichannelOutput{}
 		chatwootCallErr := error(nil)
 		if strings.TrimSpace(email) != "" {
-			userChatwootContact, chatwootCallErr = uc.callWebhookSvcKonsulinOmnichannel(ctx, email, patient.FullName())
+			userChatwootContact, chatwootCallErr = uc.callWebhookSvcKonsulinOmnichannel(ctx, callWebhookSvcKonsulinOmnichannelInput{
+				Email:    email,
+				Username: patient.FullName(),
+				Phone:    phone,
+			})
 			if chatwootCallErr != nil {
 				// log the error but continue the process
 				uc.Log.Error("userUsecase.createPatientIfNotExists error calling webhook svc konsulin omnichannel",
@@ -735,7 +747,11 @@ func (uc *userUsecase) createPatientIfNotExists(ctx context.Context, email strin
 	userChatwootContact := callWebhookSvcKonsulinOmnichannelOutput{}
 	chatwootErr := error(nil)
 	if strings.TrimSpace(email) != "" {
-		userChatwootContact, chatwootErr = uc.callWebhookSvcKonsulinOmnichannel(ctx, email, "")
+		userChatwootContact, chatwootErr = uc.callWebhookSvcKonsulinOmnichannel(ctx, callWebhookSvcKonsulinOmnichannelInput{
+			Email:    email,
+			Username: "",
+			Phone:    phone,
+		})
 		if chatwootErr != nil {
 			// log the error but continue the process
 			uc.Log.Error("userUsecase.createPatientIfNotExists error calling webhook svc konsulin omnichannel",
@@ -874,7 +890,11 @@ func (uc *userUsecase) createPersonIfNotExists(ctx context.Context, email string
 	userChatwootContact := callWebhookSvcKonsulinOmnichannelOutput{}
 	chatwootErr := error(nil)
 	if strings.TrimSpace(email) != "" {
-		userChatwootContact, chatwootErr = uc.callWebhookSvcKonsulinOmnichannel(ctx, email, "")
+		userChatwootContact, chatwootErr = uc.callWebhookSvcKonsulinOmnichannel(ctx, callWebhookSvcKonsulinOmnichannelInput{
+			Email:    email,
+			Username: "",
+			Phone:    phone,
+		})
 		if chatwootErr != nil {
 			// log the error but continue the process
 			uc.Log.Error("userUsecase.createPersonIfNotExists error calling webhook svc konsulin omnichannel",
@@ -1117,14 +1137,29 @@ func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *mode
 }
 
 type callWebhookSvcKonsulinOmnichannelOutput struct {
-	ChatwootID int    `json:"chatwoot_id"`
-	Email      string `json:"email"`
+	ChatwootID  int    `json:"chatwoot_id"`
+	Email       string `json:"email"`
+	PhoneNumber string `json:"phoneNumber"`
 }
 
-func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, email, username string) (callWebhookSvcKonsulinOmnichannelOutput, error) {
-	lastUsername := username
+type callWebhookSvcKonsulinOmnichannelInput struct {
+	Email    string
+	Username string
+	Phone    string
+}
+
+type callWebhookSvcKonsulinOmnichannelRawOutput struct {
+	ChatwootID  int     `json:"chatwoot_id"`
+	Email       string  `json:"email"`
+	PhoneNumber *string `json:"phoneNumber"`
+}
+
+func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, input callWebhookSvcKonsulinOmnichannelInput) (callWebhookSvcKonsulinOmnichannelOutput, error) {
+	lastUsername := input.Username
 	if lastUsername == "" {
-		lastUsername = strings.Split(email, "@")[0]
+		if strings.TrimSpace(input.Email) != "" {
+			lastUsername = strings.Split(input.Email, "@")[0]
+		}
 	}
 
 	tokenOut, err := uc.JWTTokenManager.CreateToken(
@@ -1146,9 +1181,11 @@ func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, em
 	body := struct {
 		Email string `json:"email"`
 		Name  string `json:"name"`
+		Phone string `json:"phone,omitempty"`
 	}{
-		Email: email,
+		Email: input.Email,
 		Name:  lastUsername,
+		Phone: input.Phone,
 	}
 
 	bodyBytes, err := json.Marshal(body)
@@ -1183,14 +1220,27 @@ func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, em
 		return callWebhookSvcKonsulinOmnichannelOutput{}, err
 	}
 
-	var outputs []callWebhookSvcKonsulinOmnichannelOutput
-	if err = json.Unmarshal(bodyBytesResp, &outputs); err != nil {
+	var rawOutputs []callWebhookSvcKonsulinOmnichannelRawOutput
+	if err = json.Unmarshal(bodyBytesResp, &rawOutputs); err != nil {
 		return callWebhookSvcKonsulinOmnichannelOutput{}, err
 	}
-	if len(outputs) == 0 {
+	if len(rawOutputs) == 0 {
 		return callWebhookSvcKonsulinOmnichannelOutput{}, errors.New("webhook svc konsulin omnichannel returned empty response")
 	}
 
-	output := outputs[0]
+	raw := rawOutputs[0]
+	output := callWebhookSvcKonsulinOmnichannelOutput{
+		ChatwootID:  raw.ChatwootID,
+		Email:       raw.Email,
+		PhoneNumber: "",
+	}
+
+	// the upstream server might omit the phone number or assigning null to it
+	// this was made to ensure no nil pointer dereference happen when
+	// the downstream code try to access the phone number
+	if raw.PhoneNumber != nil {
+		output.PhoneNumber = *raw.PhoneNumber
+	}
+
 	return output, nil
 }
