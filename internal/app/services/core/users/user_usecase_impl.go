@@ -456,7 +456,7 @@ func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email 
 		// but the process must continue, just not update the practitioner identifier with the chatwoot ID
 		userChatwootContact := callWebhookSvcKonsulinOmnichannelOutput{}
 		chatwootCallErr := error(nil)
-		if strings.TrimSpace(email) != "" {
+		if strings.TrimSpace(email) != "" || strings.TrimSpace(phone) != "" {
 			userChatwootContact, chatwootCallErr = uc.callWebhookSvcKonsulinOmnichannel(ctx, callWebhookSvcKonsulinOmnichannelInput{
 				Email:    email,
 				Username: practitioner.FullName(),
@@ -556,7 +556,7 @@ func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email 
 
 	userChatwootContact := callWebhookSvcKonsulinOmnichannelOutput{}
 	chatwootErr := error(nil)
-	if strings.TrimSpace(email) != "" {
+	if strings.TrimSpace(email) != "" || strings.TrimSpace(phone) != "" {
 		userChatwootContact, chatwootErr = uc.callWebhookSvcKonsulinOmnichannel(ctx, callWebhookSvcKonsulinOmnichannelInput{
 			Email:    email,
 			Username: "",
@@ -648,7 +648,7 @@ func (uc *userUsecase) createPatientIfNotExists(ctx context.Context, email strin
 		// but the process must continue, just not update the patient identifier with the chatwoot ID
 		userChatwootContact := callWebhookSvcKonsulinOmnichannelOutput{}
 		chatwootCallErr := error(nil)
-		if strings.TrimSpace(email) != "" {
+		if strings.TrimSpace(email) != "" || strings.TrimSpace(phone) != "" {
 			userChatwootContact, chatwootCallErr = uc.callWebhookSvcKonsulinOmnichannel(ctx, callWebhookSvcKonsulinOmnichannelInput{
 				Email:    email,
 				Username: patient.FullName(),
@@ -746,7 +746,7 @@ func (uc *userUsecase) createPatientIfNotExists(ctx context.Context, email strin
 
 	userChatwootContact := callWebhookSvcKonsulinOmnichannelOutput{}
 	chatwootErr := error(nil)
-	if strings.TrimSpace(email) != "" {
+	if strings.TrimSpace(email) != "" || strings.TrimSpace(phone) != "" {
 		userChatwootContact, chatwootErr = uc.callWebhookSvcKonsulinOmnichannel(ctx, callWebhookSvcKonsulinOmnichannelInput{
 			Email:    email,
 			Username: "",
@@ -889,7 +889,7 @@ func (uc *userUsecase) createPersonIfNotExists(ctx context.Context, email string
 
 	userChatwootContact := callWebhookSvcKonsulinOmnichannelOutput{}
 	chatwootErr := error(nil)
-	if strings.TrimSpace(email) != "" {
+	if strings.TrimSpace(email) != "" || strings.TrimSpace(phone) != "" {
 		userChatwootContact, chatwootErr = uc.callWebhookSvcKonsulinOmnichannel(ctx, callWebhookSvcKonsulinOmnichannelInput{
 			Email:    email,
 			Username: "",
@@ -1162,6 +1162,10 @@ func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, in
 		}
 	}
 
+	// The rest of the system stores phone without a leading '+', but the upstream expects E.164 with '+'.
+	// Keep this detail internal so callers don't have to know about it.
+	phoneE164 := utils.FormatE164WithPlus(input.Phone)
+
 	tokenOut, err := uc.JWTTokenManager.CreateToken(
 		ctx,
 		&jwtmanager.CreateTokenInput{
@@ -1179,13 +1183,13 @@ func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, in
 	)
 
 	body := struct {
-		Email string `json:"email"`
+		Email string `json:"email,omitempty"`
 		Name  string `json:"name"`
 		Phone string `json:"phone,omitempty"`
 	}{
 		Email: input.Email,
 		Name:  lastUsername,
-		Phone: input.Phone,
+		Phone: phoneE164,
 	}
 
 	bodyBytes, err := json.Marshal(body)

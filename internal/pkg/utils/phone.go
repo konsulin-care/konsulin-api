@@ -42,3 +42,18 @@ func ValidateInternationalPhoneDigits(phoneDigits string) error {
 	}
 	return nil
 }
+
+// FormatE164WithPlus returns a best-effort E.164-looking phone string by adding a leading '+'
+// when missing. If input is empty/blank, it returns empty string.
+//
+// Note: This does not validate digits or length; use ValidateInternationalPhoneDigits if needed.
+func FormatE164WithPlus(input string) string {
+	s := strings.TrimSpace(input)
+	if s == "" {
+		return ""
+	}
+	if strings.HasPrefix(s, "+") {
+		return s
+	}
+	return "+" + s
+}
