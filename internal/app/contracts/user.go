@@ -17,7 +17,7 @@ type InitializeNewUserFHIRResourcesInput struct {
 	Email string
 	// Phone is optional for email-based users.
 	// Expected format: international digits without '+' prefix (E.164 without '+').
-	Phone string
+	Phone            string
 	SuperTokenUserID string
 
 	// toogle to determine whether the underlying related FHIR resource should be created or not.
