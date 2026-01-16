@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/utils"
 	"log"
 	"net/http"
 	"regexp"
@@ -333,10 +334,8 @@ func (uc *authUsecase) InitializeSupertoken() error {
 							return errors.New("passwordless sms delivery: missing PhoneNumber")
 						}
 
-						// Validate "E.164 without +": digits only, 10-15 length, must not start with 0.
-						matched, err := regexp.MatchString(constvars.RegexPhoneNumberDigitsInternational, phoneDigits)
-						if err != nil || !matched {
-							return errors.New("invalid phone number")
+						if err := utils.ValidateInternationalPhoneDigits(phoneDigits); err != nil {
+							return err
 						}
 
 						timeoutSeconds := uc.InternalConfig.Webhook.HTTPTimeoutInSeconds
@@ -346,7 +345,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
 						defer cancel()
 
-						err = uc.MagicLinkDelivery.SendMagicLink(ctx, contracts.SendMagicLinkInput{
+						err := uc.MagicLinkDelivery.SendMagicLink(ctx, contracts.SendMagicLinkInput{
 							URL:   *input.PasswordlessLogin.UrlWithLinkCode,
 							Phone: phoneDigits,
 						})
@@ -388,9 +387,8 @@ func (uc *authUsecase) InitializeSupertoken() error {
 					}
 					phoneStr = strings.TrimSpace(phoneStr)
 
-					matched, err := regexp.MatchString(constvars.RegexPhoneNumberDigitsInternational, phoneStr)
-					if err != nil || !matched {
-						msg := "invalid phone number"
+					if err := utils.ValidateInternationalPhoneDigits(phoneStr); err != nil {
+						msg := err.Error()
 						return &msg
 					}
 

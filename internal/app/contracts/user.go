@@ -7,6 +7,7 @@ import (
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
+	"konsulin-service/internal/pkg/utils"
 	"regexp"
 	"strings"
 )
@@ -41,9 +42,9 @@ func (i *InitializeNewUserFHIRResourcesInput) Validate() error {
 		}
 	}
 	if hasPhone {
-		re := regexp.MustCompile(constvars.RegexPhoneNumberDigitsInternational)
-		if !re.MatchString(i.Phone) {
-			return fmt.Errorf("invalid phone format")
+		phoneDigits := strings.TrimSpace(i.Phone)
+		if err := utils.ValidateInternationalPhoneDigits(phoneDigits); err != nil {
+			return err
 		}
 	}
 	return nil
