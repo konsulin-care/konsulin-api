@@ -61,7 +61,12 @@ func (uc *authUsecase) InitializeSupertoken() error {
 				Functions: func(originalImplementation plessmodels.RecipeInterface) plessmodels.RecipeInterface {
 					originalCreateCode := *originalImplementation.CreateCode
 					(*originalImplementation.CreateCode) = func(email *string, phoneNumber *string, userInputCode *string, tenantId string, userContext supertokens.UserContext) (plessmodels.CreateCodeResponse, error) {
-						response, err := originalCreateCode(email, phoneNumber, userInputCode, tenantId, userContext)
+						normalizedPhoneNumber := ""
+						if phoneNumber != nil {
+							normalizedPhoneNumber = utils.NormalizePhoneDigits(*phoneNumber)
+						}
+
+						response, err := originalCreateCode(email, &normalizedPhoneNumber, userInputCode, tenantId, userContext)
 						if err != nil {
 							uc.Log.Error("authUsecase.SupertokenCreateCode error while calling originalCreateCode",
 								zap.Error(err),
@@ -87,7 +92,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 						}
 
 						if phoneNumber != nil {
-							userPhoneNumber = *phoneNumber
+							userPhoneNumber = normalizedPhoneNumber
 
 							userRecord, err = passwordless.GetUserByPhoneNumber(uc.InternalConfig.Supertoken.KonsulinTenantID, userPhoneNumber)
 							if err != nil {
@@ -334,7 +339,8 @@ func (uc *authUsecase) InitializeSupertoken() error {
 							return errors.New("passwordless sms delivery: missing PhoneNumber")
 						}
 
-						if err := utils.ValidateInternationalPhoneDigits(phoneDigits); err != nil {
+						phoneDigitsNormalized := utils.NormalizePhoneDigits(phoneDigits)
+						if err := utils.ValidateInternationalPhoneDigits(phoneDigitsNormalized); err != nil {
 							return err
 						}
 
@@ -347,7 +353,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 
 						err := uc.MagicLinkDelivery.SendMagicLink(ctx, contracts.SendMagicLinkInput{
 							URL:   *input.PasswordlessLogin.UrlWithLinkCode,
-							Phone: phoneDigits,
+							Phone: phoneDigitsNormalized,
 						})
 						if err != nil {
 							uc.Log.Error("authUsecase.SmsDelivery.SendSms error calling magiclink webhook",
@@ -385,9 +391,8 @@ func (uc *authUsecase) InitializeSupertoken() error {
 						msg := "invalid phone format"
 						return &msg
 					}
-					phoneStr = strings.TrimSpace(phoneStr)
-
-					if err := utils.ValidateInternationalPhoneDigits(phoneStr); err != nil {
+					phoneDigits := utils.NormalizePhoneDigits(phoneStr)
+					if err := utils.ValidateInternationalPhoneDigits(phoneDigits); err != nil {
 						msg := err.Error()
 						return &msg
 					}

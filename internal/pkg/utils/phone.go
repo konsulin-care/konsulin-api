@@ -8,16 +8,14 @@ import (
 
 var (
 	reDigitsOnly = regexp.MustCompile(`^\d+$`)
+	reNonDigits  = regexp.MustCompile(`\D+`)
 )
 
-// NormalizePhoneDigits trims spaces, removes all inner spaces, and strips a single leading '+'.
-// It returns a digits-only string if the caller validates it.
+// NormalizePhoneDigits returns a digits-only phone string by removing *all* non-digit characters.
+// It is best-effort sanitization (e.g., it will turn "62812-34567-8901" into "62812345678901").
 func NormalizePhoneDigits(input string) string {
-	s := strings.TrimSpace(input)
-	// Best-effort: remove spaces anywhere.
-	s = strings.ReplaceAll(s, " ", "")
-	s = strings.TrimPrefix(s, "+")
-	return s
+	trimmed := strings.TrimSpace(input)
+	return reNonDigits.ReplaceAllString(trimmed, "")
 }
 
 // ValidateInternationalPhoneDigits enforces "international digits" (E.164 without '+'):
@@ -28,16 +26,17 @@ func NormalizePhoneDigits(input string) string {
 // NOTE: Without a leading '+' or a separate region/country hint, we cannot *prove* a country code
 // is present. This validation is a pragmatic guardrail.
 func ValidateInternationalPhoneDigits(phoneDigits string) error {
-	if strings.TrimSpace(phoneDigits) == "" {
+	digits := strings.TrimSpace(phoneDigits)
+	if digits == "" {
 		return fmt.Errorf("phone is required")
 	}
-	if !reDigitsOnly.MatchString(phoneDigits) {
+	if !reDigitsOnly.MatchString(digits) {
 		return fmt.Errorf("phone must contain digits only")
 	}
-	if strings.HasPrefix(phoneDigits, "0") {
+	if strings.HasPrefix(digits, "0") {
 		return fmt.Errorf("phone must include country code (must not start with 0)")
 	}
-	if len(phoneDigits) < 10 || len(phoneDigits) > 15 {
+	if len(digits) < 10 || len(digits) > 15 {
 		return fmt.Errorf("phone must be 10 to 15 digits (international format without '+')")
 	}
 	return nil

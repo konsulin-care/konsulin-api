@@ -113,11 +113,12 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 
 	// Enforce mutually-exclusive email or phone (exactly one must be set).
 	hasEmail := strings.TrimSpace(request.Email) != ""
-	if request.Phone != "" {
-		// Normalize phone to digits-only format (trim spaces, remove all inner spaces, strip leading '+')
-		request.Phone = utils.NormalizePhoneDigits(request.Phone)
+	phoneDigits := ""
+	if strings.TrimSpace(request.Phone) != "" {
+		// Normalize phone to digits-only format (remove all non-digit characters).
+		phoneDigits = utils.NormalizePhoneDigits(request.Phone)
 	}
-	hasPhone := strings.TrimSpace(request.Phone) != ""
+	hasPhone := strings.TrimSpace(phoneDigits) != ""
 	if hasEmail && hasPhone {
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(fmt.Errorf("email and phone are mutually exclusive")))
 		return
@@ -127,11 +128,14 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if hasPhone {
-		if err := utils.ValidateInternationalPhoneDigits(request.Phone); err != nil {
+		if err := utils.ValidateInternationalPhoneDigits(phoneDigits); err != nil {
 			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
 			return
 		}
 	}
+
+	// Persist normalized phone for downstream use (repo expects digits-only without '+').
+	request.Phone = phoneDigits
 
 	// Struct tag validation (email format, roles).
 	if err := utils.ValidateStruct(request); err != nil {

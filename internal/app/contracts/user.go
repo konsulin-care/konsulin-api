@@ -42,7 +42,7 @@ func (i *InitializeNewUserFHIRResourcesInput) Validate() error {
 		}
 	}
 	if hasPhone {
-		phoneDigits := strings.TrimSpace(i.Phone)
+		phoneDigits := utils.NormalizePhoneDigits(i.Phone)
 		if err := utils.ValidateInternationalPhoneDigits(phoneDigits); err != nil {
 			return err
 		}
