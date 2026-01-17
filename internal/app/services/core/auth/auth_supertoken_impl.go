@@ -61,12 +61,14 @@ func (uc *authUsecase) InitializeSupertoken() error {
 				Functions: func(originalImplementation plessmodels.RecipeInterface) plessmodels.RecipeInterface {
 					originalCreateCode := *originalImplementation.CreateCode
 					(*originalImplementation.CreateCode) = func(email *string, phoneNumber *string, userInputCode *string, tenantId string, userContext supertokens.UserContext) (plessmodels.CreateCodeResponse, error) {
+						var userPhoneNumberPtr *string
 						normalizedPhoneNumber := ""
 						if phoneNumber != nil {
 							normalizedPhoneNumber = utils.NormalizePhoneDigits(*phoneNumber)
+							userPhoneNumberPtr = phoneNumber
 						}
 
-						response, err := originalCreateCode(email, &normalizedPhoneNumber, userInputCode, tenantId, userContext)
+						response, err := originalCreateCode(email, userPhoneNumberPtr, userInputCode, tenantId, userContext)
 						if err != nil {
 							uc.Log.Error("authUsecase.SupertokenCreateCode error while calling originalCreateCode",
 								zap.Error(err),
