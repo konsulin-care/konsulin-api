@@ -91,9 +91,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 								)
 								return response, err
 							}
-						}
-
-						if phoneNumber != nil {
+						} else if phoneNumber != nil {
 							userPhoneNumber = normalizedPhoneNumber
 
 							userRecord, err = passwordless.GetUserByPhoneNumber(uc.InternalConfig.Supertoken.KonsulinTenantID, userPhoneNumber)
@@ -104,6 +102,8 @@ func (uc *authUsecase) InitializeSupertoken() error {
 								)
 								return response, err
 							}
+						} else {
+							return response, errors.New("either email or phone number is required")
 						}
 
 						// by default, always assumes the user roles is Patient
