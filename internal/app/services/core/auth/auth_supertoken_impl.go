@@ -65,7 +65,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 						normalizedPhoneNumber := ""
 						if phoneNumber != nil {
 							normalizedPhoneNumber = utils.NormalizePhoneDigits(*phoneNumber)
-							userPhoneNumberPtr = phoneNumber
+							userPhoneNumberPtr = &normalizedPhoneNumber
 						}
 
 						response, err := originalCreateCode(email, userPhoneNumberPtr, userInputCode, tenantId, userContext)
