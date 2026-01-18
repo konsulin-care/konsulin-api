@@ -1033,7 +1033,11 @@ func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, em
 		return callWebhookSvcKonsulinOmnichannelOutput{}, err
 	}
 
-	url := fmt.Sprintf("%s%ssynchronous/modify-profile", uc.InternalConfig.App.BaseUrl, uc.InternalConfig.App.WebhookInstantiateBasePath)
+	url := fmt.Sprintf(
+		"%s/%s/synchronous/modify-profile",
+		strings.TrimRight(uc.InternalConfig.App.BaseUrl, "/"),
+		strings.Trim(uc.InternalConfig.App.WebhookInstantiateBasePath, "/"),
+	)
 
 	body := struct {
 		Email string `json:"email"`

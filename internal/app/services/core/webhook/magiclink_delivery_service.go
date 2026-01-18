@@ -20,9 +20,9 @@ import (
 )
 
 const (
-	// magicLinkServiceName is appended to InternalConfig.Webhook.URL.
-	// With HOOK_URL="https://flow.konsulin.care/webhook/staging", this becomes:
-	//   https://flow.konsulin.care/webhook/staging/send-magiclink
+	// magicLinkServiceName is the service name for the magic link delivery webhook.
+	// this should be used to point to the synchronous hook service provided by the backend
+	// and not directly to the webhook service (proxied by the backend).
 	magicLinkServiceName = "send-magiclink"
 
 	// magicLinkExpMinutes is intentionally arbitrary. The *actual* magic-link expiry is controlled externally.
@@ -63,11 +63,11 @@ func (s *magicLinkDeliveryService) SendMagicLink(ctx context.Context, in contrac
 		return fmt.Errorf("jwt manager is required")
 	}
 
-	url := strings.TrimSpace(in.URL)
+	magiclinkUrl := strings.TrimSpace(in.URL)
 	email := strings.TrimSpace(in.Email)
 	phone := strings.TrimSpace(in.Phone)
 
-	if url == "" {
+	if magiclinkUrl == "" {
 		return fmt.Errorf("url is required")
 	}
 	hasEmail := email != ""
@@ -79,7 +79,13 @@ func (s *magicLinkDeliveryService) SendMagicLink(ctx context.Context, in contrac
 		return fmt.Errorf("either email or phone is required")
 	}
 
-	targetURL := fmt.Sprintf("%s/%s", strings.TrimRight(s.cfg.Webhook.URL, "/"), magicLinkServiceName)
+	// targetURL will point to the synchronous hook service for magiclink delivery provided by the backend
+	targetURL := fmt.Sprintf(
+		"%s/%s/synchronous/%s",
+		strings.TrimSuffix(s.cfg.App.BaseUrl, "/"),
+		strings.Trim(s.cfg.App.WebhookInstantiateBasePath, "/"),
+		magicLinkServiceName,
+	)
 
 	payload := struct {
 		URL   string `json:"url"`
@@ -87,7 +93,7 @@ func (s *magicLinkDeliveryService) SendMagicLink(ctx context.Context, in contrac
 		Email string `json:"email,omitempty"`
 		Phone string `json:"phone,omitempty"`
 	}{
-		URL:   url,
+		URL:   magiclinkUrl,
 		Exp:   magicLinkExpMinutes,
 		Email: email,
 		Phone: phone,
