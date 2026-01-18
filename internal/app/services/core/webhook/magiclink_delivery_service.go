@@ -91,7 +91,7 @@ func (s *magicLinkDeliveryService) SendMagicLink(ctx context.Context, in contrac
 		URL   string `json:"url"`
 		Exp   int    `json:"exp"`
 		Email string `json:"email,omitempty"`
-		Phone string `json:"phone,omitempty"`
+		Phone string `json:"phoneNumber,omitempty"`
 	}{
 		URL:   magiclinkUrl,
 		Exp:   magicLinkExpMinutes,

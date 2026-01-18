@@ -1185,7 +1185,7 @@ func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, in
 	body := struct {
 		Email string `json:"email,omitempty"`
 		Name  string `json:"name"`
-		Phone string `json:"phone,omitempty"`
+		Phone string `json:"phoneNumber,omitempty"`
 	}{
 		Email: input.Email,
 		Name:  lastUsername,
