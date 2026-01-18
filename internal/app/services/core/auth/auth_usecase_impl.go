@@ -27,6 +27,7 @@ type authUsecase struct {
 	MailerService          contracts.MailerService
 	WhatsAppService        contracts.WhatsAppService
 	MinioStorage           contracts.Storage
+	MagicLinkDelivery      contracts.MagicLinkDeliveryService
 	InternalConfig         *config.InternalConfig
 	DriverConfig           *config.DriverConfig
 	Roles                  map[string]*models.Role
@@ -46,6 +47,7 @@ func NewAuthUsecase(
 	practitionerFhirClient contracts.PractitionerFhirClient,
 	userUsecase contracts.UserUsecase,
 	mailerService contracts.MailerService,
+	magicLinkDelivery contracts.MagicLinkDeliveryService,
 	internalConfig *config.InternalConfig,
 	driverConfig *config.DriverConfig,
 	logger *zap.Logger,
@@ -58,6 +60,7 @@ func NewAuthUsecase(
 			PractitionerFhirClient: practitionerFhirClient,
 			UserUsecase:            userUsecase,
 			MailerService:          mailerService,
+			MagicLinkDelivery:      magicLinkDelivery,
 			InternalConfig:         internalConfig,
 			DriverConfig:           driverConfig,
 			Roles:                  make(map[string]*models.Role),
@@ -186,6 +189,28 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Su
 		)
 	}
 
+	initializeResourcesInput := &contracts.InitializeNewUserFHIRResourcesInput{
+		Email:            request.Email,
+		SuperTokenUserID: plessResponse.User.ID,
+	}
+	initializeResourcesInput.ToogleByRoles(request.Roles)
+	initializeResourceCtx, initializeResourceCtxCancel := context.WithDeadline(ctx, time.Now().Add(10*time.Second))
+	defer initializeResourceCtxCancel()
+	initializeResources, err := uc.UserUsecase.InitializeNewUserFHIRResources(initializeResourceCtx, initializeResourcesInput)
+	if err != nil {
+		uc.Log.Error("Failed to initialize new user FHIR resources",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingEmailKey, request.Email),
+			zap.String(constvars.LoggingErrorTypeKey, "FHIR resources initialization"),
+			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
+			zap.Error(err),
+		)
+		return err
+	}
+
+	// NOTE: this must run after we call webhook [base]/api/v1/hook/synchronous/modify-profile
+	// because the underlying email delivery service relies on the result
+	// of profile synchronization (omnichannel service).
 	emailData := emaildelivery.EmailType{
 		PasswordlessLogin: &emaildelivery.PasswordlessLoginType{
 			Email:           request.Email,
@@ -202,16 +227,6 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Su
 			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
 			zap.Error(err),
 		)
-		return err
-	}
-
-	initializeResourcesInput := &contracts.InitializeNewUserFHIRResourcesInput{
-		Email:            request.Email,
-		SuperTokenUserID: plessResponse.User.ID,
-	}
-	initializeResourcesInput.ToogleByRoles(request.Roles)
-	initializeResources, err := uc.UserUsecase.InitializeNewUserFHIRResources(context.Background(), initializeResourcesInput)
-	if err != nil {
 		return err
 	}
 

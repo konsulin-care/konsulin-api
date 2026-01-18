@@ -74,7 +74,7 @@ func loadInternalConfigWithEnv() *InternalConfig {
 			// Sensitive / Key Logic
 			SuperadminAPIKey:           utils.GetEnvString("SUPERADMIN_API_KEY", ""), // Sensitive
 			SuperadminAPIKeyRateLimit:  utils.GetEnvInt("SUPERADMIN_API_KEY_RATE_LIMIT", 10),
-			WebhookInstantiateBasePath: utils.GetEnvString("APP_WEBHOOK_INSTANTIATE_BASE_PATH", "/api/v1/hook"),
+			WebhookInstantiateBasePath: fmt.Sprintf("/api/%s/%s", utils.GetEnvString("APP_VERSION", "v1"), utils.GetEnvString("APP_WEBHOOK_INSTANTIATE_BASE_PATH", "hook")), // expected format: /api/<app-version>/<hook-base-path>
 			SlotWindowDays: func() int {
 				v := utils.GetEnvInt("SLOT_WINDOW_DAYS", 30)
 				if v <= 0 {

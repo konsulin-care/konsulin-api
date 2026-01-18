@@ -17,6 +17,7 @@ p, Guest, GET, /fhir/ResearchStudy
 p, Guest, GET, /fhir/Slot
 p, Guest, GET, /fhir/metadata
 p, Guest, POST, /hook/synchronous/modify-profile
+p, Guest, POST, /hook/synchronous/send-magiclink
 p, Patient, GET, /fhir/Appointment
 p, Patient, POST, /fhir/Appointment
 p, Patient, GET, /fhir/Condition
