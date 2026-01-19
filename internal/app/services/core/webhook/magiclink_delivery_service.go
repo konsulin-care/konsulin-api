@@ -123,7 +123,7 @@ func (s *magicLinkDeliveryService) SendMagicLink(ctx context.Context, in contrac
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusNoContent {
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
 		requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 		s.log.Info("magiclink webhook sent successfully",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
