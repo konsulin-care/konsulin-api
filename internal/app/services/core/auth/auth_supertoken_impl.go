@@ -189,7 +189,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 							uc.Log.Error("authUsecase.SupertokenConsumeCode supertokens error get roles for user by tenantID & UserID is nil",
 								zap.String("user_id", user.ID),
 							)
-							return plessmodels.ConsumeCodeResponse{}, err
+							return plessmodels.ConsumeCodeResponse{}, errors.New("unexpected nil response when getting roles for user")
 						}
 
 						userRoles := rolesResp.OK.Roles
