@@ -534,3 +534,91 @@ func (c *patientFhirClient) FindPatientByEmail(ctx context.Context, email string
 	)
 	return patients, nil
 }
+
+// FindPatientByPhone queries Patient by phone search parameter.
+func (c *patientFhirClient) FindPatientByPhone(ctx context.Context, phone string) ([]fhir_dto.Patient, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	c.Log.Info("patientFhirClient.FindPatientByPhone called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
+	phoneEnc := url.QueryEscape(phone)
+
+	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet,
+		fmt.Sprintf("%s?phone=%s&_sort=-_lastUpdated", c.BaseUrl, phoneEnc), nil)
+	if err != nil {
+		c.Log.Error("patientFhirClient.FindPatientByPhone error creating HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrCreateHTTPRequest(err)
+	}
+	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		c.Log.Error("patientFhirClient.FindPatientByPhone error sending HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrSendHTTPRequest(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != constvars.StatusOK && resp.StatusCode != constvars.StatusNotFound {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			c.Log.Error("patientFhirClient.FindPatientByPhone error reading response body",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePatient)
+		}
+		var outcome fhir_dto.OperationOutcome
+		err = json.Unmarshal(bodyBytes, &outcome)
+		if err != nil {
+			c.Log.Error("patientFhirClient.FindPatientByPhone error unmarshaling outcome",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePatient)
+		}
+		if len(outcome.Issue) > 0 {
+			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			c.Log.Error("patientFhirClient.FindPatientByPhone FHIR error",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(fhirErrorIssue),
+			)
+			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourcePatient)
+		}
+	}
+
+	var result struct {
+		Total        int    `json:"total"`
+		ResourceType string `json:"resourceType"`
+		Entry        []struct {
+			FullUrl  string           `json:"fullUrl"`
+			Resource fhir_dto.Patient `json:"resource"`
+		} `json:"entry"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	if err != nil {
+		c.Log.Error("patientFhirClient.FindPatientByPhone error decoding response",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePatient)
+	}
+
+	patients := make([]fhir_dto.Patient, len(result.Entry))
+	for i, entry := range result.Entry {
+		patients[i] = entry.Resource
+	}
+
+	c.Log.Info("patientFhirClient.FindPatientByPhone succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.Int(constvars.LoggingPatientCountKey, len(patients)),
+	)
+	return patients, nil
+}

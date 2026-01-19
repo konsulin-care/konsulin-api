@@ -283,8 +283,11 @@ func (c *practitionerFhirClient) FindPractitionerByIdentifier(ctx context.Contex
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
 
+	identifierToken := fmt.Sprintf("%s|%s", system, value)
+	identifierEnc := url.QueryEscape(identifierToken)
+
 	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet,
-		fmt.Sprintf("%s?identifier=%s|%s", c.BaseUrl, system, value), nil)
+		fmt.Sprintf("%s?identifier=%s", c.BaseUrl, identifierEnc), nil)
 	if err != nil {
 		c.Log.Error("practitionerFhirClient.FindPractitionerByIdentifier error creating HTTP request",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -449,6 +452,99 @@ func (c *practitionerFhirClient) FindPractitionerByEmail(ctx context.Context, em
 	}
 
 	c.Log.Info("practitionerFhirClient.FindPractitionerByEmail succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.Int(constvars.LoggingPractitionerRoleCountKey, len(practitioners)),
+	)
+	return practitioners, nil
+}
+
+// FindPractitionerByPhone queries Practitioner by phone search parameter.
+func (c *practitionerFhirClient) FindPractitionerByPhone(ctx context.Context, phone string) ([]fhir_dto.Practitioner, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	c.Log.Info("practitionerFhirClient.FindPractitionerByPhone called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
+	phoneEnc := url.QueryEscape(phone)
+
+	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet,
+		fmt.Sprintf("%s?phone=%s&_sort=-_lastUpdated", c.BaseUrl, phoneEnc), nil)
+	if err != nil {
+		c.Log.Error("practitionerFhirClient.FindPractitionerByPhone error creating HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrCreateHTTPRequest(err)
+	}
+	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
+
+	c.Log.Info("practitionerFhirClient.FindPractitionerByPhone built URL",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingFhirUrlKey, req.URL.String()),
+	)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		c.Log.Error("practitionerFhirClient.FindPractitionerByPhone error sending HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrSendHTTPRequest(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != constvars.StatusOK {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			c.Log.Error("practitionerFhirClient.FindPractitionerByPhone error reading response body",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePractitioner)
+		}
+		var outcome fhir_dto.OperationOutcome
+		err = json.Unmarshal(bodyBytes, &outcome)
+		if err != nil {
+			c.Log.Error("practitionerFhirClient.FindPractitionerByPhone error unmarshaling outcome",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(err),
+			)
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePractitioner)
+		}
+		if len(outcome.Issue) > 0 {
+			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			c.Log.Error("practitionerFhirClient.FindPractitionerByPhone FHIR error",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.Error(fhirErrorIssue),
+			)
+			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourcePractitioner)
+		}
+	}
+
+	var result struct {
+		Total        int    `json:"total"`
+		ResourceType string `json:"resourceType"`
+		Entry        []struct {
+			FullUrl  string                `json:"fullUrl"`
+			Resource fhir_dto.Practitioner `json:"resource"`
+		} `json:"entry"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	if err != nil {
+		c.Log.Error("practitionerFhirClient.FindPractitionerByPhone error decoding response",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourcePractitioner)
+	}
+
+	practitioners := make([]fhir_dto.Practitioner, len(result.Entry))
+	for i, entry := range result.Entry {
+		practitioners[i] = entry.Resource
+	}
+
+	c.Log.Info("practitionerFhirClient.FindPractitionerByPhone succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.Int(constvars.LoggingPractitionerRoleCountKey, len(practitioners)),
 	)

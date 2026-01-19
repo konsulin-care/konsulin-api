@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/dto/requests"
+	"konsulin-service/internal/pkg/utils"
 	"log"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/supertokens/supertokens-golang/ingredients/emaildelivery"
@@ -60,7 +61,14 @@ func (uc *authUsecase) InitializeSupertoken() error {
 				Functions: func(originalImplementation plessmodels.RecipeInterface) plessmodels.RecipeInterface {
 					originalCreateCode := *originalImplementation.CreateCode
 					(*originalImplementation.CreateCode) = func(email *string, phoneNumber *string, userInputCode *string, tenantId string, userContext supertokens.UserContext) (plessmodels.CreateCodeResponse, error) {
-						response, err := originalCreateCode(email, phoneNumber, userInputCode, tenantId, userContext)
+						var userPhoneNumberPtr *string
+						normalizedPhoneNumber := ""
+						if phoneNumber != nil {
+							normalizedPhoneNumber = utils.NormalizePhoneDigits(*phoneNumber)
+							userPhoneNumberPtr = &normalizedPhoneNumber
+						}
+
+						response, err := originalCreateCode(email, userPhoneNumberPtr, userInputCode, tenantId, userContext)
 						if err != nil {
 							uc.Log.Error("authUsecase.SupertokenCreateCode error while calling originalCreateCode",
 								zap.Error(err),
@@ -69,20 +77,33 @@ func (uc *authUsecase) InitializeSupertoken() error {
 						}
 
 						userEmail := ""
-						if email == nil {
-							uc.Log.Warn("authUsecase.SupertokenCreateCode email is nil, nothing can be done")
-							return response, nil
-						}
+						userPhoneNumber := ""
+						userRecord := &plessmodels.User{}
 
-						userEmail = *email
+						if email != nil {
+							userEmail = *email
 
-						userRecord, err := passwordless.GetUserByEmail(uc.InternalConfig.Supertoken.KonsulinTenantID, userEmail)
-						if err != nil {
-							uc.Log.Error("authUsecase.SupertokenCreateCode failed to fetch user by email",
-								zap.String("email", userEmail),
-								zap.Error(err),
-							)
-							return response, err
+							userRecord, err = passwordless.GetUserByEmail(uc.InternalConfig.Supertoken.KonsulinTenantID, userEmail)
+							if err != nil {
+								uc.Log.Error("authUsecase.SupertokenCreateCode failed to fetch user by email",
+									zap.String("email", userEmail),
+									zap.Error(err),
+								)
+								return response, err
+							}
+						} else if phoneNumber != nil {
+							userPhoneNumber = normalizedPhoneNumber
+
+							userRecord, err = passwordless.GetUserByPhoneNumber(uc.InternalConfig.Supertoken.KonsulinTenantID, userPhoneNumber)
+							if err != nil {
+								uc.Log.Error("authUsecase.SupertokenCreateCode failed to fetch user by phone number",
+									zap.String("phone_number", userPhoneNumber),
+									zap.Error(err),
+								)
+								return response, err
+							}
+						} else {
+							return response, errors.New("either email or phone number is required")
 						}
 
 						// by default, always assumes the user roles is Patient
@@ -112,6 +133,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 
 						initFHIRResourcesInput := &contracts.InitializeNewUserFHIRResourcesInput{
 							Email:            userEmail,
+							Phone:            userPhoneNumber,
 							SuperTokenUserID: userID,
 						}
 						initFHIRResourcesInput.ToogleByRoles(userRoles)
@@ -167,7 +189,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 							uc.Log.Error("authUsecase.SupertokenConsumeCode supertokens error get roles for user by tenantID & UserID is nil",
 								zap.String("user_id", user.ID),
 							)
-							return plessmodels.ConsumeCodeResponse{}, err
+							return plessmodels.ConsumeCodeResponse{}, errors.New("unexpected nil response when getting roles for user")
 						}
 
 						userRoles := rolesResp.OK.Roles
@@ -220,8 +242,22 @@ func (uc *authUsecase) InitializeSupertoken() error {
 							userRoles = newUserRolesResp.OK.Roles
 						}
 
+						// this was made to prevent accidental access to nil values
+						// that might happen because we need to support both email and phone number based login.
+						userEmail := ""
+						userPhoneNumber := ""
+
+						if user.Email != nil {
+							userEmail = *user.Email
+						}
+
+						if user.PhoneNumber != nil {
+							userPhoneNumber = *user.PhoneNumber
+						}
+
 						initializeFHIRResourcesInput := &contracts.InitializeNewUserFHIRResourcesInput{
-							Email:            *user.Email,
+							Email:            userEmail,
+							Phone:            userPhoneNumber,
 							SuperTokenUserID: user.ID,
 						}
 						initializeFHIRResourcesInput.ToogleByRoles(userRoles)
@@ -253,22 +289,78 @@ func (uc *authUsecase) InitializeSupertoken() error {
 					return originalImplementation
 				},
 			},
-			EmailDelivery: &emaildelivery.TypeInput{},
+			EmailDelivery: &emaildelivery.TypeInput{
+				Override: func(originalImplementation emaildelivery.EmailDeliveryInterface) emaildelivery.EmailDeliveryInterface {
+					originalSendEmail := *originalImplementation.SendEmail
+					(*originalImplementation.SendEmail) = func(input emaildelivery.EmailType, userContext supertokens.UserContext) error {
+						// Only intercept passwordless magic-link emails; for anything else, fall back to default.
+						if input.PasswordlessLogin == nil {
+							return originalSendEmail(input, userContext)
+						}
+
+						if input.PasswordlessLogin.UrlWithLinkCode == nil {
+							return errors.New("passwordless email delivery: missing UrlWithLinkCode")
+						}
+
+						// NOTE: SuperTokens' email delivery interface does not provide request context.
+						// Use Background context with timeout (from InternalConfig) for now.
+						timeoutSeconds := uc.InternalConfig.Webhook.HTTPTimeoutInSeconds
+						if timeoutSeconds <= 0 {
+							timeoutSeconds = 10
+						}
+						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
+						defer cancel()
+
+						err := uc.MagicLinkDelivery.SendMagicLink(ctx, contracts.SendMagicLinkInput{
+							URL:   *input.PasswordlessLogin.UrlWithLinkCode,
+							Email: input.PasswordlessLogin.Email,
+						})
+						if err != nil {
+							uc.Log.Error("authUsecase.EmailDelivery.SendEmail error calling magiclink webhook",
+								zap.Error(err),
+							)
+							return err
+						}
+						return nil
+					}
+					return originalImplementation
+				},
+			},
 			SmsDelivery: &smsdelivery.TypeInput{
 				Override: func(originalImplementation smsdelivery.SmsDeliveryInterface) smsdelivery.SmsDeliveryInterface {
 					(*originalImplementation.SendSms) = func(input smsdelivery.SmsType, userContext supertokens.UserContext) error {
-						phoneNumber := input.PasswordlessLogin.PhoneNumber
-						urlWithLinkCode := input.PasswordlessLogin.UrlWithLinkCode
-
-						whatsappRequest := &requests.WhatsAppMessage{
-							To:        phoneNumber,
-							Message:   *urlWithLinkCode,
-							WithImage: false,
+						if input.PasswordlessLogin == nil {
+							return errors.New("passwordless sms delivery: missing PasswordlessLogin payload")
+						}
+						if input.PasswordlessLogin.UrlWithLinkCode == nil {
+							return errors.New("passwordless sms delivery: missing UrlWithLinkCode")
 						}
 
-						ctx := context.Background()
-						err := uc.WhatsAppService.SendWhatsAppMessage(ctx, whatsappRequest)
+						phoneDigits := strings.TrimSpace(input.PasswordlessLogin.PhoneNumber)
+						if phoneDigits == "" {
+							return errors.New("passwordless sms delivery: missing PhoneNumber")
+						}
+
+						phoneDigitsNormalized := utils.NormalizePhoneDigits(phoneDigits)
+						if err := utils.ValidateInternationalPhoneDigits(phoneDigitsNormalized); err != nil {
+							return err
+						}
+
+						timeoutSeconds := uc.InternalConfig.Webhook.HTTPTimeoutInSeconds
+						if timeoutSeconds <= 0 {
+							timeoutSeconds = 10
+						}
+						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
+						defer cancel()
+
+						err := uc.MagicLinkDelivery.SendMagicLink(ctx, contracts.SendMagicLinkInput{
+							URL:   *input.PasswordlessLogin.UrlWithLinkCode,
+							Phone: phoneDigitsNormalized,
+						})
 						if err != nil {
+							uc.Log.Error("authUsecase.SmsDelivery.SendSms error calling magiclink webhook",
+								zap.Error(err),
+							)
 							return err
 						}
 
@@ -278,7 +370,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 				},
 			},
 			FlowType: "MAGIC_LINK",
-			ContactMethodEmail: plessmodels.ContactMethodEmailConfig{
+			ContactMethodEmailOrPhone: plessmodels.ContactMethodEmailOrPhoneConfig{
 				Enabled: true,
 				ValidateEmailAddress: func(email interface{}, tenantId string) *string {
 					emailStr, ok := email.(string)
@@ -290,6 +382,20 @@ func (uc *authUsecase) InitializeSupertoken() error {
 					matched, err := regexp.MatchString(constvars.RegexEmail, emailStr)
 					if err != nil || !matched {
 						msg := "invalid email address"
+						return &msg
+					}
+
+					return nil
+				},
+				ValidatePhoneNumber: func(phoneNumber interface{}, tenantId string) *string {
+					phoneStr, ok := phoneNumber.(string)
+					if !ok {
+						msg := "invalid phone format"
+						return &msg
+					}
+					phoneDigits := utils.NormalizePhoneDigits(phoneStr)
+					if err := utils.ValidateInternationalPhoneDigits(phoneDigits); err != nil {
+						msg := err.Error()
 						return &msg
 					}
 
