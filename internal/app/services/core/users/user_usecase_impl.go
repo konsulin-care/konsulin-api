@@ -550,8 +550,11 @@ func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email 
 		return &practitioner, nil
 	}
 
+	// at the time of writing, to create / invite a user with Practitioner role can only be done using magic link invitation API
+	// and by using that API, the supertokenID should be provided by supertokens SDK (unlike create code API)
+	// thus this checking is a must to ensure that the user is created with the correct supertokenID
 	if superTokenUserID == "" {
-		return nil, exceptions.ErrInvalidFormat(nil, "superTokenUserID")
+		return nil, exceptions.ErrInvalidFormat(nil, "superTokenUserID is required for creating a user with Practitioner role")
 	}
 
 	userChatwootContact := callWebhookSvcKonsulinOmnichannelOutput{}
