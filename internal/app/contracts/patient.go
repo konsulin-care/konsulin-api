@@ -18,6 +18,7 @@ type PatientFhirClient interface {
 	FindPatientByID(ctx context.Context, patientID string) (*fhir_dto.Patient, error)
 	FindPatientByIdentifier(ctx context.Context, identifier string) ([]fhir_dto.Patient, error)
 	FindPatientByEmail(ctx context.Context, email string) ([]fhir_dto.Patient, error)
+	FindPatientByPhone(ctx context.Context, phone string) ([]fhir_dto.Patient, error)
 }
 
 type PatientRepository interface{}

@@ -111,11 +111,38 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 
 	utils.SanitizeCreateMagicLinkRequest(request)
 
-	// Basic validation (email format)
+	// Enforce mutually-exclusive email or phone (exactly one must be set).
+	hasEmail := strings.TrimSpace(request.Email) != ""
+	phoneDigits := ""
+	if strings.TrimSpace(request.Phone) != "" {
+		// Normalize phone to digits-only format (remove all non-digit characters).
+		phoneDigits = utils.NormalizePhoneDigits(request.Phone)
+	}
+	hasPhone := strings.TrimSpace(phoneDigits) != ""
+	if hasEmail && hasPhone {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(fmt.Errorf("email and phone are mutually exclusive")))
+		return
+	}
+	if !hasEmail && !hasPhone {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(fmt.Errorf("either email or phone is required")))
+		return
+	}
+	if hasPhone {
+		if err := utils.ValidateInternationalPhoneDigits(phoneDigits); err != nil {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
+			return
+		}
+	}
+
+	// Persist normalized phone for downstream use (repo expects digits-only without '+').
+	request.Phone = phoneDigits
+
+	// Struct tag validation (email format, roles).
 	if err := utils.ValidateStruct(request); err != nil {
 		ctrl.Log.Error("Request validation failed",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String(constvars.LoggingEmailKey, request.Email),
+			zap.String("phone", request.Phone),
 			zap.String(constvars.LoggingErrorTypeKey, "input validation"),
 			zap.Error(err),
 		)
@@ -127,10 +154,18 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	userExistsOutput, err := ctrl.AuthUsecase.CheckUserExists(ctx, request.Email)
+	var userExistsOutput *contracts.CheckUserExistsOutput
+	var err error
+	if hasEmail {
+		userExistsOutput, err = ctrl.AuthUsecase.CheckUserExists(ctx, request.Email)
+	} else {
+		userExistsOutput, err = ctrl.AuthUsecase.CheckUserExistsByPhone(ctx, request.Phone)
+	}
 	if err != nil {
 		ctrl.Log.Error("AuthController.MagicLink error checking user existence",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingEmailKey, request.Email),
+			zap.String("phone", request.Phone),
 			zap.Error(err),
 		)
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
@@ -143,7 +178,8 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 	if !userExists && (len(request.Roles) == 0) {
 		ctrl.Log.Error("AuthController.MagicLink roles required for new user",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("email", request.Email),
+			zap.String(constvars.LoggingEmailKey, request.Email),
+			zap.String("phone", request.Phone),
 		)
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrRolesRequired(nil))
 		return
@@ -173,6 +209,7 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 		ctrl.Log.Error("Failed to create magic link",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String(constvars.LoggingEmailKey, request.Email),
+			zap.String("phone", request.Phone),
 			zap.String(constvars.LoggingErrorTypeKey, "usecase error"),
 			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
 			zap.Error(err),
@@ -188,6 +225,7 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 	// Log business event
 	utils.LogBusinessEvent(ctrl.Log, "magic_link_created", requestID,
 		zap.String(constvars.LoggingEmailKey, request.Email),
+		zap.String("phone", request.Phone),
 		zap.Strings(constvars.LoggingRolesKey, request.Roles),
 		zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
 	)

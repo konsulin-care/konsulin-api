@@ -351,7 +351,7 @@ func (uc *userUsecase) DeactivateUserBySession(ctx context.Context, sessionData 
 
 func (uc *userUsecase) InitializeNewUserFHIRResources(ctx context.Context, input *contracts.InitializeNewUserFHIRResourcesInput) (*contracts.InitializeNewUserFHIRResourcesOutput, error) {
 	if err := input.Validate(); err != nil {
-		return nil, exceptions.ErrInvalidFormat(err, "email")
+		return nil, exceptions.ErrInvalidFormat(err, "email_or_phone")
 	}
 
 	output := &contracts.InitializeNewUserFHIRResourcesOutput{}
@@ -359,19 +359,19 @@ func (uc *userUsecase) InitializeNewUserFHIRResources(ctx context.Context, input
 	for _, resource := range input.Resources() {
 		switch resource {
 		case constvars.ResourcePractitioner:
-			practitioner, err := uc.createPractitionerIfNotExists(ctx, input.Email, input.SuperTokenUserID)
+			practitioner, err := uc.createPractitionerIfNotExists(ctx, input.Email, input.Phone, input.SuperTokenUserID)
 			if err != nil {
 				return nil, err
 			}
 			output.PractitionerID = practitioner.ID
 		case constvars.ResourcePatient:
-			patient, err := uc.createPatientIfNotExists(ctx, input.Email, input.SuperTokenUserID)
+			patient, err := uc.createPatientIfNotExists(ctx, input.Email, input.Phone, input.SuperTokenUserID)
 			if err != nil {
 				return nil, err
 			}
 			output.PatientID = patient.ID
 		case constvars.ResourcePerson:
-			person, err := uc.createPersonIfNotExists(ctx, input.Email, input.SuperTokenUserID)
+			person, err := uc.createPersonIfNotExists(ctx, input.Email, input.Phone, input.SuperTokenUserID)
 			if err != nil {
 				return nil, err
 			}
@@ -427,10 +427,26 @@ func (uc *userUsecase) deactivatePatientFhirData(ctx context.Context, user *mode
 	return nil
 }
 
-func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email string, superTokenUserID string) (*fhir_dto.Practitioner, error) {
-	practitioners, err := uc.PractitionerFhirClient.FindPractitionerByEmail(ctx, email)
-	if err != nil {
-		return nil, err
+func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email string, phone string, superTokenUserID string) (*fhir_dto.Practitioner, error) {
+	practitioners := []fhir_dto.Practitioner{}
+	if strings.TrimSpace(email) != "" {
+		var err error
+		practitioners, err = uc.PractitionerFhirClient.FindPractitionerByEmail(ctx, email)
+		if err != nil {
+			return nil, err
+		}
+	} else if strings.TrimSpace(phone) != "" {
+		var err error
+		practitioners, err = uc.PractitionerFhirClient.FindPractitionerByPhone(ctx, phone)
+		if err != nil {
+			return nil, err
+		}
+	} else if strings.TrimSpace(superTokenUserID) != "" {
+		var err error
+		practitioners, err = uc.PractitionerFhirClient.FindPractitionerByIdentifier(ctx, constvars.FhirSupertokenSystemIdentifier, superTokenUserID)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if len(practitioners) > 0 {
@@ -438,11 +454,19 @@ func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email 
 
 		// if the chatwoot call fails, we don't need to update the practitioner identifier with the chatwoot ID
 		// but the process must continue, just not update the practitioner identifier with the chatwoot ID
-		userChatwootContact, chatwootCallErr := uc.callWebhookSvcKonsulinOmnichannel(ctx, email, practitioner.FullName())
-		if chatwootCallErr != nil {
-			uc.Log.Error("userUsecase.createPractitionerIfNotExists error calling webhook svc konsulin omnichannel",
-				zap.Error(chatwootCallErr),
-			)
+		userChatwootContact := callWebhookSvcKonsulinOmnichannelOutput{}
+		chatwootCallErr := error(nil)
+		if strings.TrimSpace(email) != "" || strings.TrimSpace(phone) != "" {
+			userChatwootContact, chatwootCallErr = uc.callWebhookSvcKonsulinOmnichannel(ctx, callWebhookSvcKonsulinOmnichannelInput{
+				Email:    email,
+				Username: practitioner.FullName(),
+				Phone:    phone,
+			})
+			if chatwootCallErr != nil {
+				uc.Log.Error("userUsecase.createPractitionerIfNotExists error calling webhook svc konsulin omnichannel",
+					zap.Error(chatwootCallErr),
+				)
+			}
 		}
 
 		chatwootID := strconv.Itoa(userChatwootContact.ChatwootID)
@@ -526,19 +550,46 @@ func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email 
 		return &practitioner, nil
 	}
 
+	// at the time of writing, to create / invite a user with Practitioner role can only be done using magic link invitation API
+	// and by using that API, the supertokenID should be provided by supertokens SDK (unlike create code API)
+	// thus this checking is a must to ensure that the user is created with the correct supertokenID
 	if superTokenUserID == "" {
-		return nil, exceptions.ErrInvalidFormat(nil, "superTokenUserID")
+		return nil, exceptions.ErrInvalidFormat(nil, "superTokenUserID is required for creating a user with Practitioner role")
 	}
 
-	userChatwootContact, chatwootErr := uc.callWebhookSvcKonsulinOmnichannel(ctx, email, "")
-	if chatwootErr != nil {
-		// log the error but continue the process
-		uc.Log.Error("userUsecase.createPractitionerIfNotExists error calling webhook svc konsulin omnichannel",
-			zap.Error(chatwootErr),
-		)
+	userChatwootContact := callWebhookSvcKonsulinOmnichannelOutput{}
+	chatwootErr := error(nil)
+	if strings.TrimSpace(email) != "" || strings.TrimSpace(phone) != "" {
+		userChatwootContact, chatwootErr = uc.callWebhookSvcKonsulinOmnichannel(ctx, callWebhookSvcKonsulinOmnichannelInput{
+			Email:    email,
+			Username: "",
+			Phone:    phone,
+		})
+		if chatwootErr != nil {
+			// log the error but continue the process
+			uc.Log.Error("userUsecase.createPractitionerIfNotExists error calling webhook svc konsulin omnichannel",
+				zap.Error(chatwootErr),
+			)
+		}
 	}
 
 	chatwootID := strconv.Itoa(userChatwootContact.ChatwootID)
+
+	telecom := []fhir_dto.ContactPoint{}
+	if strings.TrimSpace(email) != "" {
+		telecom = append(telecom, fhir_dto.ContactPoint{
+			System: fhir_dto.ContactPointSystemEmail,
+			Value:  email,
+			Use:    "work",
+		})
+	}
+	if strings.TrimSpace(phone) != "" {
+		telecom = append(telecom, fhir_dto.ContactPoint{
+			System: fhir_dto.ContactPointSystemPhone,
+			Value:  phone,
+			Use:    "work",
+		})
+	}
 
 	newPractitionerInput := &fhir_dto.Practitioner{
 		ResourceType: constvars.ResourcePractitioner,
@@ -549,13 +600,7 @@ func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email 
 				Value:  superTokenUserID,
 			},
 		},
-		Telecom: []fhir_dto.ContactPoint{
-			{
-				System: fhir_dto.ContactPointSystemEmail,
-				Value:  email,
-				Use:    "work",
-			},
-		},
+		Telecom: telecom,
 	}
 
 	if chatwootErr == nil && userChatwootContact.ChatwootID != 0 {
@@ -573,10 +618,30 @@ func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email 
 	return newPractitioner, nil
 }
 
-func (uc *userUsecase) createPatientIfNotExists(ctx context.Context, email string, superTokenUserID string) (*fhir_dto.Patient, error) {
-	patients, err := uc.PatientFhirClient.FindPatientByEmail(ctx, email)
-	if err != nil {
-		return nil, err
+func (uc *userUsecase) createPatientIfNotExists(ctx context.Context, email string, phone string, superTokenUserID string) (*fhir_dto.Patient, error) {
+	patients := []fhir_dto.Patient{}
+	// Prefer lookup by email when available; otherwise fall back to identifier lookup.
+	if strings.TrimSpace(email) != "" {
+		var err error
+		patients, err = uc.PatientFhirClient.FindPatientByEmail(ctx, email)
+		if err != nil {
+			return nil, err
+		}
+	} else if strings.TrimSpace(phone) != "" {
+		var err error
+		patients, err = uc.PatientFhirClient.FindPatientByPhone(ctx, phone)
+		if err != nil {
+			return nil, err
+		}
+	} else if strings.TrimSpace(superTokenUserID) != "" {
+		var err error
+		patients, err = uc.PatientFhirClient.FindPatientByIdentifier(
+			ctx,
+			fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, superTokenUserID),
+		)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if len(patients) > 0 {
@@ -584,12 +649,20 @@ func (uc *userUsecase) createPatientIfNotExists(ctx context.Context, email strin
 
 		// if the chatwoot call fails, we don't need to update the patient identifier with the chatwoot ID
 		// but the process must continue, just not update the patient identifier with the chatwoot ID
-		userChatwootContact, chatwootCallErr := uc.callWebhookSvcKonsulinOmnichannel(ctx, email, patient.FullName())
-		if chatwootCallErr != nil {
-			// log the error but continue the process
-			uc.Log.Error("userUsecase.createPatientIfNotExists error calling webhook svc konsulin omnichannel",
-				zap.Error(chatwootCallErr),
-			)
+		userChatwootContact := callWebhookSvcKonsulinOmnichannelOutput{}
+		chatwootCallErr := error(nil)
+		if strings.TrimSpace(email) != "" || strings.TrimSpace(phone) != "" {
+			userChatwootContact, chatwootCallErr = uc.callWebhookSvcKonsulinOmnichannel(ctx, callWebhookSvcKonsulinOmnichannelInput{
+				Email:    email,
+				Username: patient.FullName(),
+				Phone:    phone,
+			})
+			if chatwootCallErr != nil {
+				// log the error but continue the process
+				uc.Log.Error("userUsecase.createPatientIfNotExists error calling webhook svc konsulin omnichannel",
+					zap.Error(chatwootCallErr),
+				)
+			}
 		}
 
 		chatwootID := strconv.Itoa(userChatwootContact.ChatwootID)
@@ -674,26 +747,44 @@ func (uc *userUsecase) createPatientIfNotExists(ctx context.Context, email strin
 		return &patient, nil
 	}
 
-	userChatwootContact, chatwootErr := uc.callWebhookSvcKonsulinOmnichannel(ctx, email, "")
-	if chatwootErr != nil {
-		// log the error but continue the process
-		uc.Log.Error("userUsecase.createPatientIfNotExists error calling webhook svc konsulin omnichannel",
-			zap.Error(chatwootErr),
-		)
+	userChatwootContact := callWebhookSvcKonsulinOmnichannelOutput{}
+	chatwootErr := error(nil)
+	if strings.TrimSpace(email) != "" || strings.TrimSpace(phone) != "" {
+		userChatwootContact, chatwootErr = uc.callWebhookSvcKonsulinOmnichannel(ctx, callWebhookSvcKonsulinOmnichannelInput{
+			Email:    email,
+			Username: "",
+			Phone:    phone,
+		})
+		if chatwootErr != nil {
+			// log the error but continue the process
+			uc.Log.Error("userUsecase.createPatientIfNotExists error calling webhook svc konsulin omnichannel",
+				zap.Error(chatwootErr),
+			)
+		}
 	}
 	chatwootID := strconv.Itoa(userChatwootContact.ChatwootID)
+
+	telecom := []fhir_dto.ContactPoint{}
+	if strings.TrimSpace(email) != "" {
+		telecom = append(telecom, fhir_dto.ContactPoint{
+			System: fhir_dto.ContactPointSystemEmail,
+			Value:  email,
+			Use:    "work",
+		})
+	}
+	if strings.TrimSpace(phone) != "" {
+		telecom = append(telecom, fhir_dto.ContactPoint{
+			System: fhir_dto.ContactPointSystemPhone,
+			Value:  phone,
+			Use:    "work",
+		})
+	}
 
 	newPatientInput := &fhir_dto.Patient{
 		ResourceType: constvars.ResourcePatient,
 		Active:       true,
 		Identifier:   []fhir_dto.Identifier{},
-		Telecom: []fhir_dto.ContactPoint{
-			{
-				System: fhir_dto.ContactPointSystemEmail,
-				Value:  email,
-				Use:    "work",
-			},
-		},
+		Telecom:      telecom,
 	}
 
 	if superTokenUserID != "" {
@@ -718,10 +809,28 @@ func (uc *userUsecase) createPatientIfNotExists(ctx context.Context, email strin
 	return newPatient, nil
 }
 
-func (uc *userUsecase) createPersonIfNotExists(ctx context.Context, email string, superTokenUserID string) (*fhir_dto.Person, error) {
-	person, err := uc.PersonFhirClient.FindPersonByEmail(ctx, email)
-	if err != nil {
-		return nil, err
+func (uc *userUsecase) createPersonIfNotExists(ctx context.Context, email string, phone string, superTokenUserID string) (*fhir_dto.Person, error) {
+	person := []fhir_dto.Person{}
+	if strings.TrimSpace(email) != "" {
+		var err error
+		person, err = uc.PersonFhirClient.FindPersonByEmail(ctx, email)
+		if err != nil {
+			return nil, err
+		}
+	} else if strings.TrimSpace(phone) != "" {
+		var err error
+		person, err = uc.PersonFhirClient.FindPersonByPhone(ctx, phone)
+		if err != nil {
+			return nil, err
+		}
+	} else if strings.TrimSpace(superTokenUserID) != "" {
+		var err error
+		person, err = uc.PersonFhirClient.Search(ctx, contracts.PersonSearchInput{
+			Identifier: fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, superTokenUserID),
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 	if len(person) > 0 {
 		person := person[0]
@@ -781,27 +890,45 @@ func (uc *userUsecase) createPersonIfNotExists(ctx context.Context, email string
 		return &person, nil
 	}
 
-	userChatwootContact, chatwootErr := uc.callWebhookSvcKonsulinOmnichannel(ctx, email, "")
-	if chatwootErr != nil {
-		// log the error but continue the process
-		uc.Log.Error("userUsecase.createPersonIfNotExists error calling webhook svc konsulin omnichannel",
-			zap.Error(chatwootErr),
-		)
+	userChatwootContact := callWebhookSvcKonsulinOmnichannelOutput{}
+	chatwootErr := error(nil)
+	if strings.TrimSpace(email) != "" || strings.TrimSpace(phone) != "" {
+		userChatwootContact, chatwootErr = uc.callWebhookSvcKonsulinOmnichannel(ctx, callWebhookSvcKonsulinOmnichannelInput{
+			Email:    email,
+			Username: "",
+			Phone:    phone,
+		})
+		if chatwootErr != nil {
+			// log the error but continue the process
+			uc.Log.Error("userUsecase.createPersonIfNotExists error calling webhook svc konsulin omnichannel",
+				zap.Error(chatwootErr),
+			)
+		}
 	}
 
 	chatwootID := strconv.Itoa(userChatwootContact.ChatwootID)
+
+	telecom := []fhir_dto.ContactPoint{}
+	if strings.TrimSpace(email) != "" {
+		telecom = append(telecom, fhir_dto.ContactPoint{
+			System: fhir_dto.ContactPointSystemEmail,
+			Value:  email,
+			Use:    "work",
+		})
+	}
+	if strings.TrimSpace(phone) != "" {
+		telecom = append(telecom, fhir_dto.ContactPoint{
+			System: fhir_dto.ContactPointSystemPhone,
+			Value:  phone,
+			Use:    "work",
+		})
+	}
 
 	newPersonInput := &fhir_dto.Person{
 		ResourceType: constvars.ResourcePerson,
 		Active:       true,
 		Identifier:   []fhir_dto.Identifier{},
-		Telecom: []fhir_dto.ContactPoint{
-			{
-				System: fhir_dto.ContactPointSystemEmail,
-				Value:  email,
-				Use:    "work",
-			},
-		},
+		Telecom:      telecom,
 	}
 
 	if superTokenUserID != "" {
@@ -1013,15 +1140,34 @@ func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *mode
 }
 
 type callWebhookSvcKonsulinOmnichannelOutput struct {
-	ChatwootID int    `json:"chatwoot_id"`
-	Email      string `json:"email"`
+	ChatwootID  int    `json:"chatwoot_id"`
+	Email       string `json:"email"`
+	PhoneNumber string `json:"phoneNumber"`
 }
 
-func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, email, username string) (callWebhookSvcKonsulinOmnichannelOutput, error) {
-	lastUsername := username
+type callWebhookSvcKonsulinOmnichannelInput struct {
+	Email    string
+	Username string
+	Phone    string
+}
+
+type callWebhookSvcKonsulinOmnichannelRawOutput struct {
+	ChatwootID  int     `json:"chatwoot_id"`
+	Email       string  `json:"email"`
+	PhoneNumber *string `json:"phoneNumber"`
+}
+
+func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, input callWebhookSvcKonsulinOmnichannelInput) (callWebhookSvcKonsulinOmnichannelOutput, error) {
+	lastUsername := input.Username
 	if lastUsername == "" {
-		lastUsername = strings.Split(email, "@")[0]
+		if strings.TrimSpace(input.Email) != "" {
+			lastUsername = strings.Split(input.Email, "@")[0]
+		}
 	}
+
+	// The rest of the system stores phone without a leading '+', but the upstream expects E.164 with '+'.
+	// Keep this detail internal so callers don't have to know about it.
+	phoneE164 := utils.FormatE164WithPlus(input.Phone)
 
 	tokenOut, err := uc.JWTTokenManager.CreateToken(
 		ctx,
@@ -1040,11 +1186,13 @@ func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, em
 	)
 
 	body := struct {
-		Email string `json:"email"`
+		Email string `json:"email,omitempty"`
 		Name  string `json:"name"`
+		Phone string `json:"phoneNumber,omitempty"`
 	}{
-		Email: email,
+		Email: input.Email,
 		Name:  lastUsername,
+		Phone: phoneE164,
 	}
 
 	bodyBytes, err := json.Marshal(body)
@@ -1079,14 +1227,27 @@ func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, em
 		return callWebhookSvcKonsulinOmnichannelOutput{}, err
 	}
 
-	var outputs []callWebhookSvcKonsulinOmnichannelOutput
-	if err = json.Unmarshal(bodyBytesResp, &outputs); err != nil {
+	var rawOutputs []callWebhookSvcKonsulinOmnichannelRawOutput
+	if err = json.Unmarshal(bodyBytesResp, &rawOutputs); err != nil {
 		return callWebhookSvcKonsulinOmnichannelOutput{}, err
 	}
-	if len(outputs) == 0 {
+	if len(rawOutputs) == 0 {
 		return callWebhookSvcKonsulinOmnichannelOutput{}, errors.New("webhook svc konsulin omnichannel returned empty response")
 	}
 
-	output := outputs[0]
+	raw := rawOutputs[0]
+	output := callWebhookSvcKonsulinOmnichannelOutput{
+		ChatwootID:  raw.ChatwootID,
+		Email:       raw.Email,
+		PhoneNumber: "",
+	}
+
+	// the upstream server might omit the phone number or assigning null to it
+	// this was made to ensure no nil pointer dereference happen when
+	// the downstream code try to access the phone number
+	if raw.PhoneNumber != nil {
+		output.PhoneNumber = *raw.PhoneNumber
+	}
+
 	return output, nil
 }

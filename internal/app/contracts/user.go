@@ -2,16 +2,22 @@ package contracts
 
 import (
 	"context"
+	"fmt"
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
-
-	"github.com/go-playground/validator/v10"
+	"konsulin-service/internal/pkg/utils"
+	"regexp"
+	"strings"
 )
 
 type InitializeNewUserFHIRResourcesInput struct {
-	Email            string `validate:"required,email"`
+	// Email is optional for phone-based users.
+	Email string
+	// Phone is optional for email-based users.
+	// Expected format: international digits without '+' prefix (E.164 without '+').
+	Phone            string
 	SuperTokenUserID string
 
 	// toogle to determine whether the underlying related FHIR resource should be created or not.
@@ -23,7 +29,25 @@ type InitializeNewUserFHIRResourcesInput struct {
 }
 
 func (i *InitializeNewUserFHIRResourcesInput) Validate() error {
-	return validator.New().Struct(i)
+	// Require at least one contact field.
+	hasEmail := strings.TrimSpace(i.Email) != ""
+	hasPhone := strings.TrimSpace(i.Phone) != ""
+	if !hasEmail && !hasPhone {
+		return fmt.Errorf("either email or phone is required")
+	}
+	if hasEmail {
+		re := regexp.MustCompile(constvars.RegexEmail)
+		if !re.MatchString(i.Email) {
+			return fmt.Errorf("invalid email format")
+		}
+	}
+	if hasPhone {
+		phoneDigits := utils.NormalizePhoneDigits(i.Phone)
+		if err := utils.ValidateInternationalPhoneDigits(phoneDigits); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ToogleByRoles toogle the correct toogle values based on the roles.
