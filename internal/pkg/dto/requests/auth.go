@@ -34,7 +34,7 @@ type ResetPassword struct {
 type SupertokenPasswordlessCreateMagicLink struct {
 	Email string `json:"email,omitempty" validate:"omitempty,email"`
 	// Phone is an international number without '+' prefix (digits only), e.g. 628111234567.
-	Phone string `json:"phone,omitempty"`
+	Phone string   `json:"phoneNumber,omitempty"`
 	Roles []string `json:"roles,omitempty" validate:"omitempty,dive,oneof=Patient Practitioner 'Clinic Admin' Researcher"`
 }
 
