@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/supertokens/supertokens-golang/ingredients/emaildelivery"
+	"github.com/supertokens/supertokens-golang/ingredients/smsdelivery"
 	"github.com/supertokens/supertokens-golang/recipe/passwordless"
 	"github.com/supertokens/supertokens-golang/recipe/userroles"
 	"go.uber.org/zap"
@@ -195,21 +196,18 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Su
 			return err
 		}
 
-		timeoutSeconds := uc.InternalConfig.Webhook.HTTPTimeoutInSeconds
-		if timeoutSeconds <= 0 {
-			timeoutSeconds = 10
-		}
-		deliverCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSeconds)*time.Second)
-		defer cancel()
+		err = passwordless.SendSms(smsdelivery.SmsType{
+			PasswordlessLogin: &smsdelivery.PasswordlessLoginType{
+				UrlWithLinkCode: &inviteLink,
+				PhoneNumber:     phoneDigits,
+			},
+		})
 
-		if err := uc.MagicLinkDelivery.SendMagicLink(deliverCtx, contracts.SendMagicLinkInput{
-			URL:   inviteLink,
-			Phone: phoneDigits,
-		}); err != nil {
-			uc.Log.Error("Failed to send magic link (phone) via webhook",
+		if err != nil {
+			uc.Log.Error("Failed to send magic link (phone)",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.String("phone", phoneDigits),
-				zap.String(constvars.LoggingErrorTypeKey, "magiclink webhook"),
+				zap.String(constvars.LoggingErrorTypeKey, "SuperTokens API"),
 				zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
 				zap.Error(err),
 			)
