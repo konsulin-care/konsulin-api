@@ -81,8 +81,8 @@ require (
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/google/uuid v1.6.0
 	github.com/klauspost/compress v1.18.3
-	github.com/redis/go-redis/v9 v9.17.2
-	go.mongodb.org/mongo-driver v1.17.6
+	github.com/redis/go-redis/v9 v9.17.3
+	go.mongodb.org/mongo-driver v1.17.7
 	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/time v0.14.0
 )
