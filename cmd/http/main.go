@@ -213,12 +213,16 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		jwtManager,
 	)
 
+	bundleClient := bundle.NewBundleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+
 	// Initialize Auth usecase with dependencies
 	authUseCase, err := auth.NewAuthUsecase(
 		redisRepository,
 		sessionService,
 		patientFhirClient,
 		practitionerFhirClient,
+		questionnaireResponseFhirClient,
+		bundleClient,
 		userUsecase,
 		mailerService,
 		magicLinkDelivery,
@@ -229,7 +233,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	if err != nil {
 		return err
 	}
-	authController := controllers.NewAuthController(bootstrap.Logger, authUseCase)
+	authController := controllers.NewAuthController(bootstrap.Logger, authUseCase, bootstrap.InternalConfig)
 
 	// Initialize middlewares with logger, session service, and auth usecase
 	middlewares := middlewares.NewMiddlewares(
@@ -263,7 +267,6 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	serviceRequestStorage := storageKonsulin.NewServiceRequestStorage(serviceRequestFhirClient, bootstrap.Logger)
 	invoiceFhirClient := invoicesFhir.NewInvoiceFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 
-	bundleClient := bundle.NewBundleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	slotUsecase := slot.NewSlotUsecase(scheduleClient, lockService, slotClient, practitionerRoleClient, practitionerFhirClient, personFhirClient, bundleClient, bootstrap.InternalConfig, bootstrap.Logger)
 
 	paymentUsecase := payments.NewPaymentUsecase(
