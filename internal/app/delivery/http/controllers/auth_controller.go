@@ -270,7 +270,12 @@ func (ctrl *AuthController) CreateAnonymousSession(w http.ResponseWriter, r *htt
 
 	if result != nil && result.IsNew {
 		ttl := time.Duration(constvars.AnonymousSessionTokenTTLDays) * 24 * time.Hour
-		secure := strings.EqualFold(ctrl.InternalConfig.App.Env, "production")
+		// Secure flag defaults to true for security. Only disable for local development
+		// where HTTPS may not be available. In production/staging, cookies must be secure.
+		secure := true
+		if strings.EqualFold(ctrl.InternalConfig.App.Env, "local") {
+			secure = false
+		}
 		http.SetCookie(w, &http.Cookie{
 			Name:     constvars.AnonymousSessionCookieName,
 			Value:    result.Token,
@@ -347,7 +352,12 @@ func (ctrl *AuthController) ClaimAnonymousResources(w http.ResponseWriter, r *ht
 		return
 	}
 
-	secure := strings.EqualFold(ctrl.InternalConfig.App.Env, "production")
+	// Secure flag defaults to true for security. Only disable for local development
+	// where HTTPS may not be available. In production/staging, cookies must be secure.
+	secure := true
+	if strings.EqualFold(ctrl.InternalConfig.App.Env, "local") {
+		secure = false
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     constvars.AnonymousSessionCookieName,
 		Value:    "",
