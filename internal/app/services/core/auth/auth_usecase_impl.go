@@ -355,21 +355,51 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Su
 	return nil
 }
 
-func (uc *authUsecase) CreateAnonymousSession(ctx context.Context) (string, error) {
+func (uc *authUsecase) CreateAnonymousSession(ctx context.Context, existingToken string) (*contracts.AnonymousSessionResult, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	uc.Log.Info("authUsecase.CreateAnonymousSession called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
 
-	sessionID := fmt.Sprintf("anonymous_%s_%d", requestID, time.Now().UnixNano())
+	if strings.TrimSpace(existingToken) != "" {
+		guestID, err := uc.parseAnonymousSessionToken(existingToken)
+		if err == nil && guestID != "" {
+			uc.Log.Info("authUsecase.CreateAnonymousSession reused existing token",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.String("guest_id", guestID),
+			)
+			return &contracts.AnonymousSessionResult{
+				Token:   existingToken,
+				GuestID: guestID,
+				IsNew:   false,
+			}, nil
+		}
+	}
+
+	guestID := uuid.New().String()
+
+	token, err := uc.createAnonymousSessionToken(guestID)
+	if err != nil {
+		uc.Log.Error("authUsecase.CreateAnonymousSession failed to create token",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, err
+	}
 
 	uc.Log.Info("authUsecase.CreateAnonymousSession succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String("session_id", sessionID),
+		zap.String("guest_id", guestID),
 		zap.String("role", constvars.KonsulinRoleGuest),
 	)
 
-	return sessionID, nil
+	return &contracts.AnonymousSessionResult{
+		Token:   token,
+		GuestID: guestID,
+		IsNew:   true,
+	}, nil
+}
+
 }
 
 func (uc *authUsecase) CheckUserExists(ctx context.Context, email string) (*contracts.CheckUserExistsOutput, error) {
