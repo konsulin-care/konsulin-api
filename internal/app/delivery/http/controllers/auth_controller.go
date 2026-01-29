@@ -246,7 +246,12 @@ func (ctrl *AuthController) CreateAnonymousSession(w http.ResponseWriter, r *htt
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	sessionHandle, err := ctrl.AuthUsecase.CreateAnonymousSession(ctx)
+	existingToken := ""
+	if cookie, err := r.Cookie(constvars.AnonymousSessionCookieName); err == nil {
+		existingToken = cookie.Value
+	}
+
+	result, err := ctrl.AuthUsecase.CreateAnonymousSession(ctx, existingToken)
 	if err != nil {
 		ctrl.Log.Error("AuthController.CreateAnonymousSession error from usecase",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -260,14 +265,31 @@ func (ctrl *AuthController) CreateAnonymousSession(w http.ResponseWriter, r *htt
 		return
 	}
 
+	if result != nil && result.IsNew {
+		ttl := time.Duration(constvars.AnonymousSessionTokenTTLDays) * 24 * time.Hour
+		secure := strings.EqualFold(ctrl.InternalConfig.App.Env, "production")
+		http.SetCookie(w, &http.Cookie{
+			Name:     constvars.AnonymousSessionCookieName,
+			Value:    result.Token,
+			Path:     "/",
+			Expires:  time.Now().Add(ttl),
+			MaxAge:   int(ttl.Seconds()),
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			Secure:   secure,
+		})
+	}
+
 	response := map[string]interface{}{
-		"session_handle": sessionHandle,
-		"role":           "guest",
+		"token":   result.Token,
+		"guest_id": result.GuestID,
+		"is_new":  result.IsNew,
+		"role":    "guest",
 	}
 
 	ctrl.Log.Info("AuthController.CreateAnonymousSession succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String("session_handle", sessionHandle),
+		zap.String("guest_id", result.GuestID),
 	)
 	utils.BuildSuccessResponse(w, constvars.StatusOK, "Anonymous session created successfully", response)
 }
