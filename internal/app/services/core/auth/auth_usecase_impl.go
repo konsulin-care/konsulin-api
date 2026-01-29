@@ -6,13 +6,20 @@ import (
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/models"
+	bundleSvc "konsulin-service/internal/app/services/fhir_spark/bundle"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
+	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/utils"
+	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/golang-jwt/jwt/v4"
+	"github.com/google/uuid"
 	"github.com/supertokens/supertokens-golang/ingredients/emaildelivery"
 	"github.com/supertokens/supertokens-golang/ingredients/smsdelivery"
 	"github.com/supertokens/supertokens-golang/recipe/passwordless"
@@ -21,20 +28,22 @@ import (
 )
 
 type authUsecase struct {
-	RedisRepository        contracts.RedisRepository
-	SessionService         contracts.SessionService
-	RoleRepository         contracts.RoleRepository
-	UserUsecase            contracts.UserUsecase
-	PatientFhirClient      contracts.PatientFhirClient
-	PractitionerFhirClient contracts.PractitionerFhirClient
-	MailerService          contracts.MailerService
-	WhatsAppService        contracts.WhatsAppService
-	MinioStorage           contracts.Storage
-	MagicLinkDelivery      contracts.MagicLinkDeliveryService
-	InternalConfig         *config.InternalConfig
-	DriverConfig           *config.DriverConfig
-	Roles                  map[string]*models.Role
-	Log                    *zap.Logger
+	RedisRepository                 contracts.RedisRepository
+	SessionService                  contracts.SessionService
+	RoleRepository                  contracts.RoleRepository
+	UserUsecase                     contracts.UserUsecase
+	PatientFhirClient               contracts.PatientFhirClient
+	PractitionerFhirClient          contracts.PractitionerFhirClient
+	QuestionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient
+	BundleFhirClient                bundleSvc.BundleFhirClient
+	MailerService                   contracts.MailerService
+	WhatsAppService                 contracts.WhatsAppService
+	MinioStorage                    contracts.Storage
+	MagicLinkDelivery               contracts.MagicLinkDeliveryService
+	InternalConfig                  *config.InternalConfig
+	DriverConfig                    *config.DriverConfig
+	Roles                           map[string]*models.Role
+	Log                             *zap.Logger
 }
 
 var (
@@ -48,6 +57,8 @@ func NewAuthUsecase(
 	sessionService contracts.SessionService,
 	patientFhirClient contracts.PatientFhirClient,
 	practitionerFhirClient contracts.PractitionerFhirClient,
+	questionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient,
+	bundleFhirClient bundleSvc.BundleFhirClient,
 	userUsecase contracts.UserUsecase,
 	mailerService contracts.MailerService,
 	magicLinkDelivery contracts.MagicLinkDeliveryService,
@@ -57,17 +68,19 @@ func NewAuthUsecase(
 ) (contracts.AuthUsecase, error) {
 	onceAuthUsecase.Do(func() {
 		instance := &authUsecase{
-			RedisRepository:        redisRepository,
-			SessionService:         sessionService,
-			PatientFhirClient:      patientFhirClient,
-			PractitionerFhirClient: practitionerFhirClient,
-			UserUsecase:            userUsecase,
-			MailerService:          mailerService,
-			MagicLinkDelivery:      magicLinkDelivery,
-			InternalConfig:         internalConfig,
-			DriverConfig:           driverConfig,
-			Roles:                  make(map[string]*models.Role),
-			Log:                    logger,
+			RedisRepository:                 redisRepository,
+			SessionService:                  sessionService,
+			PatientFhirClient:               patientFhirClient,
+			PractitionerFhirClient:          practitionerFhirClient,
+			QuestionnaireResponseFhirClient: questionnaireResponseFhirClient,
+			BundleFhirClient:                bundleFhirClient,
+			UserUsecase:                     userUsecase,
+			MailerService:                   mailerService,
+			MagicLinkDelivery:               magicLinkDelivery,
+			InternalConfig:                  internalConfig,
+			DriverConfig:                    driverConfig,
+			Roles:                           make(map[string]*models.Role),
+			Log:                             logger,
 		}
 
 		authUsecaseInstance = instance
@@ -400,6 +413,187 @@ func (uc *authUsecase) CreateAnonymousSession(ctx context.Context, existingToken
 	}, nil
 }
 
+func (uc *authUsecase) ClaimAnonymousResources(ctx context.Context, supertokensUserID string, roles []string, anonToken string) (*contracts.ClaimAnonymousResourcesOutput, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	uc.Log.Info("authUsecase.ClaimAnonymousResources called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
+	if strings.TrimSpace(supertokensUserID) == "" {
+		return nil, exceptions.ErrSupertokensSessionMissing(nil)
+	}
+
+	if strings.TrimSpace(anonToken) == "" {
+		return nil, exceptions.ErrAnonymousTokenMissing(nil)
+	}
+
+	guestID, err := uc.parseAnonymousSessionToken(anonToken)
+	if err != nil || guestID == "" {
+		uc.Log.Info("authUsecase.ClaimAnonymousResources invalid anon token",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
+		return &contracts.ClaimAnonymousResourcesOutput{}, nil
+	}
+
+	ownerRef, err := uc.resolveOwnerReferenceBySupertokensID(ctx, supertokensUserID, roles)
+	if err != nil {
+		uc.Log.Error("authUsecase.ClaimAnonymousResources error resolving owner reference",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+
+	responses, err := uc.QuestionnaireResponseFhirClient.FindQuestionnaireResponsesByIdentifier(ctx, constvars.AnonymousSessionIdentifierSystem, guestID)
+	if err != nil {
+		uc.Log.Error("authUsecase.ClaimAnonymousResources error fetching questionnaire responses",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+
+	entries := make([]map[string]any, 0, len(responses))
+	refs := make([]string, 0, len(responses))
+	for _, response := range responses {
+		if !canClaimQuestionnaireResponse(response, ownerRef) {
+			continue
+		}
+
+		updated := response
+		changed := false
+
+		if updated.Author.Reference != ownerRef {
+			updated.Author.Reference = ownerRef
+			changed = true
+		}
+		if updated.Subject.Reference != ownerRef {
+			updated.Subject.Reference = ownerRef
+			changed = true
+		}
+
+		if updated.Identifier != nil && updated.Identifier.System == constvars.AnonymousSessionIdentifierSystem && updated.Identifier.Value == guestID {
+			updated.Identifier = nil
+			changed = true
+		}
+
+		if !changed {
+			continue
+		}
+
+		entry := map[string]any{
+			"resource": updated,
+			"request": map[string]any{
+				"method": http.MethodPut,
+				"url":    fmt.Sprintf("%s/%s", constvars.ResourceQuestionnaireResponse, updated.ID),
+			},
+		}
+		entries = append(entries, entry)
+		refs = append(refs, fmt.Sprintf("%s/%s", constvars.ResourceQuestionnaireResponse, updated.ID))
+	}
+
+	if len(entries) == 0 {
+		return &contracts.ClaimAnonymousResourcesOutput{}, nil
+	}
+
+	bundle := map[string]any{
+		"resourceType": "Bundle",
+		"type":         "transaction",
+		"entry":        entries,
+	}
+
+	if _, err := uc.BundleFhirClient.PostTransactionBundle(ctx, bundle); err != nil {
+		uc.Log.Error("authUsecase.ClaimAnonymousResources error posting transaction bundle",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+
+	sort.Strings(refs)
+	return &contracts.ClaimAnonymousResourcesOutput{
+		Count:         len(entries),
+		ReferenceList: refs,
+	}, nil
+}
+
+func (uc *authUsecase) createAnonymousSessionToken(guestID string) (string, error) {
+	ttl := time.Duration(constvars.AnonymousSessionTokenTTLDays) * 24 * time.Hour
+	now := time.Now().UTC()
+	claims := jwt.MapClaims{
+		constvars.AnonymousSessionGuestIDClaimKey: guestID,
+		"iat": now.Unix(),
+		"nbf": now.Unix(),
+		"exp": now.Add(ttl).Unix(),
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(uc.InternalConfig.JWT.Secret))
+}
+
+func (uc *authUsecase) parseAnonymousSessionToken(tokenString string) (string, error) {
+	claims := jwt.MapClaims{}
+	parsed, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (interface{}, error) {
+		if t.Method.Alg() != jwt.SigningMethodHS256.Alg() {
+			return nil, fmt.Errorf("unexpected jwt alg: %s", t.Header["alg"])
+		}
+		return []byte(uc.InternalConfig.JWT.Secret), nil
+	})
+	if err != nil || parsed == nil || !parsed.Valid {
+		return "", fmt.Errorf("invalid anonymous token")
+	}
+
+	rawGuestID, ok := claims[constvars.AnonymousSessionGuestIDClaimKey]
+	if !ok {
+		return "", fmt.Errorf("guest_id missing in token")
+	}
+	guestID, ok := rawGuestID.(string)
+	if !ok || strings.TrimSpace(guestID) == "" {
+		return "", fmt.Errorf("guest_id invalid in token")
+	}
+	return guestID, nil
+}
+
+func (uc *authUsecase) resolveOwnerReferenceBySupertokensID(ctx context.Context, supertokensUserID string, roles []string) (string, error) {
+	// Determine target type from roles. Default to Patient if ambiguous.
+	isPractitioner := false
+	for _, r := range roles {
+		if r == constvars.KonsulinRolePractitioner || r == constvars.RoleTypePractitioner {
+			isPractitioner = true
+			break
+		}
+	}
+
+	if isPractitioner {
+		practitioners, err := uc.PractitionerFhirClient.FindPractitionerByIdentifier(ctx, constvars.FhirSupertokenSystemIdentifier, supertokensUserID)
+		if err != nil {
+			return "", err
+		}
+		if len(practitioners) < 1 || strings.TrimSpace(practitioners[0].ID) == "" {
+			return "", fmt.Errorf("practitioner not found for supertokens user id")
+		}
+		return fmt.Sprintf("Practitioner/%s", practitioners[0].ID), nil
+	}
+
+	identifier := fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, supertokensUserID)
+	patients, err := uc.PatientFhirClient.FindPatientByIdentifier(ctx, identifier)
+	if err != nil {
+		return "", err
+	}
+	if len(patients) < 1 || strings.TrimSpace(patients[0].ID) == "" {
+		return "", fmt.Errorf("patient not found for supertokens user id")
+	}
+	return fmt.Sprintf("Patient/%s", patients[0].ID), nil
+}
+
+func canClaimQuestionnaireResponse(response fhir_dto.QuestionnaireResponse, ownerRef string) bool {
+	if strings.TrimSpace(response.Subject.Reference) != "" && response.Subject.Reference != ownerRef {
+		return false
+	}
+	if strings.TrimSpace(response.Author.Reference) != "" && response.Author.Reference != ownerRef {
+		return false
+	}
+	return true
 }
 
 func (uc *authUsecase) CheckUserExists(ctx context.Context, email string) (*contracts.CheckUserExistsOutput, error) {
