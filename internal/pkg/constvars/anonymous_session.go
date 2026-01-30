@@ -3,6 +3,6 @@ package constvars
 const (
 	AnonymousSessionCookieName       = "anon_session"
 	AnonymousSessionGuestIDClaimKey  = "guest_id"
-	AnonymousSessionIdentifierSystem = "https://konsulin/anonymous-guest"
+	AnonymousSessionIdentifierSystem = "https://login.konsulin.care/guestid"
 	AnonymousSessionTokenTTLDays     = 365
 )
