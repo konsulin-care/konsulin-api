@@ -45,9 +45,13 @@ func (m *MockAuthUsecase) CreateMagicLink(ctx context.Context, request *requests
 	return args.Error(0)
 }
 
-func (m *MockAuthUsecase) CreateAnonymousSession(ctx context.Context) (string, error) {
-	args := m.Called(ctx)
-	return args.String(0), args.Error(1)
+func (m *MockAuthUsecase) CreateAnonymousSession(ctx context.Context, existingToken string, forceNew bool) (*contracts.AnonymousSessionResult, error) {
+	args := m.Called(ctx, existingToken, forceNew)
+	var out *contracts.AnonymousSessionResult
+	if args.Get(0) != nil {
+		out = args.Get(0).(*contracts.AnonymousSessionResult)
+	}
+	return out, args.Error(1)
 }
 
 func (m *MockAuthUsecase) LogoutUser(ctx context.Context, sessionData string) error {
@@ -216,7 +220,8 @@ func TestAuthRouter_MagicLinkEndpoint(t *testing.T) {
 
 	t.Run("Anonymous Session without API Key - Should Work", func(t *testing.T) {
 
-		mockAuthUsecase.On("CreateAnonymousSession", mock.Anything).Return("test-session-handle", nil)
+		mockAuthUsecase.On("CreateAnonymousSession", mock.Anything, mock.Anything, mock.Anything).
+			Return(&contracts.AnonymousSessionResult{Token: "test-session-handle", GuestID: "test-guest-id", IsNew: true}, nil)
 
 		req := httptest.NewRequest("POST", "/anonymous-session", nil)
 

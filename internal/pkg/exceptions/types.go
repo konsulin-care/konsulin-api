@@ -66,6 +66,15 @@ var (
 	ErrTokenMissing = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusUnauthorized, constvars.ErrClientNotAuthorized, constvars.ErrDevAuthTokenMissing)
 	}
+	ErrSessionTokenMissing = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusUnauthorized, constvars.ErrClientNotAuthorized, constvars.ErrDevAuthSessionTokenMissing)
+	}
+	ErrAnonymousTokenMissing = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusUnauthorized, constvars.ErrClientNotAuthorized, constvars.ErrDevAuthAnonymousTokenMissing)
+	}
+	ErrSupertokensSessionMissing = func(err error) *CustomError {
+		return BuildNewCustomError(err, constvars.StatusUnauthorized, constvars.ErrClientNotAuthorized, constvars.ErrDevAuthSupertokensSessionMissing)
+	}
 	ErrTokenGenerate = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevAuthGenerateToken)
 	}

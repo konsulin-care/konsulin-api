@@ -8,6 +8,7 @@ type QuestionnaireResponse struct {
 	Subject       Reference                   `json:"subject,omitempty"`
 	Authored      string                      `json:"authored,omitempty"`
 	Author        Reference                   `json:"author,omitempty"`
+	Identifier    *Identifier                 `json:"identifier,omitempty"`
 	Item          []QuestionnaireResponseItem `json:"item,omitempty"`
 }
 
