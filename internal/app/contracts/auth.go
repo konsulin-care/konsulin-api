@@ -28,7 +28,7 @@ type AuthUsecase interface {
 	InitializeSupertoken() error
 	LogoutUser(ctx context.Context, sessionData string) error
 	CreateMagicLink(ctx context.Context, request *requests.SupertokenPasswordlessCreateMagicLink) error
-	CreateAnonymousSession(ctx context.Context, existingToken string) (*AnonymousSessionResult, error)
+	CreateAnonymousSession(ctx context.Context, existingToken string, forceNew bool) (*AnonymousSessionResult, error)
 	ClaimAnonymousResources(ctx context.Context, supertokensUserID string, roles []string, anonToken string) (*ClaimAnonymousResourcesOutput, error)
 	CheckUserExists(ctx context.Context, email string) (*CheckUserExistsOutput, error)
 	CheckUserExistsByPhone(ctx context.Context, phone string) (*CheckUserExistsOutput, error)
