@@ -254,7 +254,9 @@ func (ctrl *AuthController) CreateAnonymousSession(w http.ResponseWriter, r *htt
 		existingToken = cookie.Value
 	}
 
-	result, err := ctrl.AuthUsecase.CreateAnonymousSession(ctx, existingToken)
+	forceNew := r.URL.Query().Has(constvars.AnonymousSessionForceNewQueryKey)
+
+	result, err := ctrl.AuthUsecase.CreateAnonymousSession(ctx, existingToken, forceNew)
 	if err != nil {
 		ctrl.Log.Error("AuthController.CreateAnonymousSession error from usecase",
 			zap.String(constvars.LoggingRequestIDKey, requestID),

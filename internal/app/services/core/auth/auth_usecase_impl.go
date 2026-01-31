@@ -368,13 +368,13 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Su
 	return nil
 }
 
-func (uc *authUsecase) CreateAnonymousSession(ctx context.Context, existingToken string) (*contracts.AnonymousSessionResult, error) {
+func (uc *authUsecase) CreateAnonymousSession(ctx context.Context, existingToken string, forceNew bool) (*contracts.AnonymousSessionResult, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	uc.Log.Info("authUsecase.CreateAnonymousSession called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
 
-	if strings.TrimSpace(existingToken) != "" {
+	if !forceNew && strings.TrimSpace(existingToken) != "" {
 		guestID, err := uc.parseAnonymousSessionToken(existingToken)
 		if err == nil && guestID != "" {
 			uc.Log.Info("authUsecase.CreateAnonymousSession reused existing token",
