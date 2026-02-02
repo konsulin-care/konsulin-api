@@ -135,7 +135,7 @@ func collectPractitionerRoleIDsFromMutation(req middlewares.PostFHIRProxyUserReq
 	if method == "DELETE" {
 		return nil
 	}
-	if method != "POST" && method != "PUT" && method != "PATCH" {
+	if method != "PUT" && method != "PATCH" {
 		return mapKeysToSlice(seen)
 	}
 
@@ -151,14 +151,10 @@ func collectPractitionerRoleIDsFromMutation(req middlewares.PostFHIRProxyUserReq
 			add([]string{resID})
 		}
 	case resourceTypeSchedule:
-		// Parse body for actor references (request body for PUT/PATCH, response for POST create).
-		body := req.Body
-		if method == "POST" && len(resp.Body) > 0 {
-			body = resp.Body
-		}
-		if len(body) > 0 {
+		// Parse request body for actor references (PUT/PATCH only).
+		if len(req.Body) > 0 {
 			var env resourceEnvelope
-			if err := json.Unmarshal(body, &env); err == nil && strings.EqualFold(env.ResourceType, resourceTypeSchedule) {
+			if err := json.Unmarshal(req.Body, &env); err == nil && strings.EqualFold(env.ResourceType, resourceTypeSchedule) {
 				for _, a := range env.Actor {
 					if id := practitionerRoleIDFromReference(a.Reference); id != "" {
 						add([]string{id})
