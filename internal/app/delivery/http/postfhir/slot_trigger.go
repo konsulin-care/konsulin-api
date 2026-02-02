@@ -97,7 +97,7 @@ func collectPractitionerRoleIDsFromMutation(req middlewares.PostFHIRProxyUserReq
 				if method == "DELETE" {
 					continue
 				}
-				if method != "POST" && method != "PUT" && method != "PATCH" {
+				if method != "PUT" && method != "PATCH" {
 					continue
 				}
 				if len(e.Resource) == 0 {
