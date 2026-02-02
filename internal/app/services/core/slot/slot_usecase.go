@@ -685,9 +685,13 @@ func (s *SlotUsecase) HandleOnDemandSlotRegeneration(ctx context.Context, practi
 	)
 
 	pr, err := s.practitionerRoles.FindPractitionerRoleByID(ctx, practitionerRoleID)
-	if err != nil || pr == nil {
-		logger.Debug("practitioner role not found or load failed", zap.Error(err))
+	if err != nil {
+		logger.Debug("failed to find practitioner role", zap.Error(err))
 		return err
+	}
+	if pr == nil {
+		logger.Debug("practitioner role not found")
+		return nil
 	}
 	if !pr.Active {
 		logger.Debug("practitioner role not active, skipping")
