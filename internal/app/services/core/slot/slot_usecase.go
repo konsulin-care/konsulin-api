@@ -1021,10 +1021,19 @@ type lockWindow struct {
 
 // dayTargetsForWindow computes local days (inclusive) covered by [start,end) in the given location
 func (s *SlotUsecase) dayTargetsForWindow(scheduleID string, loc *time.Location, start, end time.Time) []dayLockTarget {
+	// If the window is empty or inverted, no days are covered.
+	if !end.After(start) {
+		return nil
+	}
+
 	ls := start.In(loc)
 	le := end.In(loc)
 	day := time.Date(ls.Year(), ls.Month(), ls.Day(), 0, 0, 0, 0, loc)
-	last := time.Date(le.Year(), le.Month(), le.Day(), 0, 0, 0, 0, loc)
+	// Treat end as exclusive by subtracting a minimal delta before computing the last day.
+	// This ensures that an end exactly at midnight does not include the following calendar day.
+	leExclusive := le.Add(-time.Nanosecond)
+	last := time.Date(leExclusive.Year(), leExclusive.Month(), leExclusive.Day(), 0, 0, 0, 0, loc)
+
 	var out []dayLockTarget
 	for d := day; !d.After(last); d = d.AddDate(0, 0, 1) {
 		out = append(out, dayLockTarget{ScheduleID: scheduleID, Day: d, Location: loc})
