@@ -189,6 +189,23 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 			return
 		}
 
+		// Post-FHIR-proxy hooks: run synchronously after successful response, before filtering.
+		for _, hook := range m.PostFHIRProxyHooks {
+			reqDetail := PostFHIRProxyUserRequestDetail{
+				Context: r.Context(),
+				Method:  r.Method,
+				Path:    r.URL.Path,
+				Body:    bodyBytes,
+			}
+			respDetail := PostFHIRProxyFHIRServerResponse{
+				StatusCode: resp.StatusCode,
+				Body:       respBody,
+			}
+			if err := hook(reqDetail, respDetail); err != nil {
+				m.Log.Warn("PostFHIRProxyHook error", zap.Error(err))
+			}
+		}
+
 		roles, _ := r.Context().Value(keyRoles).([]string)
 		fhirRole, _ := r.Context().Value(keyFHIRRole).(string)
 		fhirID, _ := r.Context().Value(keyFHIRID).(string)
