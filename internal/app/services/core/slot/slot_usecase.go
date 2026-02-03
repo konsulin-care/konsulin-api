@@ -832,8 +832,23 @@ func (s *SlotUsecase) HandleOnDemandSlotRegeneration(ctx context.Context, practi
 	} else {
 		bundle = buildCreateSlotsTransactionBundle(schedule.ID, allCreateSlots)
 	}
-	_, err = s.slots.PostTransactionBundle(ctx, bundle)
-	return err
+
+	// simple retry logic for post bundle that will
+	// retry the process if the error is retryable
+	const postBundleMaxAttempts = 3
+	const postBundleRetryDelay = 100 * time.Millisecond
+	var lastErr error
+	for attempt := 0; attempt < postBundleMaxAttempts; attempt++ {
+		_, lastErr = s.slots.PostTransactionBundle(ctx, bundle)
+		if lastErr == nil {
+			return nil
+		}
+		if !exceptions.IsHTTPErrRetryable(lastErr) || attempt == postBundleMaxAttempts-1 {
+			return lastErr
+		}
+		time.Sleep(postBundleRetryDelay)
+	}
+	return lastErr
 }
 
 // tryAcquireDayLock acquires a per-day lock for a schedule and local day.
