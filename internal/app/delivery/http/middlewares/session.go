@@ -14,10 +14,12 @@ import (
 const (
 	keyFHIRRole                               = "fhirRole"
 	keyFHIRID                                 = "fhirID"
+	keyFHIRResourceId                         = "fhirResourceId"
 	keyRoles                                  = "roles"
 	keyUID                                    = "uid"
 	supertokenAccessTokenPayloadRolesKey      = "st-role"
 	supertokenAccessTokenPayloadRolesValueKey = "v"
+	supertokenAccessTokenPayloadFhirResourceId = "fhirResourceId"
 )
 
 func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
@@ -28,51 +30,61 @@ func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
 			return
 		}
 
-		sessRequired := false
-		sess, _ := session.GetSession(r, w, &sessmodels.VerifySessionOptions{SessionRequired: &sessRequired})
+	sessRequired := false
+	sess, _ := session.GetSession(r, w, &sessmodels.VerifySessionOptions{SessionRequired: &sessRequired})
 
-		roles := []string{constvars.KonsulinRoleGuest}
-		uid := ""
+	roles := []string{constvars.KonsulinRoleGuest}
+	uid := ""
+	fhirResourceId := ""
 
-		if sess != nil {
-			uid = sess.GetUserID()
-			if raw := sess.GetAccessTokenPayload(); raw != nil {
-				if rolesData, exists := raw[supertokenAccessTokenPayloadRolesKey]; exists {
-					if rolesMap, ok := rolesData.(map[string]interface{}); ok {
-						if rolesValue, ok := rolesMap[supertokenAccessTokenPayloadRolesValueKey]; ok {
-							if rolesList, ok := rolesValue.([]interface{}); ok {
+	if sess != nil {
+		uid = sess.GetUserID()
+		if raw := sess.GetAccessTokenPayload(); raw != nil {
+			if rolesData, exists := raw[supertokenAccessTokenPayloadRolesKey]; exists {
+				if rolesMap, ok := rolesData.(map[string]interface{}); ok {
+					if rolesValue, ok := rolesMap[supertokenAccessTokenPayloadRolesValueKey]; ok {
+						if rolesList, ok := rolesValue.([]interface{}); ok {
 
-								roles = []string{}
-								for _, item := range rolesList {
-									if role, ok := item.(string); ok {
-										roles = append(roles, role)
-									}
+							roles = []string{}
+							for _, item := range rolesList {
+								if role, ok := item.(string); ok {
+									roles = append(roles, role)
 								}
 							}
 						}
 					}
 				}
 			}
-		} else {
 
-			uid = "anonymous"
-			roles = []string{constvars.KonsulinRoleGuest}
-
-			m.Log.Info("Anonymous session created",
-				zap.String("ip", r.RemoteAddr),
-				zap.String("user_agent", r.UserAgent()),
-				zap.String("endpoint", r.URL.Path),
-				zap.String("method", r.Method),
-			)
+			// Read fhirResourceId from access token payload
+			if fhirResId, exists := raw[supertokenAccessTokenPayloadFhirResourceId]; exists {
+				if resId, ok := fhirResId.(string); ok {
+					fhirResourceId = resId
+				}
+			}
 		}
+	} else {
 
-		ctx := context.WithValue(r.Context(), keyRoles, roles)
-		ctx = context.WithValue(ctx, keyUID, uid)
+		uid = "anonymous"
+		roles = []string{constvars.KonsulinRoleGuest}
 
-		// new keys for context will be used for now and one and this
-		// will deprecate the use of untyped string in context keys
-		ctx = context.WithValue(ctx, constvars.CONTEXT_FHIR_ROLE, roles)
-		ctx = context.WithValue(ctx, constvars.CONTEXT_UID, uid)
+		m.Log.Info("Anonymous session created",
+			zap.String("ip", r.RemoteAddr),
+			zap.String("user_agent", r.UserAgent()),
+			zap.String("endpoint", r.URL.Path),
+			zap.String("method", r.Method),
+		)
+	}
+
+	ctx := context.WithValue(r.Context(), keyRoles, roles)
+	ctx = context.WithValue(ctx, keyUID, uid)
+	ctx = context.WithValue(ctx, keyFHIRResourceId, fhirResourceId)
+
+	// new keys for context will be used for now and one and this
+	// will deprecate the use of untyped string in context keys
+	ctx = context.WithValue(ctx, constvars.CONTEXT_FHIR_ROLE, roles)
+	ctx = context.WithValue(ctx, constvars.CONTEXT_UID, uid)
+	ctx = context.WithValue(ctx, constvars.CONTEXT_FHIR_RESOURCE_ID, fhirResourceId)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

@@ -27,9 +27,54 @@ import (
 )
 
 const (
-	supertokenAccessTokenPayloadRolesKey      = "st-role"
-	supertokenAccessTokenPayloadRolesValueKey = "v"
+	supertokenAccessTokenPayloadRolesKey       = "st-role"
+	supertokenAccessTokenPayloadRolesValueKey  = "v"
+	supertokenAccessTokenPayloadFhirResourceId = "fhirResourceId"
 )
+
+// getFhirResourceIdForUser determines the FHIR resource ID based on user's roles and FHIR resource IDs
+// Priority: Practitioner > Patient > Person
+func (uc *authUsecase) getFhirResourceIdForUser(ctx context.Context, userID string, roles []string) (string, error) {
+	// Initialize FHIR resources input
+	initFHIRResourcesInput := &contracts.InitializeNewUserFHIRResourcesInput{
+		SuperTokenUserID: userID,
+	}
+	initFHIRResourcesInput.ToogleByRoles(roles)
+
+	// Get or create FHIR resources
+	initializeResourceCtx, initializeResourceCtxCancel := context.WithDeadline(ctx, time.Now().Add(10*time.Second))
+	defer initializeResourceCtxCancel()
+
+	initializedResources, err := uc.UserUsecase.InitializeNewUserFHIRResources(initializeResourceCtx, initFHIRResourcesInput)
+	if err != nil {
+		uc.Log.Error("authUsecase.getFhirResourceIdForUser error initializing FHIR resources",
+			zap.Error(err),
+		)
+		return "", err
+	}
+
+	// Determine FHIR resource ID based on role priority:
+	// 1. If Practitioner role exists → Practitioner/{ID}
+	// 2. Else if Patient role exists → Patient/{ID}
+	// 3. Otherwise → Person/{ID}
+	for _, role := range roles {
+		if role == constvars.KonsulinRolePractitioner && initializedResources.PractitionerID != "" {
+			return fmt.Sprintf("Practitioner/%s", initializedResources.PractitionerID), nil
+		}
+	}
+
+	for _, role := range roles {
+		if role == constvars.KonsulinRolePatient && initializedResources.PatientID != "" {
+			return fmt.Sprintf("Patient/%s", initializedResources.PatientID), nil
+		}
+	}
+
+	if initializedResources.PersonID != "" {
+		return fmt.Sprintf("Person/%s", initializedResources.PersonID), nil
+	}
+
+	return "", errors.New("no FHIR resource ID found for user")
+}
 
 func (uc *authUsecase) InitializeSupertoken() error {
 	apiBasePath := fmt.Sprintf("%s/%s%s", uc.InternalConfig.App.EndpointPrefix, uc.InternalConfig.App.Version, uc.DriverConfig.Supertoken.ApiBasePath)
@@ -418,20 +463,41 @@ func (uc *authUsecase) InitializeSupertoken() error {
 							accessTokenPayload[supertokenAccessTokenPayloadRolesKey] = map[string]interface{}{
 								supertokenAccessTokenPayloadRolesValueKey: []interface{}{constvars.KonsulinRoleGuest},
 							}
+							accessTokenPayload[supertokenAccessTokenPayloadFhirResourceId] = ""
 						} else {
 							rolesResp, err := userroles.GetRolesForUser(tenantId, userID)
 							if err == nil && rolesResp.OK != nil {
 								roles := make([]interface{}, len(rolesResp.OK.Roles))
+								userRoles := make([]string, len(rolesResp.OK.Roles))
 								for i, role := range rolesResp.OK.Roles {
 									roles[i] = role
+									userRoles[i] = role
 								}
 								accessTokenPayload[supertokenAccessTokenPayloadRolesKey] = map[string]interface{}{
 									supertokenAccessTokenPayloadRolesValueKey: roles,
+								}
+
+								// Get FHIR resource ID for the user based on their roles
+								ctx := context.Background()
+								fhirResourceId, fhirErr := uc.getFhirResourceIdForUser(ctx, userID, userRoles)
+								if fhirErr != nil {
+									uc.Log.Error("authUsecase.CreateNewSession error getting FHIR resource ID",
+										zap.String("user_id", userID),
+										zap.Error(fhirErr),
+									)
+									accessTokenPayload[supertokenAccessTokenPayloadFhirResourceId] = ""
+								} else {
+									accessTokenPayload[supertokenAccessTokenPayloadFhirResourceId] = fhirResourceId
+									uc.Log.Info("authUsecase.CreateNewSession added FHIR resource ID to access token",
+										zap.String("user_id", userID),
+										zap.String("fhir_resource_id", fhirResourceId),
+									)
 								}
 							} else {
 								accessTokenPayload[supertokenAccessTokenPayloadRolesKey] = map[string]interface{}{
 									supertokenAccessTokenPayloadRolesValueKey: []interface{}{constvars.KonsulinRoleGuest},
 								}
+								accessTokenPayload[supertokenAccessTokenPayloadFhirResourceId] = ""
 							}
 						}
 
