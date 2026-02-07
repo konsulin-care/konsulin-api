@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
@@ -18,8 +19,9 @@ import (
 )
 
 type AuthController struct {
-	Log         *zap.Logger
-	AuthUsecase contracts.AuthUsecase
+	Log            *zap.Logger
+	AuthUsecase    contracts.AuthUsecase
+	InternalConfig *config.InternalConfig
 }
 
 var (
@@ -27,11 +29,12 @@ var (
 	onceAuthController     sync.Once
 )
 
-func NewAuthController(logger *zap.Logger, authUsecase contracts.AuthUsecase) *AuthController {
+func NewAuthController(logger *zap.Logger, authUsecase contracts.AuthUsecase, internalConfig *config.InternalConfig) *AuthController {
 	onceAuthController.Do(func() {
 		instance := &AuthController{
-			Log:         logger,
-			AuthUsecase: authUsecase,
+			Log:            logger,
+			AuthUsecase:    authUsecase,
+			InternalConfig: internalConfig,
 		}
 		authControllerInstance = instance
 	})
@@ -246,7 +249,14 @@ func (ctrl *AuthController) CreateAnonymousSession(w http.ResponseWriter, r *htt
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	sessionHandle, err := ctrl.AuthUsecase.CreateAnonymousSession(ctx)
+	existingToken := ""
+	if cookie, err := r.Cookie(constvars.AnonymousSessionCookieName); err == nil {
+		existingToken = cookie.Value
+	}
+
+	forceNew := r.URL.Query().Has(constvars.AnonymousSessionForceNewQueryKey)
+
+	result, err := ctrl.AuthUsecase.CreateAnonymousSession(ctx, existingToken, forceNew)
 	if err != nil {
 		ctrl.Log.Error("AuthController.CreateAnonymousSession error from usecase",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -260,16 +270,110 @@ func (ctrl *AuthController) CreateAnonymousSession(w http.ResponseWriter, r *htt
 		return
 	}
 
+	if result != nil && result.IsNew {
+		// Secure flag defaults to true for security. Only disable for local development
+		// where HTTPS may not be available. In production/staging, cookies must be secure.
+		secure := true
+		if strings.EqualFold(ctrl.InternalConfig.App.Env, "local") {
+			secure = false
+		}
+		// cookie here is intended to be saved as a session cookie.
+		http.SetCookie(w, &http.Cookie{
+			Name:     constvars.AnonymousSessionCookieName,
+			Value:    result.Token,
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			Secure:   secure,
+		})
+	}
+
 	response := map[string]interface{}{
-		"session_handle": sessionHandle,
-		"role":           "guest",
+		"token":    result.Token,
+		"guest_id": result.GuestID,
+		"is_new":   result.IsNew,
+		"role":     "guest",
 	}
 
 	ctrl.Log.Info("AuthController.CreateAnonymousSession succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String("session_handle", sessionHandle),
+		zap.String("guest_id", result.GuestID),
 	)
 	utils.BuildSuccessResponse(w, constvars.StatusOK, "Anonymous session created successfully", response)
+}
+
+func (ctrl *AuthController) ClaimAnonymousResources(w http.ResponseWriter, r *http.Request) {
+	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	if !ok || requestID == "" {
+		ctrl.Log.Error("AuthController.ClaimAnonymousResources requestID not found in context")
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingRequestID(nil))
+		return
+	}
+	ctrl.Log.Info("AuthController.ClaimAnonymousResources called",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+	)
+
+	// Read identity and roles from context (set by SessionOptional middleware)
+	ctxIface := r.Context()
+	supertokensUserID, _ := ctxIface.Value(constvars.CONTEXT_UID).(string)
+	roles, _ := ctxIface.Value(constvars.CONTEXT_FHIR_ROLE).([]string)
+	if strings.TrimSpace(supertokensUserID) == "" || supertokensUserID == "anonymous" || len(roles) == 0 {
+		ctrl.Log.Error("AuthController.ClaimAnonymousResources missing or anonymous user in context",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrSupertokensSessionMissing(nil))
+		return
+	}
+
+	anonToken := ""
+	if cookie, err := r.Cookie(constvars.AnonymousSessionCookieName); err == nil {
+		anonToken = cookie.Value
+	}
+
+	if strings.TrimSpace(anonToken) == "" {
+		w.WriteHeader(constvars.StatusNoContent)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	result, err := ctrl.AuthUsecase.ClaimAnonymousResources(ctx, supertokensUserID, roles, anonToken)
+	if err != nil {
+		ctrl.Log.Error("AuthController.ClaimAnonymousResources error from usecase",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		if err == context.DeadlineExceeded {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	// Secure flag defaults to true for security. Only disable for local development
+	// where HTTPS may not be available. In production/staging, cookies must be secure.
+	secure := true
+	if strings.EqualFold(ctrl.InternalConfig.App.Env, "local") {
+		secure = false
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     constvars.AnonymousSessionCookieName,
+		Value:    "",
+		Path:     "/",
+		Expires:  time.Unix(0, 0),
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   secure,
+	})
+
+	utils.BuildSuccessResponse(w, constvars.StatusOK, "Anonymous resources claimed successfully", map[string]interface{}{
+		"claimed":       true,
+		"count":         result.Count,
+		"referenceList": result.ReferenceList,
+	})
 }
 
 // PasswordlessEmailExists exposes the SuperTokens passwordless email lookup

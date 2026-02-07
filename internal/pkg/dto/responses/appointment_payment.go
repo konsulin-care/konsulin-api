@@ -8,4 +8,3 @@ type AppointmentPaymentResponse struct {
 	PaymentNoticeID string `json:"paymentNotice"`
 	PaymentURL      string `json:"paymentUrl,omitempty"`
 }
-

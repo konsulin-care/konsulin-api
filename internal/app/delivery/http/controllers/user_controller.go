@@ -123,8 +123,6 @@ func (ctrl *UserController) UpdateUserBySession(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	
-
 	utils.SanitizeUpdateProfileRequest(reqPayload)
 
 	if err := utils.ValidateStruct(reqPayload); err != nil {

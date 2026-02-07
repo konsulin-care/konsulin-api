@@ -10,6 +10,7 @@ import (
 func attachAuthRoutes(router chi.Router, middlewares *middlewares.Middlewares, authController *controllers.AuthController) {
 	router.With(middlewares.RequireSuperadminAPIKey).Post("/magiclink", authController.CreateMagicLink)
 	router.Post("/anonymous-session", authController.CreateAnonymousSession)
+	router.Patch("/anonymous/claim", authController.ClaimAnonymousResources)
 	router.With(middlewares.Authenticate).Post("/logout", authController.Logout)
 	router.Get("/passwordless/email/exists", authController.PasswordlessEmailExists)
 }
