@@ -11,15 +11,17 @@ import (
 )
 
 // Deprecated: all context keys must use typed string, such as constvars.ContextKey
+type ContextKey string
+
 const (
-	keyFHIRRole                               = "fhirRole"
-	keyFHIRID                                 = "fhirID"
-	keyFHIRResourceId                         = "fhirResourceId"
-	keyRoles                                  = "roles"
-	keyUID                                    = "uid"
-	supertokenAccessTokenPayloadRolesKey      = "st-role"
-	supertokenAccessTokenPayloadRolesValueKey = "v"
-	supertokenAccessTokenPayloadFhirResourceId = "fhirResourceId"
+	keyFHIRRole                               ContextKey = "fhirRole"
+	keyFHIRID                                 ContextKey = "fhirID"
+	keyFHIRResourceId                         ContextKey = "fhirResourceId"
+	keyRoles                                  ContextKey = "roles"
+	keyUID                                    ContextKey = "uid"
+	supertokenAccessTokenPayloadRolesKey                 = "st-role"
+	supertokenAccessTokenPayloadRolesValueKey            = "v"
+	supertokenAccessTokenPayloadFhirResourceId           = "fhirResourceId"
 )
 
 func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
