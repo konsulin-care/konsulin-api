@@ -32,22 +32,22 @@ const (
 	supertokenAccessTokenPayloadFhirResourceId = "fhirResourceId"
 )
 
-// getFhirResourceIdForUser determines the FHIR resource ID based on user's roles and FHIR resource IDs
+// getFhirResourceIdForUser determines the FHIR resource ID based on user's roles and existing FHIR resources.
+// It performs a read-only lookup of existing FHIR resources by SuperTokenUserID.
 // Priority: Practitioner > Patient > Person
 func (uc *authUsecase) getFhirResourceIdForUser(ctx context.Context, userID string, roles []string) (string, error) {
-	// Initialize FHIR resources input
-	initFHIRResourcesInput := &contracts.InitializeNewUserFHIRResourcesInput{
+	// Lookup existing FHIR resources by SuperTokenUserID
+	lookupInput := &contracts.LookupUserFHIRResourceIDsInput{
 		SuperTokenUserID: userID,
 	}
-	initFHIRResourcesInput.ToogleByRoles(roles)
 
-	// Get or create FHIR resources
-	initializeResourceCtx, initializeResourceCtxCancel := context.WithDeadline(ctx, time.Now().Add(10*time.Second))
-	defer initializeResourceCtxCancel()
+	lookupCtx, lookupCtxCancel := context.WithDeadline(ctx, time.Now().Add(10*time.Second))
+	defer lookupCtxCancel()
 
-	initializedResources, err := uc.UserUsecase.InitializeNewUserFHIRResources(initializeResourceCtx, initFHIRResourcesInput)
+	lookedUpResources, err := uc.UserUsecase.LookupUserFHIRResourceIDs(lookupCtx, lookupInput)
 	if err != nil {
-		uc.Log.Error("authUsecase.getFhirResourceIdForUser error initializing FHIR resources",
+		uc.Log.Error("authUsecase.getFhirResourceIdForUser error looking up FHIR resources",
+			zap.String("user_id", userID),
 			zap.Error(err),
 		)
 		return "", err
@@ -58,19 +58,19 @@ func (uc *authUsecase) getFhirResourceIdForUser(ctx context.Context, userID stri
 	// 2. Else if Patient role exists → Patient/{ID}
 	// 3. Otherwise → Person/{ID}
 	for _, role := range roles {
-		if role == constvars.KonsulinRolePractitioner && initializedResources.PractitionerID != "" {
-			return fmt.Sprintf("Practitioner/%s", initializedResources.PractitionerID), nil
+		if role == constvars.KonsulinRolePractitioner && lookedUpResources.PractitionerID != "" {
+			return fmt.Sprintf("Practitioner/%s", lookedUpResources.PractitionerID), nil
 		}
 	}
 
 	for _, role := range roles {
-		if role == constvars.KonsulinRolePatient && initializedResources.PatientID != "" {
-			return fmt.Sprintf("Patient/%s", initializedResources.PatientID), nil
+		if role == constvars.KonsulinRolePatient && lookedUpResources.PatientID != "" {
+			return fmt.Sprintf("Patient/%s", lookedUpResources.PatientID), nil
 		}
 	}
 
-	if initializedResources.PersonID != "" {
-		return fmt.Sprintf("Person/%s", initializedResources.PersonID), nil
+	if lookedUpResources.PersonID != "" {
+		return fmt.Sprintf("Person/%s", lookedUpResources.PersonID), nil
 	}
 
 	return "", errors.New("no FHIR resource ID found for user")
@@ -486,7 +486,9 @@ func (uc *authUsecase) InitializeSupertoken() error {
 										zap.Error(fhirErr),
 									)
 									accessTokenPayload[supertokenAccessTokenPayloadFhirResourceId] = ""
-								} else {
+								}
+
+								if fhirErr == nil {
 									accessTokenPayload[supertokenAccessTokenPayloadFhirResourceId] = fhirResourceId
 									uc.Log.Info("authUsecase.CreateNewSession added FHIR resource ID to access token",
 										zap.String("user_id", userID),
