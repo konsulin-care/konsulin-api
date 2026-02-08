@@ -82,8 +82,7 @@ func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
 	ctx = context.WithValue(ctx, keyUID, uid)
 	ctx = context.WithValue(ctx, keyFHIRResourceId, fhirResourceId)
 
-	// new keys for context will be used for now and one and this
-	// will deprecate the use of untyped string in context keys
+	// Typed context keys (constvars.ContextKey) - these will replace the deprecated local ContextKey keys above.
 	ctx = context.WithValue(ctx, constvars.CONTEXT_FHIR_ROLE, roles)
 	ctx = context.WithValue(ctx, constvars.CONTEXT_UID, uid)
 	ctx = context.WithValue(ctx, constvars.CONTEXT_FHIR_RESOURCE_ID, fhirResourceId)

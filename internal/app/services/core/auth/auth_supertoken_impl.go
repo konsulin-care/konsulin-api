@@ -164,11 +164,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 		return err
 	}
 
-	ensureRoleExists(constvars.KonsulinRolePatient)
-	ensureRoleExists(constvars.KonsulinRoleGuest)
-	ensureRoleExists(constvars.KonsulinRoleClinicAdmin)
-	ensureRoleExists(constvars.KonsulinRolePractitioner)
-	ensureRoleExists(constvars.KonsulinRoleResearcher)
+
 	uc.ensureRoleExists(constvars.KonsulinRolePatient)
 	uc.ensureRoleExists(constvars.KonsulinRoleGuest)
 	uc.ensureRoleExists(constvars.KonsulinRoleClinicAdmin)
