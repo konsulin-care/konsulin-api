@@ -390,6 +390,7 @@ func (uc *userUsecase) LookupUserFHIRResourceIDs(ctx context.Context, input *con
 	}
 
 	output := &contracts.InitializeNewUserFHIRResourcesOutput{}
+	// Collect errors to return if we fail to find the specific resource or if critical failures occur
 	var errs []error
 
 	// Look up Practitioner by SuperTokenUserID identifier
@@ -435,8 +436,10 @@ func (uc *userUsecase) LookupUserFHIRResourceIDs(ctx context.Context, input *con
 		output.PersonID = persons[0].ID
 	}
 
-	// If no resources found AND we encountered errors, return the errors.
-	if output.PractitionerID == "" && output.PatientID == "" && output.PersonID == "" && len(errs) > 0 {
+	// Critical fix: If we encountered errors, we must return them. 
+	// Swallowing errors (like DB down) can lead to incorrect priority selection 
+	// (e.g. failing to find Practitioner --> falling back to Patient).
+	if len(errs) > 0 {
 		return nil, errors.Join(errs...)
 	}
 

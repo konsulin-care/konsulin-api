@@ -546,8 +546,9 @@ func (uc *authUsecase) ensureRoleExists(role string) {
 	resp, err := userroles.CreateNewRoleOrAddPermissions(role, []string{}, nil)
 	if err != nil {
 		log.Printf("Error creating '%s' role: %v\n", role, err)
+		return
 	}
-	if !resp.OK.CreatedNewRole {
+	if resp.OK != nil && !resp.OK.CreatedNewRole {
 		log.Printf("'%s' role already exists\n", role)
 	}
 }
