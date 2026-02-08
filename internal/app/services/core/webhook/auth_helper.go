@@ -36,13 +36,13 @@ func (u *usecase) extractAuthContext(ctx context.Context) *ExtractAuthContextOut
 		}
 	}
 
-	if v := ctx.Value("uid"); v != nil {
+	if v := ctx.Value(constvars.CONTEXT_UID); v != nil {
 		if s, ok := v.(string); ok {
 			out.UID = s
 		}
 	}
 
-	if v := ctx.Value("roles"); v != nil {
+	if v := ctx.Value(constvars.CONTEXT_FHIR_ROLE); v != nil {
 		if list, ok := v.([]string); ok {
 			out.Roles = list
 		} else if anyList, ok := v.([]interface{}); ok {

@@ -196,7 +196,7 @@ func (ctrl *WebhookController) HandleEnqueueWebHook(w http.ResponseWriter, r *ht
 			actorID = "api-key-superadmin"
 		}
 	}
-	if uid, ok := r.Context().Value("uid").(string); ok && uid != "" && !strings.EqualFold(uid, "anonymous") {
+	if uid, ok := r.Context().Value(constvars.CONTEXT_UID).(string); ok && uid != "" && !strings.EqualFold(uid, "anonymous") {
 		actorID = uid
 	}
 

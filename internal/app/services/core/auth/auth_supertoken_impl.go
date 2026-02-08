@@ -129,8 +129,8 @@ func (uc *authUsecase) InitializeSupertoken() error {
 			FlowType: "MAGIC_LINK",
 			ContactMethodEmailOrPhone: plessmodels.ContactMethodEmailOrPhoneConfig{
 				Enabled:             true,
-				ValidateEmailAddress: uc.validateEmailAddress,
-				ValidatePhoneNumber:  uc.validatePhoneNumber,
+				ValidateEmailAddress: validateEmailAddress,
+				ValidatePhoneNumber:  validatePhoneNumber,
 			},
 		}),
 		userroles.Init(nil),
@@ -165,18 +165,18 @@ func (uc *authUsecase) InitializeSupertoken() error {
 	}
 
 
-	uc.ensureRoleExists(constvars.KonsulinRolePatient)
-	uc.ensureRoleExists(constvars.KonsulinRoleGuest)
-	uc.ensureRoleExists(constvars.KonsulinRoleClinicAdmin)
-	uc.ensureRoleExists(constvars.KonsulinRolePractitioner)
-	uc.ensureRoleExists(constvars.KonsulinRoleResearcher)
-	uc.ensureRoleExists(constvars.KonsulinRoleSuperadmin)
+	ensureRoleExists(constvars.KonsulinRolePatient)
+	ensureRoleExists(constvars.KonsulinRoleGuest)
+	ensureRoleExists(constvars.KonsulinRoleClinicAdmin)
+	ensureRoleExists(constvars.KonsulinRolePractitioner)
+	ensureRoleExists(constvars.KonsulinRoleResearcher)
+	ensureRoleExists(constvars.KonsulinRoleSuperadmin)
 
 	log.Println("Successfully initialized supertokens SDK")
 	return nil
 }
 
-func (uc *authUsecase) ensureRoleExists(role string) {
+func ensureRoleExists(role string) {
 	resp, err := userroles.CreateNewRoleOrAddPermissions(role, []string{}, nil)
 	if err != nil {
 		log.Printf("Error creating '%s' role: %v\n", role, err)
@@ -452,7 +452,7 @@ func (uc *authUsecase) supertokenEmailDeliveryOverride() func(emaildelivery.Emai
 
 func (uc *authUsecase) supertokenSmsDeliveryOverride() func(smsdelivery.SmsDeliveryInterface) smsdelivery.SmsDeliveryInterface {
 	return func(originalImplementation smsdelivery.SmsDeliveryInterface) smsdelivery.SmsDeliveryInterface {
-		(*originalImplementation.SendSms) = func(input smsdelivery.SmsType, userContext supertokens.UserContext) error {
+		(*originalImplementation.SendSms) = func(input smsdelivery.SmsType, _ supertokens.UserContext) error {
 			if input.PasswordlessLogin == nil {
 				return errors.New("passwordless sms delivery: missing PasswordlessLogin payload")
 			}
@@ -494,7 +494,7 @@ func (uc *authUsecase) supertokenSmsDeliveryOverride() func(smsdelivery.SmsDeliv
 	}
 }
 
-func (uc *authUsecase) validateEmailAddress(email interface{}, tenantId string) *string {
+func validateEmailAddress(email interface{}, _ string) *string {
 	emailStr, ok := email.(string)
 	if !ok {
 		msg := "invalid email format"
@@ -510,7 +510,7 @@ func (uc *authUsecase) validateEmailAddress(email interface{}, tenantId string) 
 	return nil
 }
 
-func (uc *authUsecase) validatePhoneNumber(phoneNumber interface{}, tenantId string) *string {
+func validatePhoneNumber(phoneNumber interface{}, _ string) *string {
 	phoneStr, ok := phoneNumber.(string)
 	if !ok {
 		msg := "invalid phone format"
