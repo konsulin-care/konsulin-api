@@ -390,6 +390,7 @@ func (uc *userUsecase) LookupUserFHIRResourceIDs(ctx context.Context, input *con
 	}
 
 	output := &contracts.InitializeNewUserFHIRResourcesOutput{}
+	var errs []error
 
 	// Look up Practitioner by SuperTokenUserID identifier
 	practitioners, err := uc.PractitionerFhirClient.FindPractitionerByIdentifier(ctx, constvars.FhirSupertokenSystemIdentifier, input.SuperTokenUserID)
@@ -398,7 +399,7 @@ func (uc *userUsecase) LookupUserFHIRResourceIDs(ctx context.Context, input *con
 			zap.String("super_token_user_id", input.SuperTokenUserID),
 			zap.Error(err),
 		)
-		// Continue to look up other resources; don't fail the whole lookup
+		errs = append(errs, err)
 	}
 	if len(practitioners) > 0 {
 		output.PractitionerID = practitioners[0].ID
@@ -412,7 +413,7 @@ func (uc *userUsecase) LookupUserFHIRResourceIDs(ctx context.Context, input *con
 			zap.String("super_token_user_id", input.SuperTokenUserID),
 			zap.Error(err),
 		)
-		// Continue to look up other resources; don't fail the whole lookup
+		errs = append(errs, err)
 	}
 	if len(patients) > 0 {
 		output.PatientID = patients[0].ID
@@ -428,10 +429,15 @@ func (uc *userUsecase) LookupUserFHIRResourceIDs(ctx context.Context, input *con
 			zap.String("super_token_user_id", input.SuperTokenUserID),
 			zap.Error(err),
 		)
-		// Continue; don't fail the whole lookup
+		errs = append(errs, err)
 	}
 	if len(persons) > 0 {
 		output.PersonID = persons[0].ID
+	}
+
+	// If no resources found AND we encountered errors, return the errors.
+	if output.PractitionerID == "" && output.PatientID == "" && output.PersonID == "" && len(errs) > 0 {
+		return nil, errors.Join(errs...)
 	}
 
 	return output, nil
