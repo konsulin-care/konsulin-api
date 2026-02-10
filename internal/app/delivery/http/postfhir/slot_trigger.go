@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/delivery/http/middlewares"
+	"net/url"
 	"strings"
 
 	"slices"
@@ -23,6 +24,7 @@ const (
 type transactionRequestEntry struct {
 	Request *struct {
 		Method string `json:"method"`
+		URL    string `json:"url"`
 	} `json:"request,omitempty"`
 	Resource json.RawMessage `json:"resource,omitempty"`
 }
@@ -32,6 +34,17 @@ type transactionRequestBundle struct {
 	ResourceType string                    `json:"resourceType"`
 	Type         string                    `json:"type"`
 	Entry        []transactionRequestEntry `json:"entry"`
+}
+
+// transactionResponseBundle is the minimal shape of a FHIR transaction-response bundle.
+// Some FHIR servers include entry.resource depending on Prefer/return settings; we use it
+// as a best-effort source of the updated resource (especially for PATCH).
+type transactionResponseBundle struct {
+	ResourceType string `json:"resourceType"`
+	Type         string `json:"type"`
+	Entry        []struct {
+		Resource json.RawMessage `json:"resource,omitempty"`
+	} `json:"entry"`
 }
 
 // resourceEnvelope is used to detect resourceType and id/actor from a raw resource.
@@ -53,7 +66,7 @@ func NewSlotRegenerationHook(log *zap.Logger, slotUsecase contracts.SlotUsecaseI
 		if resp.StatusCode >= 400 {
 			return nil
 		}
-		ids := collectPractitionerRoleIDsFromMutation(req)
+		ids := collectPractitionerRoleIDsFromMutation(req, resp)
 		if len(ids) == 0 {
 			return nil
 		}
@@ -76,21 +89,22 @@ func NewSlotRegenerationHook(log *zap.Logger, slotUsecase contracts.SlotUsecaseI
 }
 
 // collectPractitionerRoleIDsFromMutation returns deduplicated PractitionerRole IDs affected by the request.
-func collectPractitionerRoleIDsFromMutation(req middlewares.PostFHIRProxyUserRequestDetail) []string {
-	if ids := collectPractitionerRoleIDsFromTransactionBundle(req.Body); ids != nil {
+func collectPractitionerRoleIDsFromMutation(req middlewares.PostFHIRProxyUserRequestDetail, resp middlewares.PostFHIRProxyFHIRServerResponse) []string {
+	if ids := collectPractitionerRoleIDsFromTransactionBundle(req.Body, resp.Body); ids != nil {
 		return ids
 	}
-	return collectPractitionerRoleIDsFromSingleResource(req)
+	return collectPractitionerRoleIDsFromSingleResource(req, resp)
 }
 
 // collectPractitionerRoleIDsFromTransactionBundle extracts PractitionerRole IDs from a FHIR transaction
 // bundle body. Returns nil if body is empty or not a valid transaction bundle (caller should try single-resource path).
 // Returns a non-nil slice (possibly empty) when the body is a valid transaction bundle, so the caller does not fall through to single-resource parsing.
-func collectPractitionerRoleIDsFromTransactionBundle(body []byte) []string {
-	bundle, ok := parseTransactionBundle(body)
+func collectPractitionerRoleIDsFromTransactionBundle(reqBody []byte, respBody []byte) []string {
+	bundle, ok := parseTransactionBundle(reqBody)
 	if !ok {
 		return nil
 	}
+	respBundle, _ := parseTransactionResponseBundle(respBody)
 	seen := make(map[string]struct{})
 	add := func(ids []string) {
 		for _, id := range ids {
@@ -100,7 +114,11 @@ func collectPractitionerRoleIDsFromTransactionBundle(body []byte) []string {
 		}
 	}
 	for i := range bundle.Entry {
-		collectPractitionerRoleIDsFromBundleEntry(&bundle.Entry[i], add)
+		var respResource json.RawMessage
+		if respBundle != nil && i < len(respBundle.Entry) {
+			respResource = respBundle.Entry[i].Resource
+		}
+		collectPractitionerRoleIDsFromBundleEntry(&bundle.Entry[i], respResource, add)
 	}
 	if len(seen) == 0 {
 		return []string{}
@@ -123,13 +141,55 @@ func parseTransactionBundle(body []byte) (*transactionRequestBundle, bool) {
 	return &bundle, true
 }
 
+func parseTransactionResponseBundle(body []byte) (*transactionResponseBundle, bool) {
+	if len(body) == 0 {
+		return nil, false
+	}
+	var bundle transactionResponseBundle
+	if err := json.Unmarshal(body, &bundle); err != nil {
+		return nil, false
+	}
+	if !strings.EqualFold(bundle.ResourceType, "Bundle") || !strings.EqualFold(bundle.Type, "transaction-response") {
+		return nil, false
+	}
+	return &bundle, true
+}
+
 // collectPractitionerRoleIDsFromBundleEntry extracts PractitionerRole IDs from one transaction entry and adds them via add.
-// Skips DELETE entries and non-PUT/PATCH; skips entries that fail to unmarshal or are not PractitionerRole/Schedule.
-func collectPractitionerRoleIDsFromBundleEntry(e *transactionRequestEntry, add func(ids []string)) {
+// Skips DELETE entries and non-PUT/PATCH; skips entries that fail to parse or are not PractitionerRole/Schedule.
+//
+// For PATCH entries, the patch document usually does not include resourceType/id/actor, so we parse entry.request.url
+// (e.g. "PractitionerRole/123" or "Schedule/456"). For Schedule PATCH, we best-effort parse respResource as a full
+// Schedule to get actor references if the server returned it.
+func collectPractitionerRoleIDsFromBundleEntry(e *transactionRequestEntry, respResource json.RawMessage, add func(ids []string)) {
 	method := entryMethod(e)
 	if method == "DELETE" || (method != "PUT" && method != "PATCH") {
 		return
 	}
+	if method == "PATCH" {
+		resourceType, id := entryResourceTypeAndIDFromURL(e)
+		switch resourceType {
+		case resourceTypePractitionerRole:
+			if id != "" {
+				add([]string{id})
+			}
+		case resourceTypeSchedule:
+			// PATCH payload won't have actors; best-effort: parse updated Schedule from response entry.resource
+			if len(respResource) == 0 {
+				return
+			}
+			var env resourceEnvelope
+			if err := json.Unmarshal(respResource, &env); err != nil {
+				return
+			}
+			if strings.EqualFold(env.ResourceType, resourceTypeSchedule) {
+				add(practitionerRoleIDsFromEnvelope(env))
+			}
+		}
+		return
+	}
+
+	// PUT: entry.resource should be a full resource representation
 	if len(e.Resource) == 0 {
 		return
 	}
@@ -146,6 +206,35 @@ func entryMethod(e *transactionRequestEntry) string {
 		return ""
 	}
 	return strings.ToUpper(strings.TrimSpace(e.Request.Method))
+}
+
+func entryResourceTypeAndIDFromURL(e *transactionRequestEntry) (resourceType string, id string) {
+	if e == nil || e.Request == nil {
+		return "", ""
+	}
+	return parseResourceTypeAndIDFromRequestURL(e.Request.URL)
+}
+
+func parseResourceTypeAndIDFromRequestURL(u string) (resourceType string, id string) {
+	u = strings.TrimSpace(u)
+	if u == "" {
+		return "", ""
+	}
+	parsed, err := url.Parse(u)
+	if err == nil && parsed.Path != "" {
+		u = parsed.Path
+	}
+	u = strings.Trim(u, "/")
+	// Some systems may include a base proxy path in request.url (e.g. "/fhir/PractitionerRole/123").
+	// Strip it so we can consistently read "ResourceType/id".
+	if strings.HasPrefix(strings.ToLower(u), "fhir/") {
+		u = strings.TrimPrefix(u, "fhir/")
+	}
+	parts := strings.Split(u, "/")
+	if len(parts) < 2 {
+		return "", ""
+	}
+	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
 }
 
 // practitionerRoleIDsFromEnvelope returns PractitionerRole IDs from a resource envelope (PractitionerRole ID or Schedule actors).
@@ -172,7 +261,7 @@ func practitionerRoleIDsFromEnvelope(env resourceEnvelope) []string {
 
 // collectPractitionerRoleIDsFromSingleResource extracts PractitionerRole IDs from a single-resource
 // request (path and optional body). Assumes request is not a transaction bundle.
-func collectPractitionerRoleIDsFromSingleResource(req middlewares.PostFHIRProxyUserRequestDetail) []string {
+func collectPractitionerRoleIDsFromSingleResource(req middlewares.PostFHIRProxyUserRequestDetail, resp middlewares.PostFHIRProxyFHIRServerResponse) []string {
 	path := strings.TrimPrefix(req.Path, fhirPathPrefix)
 	path = strings.Trim(path, "/")
 	parts := strings.Split(path, "/")
@@ -199,13 +288,22 @@ func collectPractitionerRoleIDsFromSingleResource(req middlewares.PostFHIRProxyU
 			add([]string{resID})
 		}
 	case resourceTypeSchedule:
-		if len(req.Body) > 0 {
-			var env resourceEnvelope
-			if err := json.Unmarshal(req.Body, &env); err == nil && strings.EqualFold(env.ResourceType, resourceTypeSchedule) {
-				for _, a := range env.Actor {
-					if id := practitionerRoleIDFromReference(a.Reference); id != "" {
-						add([]string{id})
-					}
+		// PUT typically sends a full Schedule in the request body, but PATCH usually doesn't.
+		// For PATCH, best-effort parse the server response as a full Schedule to get actor refs.
+		var candidate []byte
+		if method == "PATCH" {
+			candidate = resp.Body
+		} else {
+			candidate = req.Body
+		}
+		if len(candidate) == 0 {
+			break
+		}
+		var env resourceEnvelope
+		if err := json.Unmarshal(candidate, &env); err == nil && strings.EqualFold(env.ResourceType, resourceTypeSchedule) {
+			for _, a := range env.Actor {
+				if id := practitionerRoleIDFromReference(a.Reference); id != "" {
+					add([]string{id})
 				}
 			}
 		}
