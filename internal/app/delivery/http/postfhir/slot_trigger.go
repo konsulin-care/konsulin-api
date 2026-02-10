@@ -86,13 +86,8 @@ func collectPractitionerRoleIDsFromMutation(req middlewares.PostFHIRProxyUserReq
 // collectPractitionerRoleIDsFromTransactionBundle extracts PractitionerRole IDs from a FHIR transaction
 // bundle body. Returns nil if body is empty or not a valid transaction bundle (caller should try single-resource path).
 func collectPractitionerRoleIDsFromTransactionBundle(body []byte) []string {
-	if len(body) == 0 {
-		return nil
-	}
-	var bundle transactionRequestBundle
-	if err := json.Unmarshal(body, &bundle); err != nil ||
-		!strings.EqualFold(bundle.ResourceType, "Bundle") ||
-		!strings.EqualFold(bundle.Type, "transaction") {
+	bundle, ok := parseTransactionBundle(body)
+	if !ok {
 		return nil
 	}
 	seen := make(map[string]struct{})
@@ -104,35 +99,71 @@ func collectPractitionerRoleIDsFromTransactionBundle(body []byte) []string {
 		}
 	}
 	for i := range bundle.Entry {
-		e := &bundle.Entry[i]
-		method := ""
-		if e.Request != nil {
-			method = strings.ToUpper(strings.TrimSpace(e.Request.Method))
-		}
-		if method == "DELETE" || (method != "PUT" && method != "PATCH") {
-			continue
-		}
-		if len(e.Resource) == 0 {
-			continue
-		}
-		var env resourceEnvelope
-		if err := json.Unmarshal(e.Resource, &env); err != nil {
-			continue
-		}
-		switch strings.TrimSpace(env.ResourceType) {
-		case resourceTypePractitionerRole:
-			if env.ID != "" {
-				add([]string{env.ID})
-			}
-		case resourceTypeSchedule:
-			for _, a := range env.Actor {
-				if id := practitionerRoleIDFromReference(a.Reference); id != "" {
-					add([]string{id})
-				}
-			}
-		}
+		collectPractitionerRoleIDsFromBundleEntry(&bundle.Entry[i], add)
 	}
 	return mapKeysToSlice(seen)
+}
+
+// parseTransactionBundle unmarshals body and returns the bundle and true only if it is a valid FHIR transaction bundle.
+func parseTransactionBundle(body []byte) (*transactionRequestBundle, bool) {
+	if len(body) == 0 {
+		return nil, false
+	}
+	var bundle transactionRequestBundle
+	if err := json.Unmarshal(body, &bundle); err != nil {
+		return nil, false
+	}
+	if !strings.EqualFold(bundle.ResourceType, "Bundle") || !strings.EqualFold(bundle.Type, "transaction") {
+		return nil, false
+	}
+	return &bundle, true
+}
+
+// collectPractitionerRoleIDsFromBundleEntry extracts PractitionerRole IDs from one transaction entry and adds them via add.
+// Skips DELETE entries and non-PUT/PATCH; skips entries that fail to unmarshal or are not PractitionerRole/Schedule.
+func collectPractitionerRoleIDsFromBundleEntry(e *transactionRequestEntry, add func(ids []string)) {
+	method := entryMethod(e)
+	if method == "DELETE" || (method != "PUT" && method != "PATCH") {
+		return
+	}
+	if len(e.Resource) == 0 {
+		return
+	}
+	var env resourceEnvelope
+	if err := json.Unmarshal(e.Resource, &env); err != nil {
+		return
+	}
+	add(practitionerRoleIDsFromEnvelope(env))
+}
+
+// entryMethod returns the uppercased request method for the entry, or "" if missing.
+func entryMethod(e *transactionRequestEntry) string {
+	if e == nil || e.Request == nil {
+		return ""
+	}
+	return strings.ToUpper(strings.TrimSpace(e.Request.Method))
+}
+
+// practitionerRoleIDsFromEnvelope returns PractitionerRole IDs from a resource envelope (PractitionerRole ID or Schedule actors).
+func practitionerRoleIDsFromEnvelope(env resourceEnvelope) []string {
+	resourceType := strings.TrimSpace(env.ResourceType)
+	switch resourceType {
+	case resourceTypePractitionerRole:
+		if env.ID != "" {
+			return []string{env.ID}
+		}
+		return nil
+	case resourceTypeSchedule:
+		var ids []string
+		for _, a := range env.Actor {
+			if id := practitionerRoleIDFromReference(a.Reference); id != "" {
+				ids = append(ids, id)
+			}
+		}
+		return ids
+	default:
+		return nil
+	}
 }
 
 // collectPractitionerRoleIDsFromSingleResource extracts PractitionerRole IDs from a single-resource
