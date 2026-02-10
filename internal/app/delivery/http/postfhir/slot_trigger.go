@@ -53,7 +53,7 @@ func NewSlotRegenerationHook(log *zap.Logger, slotUsecase contracts.SlotUsecaseI
 		if resp.StatusCode >= 400 {
 			return nil
 		}
-		ids := collectPractitionerRoleIDsFromMutation(req, resp)
+		ids := collectPractitionerRoleIDsFromMutation(req)
 		if len(ids) == 0 {
 			return nil
 		}
@@ -76,7 +76,7 @@ func NewSlotRegenerationHook(log *zap.Logger, slotUsecase contracts.SlotUsecaseI
 }
 
 // collectPractitionerRoleIDsFromMutation returns deduplicated PractitionerRole IDs affected by the request.
-func collectPractitionerRoleIDsFromMutation(req middlewares.PostFHIRProxyUserRequestDetail, resp middlewares.PostFHIRProxyFHIRServerResponse) []string {
+func collectPractitionerRoleIDsFromMutation(req middlewares.PostFHIRProxyUserRequestDetail) []string {
 	seen := make(map[string]struct{})
 	add := func(ids []string) {
 		for _, id := range ids {
