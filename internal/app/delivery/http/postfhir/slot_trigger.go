@@ -77,86 +77,93 @@ func NewSlotRegenerationHook(log *zap.Logger, slotUsecase contracts.SlotUsecaseI
 
 // collectPractitionerRoleIDsFromMutation returns deduplicated PractitionerRole IDs affected by the request.
 func collectPractitionerRoleIDsFromMutation(req middlewares.PostFHIRProxyUserRequestDetail) []string {
+	if ids := collectPractitionerRoleIDsFromTransactionBundle(req.Body); ids != nil {
+		return ids
+	}
+	return collectPractitionerRoleIDsFromSingleResource(req)
+}
+
+// collectPractitionerRoleIDsFromTransactionBundle extracts PractitionerRole IDs from a FHIR transaction
+// bundle body. Returns nil if body is empty or not a valid transaction bundle (caller should try single-resource path).
+func collectPractitionerRoleIDsFromTransactionBundle(body []byte) []string {
+	if len(body) == 0 {
+		return nil
+	}
+	var bundle transactionRequestBundle
+	if err := json.Unmarshal(body, &bundle); err != nil ||
+		!strings.EqualFold(bundle.ResourceType, "Bundle") ||
+		!strings.EqualFold(bundle.Type, "transaction") {
+		return nil
+	}
 	seen := make(map[string]struct{})
 	add := func(ids []string) {
 		for _, id := range ids {
-			if id == "" {
-				continue
+			if id != "" {
+				seen[id] = struct{}{}
 			}
-			seen[id] = struct{}{}
 		}
 	}
-
-	// Try request body as transaction bundle first.
-	if len(req.Body) > 0 {
-		var bundle transactionRequestBundle
-		if err := json.Unmarshal(req.Body, &bundle); err == nil &&
-			strings.EqualFold(bundle.ResourceType, "Bundle") &&
-			strings.EqualFold(bundle.Type, "transaction") {
-			for i := range bundle.Entry {
-				e := &bundle.Entry[i]
-				method := ""
-				if e.Request != nil {
-					method = strings.ToUpper(strings.TrimSpace(e.Request.Method))
-				}
-				if method == "DELETE" {
-					continue
-				}
-				if method != "PUT" && method != "PATCH" {
-					continue
-				}
-				if len(e.Resource) == 0 {
-					continue
-				}
-				var env resourceEnvelope
-				if err := json.Unmarshal(e.Resource, &env); err != nil {
-					continue
-				}
-				switch strings.TrimSpace(env.ResourceType) {
-				case resourceTypePractitionerRole:
-					if env.ID != "" {
-						add([]string{env.ID})
-					}
-				case resourceTypeSchedule:
-					for _, a := range env.Actor {
-						if id := practitionerRoleIDFromReference(a.Reference); id != "" {
-							add([]string{id})
-						}
-					}
+	for i := range bundle.Entry {
+		e := &bundle.Entry[i]
+		method := ""
+		if e.Request != nil {
+			method = strings.ToUpper(strings.TrimSpace(e.Request.Method))
+		}
+		if method == "DELETE" || (method != "PUT" && method != "PATCH") {
+			continue
+		}
+		if len(e.Resource) == 0 {
+			continue
+		}
+		var env resourceEnvelope
+		if err := json.Unmarshal(e.Resource, &env); err != nil {
+			continue
+		}
+		switch strings.TrimSpace(env.ResourceType) {
+		case resourceTypePractitionerRole:
+			if env.ID != "" {
+				add([]string{env.ID})
+			}
+		case resourceTypeSchedule:
+			for _, a := range env.Actor {
+				if id := practitionerRoleIDFromReference(a.Reference); id != "" {
+					add([]string{id})
 				}
 			}
-			return mapKeysToSlice(seen)
 		}
 	}
+	return mapKeysToSlice(seen)
+}
 
-	// Single resource: parse path and optionally body.
+// collectPractitionerRoleIDsFromSingleResource extracts PractitionerRole IDs from a single-resource
+// request (path and optional body). Assumes request is not a transaction bundle.
+func collectPractitionerRoleIDsFromSingleResource(req middlewares.PostFHIRProxyUserRequestDetail) []string {
 	path := strings.TrimPrefix(req.Path, fhirPathPrefix)
 	path = strings.Trim(path, "/")
 	parts := strings.Split(path, "/")
 	if len(parts) < 2 {
-		return mapKeysToSlice(seen)
-	}
-	method := strings.ToUpper(strings.TrimSpace(req.Method))
-	if method == "DELETE" {
 		return nil
 	}
-	if method != "PUT" && method != "PATCH" {
-		return mapKeysToSlice(seen)
+	method := strings.ToUpper(strings.TrimSpace(req.Method))
+	if method == "DELETE" || (method != "PUT" && method != "PATCH") {
+		return nil
 	}
-
 	resourceType := strings.TrimSpace(parts[0])
-	resID := ""
-	if len(parts) >= 2 {
-		resID = strings.TrimSpace(parts[1])
+	resID := strings.TrimSpace(parts[1])
+	seen := make(map[string]struct{})
+	add := func(ids []string) {
+		for _, id := range ids {
+			if id != "" {
+				seen[id] = struct{}{}
+			}
+		}
 	}
-
 	switch resourceType {
 	case resourceTypePractitionerRole:
 		if resID != "" {
 			add([]string{resID})
 		}
 	case resourceTypeSchedule:
-		// Parse request body for actor references (PUT/PATCH only).
 		if len(req.Body) > 0 {
 			var env resourceEnvelope
 			if err := json.Unmarshal(req.Body, &env); err == nil && strings.EqualFold(env.ResourceType, resourceTypeSchedule) {
@@ -168,7 +175,6 @@ func collectPractitionerRoleIDsFromMutation(req middlewares.PostFHIRProxyUserReq
 			}
 		}
 	}
-
 	return mapKeysToSlice(seen)
 }
 
