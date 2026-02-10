@@ -625,6 +625,7 @@ func (c *slotFhirClient) FindSlotsByScheduleWithQuery(ctx context.Context, sched
 				)
 				return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourceSlot)
 			}
+			return nil, exceptions.ErrGetFHIRResource(fmt.Errorf("unexpected status %d from FHIR server", resp.StatusCode), constvars.ResourceSlot)
 		}
 
 		pageSlots, next, decErr := decodeSlotBundle(resp.Body)
