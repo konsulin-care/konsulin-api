@@ -239,7 +239,7 @@ func (s *SlotUsecase) HandleSetUnavailabilityForMultiplePractitionerRoles(ctx co
 		s.logger.With(zap.Error(lerr)).Error("failed to acquire locks")
 		return nil, exceptions.BuildNewCustomError(lerr, constvars.StatusConflict, constvars.ErrClientCannotProcessRequest, "failed to acquire locks")
 	}
-	defer release(ctx)
+	defer func() { release(context.Background()) }()
 
 	// Conflict detection and idempotency per role
 	type createItem struct {
@@ -847,7 +847,7 @@ func (s *SlotUsecase) HandleOnDemandSlotRegeneration(ctx context.Context, practi
 		logger.Error("failed to acquire day locks", zap.Error(err))
 		return err
 	}
-	defer release(ctx)
+	defer func() { release(context.Background()) }()
 
 	todayStart := atClock(today.In(loc), 0, 0, loc)
 	params := contracts.SlotSearchParams{
@@ -1129,11 +1129,9 @@ func (s *SlotUsecase) acquireDayLocksOrdered(ctx context.Context, targets []dayL
 		}
 		acquiredList = append(acquiredList, acquired{key: key, tok: tok})
 	}
-	// Use a background context for unlock so that release always succeeds even when the
-	// caller's context is cancelled (e.g. client disconnect), avoiding lock leaks until TTL.
-	release := func(context.Context) {
+	release := func(ctx context.Context) {
 		for i := len(acquiredList) - 1; i >= 0; i-- {
-			_ = s.locker.Unlock(context.Background(), acquiredList[i].key, acquiredList[i].tok)
+			_ = s.locker.Unlock(ctx, acquiredList[i].key, acquiredList[i].tok)
 		}
 	}
 	return release, nil
