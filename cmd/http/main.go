@@ -6,6 +6,7 @@ import (
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/delivery/http/controllers"
 	"konsulin-service/internal/app/delivery/http/middlewares"
+	"konsulin-service/internal/app/delivery/http/postfhir"
 	"konsulin-service/internal/app/delivery/http/routers"
 	"konsulin-service/internal/app/drivers/database"
 	"konsulin-service/internal/app/drivers/logger"
@@ -268,6 +269,9 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	invoiceFhirClient := invoicesFhir.NewInvoiceFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 
 	slotUsecase := slot.NewSlotUsecase(scheduleClient, lockService, slotClient, practitionerRoleClient, practitionerFhirClient, personFhirClient, bundleClient, bootstrap.InternalConfig, bootstrap.Logger)
+
+	// Register post-FHIR-proxy hook for on-demand slot regeneration when PractitionerRole/Schedule are mutated.
+	middlewares.PostFHIRProxyHooks = append(middlewares.PostFHIRProxyHooks, postfhir.NewSlotRegenerationHook(bootstrap.Logger, slotUsecase))
 
 	paymentUsecase := payments.NewPaymentUsecase(
 		transactions.NewTransactionPostgresRepository(nil, bootstrap.Logger),
