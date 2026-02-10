@@ -226,9 +226,10 @@ func parseResourceTypeAndIDFromRequestURL(u string) (resourceType string, id str
 	}
 	u = strings.Trim(u, "/")
 	// Some systems may include a base proxy path in request.url (e.g. "/fhir/PractitionerRole/123").
-	// Strip it so we can consistently read "ResourceType/id".
-	if strings.HasPrefix(strings.ToLower(u), "fhir/") {
-		u = strings.TrimPrefix(u, "fhir/")
+	// Strip it (case-insensitively) so we can consistently read "ResourceType/id".
+	const fhirPrefix = "fhir/"
+	if strings.HasPrefix(strings.ToLower(u), fhirPrefix) {
+		u = u[len(fhirPrefix):]
 	}
 	parts := strings.Split(u, "/")
 	if len(parts) < 2 {
