@@ -85,6 +85,7 @@ func collectPractitionerRoleIDsFromMutation(req middlewares.PostFHIRProxyUserReq
 
 // collectPractitionerRoleIDsFromTransactionBundle extracts PractitionerRole IDs from a FHIR transaction
 // bundle body. Returns nil if body is empty or not a valid transaction bundle (caller should try single-resource path).
+// Returns a non-nil slice (possibly empty) when the body is a valid transaction bundle, so the caller does not fall through to single-resource parsing.
 func collectPractitionerRoleIDsFromTransactionBundle(body []byte) []string {
 	bundle, ok := parseTransactionBundle(body)
 	if !ok {
@@ -100,6 +101,9 @@ func collectPractitionerRoleIDsFromTransactionBundle(body []byte) []string {
 	}
 	for i := range bundle.Entry {
 		collectPractitionerRoleIDsFromBundleEntry(&bundle.Entry[i], add)
+	}
+	if len(seen) == 0 {
+		return []string{}
 	}
 	return mapKeysToSlice(seen)
 }
