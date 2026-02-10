@@ -3,6 +3,7 @@ package postfhir
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/delivery/http/middlewares"
 	"strings"
@@ -60,10 +61,15 @@ func NewSlotRegenerationHook(log *zap.Logger, slotUsecase contracts.SlotUsecaseI
 		if ctx == nil {
 			ctx = context.Background()
 		}
+		var errMsgs []string
 		for _, id := range ids {
 			if err := slotUsecase.HandleOnDemandSlotRegeneration(ctx, id); err != nil {
 				log.Warn("HandleOnDemandSlotRegeneration failed", zap.String("practitioner_role_id", id), zap.Error(err))
+				errMsgs = append(errMsgs, err.Error())
 			}
+		}
+		if len(errMsgs) > 0 {
+			return fmt.Errorf("%s", strings.Join(errMsgs, "; "))
 		}
 		return nil
 	}

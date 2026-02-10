@@ -35,6 +35,15 @@ const (
 	bodyEncodingZstd     bodyEncoding = "zstd"
 )
 
+// maxPostFHIRHookErrorHeaderLen is the maximum length (in bytes) for the
+// X-Konsulin-Post-FHIR-Hook-Error response header value. Keeps the header
+// within typical server/proxy limits (often 4K–8K per header) while still
+// allowing multiple hook error messages to be included.
+const maxPostFHIRHookErrorHeaderLen = 2048
+
+// headerPostFHIRHookError is the response header key set when any Post-FHIR-proxy hook returns an error.
+const headerPostFHIRHookError = "X-Konsulin-Post-FHIR-Hook-Error"
+
 // decodeBodyForFiltering decodes the body according to the Content-Encoding header.
 // Any decoding failure results in an error so the caller can fail closed.
 func decodeBodyForFiltering(body []byte, contentEncoding string) ([]byte, bodyEncoding, error) {
@@ -190,6 +199,8 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 		}
 
 		// Post-FHIR-proxy hooks: run synchronously after successful response, before filtering.
+		// Collect all hook error messages so we can expose them in a single response header (capped).
+		var postHookErrMsgs []string
 		for _, hook := range m.PostFHIRProxyHooks {
 			reqDetail := PostFHIRProxyUserRequestDetail{
 				Context: r.Context(),
@@ -203,6 +214,7 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 			}
 			if err := hook(reqDetail, respDetail); err != nil {
 				m.Log.Warn("PostFHIRProxyHook error", zap.Error(err))
+				postHookErrMsgs = append(postHookErrMsgs, err.Error())
 			}
 		}
 
@@ -327,6 +339,17 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 				return
 			}
 			finalBody = encoded
+		}
+
+		// Set Post-FHIR-hook error header when any hook returned an error.
+		// Value is all error messages joined with "; ", capped to maxPostFHIRHookErrorHeaderLen
+		// to stay within typical header size limits. Header is only set when there is at least one error.
+		if len(postHookErrMsgs) > 0 {
+			joined := strings.Join(postHookErrMsgs, "; ")
+			if len(joined) > maxPostFHIRHookErrorHeaderLen {
+				joined = joined[:maxPostFHIRHookErrorHeaderLen-3] + "..."
+			}
+			w.Header().Set(headerPostFHIRHookError, joined)
 		}
 
 		for k, v := range resp.Header {
