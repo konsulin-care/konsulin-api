@@ -580,7 +580,7 @@ func (c *slotFhirClient) FindSlotsByScheduleWithQuery(ctx context.Context, sched
 	nextURL := queryURL
 
 	for {
-		req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, nextURL, nil)
+		req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, nextURL, http.NoBody)
 		if err != nil {
 			c.Log.Error("slotFhirClient.FindSlotsByScheduleWithQuery error creating HTTP request",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
