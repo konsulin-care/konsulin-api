@@ -453,6 +453,20 @@ func atClock(day time.Time, h, m int, loc *time.Location) time.Time {
 	return time.Date(y, mo, dd, h, m, 0, 0, loc)
 }
 
+// groupSlotsByLocalDay returns a map from local calendar date (YYYY-MM-DD in loc) to slots
+// whose Start time falls on that date. Slots spanning midnight are assigned to the day of Start.
+func groupSlotsByLocalDay(slots []fhir_dto.Slot, loc *time.Location) map[string][]fhir_dto.Slot {
+	if len(slots) == 0 {
+		return nil
+	}
+	out := make(map[string][]fhir_dto.Slot)
+	for _, s := range slots {
+		dayKey := s.Start.In(loc).Format("2006-01-02")
+		out[dayKey] = append(out[dayKey], s)
+	}
+	return out
+}
+
 // buildFHIRSlots maps intervals to FHIR Slots with the given schedule reference and status.
 func buildFHIRSlots(scheduleID string, intervals []interval, status fhir_dto.SlotStatus) []fhir_dto.Slot {
 	out := make([]fhir_dto.Slot, 0, len(intervals))

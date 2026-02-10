@@ -742,25 +742,28 @@ func (s *SlotUsecase) HandleOnDemandSlotRegeneration(ctx context.Context, practi
 	}
 	defer release(ctx)
 
+	// Fetch all slots for the window in one range query (with pagination handled in the client).
+	todayStart := atClock(today.In(loc), 0, 0, loc)
+	params := contracts.SlotSearchParams{
+		Start:  "gt" + todayStart.Format(time.RFC3339),
+		End:    "lt" + windowEndExclusive.Format(time.RFC3339),
+		Status: "",
+	}
+	allSlots, err := s.slots.FindSlotsByScheduleWithQuery(ctx, schedule.ID, params)
+	if err != nil {
+		logger.Error("failed to find slots for window", zap.Error(err))
+		return err
+	}
+	slotsByDay := groupSlotsByLocalDay(allSlots, loc)
+
 	var allDeleteIDs []string
 	var allCreateSlots []fhir_dto.Slot
 
 	for d := today; !d.After(end); d = d.AddDate(0, 0, 1) {
 		windows := plan.forWeekday(d.Weekday())
 		dayLocal := d.In(loc)
-		dayStart := atClock(dayLocal, 0, 0, loc)
-		dayEnd := dayStart.AddDate(0, 0, 1)
-		params := contracts.SlotSearchParams{
-			Start:  "lt" + dayEnd.Format(time.RFC3339),
-			End:    "gt" + dayStart.Format(time.RFC3339),
-			Status: "",
-		}
-
-		existingSlots, err := s.slots.FindSlotsByScheduleWithQuery(ctx, schedule.ID, params)
-		if err != nil {
-			logger.Error("failed to find slots for day", zap.Time("day", d), zap.Error(err))
-			return err
-		}
+		dayKey := d.Format("2006-01-02")
+		existingSlots := slotsByDay[dayKey]
 
 		if len(windows) == 0 {
 			// Uncovered: erase auto-generated free slots only.
