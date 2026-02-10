@@ -1120,7 +1120,7 @@ func (s *SlotUsecase) acquireDayLocksOrdered(ctx context.Context, targets []dayL
 		ok, tok, err := s.locker.TryLock(ctx, key, ttl)
 		if err != nil || !ok {
 			for i := len(acquiredList) - 1; i >= 0; i-- {
-				_ = s.locker.Unlock(ctx, acquiredList[i].key, acquiredList[i].tok)
+				_ = s.locker.Unlock(context.Background(), acquiredList[i].key, acquiredList[i].tok)
 			}
 			if err == nil {
 				err = fmt.Errorf("failed to acquire lock: %s", key)
@@ -1129,9 +1129,11 @@ func (s *SlotUsecase) acquireDayLocksOrdered(ctx context.Context, targets []dayL
 		}
 		acquiredList = append(acquiredList, acquired{key: key, tok: tok})
 	}
-	release := func(ctx context.Context) {
+	// Use a background context for unlock so that release always succeeds even when the
+	// caller's context is cancelled (e.g. client disconnect), avoiding lock leaks until TTL.
+	release := func(context.Context) {
 		for i := len(acquiredList) - 1; i >= 0; i-- {
-			_ = s.locker.Unlock(ctx, acquiredList[i].key, acquiredList[i].tok)
+			_ = s.locker.Unlock(context.Background(), acquiredList[i].key, acquiredList[i].tok)
 		}
 	}
 	return release, nil
