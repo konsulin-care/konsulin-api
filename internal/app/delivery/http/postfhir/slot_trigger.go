@@ -78,8 +78,7 @@ func NewSlotRegenerationHook(log *zap.Logger, slotUsecase contracts.SlotUsecaseI
 // collectPractitionerRoleIDsFromMutation returns deduplicated PractitionerRole IDs affected by the request.
 func collectPractitionerRoleIDsFromMutation(req middlewares.PostFHIRProxyUserRequestDetail, resp middlewares.PostFHIRProxyFHIRServerResponse) []string {
 	seen := make(map[string]struct{})
-	var add func(ids []string)
-	add = func(ids []string) {
+	add := func(ids []string) {
 		for _, id := range ids {
 			if id == "" {
 				continue
