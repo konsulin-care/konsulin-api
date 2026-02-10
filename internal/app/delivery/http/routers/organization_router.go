@@ -10,5 +10,3 @@ import (
 func attachOrganizationRoutes(router chi.Router, m *middlewares.Middlewares, c *controllers.OrganizationController) {
 	router.Post("/organizations/{organizationId}/roles", c.RegisterPractitionerRole)
 }
-
-

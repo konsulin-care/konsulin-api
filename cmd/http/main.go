@@ -6,6 +6,7 @@ import (
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/delivery/http/controllers"
 	"konsulin-service/internal/app/delivery/http/middlewares"
+	"konsulin-service/internal/app/delivery/http/postfhir"
 	"konsulin-service/internal/app/delivery/http/routers"
 	"konsulin-service/internal/app/drivers/database"
 	"konsulin-service/internal/app/drivers/logger"
@@ -213,12 +214,16 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		jwtManager,
 	)
 
+	bundleClient := bundle.NewBundleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+
 	// Initialize Auth usecase with dependencies
 	authUseCase, err := auth.NewAuthUsecase(
 		redisRepository,
 		sessionService,
 		patientFhirClient,
 		practitionerFhirClient,
+		questionnaireResponseFhirClient,
+		bundleClient,
 		userUsecase,
 		mailerService,
 		magicLinkDelivery,
@@ -229,7 +234,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	if err != nil {
 		return err
 	}
-	authController := controllers.NewAuthController(bootstrap.Logger, authUseCase)
+	authController := controllers.NewAuthController(bootstrap.Logger, authUseCase, bootstrap.InternalConfig)
 
 	// Initialize middlewares with logger, session service, and auth usecase
 	middlewares := middlewares.NewMiddlewares(
@@ -263,8 +268,10 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	serviceRequestStorage := storageKonsulin.NewServiceRequestStorage(serviceRequestFhirClient, bootstrap.Logger)
 	invoiceFhirClient := invoicesFhir.NewInvoiceFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 
-	bundleClient := bundle.NewBundleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	slotUsecase := slot.NewSlotUsecase(scheduleClient, lockService, slotClient, practitionerRoleClient, practitionerFhirClient, personFhirClient, bundleClient, bootstrap.InternalConfig, bootstrap.Logger)
+
+	// Register post-FHIR-proxy hook for on-demand slot regeneration when PractitionerRole/Schedule are mutated.
+	middlewares.PostFHIRProxyHooks = append(middlewares.PostFHIRProxyHooks, postfhir.NewSlotRegenerationHook(bootstrap.Logger, slotUsecase))
 
 	paymentUsecase := payments.NewPaymentUsecase(
 		transactions.NewTransactionPostgresRepository(nil, bootstrap.Logger),

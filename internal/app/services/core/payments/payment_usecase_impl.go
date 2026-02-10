@@ -388,7 +388,7 @@ func (uc *paymentUsecase) handleAppointmentPaymentNotification(ctx context.Conte
 			"lock acquisition failed",
 		)
 	}
-	defer release(ctx)
+	defer func() { release(context.Background()) }()
 
 	// Re-fetch slot after acquiring locks to protect against TOCTOU
 	revalidatedSlot, err := uc.SlotFhirClient.FindSlotByID(ctx, slotID)
@@ -1057,7 +1057,7 @@ func (uc *paymentUsecase) HandleAppointmentPayment(
 			"lock acquisition failed",
 		)
 	}
-	defer release(ctx)
+	defer func() { release(context.Background()) }()
 
 	slotID := strings.TrimPrefix(req.SlotID, "Slot/")
 	revalidatedSlot, slotErr := uc.SlotFhirClient.FindSlotByID(ctx, slotID)
