@@ -276,12 +276,12 @@ func TestAuthRouter_ContextPropagation(t *testing.T) {
 				return false
 			}
 
-			roles, ok := ctx.Value("roles").([]string)
+			roles, ok := ctx.Value(constvars.CONTEXT_FHIR_ROLE).([]string)
 			if !ok || len(roles) != 1 || roles[0] != constvars.KonsulinRoleSuperadmin {
 				return false
 			}
 
-			uid, ok := ctx.Value("uid").(string)
+			uid, ok := ctx.Value(constvars.CONTEXT_UID).(string)
 			if !ok || uid != "api-key-superadmin" {
 				return false
 			}

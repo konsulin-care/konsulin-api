@@ -503,7 +503,7 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 	)
 
 	// 1) Reject guest role
-	roles, _ := ctx.Value("roles").([]string)
+	roles, _ := ctx.Value(constvars.CONTEXT_FHIR_ROLE).([]string)
 	if len(roles) == 0 || (len(roles) == 1 && strings.EqualFold(roles[0], constvars.KonsulinRoleGuest)) {
 		return nil, exceptions.ErrAuthInvalidRole(fmt.Errorf("guest not allowed"))
 	}
@@ -520,7 +520,7 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 	}
 
 	// 2) Extract uid from context
-	uid, _ := ctx.Value("uid").(string)
+	uid, _ := ctx.Value(constvars.CONTEXT_UID).(string)
 
 	// 3) Extract email from req.Body
 	var raw map[string]interface{}
