@@ -341,17 +341,6 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 			finalBody = encoded
 		}
 
-		// Set Post-FHIR-hook error header when any hook returned an error.
-		// Value is all error messages joined with "; ", capped to maxPostFHIRHookErrorHeaderLen
-		// to stay within typical header size limits. Header is only set when there is at least one error.
-		if len(postHookErrMsgs) > 0 {
-			joined := strings.Join(postHookErrMsgs, "; ")
-			if len(joined) > maxPostFHIRHookErrorHeaderLen {
-				joined = joined[:maxPostFHIRHookErrorHeaderLen-3] + "..."
-			}
-			w.Header().Set(headerPostFHIRHookError, joined)
-		}
-
 		for k, v := range resp.Header {
 
 			if strings.EqualFold(k, "Content-Length") {
@@ -363,6 +352,16 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 		if mutated {
 			w.Header().Del("ETag")
 		}
+
+		// Value is all error messages joined with "; ", capped to maxPostFHIRHookErrorHeaderLen.
+		if len(postHookErrMsgs) > 0 {
+			joined := strings.Join(postHookErrMsgs, "; ")
+			if len(joined) > maxPostFHIRHookErrorHeaderLen {
+				joined = joined[:maxPostFHIRHookErrorHeaderLen-3] + "..."
+			}
+			w.Header().Set(headerPostFHIRHookError, joined)
+		}
+
 		w.Header().Set("Content-Length", strconv.Itoa(len(finalBody)))
 		w.WriteHeader(resp.StatusCode)
 		if _, err := w.Write(finalBody); err != nil {
