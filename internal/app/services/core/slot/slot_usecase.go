@@ -745,7 +745,7 @@ func (s *SlotUsecase) HandleOnDemandSlotRegeneration(ctx context.Context, practi
 	// Fetch all slots for the window in one range query (with pagination handled in the client).
 	todayStart := atClock(today.In(loc), 0, 0, loc)
 	params := contracts.SlotSearchParams{
-		Start:  "gt" + todayStart.Format(time.RFC3339),
+		Start:  "ge" + todayStart.Format(time.RFC3339),
 		End:    "lt" + windowEndExclusive.Format(time.RFC3339),
 		Status: "",
 	}
