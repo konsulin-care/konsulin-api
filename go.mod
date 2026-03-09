@@ -1,6 +1,6 @@
 module konsulin-service
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/andybalholm/brotli v1.2.0
@@ -20,7 +20,7 @@ require (
 	github.com/xendit/xendit-go/v7 v7.0.0
 	go.uber.org/zap v1.27.1
 	golang.org/x/crypto v0.48.0
-	golang.org/x/sync v0.19.0
+	golang.org/x/sync v0.20.0
 )
 
 require (
@@ -85,5 +85,5 @@ require (
 	github.com/redis/go-redis/v9 v9.18.0
 	go.mongodb.org/mongo-driver v1.17.9
 	golang.org/x/sys v0.41.0 // indirect
-	golang.org/x/time v0.14.0
+	golang.org/x/time v0.15.0
 )
