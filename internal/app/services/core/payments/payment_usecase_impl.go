@@ -997,7 +997,7 @@ func (uc *paymentUsecase) HandleAppointmentPayment(
 	ctx context.Context,
 	req *requests.AppointmentPaymentRequest,
 ) (*responses.AppointmentPaymentResponse, error) {
-	if !uc.whitelistAccessByRoles(ctx, []string{constvars.KonsulinRolePatient}) {
+	if !uc.whitelistAccessByRoles(ctx, []string{constvars.KonsulinRolePatient, constvars.KonsulinRoleSuperadmin}) {
 		return nil, exceptions.ErrAuthInvalidRole(errors.New("forbidden access"))
 	}
 
@@ -1202,6 +1202,8 @@ func (uc *paymentUsecase) ensurePreconditionsValid(
 ) (*preconditionData, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	uid, _ := ctx.Value(constvars.CONTEXT_UID).(string)
+	roles, _ := ctx.Value(constvars.CONTEXT_FHIR_ROLE).([]string)
+	isSuperadmin := slices.Contains(roles, constvars.KonsulinRoleSuperadmin)
 
 	slotID := strings.TrimPrefix(req.SlotID, "Slot/")
 	practitionerRoleID := strings.TrimPrefix(req.PractitionerRoleID, "PractitionerRole/")
@@ -1250,7 +1252,7 @@ func (uc *paymentUsecase) ensurePreconditionsValid(
 				break
 			}
 		}
-		if !match {
+		if !isSuperadmin && !match {
 			return &resourceFetchError{resource: "patient", err: errors.New("patient ID does not match with the current user")}
 		}
 		fetchedPatient = p
