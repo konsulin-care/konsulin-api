@@ -725,29 +725,37 @@ func (uc *paymentUsecase) createXenditInvoiceForAppointment(
 	customer := xinvoice.NewCustomerObject()
 	customer.SetGivenNames(patientName)
 
-	prefferedNotificationChannel := []xinvoice.NotificationChannel{}
+	preferredNotificationChannel := []xinvoice.NotificationChannel{}
 
 	if patientEmail != "" {
 		customer.SetEmail(patientEmail)
-		prefferedNotificationChannel = append(prefferedNotificationChannel, xinvoice.NOTIFICATIONCHANNEL_EMAIL)
+		preferredNotificationChannel = append(
+			preferredNotificationChannel,
+			xinvoice.NOTIFICATIONCHANNEL_EMAIL,
+		)
 	}
 
 	if patientPhoneNumber != "" {
 		customer.SetMobileNumber(patientPhoneNumber)
 		customer.SetPhoneNumber(patientPhoneNumber)
 
-		prefferedNotificationChannel = append(prefferedNotificationChannel, xinvoice.NOTIFICATIONCHANNEL_SMS)
-		prefferedNotificationChannel = append(prefferedNotificationChannel, xinvoice.NOTIFICATIONCHANNEL_WHATSAPP)
+		preferredNotificationChannel = append(
+			preferredNotificationChannel,
+			xinvoice.NOTIFICATIONCHANNEL_SMS,
+			xinvoice.NOTIFICATIONCHANNEL_WHATSAPP,
+		)
 	}
 
 	invoiceReq.SetCustomer(*customer)
 
-	notif := xinvoice.NewNotificationPreference()
-	notif.SetInvoiceCreated(prefferedNotificationChannel)
-	notif.SetInvoicePaid(prefferedNotificationChannel)
-	notif.SetInvoiceReminder(prefferedNotificationChannel)
+	if len(preferredNotificationChannel) != 0 {
+		notif := xinvoice.NewNotificationPreference()
+		notif.SetInvoiceCreated(preferredNotificationChannel)
+		notif.SetInvoicePaid(preferredNotificationChannel)
+		notif.SetInvoiceReminder(preferredNotificationChannel)
 
-	invoiceReq.SetCustomerNotificationPreference(*notif)
+		invoiceReq.SetCustomerNotificationPreference(*notif)
+	}
 
 	item := xinvoice.NewInvoiceItem("Pembayaran Janji Temu", float32(amount), float32(1))
 	invoiceReq.SetItems([]xinvoice.InvoiceItem{*item})
