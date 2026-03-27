@@ -699,7 +699,11 @@ func (uc *paymentUsecase) createXenditInvoiceForAppointment(
 	if len(patientEmails) > 0 {
 		patientEmail = patientEmails[0]
 	}
+
 	patientName := precond.Patient.FullName()
+	if patientName == "" {
+		patientName = "Pasien Konsulin"
+	}
 
 	durationSeconds := float32(uc.InternalConfig.App.PaymentExpiredTimeInMinutes * 60)
 
@@ -714,7 +718,11 @@ func (uc *paymentUsecase) createXenditInvoiceForAppointment(
 
 	customer := xinvoice.NewCustomerObject()
 	customer.SetGivenNames(patientName)
-	customer.SetEmail(patientEmail)
+
+	if patientEmail != "" {
+		customer.SetEmail(patientEmail)
+	}
+
 	invoiceReq.SetCustomer(*customer)
 
 	notif := xinvoice.NewNotificationPreference()
