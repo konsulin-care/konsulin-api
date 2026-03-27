@@ -699,7 +699,17 @@ func (uc *paymentUsecase) createXenditInvoiceForAppointment(
 	if len(patientEmails) > 0 {
 		patientEmail = patientEmails[0]
 	}
+
+	patientPhoneNumbers := precond.Patient.GetPhoneNumbers()
+	var patientPhoneNumber string
+	if len(patientPhoneNumbers) > 0 {
+		patientPhoneNumber = patientPhoneNumbers[0]
+	}
+
 	patientName := precond.Patient.FullName()
+	if patientName == "" {
+		patientName = "Pasien Konsulin"
+	}
 
 	durationSeconds := float32(uc.InternalConfig.App.PaymentExpiredTimeInMinutes * 60)
 
@@ -714,13 +724,38 @@ func (uc *paymentUsecase) createXenditInvoiceForAppointment(
 
 	customer := xinvoice.NewCustomerObject()
 	customer.SetGivenNames(patientName)
-	customer.SetEmail(patientEmail)
+
+	preferredNotificationChannel := []xinvoice.NotificationChannel{}
+
+	if patientEmail != "" {
+		customer.SetEmail(patientEmail)
+		preferredNotificationChannel = append(
+			preferredNotificationChannel,
+			xinvoice.NOTIFICATIONCHANNEL_EMAIL,
+		)
+	}
+
+	if patientPhoneNumber != "" {
+		customer.SetMobileNumber(patientPhoneNumber)
+		customer.SetPhoneNumber(patientPhoneNumber)
+
+		preferredNotificationChannel = append(
+			preferredNotificationChannel,
+			xinvoice.NOTIFICATIONCHANNEL_SMS,
+			xinvoice.NOTIFICATIONCHANNEL_WHATSAPP,
+		)
+	}
+
 	invoiceReq.SetCustomer(*customer)
 
-	notif := xinvoice.NewNotificationPreference()
-	notif.SetInvoiceCreated([]xinvoice.NotificationChannel{xinvoice.NOTIFICATIONCHANNEL_EMAIL})
-	notif.SetInvoicePaid([]xinvoice.NotificationChannel{xinvoice.NOTIFICATIONCHANNEL_EMAIL})
-	invoiceReq.SetCustomerNotificationPreference(*notif)
+	if len(preferredNotificationChannel) != 0 {
+		notif := xinvoice.NewNotificationPreference()
+		notif.SetInvoiceCreated(preferredNotificationChannel)
+		notif.SetInvoicePaid(preferredNotificationChannel)
+		notif.SetInvoiceReminder(preferredNotificationChannel)
+
+		invoiceReq.SetCustomerNotificationPreference(*notif)
+	}
 
 	item := xinvoice.NewInvoiceItem("Pembayaran Janji Temu", float32(amount), float32(1))
 	invoiceReq.SetItems([]xinvoice.InvoiceItem{*item})
