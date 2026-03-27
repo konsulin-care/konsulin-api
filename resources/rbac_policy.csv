@@ -103,6 +103,7 @@ p, Superadmin, DELETE, /fhir/Organization
 p, Superadmin, GET, /fhir/Organization
 p, Superadmin, POST, /fhir/Organization
 p, Superadmin, PUT, /fhir/Organization
+p, Superadmin, GET, /fhir/Patient
 p, Superadmin, POST, /fhir/Person
 p, Superadmin, GET, /fhir/PlanDefinition
 p, Superadmin, POST, /fhir/PlanDefinition
