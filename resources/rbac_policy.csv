@@ -125,3 +125,4 @@ p, Superadmin, PUT, /fhir/Slot
 p, Superadmin, GET, /fhir/Patient
 p, Superadmin, GET, /fhir/metadata
 p, Superadmin, GET, /api/v1/tx
+p, Superadmin, POST, /fhir/Patient
