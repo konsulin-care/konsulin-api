@@ -103,6 +103,8 @@ p, Superadmin, DELETE, /fhir/Organization
 p, Superadmin, GET, /fhir/Organization
 p, Superadmin, POST, /fhir/Organization
 p, Superadmin, PUT, /fhir/Organization
+p, Superadmin, GET, /fhir/Patient
+p, Superadmin, POST, /fhir/Patient
 p, Superadmin, POST, /fhir/Person
 p, Superadmin, GET, /fhir/PlanDefinition
 p, Superadmin, POST, /fhir/PlanDefinition
@@ -122,7 +124,6 @@ p, Superadmin, GET, /fhir/Schedule
 p, Superadmin, POST, /fhir/Schedule
 p, Superadmin, GET, /fhir/Slot
 p, Superadmin, PUT, /fhir/Slot
-p, Superadmin, GET, /fhir/Patient
 p, Superadmin, GET, /fhir/metadata
+p, Superadmin, POST, /hook/synchronous/send-wa-link
 p, Superadmin, GET, /api/v1/tx
-p, Superadmin, POST, /fhir/Patient
