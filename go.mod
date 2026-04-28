@@ -10,7 +10,7 @@ require (
 	github.com/go-chi/cors v1.2.2
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.12.3
-	github.com/rabbitmq/amqp091-go v1.10.0
+	github.com/rabbitmq/amqp091-go v1.11.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/rubenv/sql-migrate v1.8.1
 	github.com/spf13/viper v1.21.0
