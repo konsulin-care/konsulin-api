@@ -35,6 +35,15 @@ const (
 	bodyEncodingZstd     bodyEncoding = "zstd"
 )
 
+// maxPostFHIRHookErrorHeaderLen is the maximum length (in bytes) for the
+// X-Konsulin-Post-FHIR-Hook-Error response header value. Keeps the header
+// within typical server/proxy limits (often 4K–8K per header) while still
+// allowing multiple hook error messages to be included.
+const maxPostFHIRHookErrorHeaderLen = 2048
+
+// headerPostFHIRHookError is the response header key set when any Post-FHIR-proxy hook returns an error.
+const headerPostFHIRHookError = "X-Konsulin-Post-FHIR-Hook-Error"
+
 // decodeBodyForFiltering decodes the body according to the Content-Encoding header.
 // Any decoding failure results in an error so the caller can fail closed.
 func decodeBodyForFiltering(body []byte, contentEncoding string) ([]byte, bodyEncoding, error) {
@@ -189,6 +198,26 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 			return
 		}
 
+		// Post-FHIR-proxy hooks: run synchronously after successful response, before filtering.
+		// Collect all hook error messages so we can expose them in a single response header (capped).
+		var postHookErrMsgs []string
+		for _, hook := range m.PostFHIRProxyHooks {
+			reqDetail := PostFHIRProxyUserRequestDetail{
+				Context: r.Context(),
+				Method:  r.Method,
+				Path:    r.URL.Path,
+				Body:    bodyBytes,
+			}
+			respDetail := PostFHIRProxyFHIRServerResponse{
+				StatusCode: resp.StatusCode,
+				Body:       respBody,
+			}
+			if err := hook(reqDetail, respDetail); err != nil {
+				m.Log.Warn("PostFHIRProxyHook error", zap.Error(err))
+				postHookErrMsgs = append(postHookErrMsgs, err.Error())
+			}
+		}
+
 		roles, _ := r.Context().Value(keyRoles).([]string)
 		fhirRole, _ := r.Context().Value(keyFHIRRole).(string)
 		fhirID, _ := r.Context().Value(keyFHIRID).(string)
@@ -323,6 +352,16 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 		if mutated {
 			w.Header().Del("ETag")
 		}
+
+		// Value is all error messages joined with "; ", capped to maxPostFHIRHookErrorHeaderLen.
+		if len(postHookErrMsgs) > 0 {
+			joined := strings.Join(postHookErrMsgs, "; ")
+			if len(joined) > maxPostFHIRHookErrorHeaderLen {
+				joined = joined[:maxPostFHIRHookErrorHeaderLen-3] + "..."
+			}
+			w.Header().Set(headerPostFHIRHookError, joined)
+		}
+
 		w.Header().Set("Content-Length", strconv.Itoa(len(finalBody)))
 		w.WriteHeader(resp.StatusCode)
 		if _, err := w.Write(finalBody); err != nil {

@@ -1,6 +1,7 @@
 package middlewares
 
 import (
+	"context"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/utils"
@@ -106,7 +107,28 @@ type Middlewares struct {
 
 	// HTTPClient is a client for sending HTTP requests and can be reused for all requests.
 	HTTPClient *http.Client
+
+	// PostFHIRProxyHooks run after a successful FHIR proxy response (status < 400), before response filtering.
+	// Hooks are called synchronously; on error the middleware only logs and continues.
+	PostFHIRProxyHooks []PostFHIRProxyHook
 }
+
+// PostFHIRProxyUserRequestDetail carries request data for post-FHIR-proxy hooks.
+type PostFHIRProxyUserRequestDetail struct {
+	Context context.Context // Request context (for cancellation, etc.)
+	Method  string          // HTTP method (GET, POST, PUT, PATCH, DELETE)
+	Path    string          // Request path (e.g. /fhir/PractitionerRole/123 or /fhir)
+	Body    []byte          // Raw request body (e.g. for Bundle or single resource)
+}
+
+// PostFHIRProxyFHIRServerResponse carries the FHIR server response for post-FHIR-proxy hooks.
+type PostFHIRProxyFHIRServerResponse struct {
+	StatusCode int    // HTTP status from FHIR server
+	Body       []byte // Raw response body
+}
+
+// PostFHIRProxyHook is called after a successful proxied FHIR request. Both params are structs for extensibility.
+type PostFHIRProxyHook func(PostFHIRProxyUserRequestDetail, PostFHIRProxyFHIRServerResponse) error
 
 type User struct {
 	ID    string

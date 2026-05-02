@@ -388,7 +388,7 @@ func (uc *paymentUsecase) handleAppointmentPaymentNotification(ctx context.Conte
 			"lock acquisition failed",
 		)
 	}
-	defer release(ctx)
+	defer func() { release(context.Background()) }()
 
 	// Re-fetch slot after acquiring locks to protect against TOCTOU
 	revalidatedSlot, err := uc.SlotFhirClient.FindSlotByID(ctx, slotID)
@@ -699,7 +699,17 @@ func (uc *paymentUsecase) createXenditInvoiceForAppointment(
 	if len(patientEmails) > 0 {
 		patientEmail = patientEmails[0]
 	}
+
+	patientPhoneNumbers := precond.Patient.GetPhoneNumbers()
+	var patientPhoneNumber string
+	if len(patientPhoneNumbers) > 0 {
+		patientPhoneNumber = patientPhoneNumbers[0]
+	}
+
 	patientName := precond.Patient.FullName()
+	if patientName == "" {
+		patientName = "Pasien Konsulin"
+	}
 
 	durationSeconds := float32(uc.InternalConfig.App.PaymentExpiredTimeInMinutes * 60)
 
@@ -714,13 +724,38 @@ func (uc *paymentUsecase) createXenditInvoiceForAppointment(
 
 	customer := xinvoice.NewCustomerObject()
 	customer.SetGivenNames(patientName)
-	customer.SetEmail(patientEmail)
+
+	preferredNotificationChannel := []xinvoice.NotificationChannel{}
+
+	if patientEmail != "" {
+		customer.SetEmail(patientEmail)
+		preferredNotificationChannel = append(
+			preferredNotificationChannel,
+			xinvoice.NOTIFICATIONCHANNEL_EMAIL,
+		)
+	}
+
+	if patientPhoneNumber != "" {
+		customer.SetMobileNumber(patientPhoneNumber)
+		customer.SetPhoneNumber(patientPhoneNumber)
+
+		preferredNotificationChannel = append(
+			preferredNotificationChannel,
+			xinvoice.NOTIFICATIONCHANNEL_SMS,
+			xinvoice.NOTIFICATIONCHANNEL_WHATSAPP,
+		)
+	}
+
 	invoiceReq.SetCustomer(*customer)
 
-	notif := xinvoice.NewNotificationPreference()
-	notif.SetInvoiceCreated([]xinvoice.NotificationChannel{xinvoice.NOTIFICATIONCHANNEL_EMAIL})
-	notif.SetInvoicePaid([]xinvoice.NotificationChannel{xinvoice.NOTIFICATIONCHANNEL_EMAIL})
-	invoiceReq.SetCustomerNotificationPreference(*notif)
+	if len(preferredNotificationChannel) != 0 {
+		notif := xinvoice.NewNotificationPreference()
+		notif.SetInvoiceCreated(preferredNotificationChannel)
+		notif.SetInvoicePaid(preferredNotificationChannel)
+		notif.SetInvoiceReminder(preferredNotificationChannel)
+
+		invoiceReq.SetCustomerNotificationPreference(*notif)
+	}
 
 	item := xinvoice.NewInvoiceItem("Pembayaran Janji Temu", float32(amount), float32(1))
 	invoiceReq.SetItems([]xinvoice.InvoiceItem{*item})
@@ -997,7 +1032,7 @@ func (uc *paymentUsecase) HandleAppointmentPayment(
 	ctx context.Context,
 	req *requests.AppointmentPaymentRequest,
 ) (*responses.AppointmentPaymentResponse, error) {
-	if !uc.whitelistAccessByRoles(ctx, []string{constvars.KonsulinRolePatient}) {
+	if !uc.whitelistAccessByRoles(ctx, []string{constvars.KonsulinRolePatient, constvars.KonsulinRoleSuperadmin}) {
 		return nil, exceptions.ErrAuthInvalidRole(errors.New("forbidden access"))
 	}
 
@@ -1057,7 +1092,7 @@ func (uc *paymentUsecase) HandleAppointmentPayment(
 			"lock acquisition failed",
 		)
 	}
-	defer release(ctx)
+	defer func() { release(context.Background()) }()
 
 	slotID := strings.TrimPrefix(req.SlotID, "Slot/")
 	revalidatedSlot, slotErr := uc.SlotFhirClient.FindSlotByID(ctx, slotID)
@@ -1202,6 +1237,8 @@ func (uc *paymentUsecase) ensurePreconditionsValid(
 ) (*preconditionData, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	uid, _ := ctx.Value(constvars.CONTEXT_UID).(string)
+	roles, _ := ctx.Value(constvars.CONTEXT_FHIR_ROLE).([]string)
+	isSuperadmin := slices.Contains(roles, constvars.KonsulinRoleSuperadmin)
 
 	slotID := strings.TrimPrefix(req.SlotID, "Slot/")
 	practitionerRoleID := strings.TrimPrefix(req.PractitionerRoleID, "PractitionerRole/")
@@ -1250,7 +1287,7 @@ func (uc *paymentUsecase) ensurePreconditionsValid(
 				break
 			}
 		}
-		if !match {
+		if !isSuperadmin && !match {
 			return &resourceFetchError{resource: "patient", err: errors.New("patient ID does not match with the current user")}
 		}
 		fetchedPatient = p

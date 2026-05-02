@@ -7,6 +7,8 @@ p, Clinic Admin, GET, /fhir/Schedule
 p, Clinic Admin, POST, /fhir/Schedule
 p, Clinic Admin, GET, /fhir/Slot
 p, Guest, GET, /fhir/Media
+p, Guest, GET, /fhir/HealthcareService
+p, Guest, GET, /fhir/Location
 p, Guest, GET, /fhir/Organization
 p, Guest, POST, /fhir/Patient
 p, Guest, GET, /fhir/PractitionerRole
@@ -22,7 +24,9 @@ p, Patient, GET, /fhir/Appointment
 p, Patient, POST, /fhir/Appointment
 p, Patient, GET, /fhir/Condition
 p, Patient, POST, /fhir/Condition
+p, Patient, GET, /fhir/HealthcareService
 p, Patient, GET, /fhir/Invoice
+p, Patient, GET, /fhir/Location
 p, Patient, GET, /fhir/Media
 p, Patient, GET, /fhir/Schedule
 p, Patient, GET, /fhir/Observation
@@ -46,9 +50,11 @@ p, Patient, POST, /hook/synchronous/modify-profile
 p, Patient, POST, /hook/synchronous/update-avatar
 p, Practitioner, GET, /fhir/Appointment
 p, Practitioner, GET, /fhir/Condition
+p, Practitioner, GET, /fhir/HealthcareService
 p, Practitioner, GET, /fhir/Invoice
 p, Practitioner, POST, /fhir/Invoice
 p, Practitioner, PUT, /fhir/Invoice
+p, Practitioner, GET, /fhir/Location
 p, Practitioner, GET, /fhir/Media
 p, Practitioner, GET, /fhir/Observation
 p, Practitioner, POST, /fhir/Observation
@@ -83,7 +89,13 @@ p, Researcher, POST, /fhir/ResearchStudy
 p, Researcher, PUT, /fhir/ResearchStudy
 p, Superadmin, POST, /fhir/Appointment
 p, Superadmin, PUT, /fhir/Condition
+p, Superadmin, GET, /fhir/HealthcareService
+p, Superadmin, POST, /fhir/HealthcareService
+p, Superadmin, PUT, /fhir/HealthcareService
 p, Superadmin, GET, /fhir/Invoice
+p, Superadmin, GET, /fhir/Location
+p, Superadmin, POST, /fhir/Location
+p, Superadmin, PUT, /fhir/Location
 p, Superadmin, GET, /fhir/Media
 p, Superadmin, POST, /fhir/Media
 p, Superadmin, PUT, /fhir/Media
@@ -91,6 +103,8 @@ p, Superadmin, DELETE, /fhir/Organization
 p, Superadmin, GET, /fhir/Organization
 p, Superadmin, POST, /fhir/Organization
 p, Superadmin, PUT, /fhir/Organization
+p, Superadmin, GET, /fhir/Patient
+p, Superadmin, POST, /fhir/Patient
 p, Superadmin, POST, /fhir/Person
 p, Superadmin, GET, /fhir/PlanDefinition
 p, Superadmin, POST, /fhir/PlanDefinition
@@ -111,4 +125,5 @@ p, Superadmin, POST, /fhir/Schedule
 p, Superadmin, GET, /fhir/Slot
 p, Superadmin, PUT, /fhir/Slot
 p, Superadmin, GET, /fhir/metadata
+p, Superadmin, POST, /hook/synchronous/send-wa-link
 p, Superadmin, GET, /api/v1/tx
