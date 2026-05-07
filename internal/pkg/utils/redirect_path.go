@@ -27,16 +27,38 @@ func ValidateRedirectPath(path string) error {
 		return fmt.Errorf("redirectToPath contains invalid characters")
 	}
 
+	if strings.Contains(path, `\`) {
+		return fmt.Errorf("redirectToPath must not contain backslashes")
+	}
+
+	if strings.ContainsAny(path, "\r\n\t") {
+		return fmt.Errorf("redirectToPath must not contain control whitespace")
+	}
+
 	if strings.Contains(path, "://") {
 		return fmt.Errorf("redirectToPath must not contain a URL scheme")
 	}
 
-	if !strings.HasPrefix(path, "/") {
+	parsed, err := url.ParseRequestURI(path)
+	if err != nil {
+		return fmt.Errorf("redirectToPath is not a valid URI path")
+	}
+
+	if parsed.Scheme != "" || parsed.Host != "" || parsed.User != nil {
+		return fmt.Errorf("redirectToPath must be an internal relative path")
+	}
+
+	if !strings.HasPrefix(parsed.Path, "/") {
 		return fmt.Errorf("redirectToPath must be a relative path starting with /")
 	}
 
-	if strings.HasPrefix(path, "//") {
+	if strings.HasPrefix(parsed.Path, "//") {
 		return fmt.Errorf("redirectToPath must not use a protocol-relative URL")
+	}
+
+	decodedPath, decodeErr := url.PathUnescape(parsed.Path)
+	if decodeErr == nil && strings.HasPrefix(decodedPath, "//") {
+		return fmt.Errorf("redirectToPath must not encode a protocol-relative URL")
 	}
 
 	return nil
