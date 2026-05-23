@@ -174,7 +174,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 		constvars.KonsulinRoleSuperadmin,
 	}
 	for _, role := range roles {
-		if err := uc.ensureRoleExists(role); err != nil {
+		if err := ensureRoleExists(role); err != nil {
 			return fmt.Errorf("ensure supertokens role %q exists: %w", role, err)
 		}
 	}
@@ -184,7 +184,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 }
 
 // ensureRoleExists creates a SuperTokens role when missing and returns creation failures.
-func (_ *authUsecase) ensureRoleExists(role string) error {
+func ensureRoleExists(role string) error {
 	resp, err := userroles.CreateNewRoleOrAddPermissions(role, []string{}, nil)
 	if err != nil {
 		log.Printf("Error creating '%s' role: %v\n", role, err)
