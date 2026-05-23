@@ -76,6 +76,7 @@ func (uc *authUsecase) getFhirResourceIdForUser(ctx context.Context, userID stri
 	return "", errors.New("no FHIR resource ID found for user")
 }
 
+// InitializeSupertoken configures SuperTokens recipes and verifies required roles.
 func (uc *authUsecase) InitializeSupertoken() error {
 	apiBasePath := fmt.Sprintf("%s/%s%s", uc.InternalConfig.App.EndpointPrefix, uc.InternalConfig.App.Version, uc.DriverConfig.Supertoken.ApiBasePath)
 	websiteBasePath := uc.DriverConfig.Supertoken.WebsiteBasePath
@@ -182,6 +183,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 	return nil
 }
 
+// ensureRoleExists creates a SuperTokens role when missing and returns creation failures.
 func (uc *authUsecase) ensureRoleExists(role string) error {
 	resp, err := userroles.CreateNewRoleOrAddPermissions(role, []string{}, nil)
 	if err != nil {
@@ -194,6 +196,7 @@ func (uc *authUsecase) ensureRoleExists(role string) error {
 	return nil
 }
 
+// supertokenCreateCode wraps code creation to normalize phone input and initialize FHIR resources.
 func (uc *authUsecase) supertokenCreateCode(originalCreateCode func(*string, *string, *string, string, supertokens.UserContext) (plessmodels.CreateCodeResponse, error)) func(*string, *string, *string, string, supertokens.UserContext) (plessmodels.CreateCodeResponse, error) {
 	return func(email *string, phoneNumber *string, userInputCode *string, tenantId string, userContext supertokens.UserContext) (plessmodels.CreateCodeResponse, error) {
 		var userPhoneNumberPtr *string
@@ -296,6 +299,7 @@ func (uc *authUsecase) supertokenCreateCode(originalCreateCode func(*string, *st
 	}
 }
 
+// supertokenConsumeCode wraps code consumption to assign default roles and initialize FHIR resources.
 func (uc *authUsecase) supertokenConsumeCode(originalConsumeCode func(*plessmodels.UserInputCodeWithDeviceID, *string, string, string, supertokens.UserContext) (plessmodels.ConsumeCodeResponse, error)) func(*plessmodels.UserInputCodeWithDeviceID, *string, string, string, supertokens.UserContext) (plessmodels.ConsumeCodeResponse, error) {
 	return func(userInput *plessmodels.UserInputCodeWithDeviceID, linkCode *string, preAuthSessionID string, tenantId string, userContext supertokens.UserContext) (plessmodels.ConsumeCodeResponse, error) {
 		response, err := originalConsumeCode(userInput, linkCode, preAuthSessionID, tenantId, userContext)
@@ -419,6 +423,7 @@ func (uc *authUsecase) supertokenConsumeCode(originalConsumeCode func(*plessmode
 	}
 }
 
+// supertokenEmailDeliveryOverride routes passwordless email magic links through MagicLinkDelivery.
 func (uc *authUsecase) supertokenEmailDeliveryOverride() func(emaildelivery.EmailDeliveryInterface) emaildelivery.EmailDeliveryInterface {
 	return func(originalImplementation emaildelivery.EmailDeliveryInterface) emaildelivery.EmailDeliveryInterface {
 		originalSendEmail := *originalImplementation.SendEmail
@@ -457,6 +462,7 @@ func (uc *authUsecase) supertokenEmailDeliveryOverride() func(emaildelivery.Emai
 	}
 }
 
+// supertokenSmsDeliveryOverride routes passwordless SMS magic links through MagicLinkDelivery.
 func (uc *authUsecase) supertokenSmsDeliveryOverride() func(smsdelivery.SmsDeliveryInterface) smsdelivery.SmsDeliveryInterface {
 	return func(originalImplementation smsdelivery.SmsDeliveryInterface) smsdelivery.SmsDeliveryInterface {
 		(*originalImplementation.SendSms) = func(input smsdelivery.SmsType, _ supertokens.UserContext) error {
@@ -501,6 +507,7 @@ func (uc *authUsecase) supertokenSmsDeliveryOverride() func(smsdelivery.SmsDeliv
 	}
 }
 
+// validateEmailAddress validates the passwordless email input expected by SuperTokens.
 func validateEmailAddress(email interface{}, _ string) *string {
 	emailStr, ok := email.(string)
 	if !ok {
@@ -517,6 +524,7 @@ func validateEmailAddress(email interface{}, _ string) *string {
 	return nil
 }
 
+// validatePhoneNumber validates and normalizes the passwordless phone input expected by SuperTokens.
 func validatePhoneNumber(phoneNumber interface{}, _ string) *string {
 	phoneStr, ok := phoneNumber.(string)
 	if !ok {
@@ -532,6 +540,7 @@ func validatePhoneNumber(phoneNumber interface{}, _ string) *string {
 	return nil
 }
 
+// supertokenCreateNewSession wraps session creation to enrich access tokens with roles and FHIR resource IDs.
 func (uc *authUsecase) supertokenCreateNewSession(originalCreateNewSession func(string, map[string]interface{}, map[string]interface{}, *bool, string, supertokens.UserContext) (sessmodels.SessionContainer, error)) func(string, map[string]interface{}, map[string]interface{}, *bool, string, supertokens.UserContext) (sessmodels.SessionContainer, error) {
 	return func(userID string, accessTokenPayload, sessionDataInDatabase map[string]interface{}, disableAntiCsrf *bool, tenantId string, userContext supertokens.UserContext) (sessmodels.SessionContainer, error) {
 		if accessTokenPayload == nil {
