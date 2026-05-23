@@ -87,7 +87,7 @@ func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
 	ctx = context.WithValue(ctx, constvars.CONTEXT_UID, uid)
 	ctx = context.WithValue(ctx, constvars.CONTEXT_FHIR_RESOURCE_ID, fhirResourceId)
 
-		next.ServeHTTP(w, r.WithContext(ctx))
+	next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 

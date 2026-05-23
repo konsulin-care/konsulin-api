@@ -184,7 +184,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 }
 
 // ensureRoleExists creates a SuperTokens role when missing and returns creation failures.
-func (uc *authUsecase) ensureRoleExists(role string) error {
+func (_ *authUsecase) ensureRoleExists(role string) error {
 	resp, err := userroles.CreateNewRoleOrAddPermissions(role, []string{}, nil)
 	if err != nil {
 		log.Printf("Error creating '%s' role: %v\n", role, err)
