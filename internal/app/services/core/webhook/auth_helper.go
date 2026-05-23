@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"context"
+	"konsulin-service/internal/app/delivery/http/middlewares"
 	"konsulin-service/internal/app/services/shared/jwtmanager"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
@@ -30,7 +31,7 @@ func (u *usecase) extractAuthContext(ctx context.Context) *ExtractAuthContextOut
 		Roles: []string{},
 	}
 
-	if v := ctx.Value("api_key_auth"); v != nil {
+	if v := ctx.Value(middlewares.ContextAPIKeyAuth); v != nil {
 		if b, ok := v.(bool); ok {
 			out.IsAPIKey = b
 		}

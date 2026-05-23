@@ -164,27 +164,34 @@ func (uc *authUsecase) InitializeSupertoken() error {
 		return err
 	}
 
-
-	ensureRoleExists(constvars.KonsulinRolePatient)
-	ensureRoleExists(constvars.KonsulinRoleGuest)
-	ensureRoleExists(constvars.KonsulinRoleClinicAdmin)
-	ensureRoleExists(constvars.KonsulinRolePractitioner)
-	ensureRoleExists(constvars.KonsulinRoleResearcher)
-	ensureRoleExists(constvars.KonsulinRoleSuperadmin)
+	roles := []string{
+		constvars.KonsulinRolePatient,
+		constvars.KonsulinRoleGuest,
+		constvars.KonsulinRoleClinicAdmin,
+		constvars.KonsulinRolePractitioner,
+		constvars.KonsulinRoleResearcher,
+		constvars.KonsulinRoleSuperadmin,
+	}
+	for _, role := range roles {
+		if err := uc.ensureRoleExists(role); err != nil {
+			return fmt.Errorf("ensure supertokens role %q exists: %w", role, err)
+		}
+	}
 
 	log.Println("Successfully initialized supertokens SDK")
 	return nil
 }
 
-func ensureRoleExists(role string) {
+func (uc *authUsecase) ensureRoleExists(role string) error {
 	resp, err := userroles.CreateNewRoleOrAddPermissions(role, []string{}, nil)
 	if err != nil {
 		log.Printf("Error creating '%s' role: %v\n", role, err)
-		return
+		return err
 	}
 	if resp.OK != nil && !resp.OK.CreatedNewRole {
 		log.Printf("'%s' role already exists\n", role)
 	}
+	return nil
 }
 
 func (uc *authUsecase) supertokenCreateCode(originalCreateCode func(*string, *string, *string, string, supertokens.UserContext) (plessmodels.CreateCodeResponse, error)) func(*string, *string, *string, string, supertokens.UserContext) (plessmodels.CreateCodeResponse, error) {
@@ -253,9 +260,9 @@ func (uc *authUsecase) supertokenCreateCode(originalCreateCode func(*string, *st
 				return response, err
 			}
 
-			if userRolesResp.OK != nil {
-				// override the default roles with the user roles from supertokens
-				userRoles = append(userRoles, userRolesResp.OK.Roles...)
+			if userRolesResp.OK != nil && len(userRolesResp.OK.Roles) > 0 {
+				// Override the default Patient role with the user's roles from SuperTokens.
+				userRoles = userRolesResp.OK.Roles
 			}
 		}
 
@@ -531,48 +538,61 @@ func (uc *authUsecase) supertokenCreateNewSession(originalCreateNewSession func(
 			accessTokenPayload = make(map[string]interface{})
 		}
 
-		if userID == "" {
+		setGuestAccessTokenPayload := func() {
 			accessTokenPayload[supertokenAccessTokenPayloadRolesKey] = map[string]interface{}{
 				supertokenAccessTokenPayloadRolesValueKey: []interface{}{constvars.KonsulinRoleGuest},
 			}
 			accessTokenPayload[supertokenAccessTokenPayloadFhirResourceId] = ""
-		} else {
-			rolesResp, err := userroles.GetRolesForUser(tenantId, userID)
-			if err == nil && rolesResp.OK != nil {
-				roles := make([]interface{}, len(rolesResp.OK.Roles))
-				userRoles := make([]string, len(rolesResp.OK.Roles))
-				for i, role := range rolesResp.OK.Roles {
-					roles[i] = role
-					userRoles[i] = role
-				}
-				accessTokenPayload[supertokenAccessTokenPayloadRolesKey] = map[string]interface{}{
-					supertokenAccessTokenPayloadRolesValueKey: roles,
-				}
+		}
 
-				// Get FHIR resource ID for the user based on their roles
-				ctx := context.Background()
-				fhirResourceId, fhirErr := uc.getFhirResourceIdForUser(ctx, userID, userRoles)
-				if fhirErr != nil {
-					uc.Log.Error("authUsecase.CreateNewSession error getting FHIR resource ID",
-						zap.String("user_id", userID),
-						zap.Error(fhirErr),
-					)
-					accessTokenPayload[supertokenAccessTokenPayloadFhirResourceId] = ""
-				}
+		if userID == "" {
+			setGuestAccessTokenPayload()
+			return originalCreateNewSession(userID, accessTokenPayload, sessionDataInDatabase, disableAntiCsrf, tenantId, userContext)
+		}
 
-				if fhirErr == nil {
-					accessTokenPayload[supertokenAccessTokenPayloadFhirResourceId] = fhirResourceId
-					uc.Log.Info("authUsecase.CreateNewSession added FHIR resource ID to access token",
-						zap.String("user_id", userID),
-						zap.String("fhir_resource_id", fhirResourceId),
-					)
-				}
+		rolesResp, err := userroles.GetRolesForUser(tenantId, userID)
+		if err != nil || rolesResp.OK == nil {
+			if err != nil {
+				uc.Log.Error("authUsecase.CreateNewSession error getting roles for user",
+					zap.String("user_id", userID),
+					zap.Error(err),
+				)
 			} else {
-				accessTokenPayload[supertokenAccessTokenPayloadRolesKey] = map[string]interface{}{
-					supertokenAccessTokenPayloadRolesValueKey: []interface{}{constvars.KonsulinRoleGuest},
-				}
-				accessTokenPayload[supertokenAccessTokenPayloadFhirResourceId] = ""
+				uc.Log.Error("authUsecase.CreateNewSession supertokens get roles response is nil",
+					zap.String("user_id", userID),
+				)
 			}
+			setGuestAccessTokenPayload()
+			return originalCreateNewSession(userID, accessTokenPayload, sessionDataInDatabase, disableAntiCsrf, tenantId, userContext)
+		}
+
+		roles := make([]interface{}, len(rolesResp.OK.Roles))
+		userRoles := make([]string, len(rolesResp.OK.Roles))
+		for i, role := range rolesResp.OK.Roles {
+			roles[i] = role
+			userRoles[i] = role
+		}
+		accessTokenPayload[supertokenAccessTokenPayloadRolesKey] = map[string]interface{}{
+			supertokenAccessTokenPayloadRolesValueKey: roles,
+		}
+
+		// Get FHIR resource ID for the user based on their roles
+		ctx := context.Background()
+		fhirResourceId, fhirErr := uc.getFhirResourceIdForUser(ctx, userID, userRoles)
+		if fhirErr != nil {
+			uc.Log.Error("authUsecase.CreateNewSession error getting FHIR resource ID",
+				zap.String("user_id", userID),
+				zap.Error(fhirErr),
+			)
+			accessTokenPayload[supertokenAccessTokenPayloadFhirResourceId] = ""
+		} else if fhirResourceId != "" {
+			accessTokenPayload[supertokenAccessTokenPayloadFhirResourceId] = fhirResourceId
+			uc.Log.Info("authUsecase.CreateNewSession added FHIR resource ID to access token",
+				zap.String("user_id", userID),
+				zap.String("fhir_resource_id", fhirResourceId),
+			)
+		} else {
+			accessTokenPayload[supertokenAccessTokenPayloadFhirResourceId] = ""
 		}
 
 		return originalCreateNewSession(userID, accessTokenPayload, sessionDataInDatabase, disableAntiCsrf, tenantId, userContext)

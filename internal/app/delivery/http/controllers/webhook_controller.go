@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"konsulin-service/internal/app/config"
+	"konsulin-service/internal/app/delivery/http/middlewares"
 	"konsulin-service/internal/app/services/core/webhook"
 	"konsulin-service/internal/app/services/shared/ratelimiter"
 	"konsulin-service/internal/pkg/constvars"
@@ -191,7 +192,7 @@ func (ctrl *WebhookController) HandleEnqueueWebHook(w http.ResponseWriter, r *ht
 	// Rate limit evaluation before enqueue
 	// Derive actor ID: API key superadmin or uid or "anonymous"
 	actorID := "anonymous"
-	if v := r.Context().Value("api_key_auth"); v != nil {
+	if v := r.Context().Value(middlewares.ContextAPIKeyAuth); v != nil {
 		if b, ok := v.(bool); ok && b {
 			actorID = "api-key-superadmin"
 		}
