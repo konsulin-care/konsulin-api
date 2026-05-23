@@ -164,6 +164,15 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Su
 			return err
 		}
 
+		if request.RedirectToPath != "" {
+			inviteLink = utils.AppendRedirectToMagicLink(inviteLink, request.RedirectToPath)
+			uc.Log.Info("redirect path appended to magic link (phone)",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.String("phone", phoneDigits),
+				zap.String("redirect_to_path", request.RedirectToPath),
+			)
+		}
+
 		if len(request.Roles) > 0 {
 			uc.Log.Info("Assigning roles to user (phone)",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -259,6 +268,15 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Su
 			zap.Error(err),
 		)
 		return err
+	}
+
+	if request.RedirectToPath != "" {
+		inviteLink = utils.AppendRedirectToMagicLink(inviteLink, request.RedirectToPath)
+		uc.Log.Info("redirect path appended to magic link (email)",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingEmailKey, request.Email),
+			zap.String("redirect_to_path", request.RedirectToPath),
+		)
 	}
 
 	if len(request.Roles) > 0 {

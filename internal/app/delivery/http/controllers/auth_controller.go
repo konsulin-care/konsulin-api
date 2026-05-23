@@ -114,6 +114,22 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 
 	utils.SanitizeCreateMagicLinkRequest(request)
 
+	if request.RedirectToPath != "" {
+		if err := utils.ValidateRedirectPath(request.RedirectToPath); err != nil {
+			ctrl.Log.Warn("magic link creation rejected: invalid redirectToPath",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.String("redirect_to_path", request.RedirectToPath),
+				zap.Error(err),
+			)
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
+			return
+		}
+		ctrl.Log.Info("magic link redirect path requested",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("redirect_to_path", request.RedirectToPath),
+		)
+	}
+
 	// Enforce mutually-exclusive email or phone (exactly one must be set).
 	hasEmail := strings.TrimSpace(request.Email) != ""
 	phoneDigits := ""
