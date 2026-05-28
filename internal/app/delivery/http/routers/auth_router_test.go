@@ -77,6 +77,15 @@ func (m *MockAuthUsecase) CheckUserExistsByPhone(ctx context.Context, phone stri
 	return out, args.Error(1)
 }
 
+func (m *MockAuthUsecase) ClaimAnonymousResources(ctx context.Context, supertokensUserID string, roles []string, anonToken string) (*contracts.ClaimAnonymousResourcesOutput, error) {
+	args := m.Called(ctx, supertokensUserID, roles, anonToken)
+	var out *contracts.ClaimAnonymousResourcesOutput
+	if v := args.Get(0); v != nil {
+		out = v.(*contracts.ClaimAnonymousResourcesOutput)
+	}
+	return out, args.Error(1)
+}
+
 func TestAuthRouter_MagicLinkEndpoint(t *testing.T) {
 	logger := zap.NewNop()
 
@@ -89,7 +98,7 @@ func TestAuthRouter_MagicLinkEndpoint(t *testing.T) {
 
 	mockAuthUsecase := new(MockAuthUsecase)
 
-	authController := &controllers.AuthController{Log: logger, AuthUsecase: mockAuthUsecase}
+	authController := &controllers.AuthController{Log: logger, AuthUsecase: mockAuthUsecase, InternalConfig: internalConfig}
 
 	middlewareInstance := &middlewares.Middlewares{
 		Log:            logger,
@@ -246,7 +255,7 @@ func TestAuthRouter_ContextPropagation(t *testing.T) {
 
 	mockAuthUsecase := new(MockAuthUsecase)
 
-	authController := &controllers.AuthController{Log: logger, AuthUsecase: mockAuthUsecase}
+	authController := &controllers.AuthController{Log: logger, AuthUsecase: mockAuthUsecase, InternalConfig: internalConfig}
 
 	middlewareInstance := &middlewares.Middlewares{
 		Log:            logger,
@@ -320,7 +329,7 @@ func TestAuthRouter_ErrorHandling(t *testing.T) {
 
 	mockAuthUsecase := new(MockAuthUsecase)
 
-	authController := &controllers.AuthController{Log: logger, AuthUsecase: mockAuthUsecase}
+	authController := &controllers.AuthController{Log: logger, AuthUsecase: mockAuthUsecase, InternalConfig: internalConfig}
 
 	middlewareInstance := &middlewares.Middlewares{
 		Log:            logger,

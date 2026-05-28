@@ -76,6 +76,7 @@ func SanitizeUpdateProfileRequest(input *requests.UpdateProfile) {
 func SanitizeCreateMagicLinkRequest(input *requests.SupertokenPasswordlessCreateMagicLink) {
 	input.Email = strings.TrimSpace(strings.ToLower(input.Email))
 	input.Phone = strings.TrimSpace(input.Phone)
+	input.RedirectToPath = strings.TrimSpace(input.RedirectToPath)
 
 	input.Roles = cleanWhiteSpaceFromEachStringOfAnArray(input.Roles)
 }
