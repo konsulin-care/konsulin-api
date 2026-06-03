@@ -76,12 +76,12 @@ require (
 
 require (
 	github.com/go-chi/httprate v0.15.0
-	github.com/go-playground/validator/v10 v10.30.2
+	github.com/go-playground/validator/v10 v10.30.3
 	github.com/goccy/go-json v0.10.6
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/google/uuid v1.6.0
 	github.com/klauspost/compress v1.18.6
-	github.com/redis/go-redis/v9 v9.19.0
+	github.com/redis/go-redis/v9 v9.20.0
 	go.mongodb.org/mongo-driver v1.17.9
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/time v0.15.0
