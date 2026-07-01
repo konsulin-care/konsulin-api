@@ -16,8 +16,7 @@ const (
 	keyFHIRID                                 = "fhirID"
 	keyRoles                                  = "roles"
 	keyUID                                    = "uid"
-	supertokenAccessTokenPayloadRolesKey      = "st-role"
-	supertokenAccessTokenPayloadRolesValueKey = "v"
+	keyActiveRole = "activeRole"
 )
 
 func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
@@ -33,13 +32,14 @@ func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
 
 		roles := []string{constvars.KonsulinRoleGuest}
 		uid := ""
+		activeRole := ""
 
 		if sess != nil {
 			uid = sess.GetUserID()
 			if raw := sess.GetAccessTokenPayload(); raw != nil {
-				if rolesData, exists := raw[supertokenAccessTokenPayloadRolesKey]; exists {
+				if rolesData, exists := raw[constvars.SupertokenPayloadRolesKey]; exists {
 					if rolesMap, ok := rolesData.(map[string]interface{}); ok {
-						if rolesValue, ok := rolesMap[supertokenAccessTokenPayloadRolesValueKey]; ok {
+						if rolesValue, ok := rolesMap[constvars.SupertokenPayloadRolesValueKey]; ok {
 							if rolesList, ok := rolesValue.([]interface{}); ok {
 
 								roles = []string{}
@@ -51,6 +51,10 @@ func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
 							}
 						}
 					}
+				}
+
+				if v, ok := raw[constvars.SupertokenPayloadActiveRoleKey].(string); ok && v != "" {
+					activeRole = v
 				}
 			}
 		} else {
@@ -68,6 +72,9 @@ func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
 
 		ctx := context.WithValue(r.Context(), keyRoles, roles)
 		ctx = context.WithValue(ctx, keyUID, uid)
+		if activeRole != "" {
+			ctx = context.WithValue(ctx, keyActiveRole, activeRole)
+		}
 
 		// new keys for context will be used for now and one and this
 		// will deprecate the use of untyped string in context keys

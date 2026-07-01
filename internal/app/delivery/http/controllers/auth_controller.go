@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/goccy/go-json"
+	"github.com/supertokens/supertokens-golang/recipe/session"
+	"github.com/supertokens/supertokens-golang/recipe/session/sessmodels"
 	"go.uber.org/zap"
 )
 
@@ -390,6 +392,92 @@ func (ctrl *AuthController) ClaimAnonymousResources(w http.ResponseWriter, r *ht
 		"count":         result.Count,
 		"referenceList": result.ReferenceList,
 	})
+}
+
+// SetActiveRole sets the active role in the SuperTokens session's access token
+// payload so downstream middleware reads it instead of iterating all roles.
+func (ctrl *AuthController) SetActiveRole(w http.ResponseWriter, r *http.Request) {
+	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	if !ok || requestID == "" {
+		ctrl.Log.Error("AuthController.SetActiveRole requestID not found in context")
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingRequestID(nil))
+		return
+	}
+
+	var body struct {
+		Role string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		ctrl.Log.Error("AuthController.SetActiveRole failed to parse body",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+		return
+	}
+
+	if body.Role == "" {
+		ctrl.Log.Error("AuthController.SetActiveRole missing role")
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(fmt.Errorf("role is required")))
+		return
+	}
+
+	sessRequired := true
+	sess, err := session.GetSession(r, w, &sessmodels.VerifySessionOptions{SessionRequired: &sessRequired})
+	if err != nil {
+		ctrl.Log.Error("AuthController.SetActiveRole session not found",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrSupertokensSessionMissing(err))
+		return
+	}
+
+	// Validate the role is in the user's assigned roles.
+	if raw := sess.GetAccessTokenPayload(); raw != nil {
+		if rolesData, exists := raw[constvars.SupertokenPayloadRolesKey]; exists {
+			if rolesMap, ok := rolesData.(map[string]interface{}); ok {
+				if rolesValue, ok := rolesMap[constvars.SupertokenPayloadRolesValueKey]; ok {
+					if rolesList, ok := rolesValue.([]interface{}); ok {
+						found := false
+						for _, item := range rolesList {
+							if role, ok := item.(string); ok && role == body.Role {
+								found = true
+								break
+							}
+						}
+						if !found {
+							ctrl.Log.Warn("AuthController.SetActiveRole role not assigned",
+								zap.String(constvars.LoggingRequestIDKey, requestID),
+								zap.String("role", body.Role),
+							)
+							utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(fmt.Errorf("role %s is not assigned to user", body.Role)))
+							return
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// MergeIntoAccessTokenPayload regenerates the access token and writes new
+	// Set-Cookie headers (sAccessToken, sFrontToken) to w automatically.
+	if err := sess.MergeIntoAccessTokenPayload(map[string]interface{}{
+		constvars.SupertokenPayloadActiveRoleKey: body.Role,
+	}); err != nil {
+		ctrl.Log.Error("AuthController.SetActiveRole merge payload failed",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.BuildNewCustomError(err, http.StatusInternalServerError, "internal server error", "merge into access token payload failed"))
+		return
+	}
+
+	ctrl.Log.Info("AuthController.SetActiveRole succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("role", body.Role),
+	)
+	utils.BuildSuccessResponse(w, http.StatusOK, "active role set", nil)
 }
 
 // PasswordlessEmailExists exposes the SuperTokens passwordless email lookup

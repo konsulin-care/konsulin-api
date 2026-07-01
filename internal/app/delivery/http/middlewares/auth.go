@@ -250,6 +250,21 @@ func (m *Middlewares) validatePractitionerOwnershipInBody(body []byte, practitio
 }
 
 func (m *Middlewares) resolveFHIRIdentity(ctx context.Context, uid string) (role string, id string, err error) {
+	activeRole, _ := ctx.Value(keyActiveRole).(string)
+
+	if activeRole == constvars.KonsulinRolePatient {
+		pats, err := m.PatientFhirClient.FindPatientByIdentifier(
+			ctx,
+			fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, uid),
+		)
+		if err != nil {
+			return "", "", err
+		}
+		if len(pats) > 0 {
+			return constvars.KonsulinRolePatient, pats[0].ID, nil
+		}
+	}
+
 	pracs, err := m.PractitionerFhirClient.FindPractitionerByIdentifier(
 		ctx,
 		constvars.FhirSupertokenSystemIdentifier,
@@ -278,13 +293,6 @@ func (m *Middlewares) resolveFHIRIdentity(ctx context.Context, uid string) (role
 	if len(pats) == 0 {
 		return "", "", fmt.Errorf("no Practitioner/Patient found for uid %s", uid)
 	}
-
-	// supress error for multiple patients found
-	// if len(pats) > 1 {
-	// 	fmt.Println("MULTIPLE PATIENTS FOUND FOR UID", uid)
-	// 	fmt.Println("PATIENTS", pats)
-	// 	return "", "", fmt.Errorf("multiple Patient resources for uid %s", uid)
-	// }
 	return constvars.KonsulinRolePatient, pats[0].ID, nil
 }
 
