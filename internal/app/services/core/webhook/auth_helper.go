@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"context"
+	"konsulin-service/internal/app/delivery/http/middlewares"
 	"konsulin-service/internal/app/services/shared/jwtmanager"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
@@ -30,19 +31,19 @@ func (u *usecase) extractAuthContext(ctx context.Context) *ExtractAuthContextOut
 		Roles: []string{},
 	}
 
-	if v := ctx.Value("api_key_auth"); v != nil {
+	if v := ctx.Value(middlewares.ContextAPIKeyAuth); v != nil {
 		if b, ok := v.(bool); ok {
 			out.IsAPIKey = b
 		}
 	}
 
-	if v := ctx.Value("uid"); v != nil {
+	if v := ctx.Value(constvars.CONTEXT_UID); v != nil {
 		if s, ok := v.(string); ok {
 			out.UID = s
 		}
 	}
 
-	if v := ctx.Value("roles"); v != nil {
+	if v := ctx.Value(constvars.CONTEXT_FHIR_ROLE); v != nil {
 		if list, ok := v.([]string); ok {
 			out.Roles = list
 		} else if anyList, ok := v.([]interface{}); ok {

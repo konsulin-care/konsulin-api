@@ -381,6 +381,71 @@ func (uc *userUsecase) InitializeNewUserFHIRResources(ctx context.Context, input
 	return output, nil
 }
 
+// LookupUserFHIRResourceIDs queries existing FHIR resources by SuperTokenUserID.
+// Unlike InitializeNewUserFHIRResources, this is a read-only operation that will not create any resources.
+// It looks up Practitioner, Patient, and Person resources using the SuperTokenUserID identifier.
+func (uc *userUsecase) LookupUserFHIRResourceIDs(ctx context.Context, input *contracts.LookupUserFHIRResourceIDsInput) (*contracts.InitializeNewUserFHIRResourcesOutput, error) {
+	if input.SuperTokenUserID == "" {
+		return nil, exceptions.ErrInvalidFormat(nil, "superTokenUserID is required for lookup")
+	}
+
+	output := &contracts.InitializeNewUserFHIRResourcesOutput{}
+	// Collect errors to return if we fail to find the specific resource or if critical failures occur
+	var errs []error
+
+	// Look up Practitioner by SuperTokenUserID identifier
+	practitioners, err := uc.PractitionerFhirClient.FindPractitionerByIdentifier(ctx, constvars.FhirSupertokenSystemIdentifier, input.SuperTokenUserID)
+	if err != nil {
+		uc.Log.Error("userUsecase.LookupUserFHIRResourceIDs error looking up practitioner",
+			zap.String("super_token_user_id", input.SuperTokenUserID),
+			zap.Error(err),
+		)
+		errs = append(errs, err)
+	}
+	if len(practitioners) > 0 {
+		output.PractitionerID = practitioners[0].ID
+	}
+
+	// Look up Patient by SuperTokenUserID identifier
+	patientIdentifier := fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, input.SuperTokenUserID)
+	patients, err := uc.PatientFhirClient.FindPatientByIdentifier(ctx, patientIdentifier)
+	if err != nil {
+		uc.Log.Error("userUsecase.LookupUserFHIRResourceIDs error looking up patient",
+			zap.String("super_token_user_id", input.SuperTokenUserID),
+			zap.Error(err),
+		)
+		errs = append(errs, err)
+	}
+	if len(patients) > 0 {
+		output.PatientID = patients[0].ID
+	}
+
+	// Look up Person by SuperTokenUserID identifier
+	personIdentifier := fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, input.SuperTokenUserID)
+	persons, err := uc.PersonFhirClient.Search(ctx, contracts.PersonSearchInput{
+		Identifier: personIdentifier,
+	})
+	if err != nil {
+		uc.Log.Error("userUsecase.LookupUserFHIRResourceIDs error looking up person",
+			zap.String("super_token_user_id", input.SuperTokenUserID),
+			zap.Error(err),
+		)
+		errs = append(errs, err)
+	}
+	if len(persons) > 0 {
+		output.PersonID = persons[0].ID
+	}
+
+	// Critical fix: If we encountered errors, we must return them. 
+	// Swallowing errors (like DB down) can lead to incorrect priority selection 
+	// (e.g. failing to find Practitioner --> falling back to Patient).
+	if len(errs) > 0 {
+		return nil, errors.Join(errs...)
+	}
+
+	return output, nil
+}
+
 func (uc *userUsecase) deactivatePractitionerFhirData(ctx context.Context, user *models.User) error {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	uc.Log.Info("userUsecase.deactivatePractitionerFhirData called",

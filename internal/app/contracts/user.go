@@ -94,12 +94,22 @@ type InitializeNewUserFHIRResourcesOutput struct {
 	PersonID       string
 }
 
+// LookupUserFHIRResourceIDsInput defines the input for looking up existing FHIR resource IDs.
+// This is a read-only operation that only queries existing resources, unlike InitializeNewUserFHIRResources
+// which creates resources if they don't exist.
+type LookupUserFHIRResourceIDsInput struct {
+	SuperTokenUserID string
+}
+
 type UserUsecase interface {
 	GetUserProfileBySession(ctx context.Context, sessionData string) (*responses.UserProfile, error)
 	UpdateUserProfileBySession(ctx context.Context, sessionData string, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error)
 	DeleteUserBySession(ctx context.Context, sessionData string) error
 	DeactivateUserBySession(ctx context.Context, sessionData string) error
 	InitializeNewUserFHIRResources(ctx context.Context, input *InitializeNewUserFHIRResourcesInput) (*InitializeNewUserFHIRResourcesOutput, error)
+	// LookupUserFHIRResourceIDs queries existing FHIR resources by SuperTokenUserID.
+	// Unlike InitializeNewUserFHIRResources, this is read-only and will not create any resources.
+	LookupUserFHIRResourceIDs(ctx context.Context, input *LookupUserFHIRResourceIDsInput) (*InitializeNewUserFHIRResourcesOutput, error)
 }
 
 type UserRepository interface {
