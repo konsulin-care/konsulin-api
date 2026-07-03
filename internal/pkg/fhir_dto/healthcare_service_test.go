@@ -1,6 +1,7 @@
 package fhir_dto
 
 import (
+	"encoding/json"
 	"testing"
 )
 
@@ -220,6 +221,42 @@ func TestHealthcareService_ServiceBufferMinutes(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Errorf("ServiceBufferMinutes() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHealthcareService_Name_FromJSON(t *testing.T) {
+	tests := []struct {
+		name     string
+		json     string
+		wantName string
+	}{
+		{
+			name:     "name field is parsed from JSON",
+			json:     `{"resourceType":"HealthcareService","id":"hs-123","name":"General Consultation"}`,
+			wantName: "General Consultation",
+		},
+		{
+			name:     "empty name when field is absent",
+			json:     `{"resourceType":"HealthcareService","id":"hs-123"}`,
+			wantName: "",
+		},
+		{
+			name:     "name can be empty string",
+			json:     `{"resourceType":"HealthcareService","id":"hs-123","name":""}`,
+			wantName: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var hs HealthcareService
+			if err := json.Unmarshal([]byte(tt.json), &hs); err != nil {
+				t.Fatalf("unexpected unmarshal error: %v", err)
+			}
+			if hs.Name != tt.wantName {
+				t.Errorf("Name = %q, want %q", hs.Name, tt.wantName)
 			}
 		})
 	}

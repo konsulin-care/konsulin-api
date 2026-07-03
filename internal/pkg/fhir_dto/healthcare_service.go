@@ -10,6 +10,7 @@ import (
 type HealthcareService struct {
 	ResourceType string      `json:"resourceType,omitempty"`
 	ID           string      `json:"id,omitempty"`
+	Name         string      `json:"name,omitempty"`
 	Extension    []Extension `json:"extension,omitempty"`
 }
 

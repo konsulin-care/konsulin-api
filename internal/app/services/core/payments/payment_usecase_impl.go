@@ -25,6 +25,7 @@ import (
 	"konsulin-service/internal/app/services/shared/storage"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
+	"konsulin-service/internal/pkg/fhir_http_client"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
@@ -53,6 +54,7 @@ type paymentUsecase struct {
 	BundleFhirClient           bundleSvc.BundleFhirClient
 	SlotUsecase                contracts.SlotUsecaseIface
 	XenditClient               *xendit.APIClient
+	FHIRClient                 *fhir_http_client.FHIRHTTPClient
 }
 
 var (
@@ -96,6 +98,7 @@ func NewPaymentUsecase(
 			BundleFhirClient:           bundleFhirClient,
 			SlotUsecase:                slotUsecase,
 			XenditClient:               xenditClient,
+			FHIRClient:                 fhir_http_client.New(logger),
 		}
 		paymentUsecaseInstance = instance
 	})
@@ -1415,7 +1418,8 @@ func (uc *paymentUsecase) ensurePreconditionsValid(
 	}
 
 	// Fetch HealthcareService for schedule duration
-	fetchedHealthcareService, hsErr := uc.fetchHealthcareService(ctx, fetchedPractitionerRole.HealthcareService)
+	hsID := strings.TrimPrefix(req.HealthcareServiceID, "HealthcareService/")
+	fetchedHealthcareService, hsErr := uc.fetchHealthcareService(ctx, hsID)
 	if hsErr != nil {
 		return nil, exceptions.BuildNewCustomError(
 			hsErr,
@@ -1448,30 +1452,14 @@ func (uc *paymentUsecase) ensurePreconditionsValid(
 	}, nil
 }
 
-// fetchHealthcareService fetches the HealthcareService referenced by the practitioner role.
-// It follows the first reference found; multiple references are not expected.
-func (uc *paymentUsecase) fetchHealthcareService(ctx context.Context, refs []fhir_dto.Reference) (*fhir_dto.HealthcareService, error) {
-	if len(refs) == 0 {
-		return nil, errors.New("no healthcare service found for practitioner role")
-	}
-	hsID := strings.TrimPrefix(refs[0].Reference, "HealthcareService/")
-	url := fmt.Sprintf("%s/%s/%s", uc.InternalConfig.FHIR.BaseUrl, constvars.ResourceHealthcareService, hsID)
+// fetchHealthcareService fetches a HealthcareService by its logical ID using the shared
+// FHIR HTTP client, which handles status code validation and OperationOutcome parsing.
+func (uc *paymentUsecase) fetchHealthcareService(ctx context.Context, hsID string) (*fhir_dto.HealthcareService, error) {
+	url := uc.InternalConfig.FHIR.BaseUrl + constvars.ResourceHealthcareService + "/" + hsID
 
-	req, reqErr := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if reqErr != nil {
-		return nil, fmt.Errorf("failed to create request for HealthcareService: %w", reqErr)
-	}
-	req.Header.Set("Content-Type", "application/fhir+json")
-
-	resp, doErr := (&http.Client{}).Do(req)
-	if doErr != nil {
-		return nil, fmt.Errorf("failed to fetch HealthcareService: %w", doErr)
-	}
-	defer resp.Body.Close()
-
-	body, readErr := io.ReadAll(resp.Body)
-	if readErr != nil {
-		return nil, fmt.Errorf("failed to read HealthcareService response: %w", readErr)
+	body, err := uc.FHIRClient.Do(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch healthcare service: %w", err)
 	}
 
 	var hs fhir_dto.HealthcareService
