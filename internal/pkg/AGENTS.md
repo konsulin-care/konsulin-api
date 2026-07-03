@@ -1,58 +1,59 @@
-# FHIR HTTP Client Pattern
+# internal/pkg/ — Shared Packages
 
-## Rule
+Reusable packages shared across the application. No application-layer logic here — these are pure utility and infrastructure wrappers.
 
-**All FHIR HTTP requests MUST go through `fhir_http_client.FHIRHTTPClient.Do()`.**
+## Packages
 
-Do not create raw `http.Client`, do not set `Content-Type` headers inline, do not check status codes manually. The shared client handles all common boilerplate.
+### `fhir_http_client/` — FHIR HTTP Client
 
-## What the shared client handles
+**All FHIR HTTP requests MUST go through `FHIRHTTPClient.Do()`** — never raw `http.Client`.
 
-- Request creation with context propagation
+The shared client handles:
+- Context propagation
 - `Content-Type: application/fhir+json` header
 - HTTP execution
 - Status code validation (rejects `<200` and `>=300`)
 - `OperationOutcome` parsing on error responses
-- Body reading and returning raw `[]byte`
+- Body reading, returning raw `[]byte`
 
-## How to use
-
+Usage:
 ```go
-import "konsulin-service/internal/pkg/fhir_http_client"
-
-// Instantiate (typically once via constructor injection)
 fhirClient := fhir_http_client.New(logger)
-
-// Build the URL: base + resourceType/id (no extra slash before resource type)
 url := config.FHIR.BaseUrl + "PractitionerRole" + "/" + id
-
-// Make the request
 body, err := fhirClient.Do(ctx, http.MethodGet, url, nil)
-if err != nil {
-    return nil, fmt.Errorf("fetch practitioner role: %w", err)
-}
-
-// Unmarshal into the target FHIR DTO
-var pr fhir_dto.PractitionerRole
-return &pr, json.Unmarshal(body, &pr)
 ```
 
-## URL construction — avoid double slashes
+**⚠ URL construction — avoid double slashes**: `BaseUrl` has a trailing slash (e.g. `http://localhost:8080/fhir/`). Concatenate directly: `baseUrl + resourceType + "/" + resourceID`. Do NOT use `fmt.Sprintf("%s/%s/%s", ...)` — that produces `/fhir//PractitionerRole`.
 
-The config `FHIR.BaseUrl` has a trailing slash (e.g. `http://localhost:8080/fhir/`).
+Migration: existing `fhir_spark/*/` files still use their own HTTP logic. Migrate incrementally when modifying each file.
 
-**Correct** (follows the existing client pattern):
-```go
-url := baseUrl + resourceType + "/" + resourceID
-// → "http://localhost:8080/fhir/PractitionerRole/pr-123"
-```
+### `fhir_dto/` — FHIR DTOs
 
-**Wrong** (double slash):
-```go
-url := fmt.Sprintf("%s/%s/%s", baseUrl, resourceType, id)
-// → "http://localhost:8080/fhir//PractitionerRole/pr-123"
-```
+Typed structs mirroring FHIR R4 resources: Patient, Practitioner, PractitionerRole, Schedule, Slot, Organization, Person, Observation, QuestionnaireResponse, Invoice, ServiceRequest, Bundle, etc.
 
-## Migration
+### `dto/` — Application DTOs
 
-Existing FHIR client files (`internal/app/services/fhir_spark/*/`) still work with their own HTTP logic. Migrate them to use `FHIRHTTPClient.Do()` incrementally when modifying each file — the shared client is intentionally compatible (returns `[]byte`, callers still unmarshal).
+Request/response data transfer objects for API endpoints. Subdirectories for specific use cases.
+
+### `constvars/` — Constants & Context Keys
+
+Shared constants: context keys (`CONTEXT_REQUEST_ID_KEY`), logging field names, HTTP header names, role strings, timeouts. Single source of truth to avoid magic strings.
+
+### `exceptions/` — Error Types
+
+Custom error types with HTTP status mapping. Centralizes error handling so controllers return consistent error responses.
+
+### `queries/` — SQL Query Constants
+
+Raw SQL query strings (for SuperTokens PostgreSQL / legacy DB access). Keeps SQL out of service files.
+
+### `utils/` — Utility Functions
+
+General helpers: string manipulation, slice operations, time formatting, pointer helpers, cryptographic utilities.
+
+---
+
+## See Also
+
+- [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md) — How FHIR client fits in the proxy flow
+- [docs/STANDARDS.md](../../docs/STANDARDS.md) — FHIR client usage rules, error handling conventions
