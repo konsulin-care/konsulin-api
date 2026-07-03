@@ -214,14 +214,18 @@ func (uc *paymentUsecase) buildSlotAdjustmentEntries(
 
 	var entries []map[string]any
 
-	var scheduleConfig slot.ScheduleConfig
-	if err := json.Unmarshal([]byte(precond.Schedule.Comment), &scheduleConfig); err != nil {
+	slotMinutes, durErr := precond.HealthcareService.ServiceDurationMinutes()
+	if durErr != nil {
 		return nil, exceptions.BuildNewCustomError(
-			err,
+			durErr,
 			constvars.StatusInternalServerError,
-			"Failed to parse schedule configuration",
-			"failed to parse schedule config",
+			"Failed to parse schedule duration",
+			"failed to read serviceDuration extension from HealthcareService",
 		)
+	}
+	bufferMinutes := 5
+	if b, ok := precond.HealthcareService.ServiceBufferMinutes(); ok {
+		bufferMinutes = b
 	}
 
 	for _, role := range allPractitionerRoles {
@@ -290,8 +294,8 @@ func (uc *paymentUsecase) buildSlotAdjustmentEntries(
 				segmentStart,
 				segmentEnd,
 				precond.Slot.ID,
-				scheduleConfig.SlotMinutes,
-				scheduleConfig.BufferMinutes,
+				slotMinutes,
+				bufferMinutes,
 			)
 			if adjErr != nil {
 				uc.Log.Warn("buildSlotAdjustmentEntries failed to compute adjustments",

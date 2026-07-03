@@ -1224,6 +1224,7 @@ func (e *resourceFetchError) Unwrap() error { return e.err }
 type preconditionData struct {
 	Slot             *fhir_dto.Slot
 	PractitionerRole *fhir_dto.PractitionerRole
+	HealthcareService *fhir_dto.HealthcareService
 	Practitioner     *fhir_dto.Practitioner
 	Patient          *fhir_dto.Patient
 	Invoice          *fhir_dto.Invoice
@@ -1249,12 +1250,13 @@ func (uc *paymentUsecase) ensurePreconditionsValid(
 	g, gctx := errgroup.WithContext(ctx)
 
 	var (
-		fetchedSlot             *fhir_dto.Slot
-		fetchedPractitionerRole *fhir_dto.PractitionerRole
-		fetchedPatient          *fhir_dto.Patient
-		fetchedInvoices         []fhir_dto.Invoice
-		schedules               []fhir_dto.Schedule
-		schedulesErr            error
+		fetchedSlot              *fhir_dto.Slot
+		fetchedPractitionerRole  *fhir_dto.PractitionerRole
+		fetchedHealthcareService *fhir_dto.HealthcareService
+		fetchedPatient           *fhir_dto.Patient
+		fetchedInvoices          []fhir_dto.Invoice
+		schedules                []fhir_dto.Schedule
+		schedulesErr             error
 	)
 
 	g.Go(func() error {
@@ -1412,6 +1414,17 @@ func (uc *paymentUsecase) ensurePreconditionsValid(
 		)
 	}
 
+	// Fetch HealthcareService for schedule duration
+	fetchedHealthcareService, hsErr := uc.fetchHealthcareService(ctx, fetchedPractitionerRole.HealthcareService)
+	if hsErr != nil {
+		return nil, exceptions.BuildNewCustomError(
+			hsErr,
+			constvars.StatusInternalServerError,
+			"Failed to fetch healthcare service",
+			hsErr.Error(),
+		)
+	}
+
 	practitionerRef := fetchedPractitionerRole.Practitioner.Reference
 	practitionerID := strings.TrimPrefix(practitionerRef, "Practitioner/")
 	practitioner, practErr := uc.PractitionerFhirClient.FindPractitionerByID(ctx, practitionerID)
@@ -1425,13 +1438,47 @@ func (uc *paymentUsecase) ensurePreconditionsValid(
 	}
 
 	return &preconditionData{
-		Slot:             fetchedSlot,
-		PractitionerRole: fetchedPractitionerRole,
-		Practitioner:     practitioner,
-		Patient:          fetchedPatient,
-		Invoice:          &fetchedInvoices[0],
-		Schedule:         schedule,
+		Slot:              fetchedSlot,
+		PractitionerRole:  fetchedPractitionerRole,
+		HealthcareService: fetchedHealthcareService,
+		Practitioner:      practitioner,
+		Patient:           fetchedPatient,
+		Invoice:           &fetchedInvoices[0],
+		Schedule:          schedule,
 	}, nil
+}
+
+// fetchHealthcareService fetches the HealthcareService referenced by the practitioner role.
+// It follows the first reference found; multiple references are not expected.
+func (uc *paymentUsecase) fetchHealthcareService(ctx context.Context, refs []fhir_dto.Reference) (*fhir_dto.HealthcareService, error) {
+	if len(refs) == 0 {
+		return nil, errors.New("no healthcare service found for practitioner role")
+	}
+	hsID := strings.TrimPrefix(refs[0].Reference, "HealthcareService/")
+	url := fmt.Sprintf("%s/%s/%s", uc.InternalConfig.FHIR.BaseUrl, constvars.ResourceHealthcareService, hsID)
+
+	req, reqErr := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if reqErr != nil {
+		return nil, fmt.Errorf("failed to create request for HealthcareService: %w", reqErr)
+	}
+	req.Header.Set("Content-Type", "application/fhir+json")
+
+	resp, doErr := (&http.Client{}).Do(req)
+	if doErr != nil {
+		return nil, fmt.Errorf("failed to fetch HealthcareService: %w", doErr)
+	}
+	defer resp.Body.Close()
+
+	body, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("failed to read HealthcareService response: %w", readErr)
+	}
+
+	var hs fhir_dto.HealthcareService
+	if unmarshalErr := json.Unmarshal(body, &hs); unmarshalErr != nil {
+		return nil, fmt.Errorf("failed to decode HealthcareService: %w", unmarshalErr)
+	}
+	return &hs, nil
 }
 
 // buildAppointmentPaymentBundle constructs the full transaction bundle entries and
