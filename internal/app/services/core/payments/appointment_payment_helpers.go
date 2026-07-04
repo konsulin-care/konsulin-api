@@ -566,7 +566,7 @@ func (uc *paymentUsecase) fetchCommonResources(
 		sched, err := uc.ScheduleFhirClient.FindScheduleByPractitionerRoleID(gctx, practitionerRoleID)
 		if err != nil {
 			res.schedulesErr = err
-			return nil
+			return nil //nolint:nilerr // intentionally storing error in schedulesErr for caller to handle
 		}
 		res.schedules = sched
 		return nil
@@ -599,8 +599,11 @@ func (uc *paymentUsecase) fetchCommonResources(
 		)
 	}
 
-	// Fetch HealthcareService
+	// Fetch HealthcareService — derive from PractitionerRole if not explicitly provided
 	hsID := strings.TrimPrefix(req.HealthcareServiceID, constvars.FHIRRefPrefixHealthcareService)
+	if hsID == "" && len(res.practitionerRole.HealthcareService) > 0 {
+		hsID = strings.TrimPrefix(res.practitionerRole.HealthcareService[0].Reference, constvars.FHIRRefPrefixHealthcareService)
+	}
 	hs, hsErr := uc.fetchHealthcareService(ctx, hsID)
 	if hsErr != nil {
 		return nil, exceptions.BuildNewCustomError(

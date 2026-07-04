@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
+	"time"
 
 	"konsulin-service/internal/pkg/fhir_dto"
 
@@ -34,7 +36,9 @@ func New(logger *zap.Logger) *FHIRHTTPClient {
 		logger = zap.NewNop()
 	}
 	return &FHIRHTTPClient{
-		client: &http.Client{},
+		client: &http.Client{
+			Timeout: 30 * time.Second,
+		},
 		logger: logger,
 	}
 }
@@ -76,11 +80,20 @@ func (c *FHIRHTTPClient) Do(ctx context.Context, method, url string, body io.Rea
 }
 
 // parseFHIRError extracts a human-readable error message from a FHIR
-// OperationOutcome response, or falls back to the status code.
+// OperationOutcome response, or falls back to the status code and body.
 func parseFHIRError(body []byte, statusCode int) string {
 	var outcome fhir_dto.OperationOutcome
 	if err := json.Unmarshal(body, &outcome); err == nil && len(outcome.Issue) > 0 {
 		return fmt.Sprintf("%s (status %d)", outcome.Issue[0].Diagnostics, statusCode)
+	}
+	// Include a truncated body in the fallback to preserve upstream error context
+	maxBodyLen := 200
+	bodyStr := strings.TrimSpace(string(body))
+	if len(bodyStr) > maxBodyLen {
+		bodyStr = bodyStr[:maxBodyLen] + "..."
+	}
+	if bodyStr != "" {
+		return fmt.Sprintf("status %d: %s", statusCode, bodyStr)
 	}
 	return fmt.Sprintf("status %d", statusCode)
 }

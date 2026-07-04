@@ -124,6 +124,7 @@ func TestFHIRHTTPClient_Do_Status5xx_WithoutOperationOutcome(t *testing.T) {
 	_, err := fhirClient.Do(context.Background(), http.MethodGet, server.URL, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "status 500")
+	assert.Contains(t, err.Error(), "Server Error", "error should include response body when no OperationOutcome")
 }
 
 func TestFHIRHTTPClient_Do_InvalidURL(t *testing.T) {

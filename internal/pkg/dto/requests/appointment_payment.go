@@ -45,10 +45,7 @@ func (r *AppointmentPaymentRequest) Validate() error {
 		return fmt.Errorf("slotId must follow format: %s/ID", constvars.ResourceSlot)
 	}
 
-	if strings.TrimSpace(r.HealthcareServiceID) == "" {
-		return errors.New("healthcareServiceId is required")
-	}
-	if !isValidReference(r.HealthcareServiceID, constvars.ResourceHealthcareService) {
+	if strings.TrimSpace(r.HealthcareServiceID) != "" && !isValidReference(r.HealthcareServiceID, constvars.ResourceHealthcareService) {
 		return fmt.Errorf("healthcareServiceId must follow format: %s/ID", constvars.ResourceHealthcareService)
 	}
 

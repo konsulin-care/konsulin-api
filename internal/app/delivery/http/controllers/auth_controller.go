@@ -507,15 +507,18 @@ func getUserRolesFromSession(sess sessmodels.SessionContainer) ([]string, error)
 	if !ok {
 		return nil, nil
 	}
-	rolesList, ok := rolesValue.([]interface{})
-	if !ok {
-		return nil, errors.New("roles value not a list")
-	}
-	result := make([]string, 0, len(rolesList))
-	for _, item := range rolesList {
-		if role, ok := item.(string); ok {
-			result = append(result, role)
+	var result []string
+	if rolesList, ok := rolesValue.([]interface{}); ok {
+		result = make([]string, 0, len(rolesList))
+		for _, item := range rolesList {
+			if role, ok := item.(string); ok {
+				result = append(result, role)
+			}
 		}
+	} else if rolesList, ok := rolesValue.([]string); ok {
+		result = rolesList
+	} else {
+		return nil, errors.New("roles value not a list")
 	}
 	return result, nil
 }

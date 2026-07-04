@@ -114,6 +114,32 @@ func TestResolveFHIRIdentity_ActiveRoleEmpty(t *testing.T) {
 	assert.Equal(t, "prac-1", id)
 }
 
+func TestNeedsFHIRResolution(t *testing.T) {
+	tests := []struct {
+		name   string
+		roles  []string
+		want   bool
+	}{
+		{"Patient role needs resolution", []string{constvars.KonsulinRolePatient}, true},
+		{"Practitioner role needs resolution", []string{constvars.KonsulinRolePractitioner}, true},
+		{"Clinic Admin does not need resolution", []string{constvars.KonsulinRoleClinicAdmin}, false},
+		{"Researcher does not need resolution", []string{constvars.KonsulinRoleResearcher}, false},
+		{"Guest does not need resolution", []string{constvars.KonsulinRoleGuest}, false},
+		{"Multiple roles with Patient needs resolution", []string{constvars.KonsulinRoleResearcher, constvars.KonsulinRolePatient}, true},
+		{"Multiple roles without Patient/Practitioner", []string{constvars.KonsulinRoleClinicAdmin, constvars.KonsulinRoleResearcher}, false},
+		{"Empty roles does not need resolution", []string{}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := needsFHIRResolution(tt.roles)
+			if got != tt.want {
+				t.Errorf("needsFHIRResolution(%v) = %v, want %v", tt.roles, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestResolveFHIRIdentity_ActiveRolePatient_NoPatientResource(t *testing.T) {
 	// When activeRole is "Patient" but no Patient FHIR resource exists,
 	// it should fall through to Practitioner lookup.

@@ -364,6 +364,15 @@ func (uc *paymentUsecase) handleAppointmentPaymentNotification(ctx context.Conte
 
 	slot, err := uc.SlotFhirClient.FindSlotByID(ctx, fields.SlotID)
 	if err != nil {
+		// EXPIRED callbacks for already-deleted slots are idempotent.
+		// Treat a missing slot as already-processed instead of returning an error.
+		if status == requests.XenditInvoiceStatusExpired {
+			uc.Log.Info("paymentUsecase.handleAppointmentPaymentNotification slot not found for EXPIRED; treating as already processed",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.String("slotId", fields.SlotID),
+			)
+			return nil
+		}
 		uc.Log.Error("paymentUsecase.handleAppointmentPaymentNotification failed fetching slot",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String("slotId", fields.SlotID),
@@ -484,23 +493,10 @@ func (uc *paymentUsecase) handleAppointmentPaymentPaid(
 		)
 	}
 
-	// Update slot to busy-unavailable
+	// Update slot status to busy-unavailable
 	slot.Status = fhir_dto.SlotStatusBusyUnavailable
-	if _, updateErr := uc.SlotFhirClient.UpdateSlot(ctx, fields.SlotID, slot); updateErr != nil {
-		uc.Log.Error("paymentUsecase.handleAppointmentPaymentPaid failed to update slot",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("slotId", fields.SlotID),
-			zap.Error(updateErr),
-		)
-		return exceptions.BuildNewCustomError(
-			updateErr,
-			constvars.StatusInternalServerError,
-			"Failed to update slot status",
-			"failed to update slot status",
-		)
-	}
 
-	// Build and execute FHIR bundle (Appointment, PaymentNotice, PaymentReconciliation)
+	// Build and execute FHIR bundle (Appointment, PaymentNotice, PaymentReconciliation, and Slot update)
 	bundleEntries, appointmentID, _, buildErr := uc.buildAppointmentPaymentBundle(ctx, req, precond, allPractitionerRoles)
 	if buildErr != nil {
 		uc.Log.Error("paymentUsecase.handleAppointmentPaymentPaid failed to build bundle",
@@ -509,6 +505,16 @@ func (uc *paymentUsecase) handleAppointmentPaymentPaid(
 		)
 		return buildErr
 	}
+
+	// Include the slot status update in the same transaction bundle for atomicity
+	slotUpdateEntry := map[string]any{
+		"request": map[string]any{
+			"method": "PUT",
+			"url":    constvars.ResourceSlot + "/" + fields.SlotID,
+		},
+		"resource": slot,
+	}
+	bundleEntries = append(bundleEntries, slotUpdateEntry)
 
 	bundle := map[string]any{
 		"resourceType": "Bundle",
@@ -1293,6 +1299,7 @@ func (uc *paymentUsecase) HandleAppointmentPayment(
 	// Overlap check: query non-free slots for the schedule and check for time conflicts
 	overlapParams := contracts.SlotSearchParams{
 		Start:  "lt" + revalidatedSlot.End.Format(time.RFC3339),
+		End:    "gt" + revalidatedSlot.Start.Format(time.RFC3339),
 		Status: fhir_dto.SlotStatus(string(fhir_dto.SlotStatusBusyUnavailable) + "," + string(fhir_dto.SlotStatusBusyTentative)),
 	}
 	scheduleID := strings.TrimPrefix(precond.Slot.Schedule.Reference, "Schedule/")
@@ -1361,6 +1368,15 @@ func (uc *paymentUsecase) handleOnlineAppointmentPayment(
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(xenditErr),
 		)
+		// Rollback slot to free to avoid reservation leak
+		revalidatedSlot.Status = fhir_dto.SlotStatusFree
+		if _, rollbackErr := uc.SlotFhirClient.UpdateSlot(ctx, slotID, revalidatedSlot); rollbackErr != nil {
+			uc.Log.Error("paymentUsecase.handleOnlineAppointmentPayment failed to rollback slot after Xendit failure",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.String("slotId", slotID),
+				zap.Error(rollbackErr),
+			)
+		}
 		return nil, xenditErr
 	}
 
@@ -1392,20 +1408,8 @@ func (uc *paymentUsecase) handleOfflineAppointmentPayment(
 	slotID string,
 	requestID string,
 ) (*responses.AppointmentPaymentResponse, error) {
+	// Set slot status for the bundle entry (will be included in the transaction bundle)
 	revalidatedSlot.Status = fhir_dto.SlotStatusBusyUnavailable
-	if _, updateErr := uc.SlotFhirClient.UpdateSlot(ctx, slotID, revalidatedSlot); updateErr != nil {
-		uc.Log.Error("paymentUsecase.handleOfflineAppointmentPayment failed to update slot status",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("slotId", slotID),
-			zap.Error(updateErr),
-		)
-		return nil, exceptions.BuildNewCustomError(
-			updateErr,
-			constvars.StatusInternalServerError,
-			"Failed to reserve slot. Please try again.",
-			"slot update failed",
-		)
-	}
 
 	bundleEntries, appointmentID, paymentNoticeID, bundleErr := uc.buildAppointmentPaymentBundle(ctx, req, precond, allPractitionerRoles)
 	if bundleErr != nil {
@@ -1415,6 +1419,16 @@ func (uc *paymentUsecase) handleOfflineAppointmentPayment(
 		)
 		return nil, bundleErr
 	}
+
+	// Include the slot status update in the same transaction bundle for atomicity
+	slotUpdateEntry := map[string]any{
+		"request": map[string]any{
+			"method": "PUT",
+			"url":    constvars.ResourceSlot + "/" + slotID,
+		},
+		"resource": revalidatedSlot,
+	}
+	bundleEntries = append(bundleEntries, slotUpdateEntry)
 
 	bundle := map[string]any{
 		"resourceType": "Bundle",
