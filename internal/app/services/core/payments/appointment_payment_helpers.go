@@ -156,7 +156,7 @@ func (uc *paymentUsecase) buildAppointmentPaymentBundle(
 				Status: constvars.FhirParticipantStatusAccepted,
 			},
 			{
-				Actor:  fhir_dto.Reference{Reference: "Practitioner/" + precond.Practitioner.ID},
+				Actor:  fhir_dto.Reference{Reference: constvars.FHIRRefPrefixPractitioner + precond.Practitioner.ID},
 				Status: constvars.FhirParticipantStatusAccepted,
 			},
 			{
@@ -446,9 +446,9 @@ func (uc *paymentUsecase) fetchPreconditionData(
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 
 	slotID := strings.TrimPrefix(req.SlotID, "Slot/")
-	practitionerRoleID := strings.TrimPrefix(req.PractitionerRoleID, "PractitionerRole/")
-	patientID := strings.TrimPrefix(req.PatientID, "Patient/")
-	invoiceID := strings.TrimPrefix(req.InvoiceID, "Invoice/")
+	practitionerRoleID := strings.TrimPrefix(req.PractitionerRoleID, constvars.FHIRRefPrefixPractitionerRole)
+	patientID := strings.TrimPrefix(req.PatientID, constvars.FHIRRefPrefixPatient)
+	invoiceID := strings.TrimPrefix(req.InvoiceID, constvars.FHIRRefPrefixInvoice)
 
 	var (
 		fetchedSlot              *fhir_dto.Slot
@@ -536,7 +536,7 @@ func (uc *paymentUsecase) fetchPreconditionData(
 	}
 
 	// Fetch HealthcareService
-	hsID := strings.TrimPrefix(req.HealthcareServiceID, "HealthcareService/")
+	hsID := strings.TrimPrefix(req.HealthcareServiceID, constvars.FHIRRefPrefixHealthcareService)
 	hs, hsErr := uc.fetchHealthcareService(ctx, hsID)
 	if hsErr != nil {
 		return nil, exceptions.BuildNewCustomError(
@@ -550,7 +550,7 @@ func (uc *paymentUsecase) fetchPreconditionData(
 
 	// Fetch Practitioner
 	practitionerRef := fetchedPractitionerRole.Practitioner.Reference
-	practitionerID := strings.TrimPrefix(practitionerRef, "Practitioner/")
+	practitionerID := strings.TrimPrefix(practitionerRef, constvars.FHIRRefPrefixPractitioner)
 	practitioner, practErr := uc.PractitionerFhirClient.FindPractitionerByID(ctx, practitionerID)
 	if practErr != nil {
 		return nil, exceptions.BuildNewCustomError(

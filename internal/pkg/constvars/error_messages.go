@@ -117,6 +117,9 @@ const (
 	ErrDevWhatsAppNumberAlreadyExists  = "whatsapp number already exists in database"
 	ErrDevUserNotExists                = "user not exists in our system"
 
+	// Payment messages
+	ErrDevFailedToFetchPractitionerRoles = "failed to fetch practitioner roles"
+
 	// Spark messages
 	ErrDevSparkCreateFHIRResource                 = "failed to create FHIR %s from `BLAZE` service"
 	ErrDevSparkUpdateFHIRResource                 = "failed to update FHIR %s from `BLAZE` service"

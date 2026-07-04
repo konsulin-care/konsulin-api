@@ -450,11 +450,11 @@ func (uc *paymentUsecase) handleAppointmentPaymentPaid(
 
 	// Reconstruct the request from external_id fields for precondition data fetching
 	req := &requests.AppointmentPaymentRequest{
-		PatientID:           "Patient/" + fields.PatientID,
-		InvoiceID:           "Invoice/" + fields.InvoiceID,
-		PractitionerRoleID:  "PractitionerRole/" + fields.PractitionerRoleID,
+		PatientID:           constvars.FHIRRefPrefixPatient + fields.PatientID,
+		InvoiceID:           constvars.FHIRRefPrefixInvoice + fields.InvoiceID,
+		PractitionerRoleID:  constvars.FHIRRefPrefixPractitionerRole + fields.PractitionerRoleID,
 		SlotID:              "Slot/" + fields.SlotID,
-		HealthcareServiceID: "HealthcareService/" + fields.HealthcareServiceID,
+		HealthcareServiceID: constvars.FHIRRefPrefixHealthcareService + fields.HealthcareServiceID,
 	}
 
 	precond, err := uc.fetchPreconditionData(ctx, req)
@@ -467,7 +467,7 @@ func (uc *paymentUsecase) handleAppointmentPaymentPaid(
 	}
 
 	// Fetch all practitioner roles for bundle building
-	practitionerID := strings.TrimPrefix(precond.PractitionerRole.Practitioner.Reference, "Practitioner/")
+	practitionerID := strings.TrimPrefix(precond.PractitionerRole.Practitioner.Reference, constvars.FHIRRefPrefixPractitioner)
 	allPractitionerRoles, err := uc.PractitionerRoleFhirClient.Search(ctx, contracts.PractitionerRoleSearchParams{
 		PractitionerID: practitionerID,
 	})
@@ -480,8 +480,8 @@ func (uc *paymentUsecase) handleAppointmentPaymentPaid(
 		return exceptions.BuildNewCustomError(
 			err,
 			constvars.StatusInternalServerError,
-			"failed to fetch practitioner roles",
-			"failed to fetch practitioner roles",
+			constvars.ErrDevFailedToFetchPractitionerRoles,
+			constvars.ErrDevFailedToFetchPractitionerRoles,
 		)
 	}
 
@@ -824,10 +824,10 @@ func (uc *paymentUsecase) createXenditInvoiceForAppointment(
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 
 	slotID := strings.TrimPrefix(req.SlotID, "Slot/")
-	practitionerRoleID := strings.TrimPrefix(req.PractitionerRoleID, "PractitionerRole/")
-	patientID := strings.TrimPrefix(req.PatientID, "Patient/")
-	invoiceID := strings.TrimPrefix(req.InvoiceID, "Invoice/")
-	healthcareServiceID := strings.TrimPrefix(req.HealthcareServiceID, "HealthcareService/")
+	practitionerRoleID := strings.TrimPrefix(req.PractitionerRoleID, constvars.FHIRRefPrefixPractitionerRole)
+	patientID := strings.TrimPrefix(req.PatientID, constvars.FHIRRefPrefixPatient)
+	invoiceID := strings.TrimPrefix(req.InvoiceID, constvars.FHIRRefPrefixInvoice)
+	healthcareServiceID := strings.TrimPrefix(req.HealthcareServiceID, constvars.FHIRRefPrefixHealthcareService)
 	// Format: appointment:{slotID}:{practitionerRoleID}:{patientID}:{invoiceID}:{healthcareServiceID}
 	externalID := fmt.Sprintf("%s:%s:%s:%s:%s:%s",
 		constvars.AppointmentPaymentService,
@@ -1218,7 +1218,7 @@ func (uc *paymentUsecase) HandleAppointmentPayment(
 		return nil, err
 	}
 
-	practitionerID := strings.TrimPrefix(precond.PractitionerRole.Practitioner.Reference, "Practitioner/")
+	practitionerID := strings.TrimPrefix(precond.PractitionerRole.Practitioner.Reference, constvars.FHIRRefPrefixPractitioner)
 	allPractitionerRoles, err := uc.PractitionerRoleFhirClient.Search(ctx, contracts.PractitionerRoleSearchParams{
 		PractitionerID: practitionerID,
 	})
@@ -1231,8 +1231,8 @@ func (uc *paymentUsecase) HandleAppointmentPayment(
 		return nil, exceptions.BuildNewCustomError(
 			err,
 			constvars.StatusInternalServerError,
-			"failed to fetch practitioner roles",
-			"failed to fetch practitioner roles",
+			constvars.ErrDevFailedToFetchPractitionerRoles,
+			constvars.ErrDevFailedToFetchPractitionerRoles,
 		)
 	}
 
@@ -1649,7 +1649,7 @@ func (uc *paymentUsecase) ensurePreconditionsValid(
 	}
 
 	// Fetch HealthcareService for schedule duration
-	hsID := strings.TrimPrefix(req.HealthcareServiceID, "HealthcareService/")
+	hsID := strings.TrimPrefix(req.HealthcareServiceID, constvars.FHIRRefPrefixHealthcareService)
 	fetchedHealthcareService, hsErr := uc.fetchHealthcareService(ctx, hsID)
 	if hsErr != nil {
 		return nil, exceptions.BuildNewCustomError(
@@ -1661,7 +1661,7 @@ func (uc *paymentUsecase) ensurePreconditionsValid(
 	}
 
 	practitionerRef := fetchedPractitionerRole.Practitioner.Reference
-	practitionerID := strings.TrimPrefix(practitionerRef, "Practitioner/")
+	practitionerID := strings.TrimPrefix(practitionerRef, constvars.FHIRRefPrefixPractitioner)
 	practitioner, practErr := uc.PractitionerFhirClient.FindPractitionerByID(ctx, practitionerID)
 	if practErr != nil {
 		return nil, exceptions.BuildNewCustomError(
