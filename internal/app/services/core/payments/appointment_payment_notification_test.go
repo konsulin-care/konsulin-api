@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/dto/requests"
+	"konsulin-service/internal/pkg/fhir_dto"
 
 	"go.uber.org/zap"
 )
@@ -48,8 +48,11 @@ func (m *mockSlotFhirClient) PostTransactionBundle(_ context.Context, _ map[stri
 // mockSlotUsecase mocks contracts.SlotUsecaseIface for notification tests.
 type mockSlotUsecase struct{}
 
-func (m *mockSlotUsecase) HandleAutomatedSlotGeneration(_ context.Context, _ fhir_dto.PractitionerRole) {}
-func (m *mockSlotUsecase) HandleOnDemandSlotRegeneration(_ context.Context, _ string) error { return nil }
+func (m *mockSlotUsecase) HandleAutomatedSlotGeneration(_ context.Context, _ fhir_dto.PractitionerRole) {
+}
+func (m *mockSlotUsecase) HandleOnDemandSlotRegeneration(_ context.Context, _ string) error {
+	return nil
+}
 func (m *mockSlotUsecase) HandleSetUnavailabilityForMultiplePractitionerRoles(_ context.Context, _ contracts.SetUnavailabilityForMultiplePractitionerRolesInput) (*contracts.SetUnavailableOutcome, error) {
 	return nil, nil
 }

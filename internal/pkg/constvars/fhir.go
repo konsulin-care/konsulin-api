@@ -102,11 +102,11 @@ const (
 
 // FHIR reference prefix constants for building and parsing resource references.
 const (
-	FHIRRefPrefixPatient          = "Patient/"
-	FHIRRefPrefixInvoice          = "Invoice/"
-	FHIRRefPrefixPractitionerRole = "PractitionerRole/"
+	FHIRRefPrefixPatient           = "Patient/"
+	FHIRRefPrefixInvoice           = "Invoice/"
+	FHIRRefPrefixPractitionerRole  = "PractitionerRole/"
 	FHIRRefPrefixHealthcareService = "HealthcareService/"
-	FHIRRefPrefixPractitioner     = "Practitioner/"
+	FHIRRefPrefixPractitioner      = "Practitioner/"
 )
 
 const (

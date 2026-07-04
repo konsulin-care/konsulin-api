@@ -116,9 +116,9 @@ func TestResolveFHIRIdentity_ActiveRoleEmpty(t *testing.T) {
 
 func TestNeedsFHIRResolution(t *testing.T) {
 	tests := []struct {
-		name   string
-		roles  []string
-		want   bool
+		name  string
+		roles []string
+		want  bool
 	}{
 		{"Patient role needs resolution", []string{constvars.KonsulinRolePatient}, true},
 		{"Practitioner role needs resolution", []string{constvars.KonsulinRolePractitioner}, true},
