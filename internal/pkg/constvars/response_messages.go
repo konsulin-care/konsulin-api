@@ -51,6 +51,7 @@ const (
 
 	// Appointment payment messages
 	AppointmentPaymentSuccessMessage   = "Payment successful and appointment confirmed."
+	AppointmentPaymentPendingMessage   = "Payment invoice created. Please complete payment to confirm your appointment."
 	OnlinePaymentNotImplementedMessage = "Online payment is not yet supported. Please use offline payment."
 	SlotNoLongerAvailableMessage       = "Selected slot is no longer available."
 	InvalidReferenceFormatMessage      = "Invalid reference format. Expected format: ResourceType/ID"

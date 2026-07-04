@@ -18,6 +18,7 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 // buildAppointmentPaymentBundle constructs all bundle entries for the appointment payment
@@ -34,7 +35,6 @@ func (uc *paymentUsecase) buildAppointmentPaymentBundle(
 	paymentReconID := uuid.New().String()
 	paymentNoticeID := uuid.New().String()
 	conditionID := uuid.New().String()
-	slotID := strings.TrimPrefix(req.SlotID, "Slot/")
 	now := time.Now().UTC()
 	nowStr := now.Format(time.RFC3339)
 
@@ -126,19 +126,8 @@ func (uc *paymentUsecase) buildAppointmentPaymentBundle(
 		})
 	}
 
-	// Set slot status based on payment type
-	if req.UseOnlinePayment {
-		precond.Slot.Status = fhir_dto.SlotStatusBusyTentative
-	} else {
-		precond.Slot.Status = fhir_dto.SlotStatusBusyUnavailable
-	}
-	entries = append(entries, map[string]any{
-		"request": map[string]any{
-			"method": "PUT",
-			"url":    constvars.ResourceSlot + "/" + slotID,
-		},
-		"resource": precond.Slot,
-	})
+	// Slot status is updated directly by the caller (Phase 1: busy-tentative, Phase 2 PAID: busy-unavailable, offline: busy-unavailable)
+	// No slot entry is added here to avoid conflicts with the direct update.
 
 	appointmentID := uuid.New().String()
 	appointmentTypeText := "Offline"
@@ -429,6 +418,163 @@ func (uc *paymentUsecase) notifyProviderAsync(
 	}
 
 	uc.Log.Info("notifyProviderAsync webhook called successfully")
+}
+
+// getOverlappingNonFreeSlots filters FHIR Slot query results for slots whose time range
+// overlaps with [slotStart, slotEnd). Only non-free slots (busy-unavailable, busy-tentative)
+// are considered as conflicts. Free slots are ignored since they are dynamically generated.
+func getOverlappingNonFreeSlots(slots []fhir_dto.Slot, slotStart, slotEnd time.Time) []fhir_dto.Slot {
+	var overlapping []fhir_dto.Slot
+	for _, s := range slots {
+		if s.Status != fhir_dto.SlotStatusBusyUnavailable && s.Status != fhir_dto.SlotStatusBusyTentative {
+			continue
+		}
+		// Overlap condition: existing slot starts before requested ends AND existing slot ends after requested starts
+		if s.Start.Before(slotEnd) && s.End.After(slotStart) {
+			overlapping = append(overlapping, s)
+		}
+	}
+	return overlapping
+}
+
+// fetchPreconditionData fetches all resources needed for appointment payment bundle building.
+// Unlike ensurePreconditionsValid, it does NOT validate slot status (needed for callback where slot is busy-tentative).
+func (uc *paymentUsecase) fetchPreconditionData(
+	ctx context.Context,
+	req *requests.AppointmentPaymentRequest,
+) (*preconditionData, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+
+	slotID := strings.TrimPrefix(req.SlotID, "Slot/")
+	practitionerRoleID := strings.TrimPrefix(req.PractitionerRoleID, "PractitionerRole/")
+	patientID := strings.TrimPrefix(req.PatientID, "Patient/")
+	invoiceID := strings.TrimPrefix(req.InvoiceID, "Invoice/")
+
+	var (
+		fetchedSlot              *fhir_dto.Slot
+		fetchedPractitionerRole  *fhir_dto.PractitionerRole
+		fetchedHealthcareService *fhir_dto.HealthcareService
+		fetchedPatient           *fhir_dto.Patient
+		fetchedInvoices          []fhir_dto.Invoice
+		schedules                []fhir_dto.Schedule
+		schedulesErr             error
+	)
+
+	g, gctx := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
+		s, err := uc.SlotFhirClient.FindSlotByID(gctx, slotID)
+		if err != nil {
+			return &resourceFetchError{resource: "slot", err: err}
+		}
+		fetchedSlot = s
+		return nil
+	})
+
+	g.Go(func() error {
+		pr, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByID(gctx, practitionerRoleID)
+		if err != nil {
+			return &resourceFetchError{resource: "practitionerRole", err: err}
+		}
+		fetchedPractitionerRole = pr
+		return nil
+	})
+
+	g.Go(func() error {
+		p, err := uc.PatientFhirClient.FindPatientByID(gctx, patientID)
+		if err != nil {
+			return &resourceFetchError{resource: "patient", err: err}
+		}
+		fetchedPatient = p
+		return nil
+	})
+
+	g.Go(func() error {
+		inv, err := uc.InvoiceFhirClient.Search(gctx, contracts.InvoiceSearchParams{ID: invoiceID})
+		if err != nil {
+			return &resourceFetchError{resource: "invoice", err: err}
+		}
+		fetchedInvoices = inv
+		return nil
+	})
+
+	g.Go(func() error {
+		sched, err := uc.ScheduleFhirClient.FindScheduleByPractitionerRoleID(gctx, practitionerRoleID)
+		if err != nil {
+			schedulesErr = err
+			return nil
+		}
+		schedules = sched
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		resType := "unknown"
+		if fe, ok := err.(*resourceFetchError); ok {
+			resType = fe.resource
+		}
+		uc.Log.Error("fetchPreconditionData failed to fetch resource",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("resourceType", resType),
+			zap.Error(err),
+		)
+		return nil, exceptions.BuildNewCustomError(
+			fmt.Errorf("failed to fetch %s", resType),
+			constvars.StatusBadRequest,
+			"Failed to fetch required data. Please try again.",
+			"precondition fetch failed",
+		)
+	}
+
+	if len(fetchedInvoices) != 1 {
+		return nil, exceptions.BuildNewCustomError(
+			nil,
+			constvars.StatusNotFound,
+			"Invoice not found or multiple invoices found",
+			fmt.Sprintf("invoice %s not found or multiple invoices found", invoiceID),
+		)
+	}
+
+	// Fetch HealthcareService
+	hsID := strings.TrimPrefix(req.HealthcareServiceID, "HealthcareService/")
+	hs, hsErr := uc.fetchHealthcareService(ctx, hsID)
+	if hsErr != nil {
+		return nil, exceptions.BuildNewCustomError(
+			hsErr,
+			constvars.StatusInternalServerError,
+			"Failed to fetch healthcare service",
+			hsErr.Error(),
+		)
+	}
+	fetchedHealthcareService = hs
+
+	// Fetch Practitioner
+	practitionerRef := fetchedPractitionerRole.Practitioner.Reference
+	practitionerID := strings.TrimPrefix(practitionerRef, "Practitioner/")
+	practitioner, practErr := uc.PractitionerFhirClient.FindPractitionerByID(ctx, practitionerID)
+	if practErr != nil {
+		return nil, exceptions.BuildNewCustomError(
+			practErr,
+			constvars.StatusInternalServerError,
+			"failed to fetch practitioner",
+			"failed to fetch practitioner",
+		)
+	}
+
+	var schedule *fhir_dto.Schedule
+	if schedulesErr == nil && len(schedules) > 0 {
+		schedule = &schedules[0]
+	}
+
+	return &preconditionData{
+		Slot:              fetchedSlot,
+		PractitionerRole:  fetchedPractitionerRole,
+		HealthcareService: fetchedHealthcareService,
+		Practitioner:      practitioner,
+		Patient:           fetchedPatient,
+		Invoice:           &fetchedInvoices[0],
+		Schedule:          schedule,
+	}, nil
 }
 
 // formatMoney formats Money to display string
