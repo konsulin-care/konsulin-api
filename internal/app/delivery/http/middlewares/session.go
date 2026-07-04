@@ -12,10 +12,10 @@ import (
 
 // Deprecated: all context keys must use typed string, such as constvars.ContextKey
 const (
-	keyFHIRRole                               = "fhirRole"
-	keyFHIRID                                 = "fhirID"
-	keyRoles                                  = "roles"
-	keyUID                                    = "uid"
+	keyFHIRRole   = "fhirRole"
+	keyFHIRID     = "fhirID"
+	keyRoles      = "roles"
+	keyUID        = "uid"
 	keyActiveRole = "activeRole"
 )
 

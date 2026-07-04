@@ -25,10 +25,10 @@ import (
 	"konsulin-service/internal/app/services/shared/storage"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
-	"konsulin-service/internal/pkg/fhir_http_client"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
+	"konsulin-service/internal/pkg/fhir_http_client"
 
 	xendit "github.com/xendit/xendit-go/v7"
 	common "github.com/xendit/xendit-go/v7/common"
@@ -958,7 +958,8 @@ type appointmentExternalIDFields struct {
 }
 
 // parseAppointmentExternalID parses the new external_id format:
-//   appointment:{slotID}:{practitionerRoleID}:{patientID}:{invoiceID}:{healthcareServiceID}
+//
+//	appointment:{slotID}:{practitionerRoleID}:{patientID}:{invoiceID}:{healthcareServiceID}
 func parseAppointmentExternalID(externalID string) (appointmentExternalIDFields, error) {
 	parts := strings.Split(externalID, ":")
 	if len(parts) != 6 {
@@ -1455,13 +1456,13 @@ func (e *resourceFetchError) Unwrap() error { return e.err }
 
 // preconditionData holds all fetched resources needed for appointment payment
 type preconditionData struct {
-	Slot             *fhir_dto.Slot
-	PractitionerRole *fhir_dto.PractitionerRole
+	Slot              *fhir_dto.Slot
+	PractitionerRole  *fhir_dto.PractitionerRole
 	HealthcareService *fhir_dto.HealthcareService
-	Practitioner     *fhir_dto.Practitioner
-	Patient          *fhir_dto.Patient
-	Invoice          *fhir_dto.Invoice
-	Schedule         *fhir_dto.Schedule
+	Practitioner      *fhir_dto.Practitioner
+	Patient           *fhir_dto.Patient
+	Invoice           *fhir_dto.Invoice
+	Schedule          *fhir_dto.Schedule
 }
 
 // ensurePreconditionsValid fetches and validates all required resources

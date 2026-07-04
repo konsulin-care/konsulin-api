@@ -8,11 +8,11 @@ import (
 func TestAppointmentPaymentResponse_Marshaling(t *testing.T) {
 	t.Run("omits appointment and paymentNotice when empty with omitempty", func(t *testing.T) {
 		resp := AppointmentPaymentResponse{
-			Status:    201,
-			Message:   "Payment invoice created. Please complete payment to confirm your appointment.",
-			SlotID:    "Slot/abc-123",
+			Status:     201,
+			Message:    "Payment invoice created. Please complete payment to confirm your appointment.",
+			SlotID:     "Slot/abc-123",
 			PaymentURL: "https://xendit.test/inv/xyz",
-			ExpiresAt: "2026-07-04T11:00:00+07:00",
+			ExpiresAt:  "2026-07-04T11:00:00+07:00",
 		}
 
 		data, err := json.Marshal(resp)
