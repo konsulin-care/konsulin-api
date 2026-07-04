@@ -34,7 +34,6 @@ import (
 	common "github.com/xendit/xendit-go/v7/common"
 	xinvoice "github.com/xendit/xendit-go/v7/invoice"
 	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
 )
 
 type paymentUsecase struct {
@@ -1503,112 +1502,54 @@ func (uc *paymentUsecase) ensurePreconditionsValid(
 	isSuperadmin := slices.Contains(roles, constvars.KonsulinRoleSuperadmin)
 
 	slotID := strings.TrimPrefix(req.SlotID, "Slot/")
-	practitionerRoleID := strings.TrimPrefix(req.PractitionerRoleID, "PractitionerRole/")
-	patientID := strings.TrimPrefix(req.PatientID, "Patient/")
-	invoiceID := strings.TrimPrefix(req.InvoiceID, "Invoice/")
+	patientID := strings.TrimPrefix(req.PatientID, constvars.FHIRRefPrefixPatient)
+	invoiceID := strings.TrimPrefix(req.InvoiceID, constvars.FHIRRefPrefixInvoice)
 
-	// Concurrent fetches with early cancellation on first error
-	g, gctx := errgroup.WithContext(ctx)
-
-	var (
-		fetchedSlot              *fhir_dto.Slot
-		fetchedPractitionerRole  *fhir_dto.PractitionerRole
-		fetchedHealthcareService *fhir_dto.HealthcareService
-		fetchedPatient           *fhir_dto.Patient
-		fetchedInvoices          []fhir_dto.Invoice
-		schedules                []fhir_dto.Schedule
-		schedulesErr             error
-	)
-
-	g.Go(func() error {
-		s, err := uc.SlotFhirClient.FindSlotByID(gctx, slotID)
-		if err != nil {
-			return &resourceFetchError{resource: "slot", err: err}
-		}
-		fetchedSlot = s
-		return nil
-	})
-
-	g.Go(func() error {
-		pr, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByID(gctx, practitionerRoleID)
-		if err != nil {
-			return &resourceFetchError{resource: "practitionerRole", err: err}
-		}
-		fetchedPractitionerRole = pr
-		return nil
-	})
-
-	g.Go(func() error {
-		p, err := uc.PatientFhirClient.FindPatientByID(gctx, patientID)
-		if err != nil {
-			return &resourceFetchError{resource: "patient", err: err}
-		}
-		match := false
-		for _, identifier := range p.Identifier {
-			if identifier.Value == uid {
-				match = true
-				break
-			}
-		}
-		if !isSuperadmin && !match {
-			return &resourceFetchError{resource: "patient", err: errors.New("patient ID does not match with the current user")}
-		}
-		fetchedPatient = p
-		return nil
-	})
-
-	g.Go(func() error {
-		inv, err := uc.InvoiceFhirClient.Search(gctx, contracts.InvoiceSearchParams{ID: invoiceID})
-		if err != nil {
-			return &resourceFetchError{resource: "invoice", err: err}
-		}
-		fetchedInvoices = inv
-		return nil
-	})
-
-	g.Go(func() error {
-		sched, err := uc.ScheduleFhirClient.FindScheduleByPractitionerRoleID(gctx, practitionerRoleID)
-		if err != nil {
-			schedulesErr = err
-			return nil
-		}
-		schedules = sched
-		return nil
-	})
-
-	if err := g.Wait(); err != nil {
-		resType := "unknown"
-		unwrapped := err
-		if fe, ok := err.(*resourceFetchError); ok {
-			resType = fe.resource
-			unwrapped = fe.err
-		}
-		uc.Log.Error("paymentUsecase.ensurePreconditionsValid failed to fetch resource",
+	// Fetch patient with identity validation
+	fetchedPatient, pErr := uc.PatientFhirClient.FindPatientByID(ctx, patientID)
+	if pErr != nil {
+		uc.Log.Error("paymentUsecase.ensurePreconditionsValid failed to fetch patient",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("resourceType", resType),
-			zap.Error(unwrapped),
+			zap.Error(pErr),
 		)
 		return nil, exceptions.BuildNewCustomError(
-			unwrapped,
+			pErr,
 			constvars.StatusBadRequest,
-			unwrapped.Error(),
-			"precondition checks failed",
+			"Failed to fetch patient data",
+			"precondition: patient fetch failed",
 		)
 	}
-
-	if len(fetchedInvoices) != 1 {
+	match := false
+	for _, identifier := range fetchedPatient.Identifier {
+		if identifier.Value == uid {
+			match = true
+			break
+		}
+	}
+	if !isSuperadmin && !match {
+		err := errors.New("patient ID does not match with the current user")
+		uc.Log.Error("paymentUsecase.ensurePreconditionsValid patient mismatch",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
 		return nil, exceptions.BuildNewCustomError(
-			nil,
-			constvars.StatusNotFound,
-			"Invoice not found or multiple invoices found",
-			fmt.Sprintf("invoice %s not found or multiple invoices found", invoiceID),
+			err,
+			constvars.StatusBadRequest,
+			"Patient ID does not match with the current user",
+			"precondition: patient mismatch",
 		)
 	}
 
-	isInvoiceBelongsToPractitionerRole := slices.ContainsFunc(fetchedInvoices[0].Participant, func(p fhir_dto.InvoiceParticipant) bool {
+	// Fetch all other resources via shared helper
+	res, err := uc.fetchCommonResources(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Invoice validations
+	isInvoiceBelongsToPractitionerRole := slices.ContainsFunc(res.invoices[0].Participant, func(p fhir_dto.InvoiceParticipant) bool {
 		return p.Actor.Reference == req.PractitionerRoleID
 	})
-
 	if !isInvoiceBelongsToPractitionerRole {
 		return nil, exceptions.BuildNewCustomError(
 			nil,
@@ -1617,8 +1558,7 @@ func (uc *paymentUsecase) ensurePreconditionsValid(
 			fmt.Sprintf("invoice %s does not belong to the specified practitioner role", invoiceID),
 		)
 	}
-
-	if fetchedInvoices[0].TotalNet == nil || fetchedInvoices[0].TotalNet.Value <= 0 {
+	if res.invoices[0].TotalNet == nil || res.invoices[0].TotalNet.Value <= 0 {
 		return nil, exceptions.BuildNewCustomError(
 			nil,
 			constvars.StatusPreconditionFailed,
@@ -1627,35 +1567,33 @@ func (uc *paymentUsecase) ensurePreconditionsValid(
 		)
 	}
 
-	if fetchedSlot.Status != fhir_dto.SlotStatusFree {
+	// Slot validations
+	if res.slot.Status != fhir_dto.SlotStatusFree {
 		return nil, exceptions.BuildNewCustomError(
 			nil,
 			constvars.StatusConflict,
 			constvars.SlotNoLongerAvailableMessage,
-			fmt.Sprintf("slot %s has status %s, expected free", slotID, fetchedSlot.Status),
+			fmt.Sprintf("slot %s has status %s, expected free", slotID, res.slot.Status),
 		)
 	}
-
-	scheduleRef := fetchedSlot.Schedule.Reference
-	if schedulesErr != nil || len(schedules) == 0 {
+	scheduleRef := res.slot.Schedule.Reference
+	if res.schedulesErr != nil || len(res.schedules) == 0 {
 		return nil, exceptions.BuildNewCustomError(
-			schedulesErr,
+			res.schedulesErr,
 			constvars.StatusBadRequest,
 			"Failed to validate slot ownership",
 			"failed to find schedule for practitioner role",
 		)
 	}
-
 	matchFound := false
-	var schedule *fhir_dto.Schedule
-	for i := range schedules {
-		if "Schedule/"+schedules[i].ID == scheduleRef {
+	var matchedSchedule *fhir_dto.Schedule
+	for i := range res.schedules {
+		if "Schedule/"+res.schedules[i].ID == scheduleRef {
 			matchFound = true
-			schedule = &schedules[i]
+			matchedSchedule = &res.schedules[i]
 			break
 		}
 	}
-
 	if !matchFound {
 		return nil, exceptions.BuildNewCustomError(
 			nil,
@@ -1664,49 +1602,24 @@ func (uc *paymentUsecase) ensurePreconditionsValid(
 			fmt.Sprintf("slot schedule %s does not match practitioner role", scheduleRef),
 		)
 	}
-
-	nowLocal := time.Now().In(fetchedSlot.Start.Location())
-	if fetchedSlot.Start.Before(nowLocal) || fetchedSlot.Start.Equal(nowLocal) {
+	nowLocal := time.Now().In(res.slot.Start.Location())
+	if res.slot.Start.Before(nowLocal) || res.slot.Start.Equal(nowLocal) {
 		return nil, exceptions.BuildNewCustomError(
 			nil,
 			constvars.StatusBadRequest,
 			constvars.SlotInPastMessage,
-			fmt.Sprintf("slot start time %s is not in the future", fetchedSlot.Start.Format(time.RFC3339)),
-		)
-	}
-
-	// Fetch HealthcareService for schedule duration
-	hsID := strings.TrimPrefix(req.HealthcareServiceID, constvars.FHIRRefPrefixHealthcareService)
-	fetchedHealthcareService, hsErr := uc.fetchHealthcareService(ctx, hsID)
-	if hsErr != nil {
-		return nil, exceptions.BuildNewCustomError(
-			hsErr,
-			constvars.StatusInternalServerError,
-			"Failed to fetch healthcare service",
-			hsErr.Error(),
-		)
-	}
-
-	practitionerRef := fetchedPractitionerRole.Practitioner.Reference
-	practitionerID := strings.TrimPrefix(practitionerRef, constvars.FHIRRefPrefixPractitioner)
-	practitioner, practErr := uc.PractitionerFhirClient.FindPractitionerByID(ctx, practitionerID)
-	if practErr != nil {
-		return nil, exceptions.BuildNewCustomError(
-			practErr,
-			constvars.StatusInternalServerError,
-			"failed to fetch practitioner",
-			"failed to fetch practitioner",
+			fmt.Sprintf("slot start time %s is not in the future", res.slot.Start.Format(time.RFC3339)),
 		)
 	}
 
 	return &preconditionData{
-		Slot:              fetchedSlot,
-		PractitionerRole:  fetchedPractitionerRole,
-		HealthcareService: fetchedHealthcareService,
-		Practitioner:      practitioner,
+		Slot:              res.slot,
+		PractitionerRole:  res.practitionerRole,
+		HealthcareService: res.healthcareService,
+		Practitioner:      res.practitioner,
 		Patient:           fetchedPatient,
-		Invoice:           &fetchedInvoices[0],
-		Schedule:          schedule,
+		Invoice:           &res.invoices[0],
+		Schedule:          matchedSchedule,
 	}, nil
 }
 

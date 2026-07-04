@@ -445,29 +445,84 @@ func (uc *paymentUsecase) fetchPreconditionData(
 ) (*preconditionData, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 
+	// Fetch patient separately since no identity validation is needed
+	patientID := strings.TrimPrefix(req.PatientID, constvars.FHIRRefPrefixPatient)
+	fetchedPatient, pErr := uc.PatientFhirClient.FindPatientByID(ctx, patientID)
+	if pErr != nil {
+		uc.Log.Error("fetchPreconditionData failed to fetch patient",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(pErr),
+		)
+		return nil, exceptions.BuildNewCustomError(
+			pErr,
+			constvars.StatusBadRequest,
+			"Failed to fetch patient data. Please try again.",
+			"precondition fetch failed",
+		)
+	}
+
+	res, err := uc.fetchCommonResources(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	var schedule *fhir_dto.Schedule
+	if res.schedulesErr == nil && len(res.schedules) > 0 {
+		schedule = &res.schedules[0]
+	}
+
+	return &preconditionData{
+		Slot:              res.slot,
+		PractitionerRole:  res.practitionerRole,
+		HealthcareService: res.healthcareService,
+		Practitioner:      res.practitioner,
+		Patient:           fetchedPatient,
+		Invoice:           &res.invoices[0],
+		Schedule:          schedule,
+	}, nil
+}
+
+// formatMoney formats Money to display string
+func formatMoney(money *fhir_dto.Money) string {
+	if money == nil {
+		return "IDR 0"
+	}
+	return fmt.Sprintf("%s %.0f", money.Currency, money.Value)
+}
+
+// fetchedResources holds all resources fetched by fetchCommonResources.
+type fetchedResources struct {
+	slot              *fhir_dto.Slot
+	practitionerRole  *fhir_dto.PractitionerRole
+	healthcareService *fhir_dto.HealthcareService
+	practitioner      *fhir_dto.Practitioner
+	invoices          []fhir_dto.Invoice
+	schedules         []fhir_dto.Schedule
+	schedulesErr      error
+}
+
+// fetchCommonResources fetches all resources shared by fetchPreconditionData and
+// ensurePreconditionsValid: slot, practitioner role, invoice, schedule, healthcare
+// service, and practitioner. Patient fetch is handled by the caller.
+func (uc *paymentUsecase) fetchCommonResources(
+	ctx context.Context,
+	req *requests.AppointmentPaymentRequest,
+) (*fetchedResources, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+
 	slotID := strings.TrimPrefix(req.SlotID, "Slot/")
 	practitionerRoleID := strings.TrimPrefix(req.PractitionerRoleID, constvars.FHIRRefPrefixPractitionerRole)
-	patientID := strings.TrimPrefix(req.PatientID, constvars.FHIRRefPrefixPatient)
 	invoiceID := strings.TrimPrefix(req.InvoiceID, constvars.FHIRRefPrefixInvoice)
 
-	var (
-		fetchedSlot              *fhir_dto.Slot
-		fetchedPractitionerRole  *fhir_dto.PractitionerRole
-		fetchedHealthcareService *fhir_dto.HealthcareService
-		fetchedPatient           *fhir_dto.Patient
-		fetchedInvoices          []fhir_dto.Invoice
-		schedules                []fhir_dto.Schedule
-		schedulesErr             error
-	)
-
 	g, gctx := errgroup.WithContext(ctx)
+	var res fetchedResources
 
 	g.Go(func() error {
 		s, err := uc.SlotFhirClient.FindSlotByID(gctx, slotID)
 		if err != nil {
 			return &resourceFetchError{resource: "slot", err: err}
 		}
-		fetchedSlot = s
+		res.slot = s
 		return nil
 	})
 
@@ -476,16 +531,7 @@ func (uc *paymentUsecase) fetchPreconditionData(
 		if err != nil {
 			return &resourceFetchError{resource: "practitionerRole", err: err}
 		}
-		fetchedPractitionerRole = pr
-		return nil
-	})
-
-	g.Go(func() error {
-		p, err := uc.PatientFhirClient.FindPatientByID(gctx, patientID)
-		if err != nil {
-			return &resourceFetchError{resource: "patient", err: err}
-		}
-		fetchedPatient = p
+		res.practitionerRole = pr
 		return nil
 	})
 
@@ -494,17 +540,17 @@ func (uc *paymentUsecase) fetchPreconditionData(
 		if err != nil {
 			return &resourceFetchError{resource: "invoice", err: err}
 		}
-		fetchedInvoices = inv
+		res.invoices = inv
 		return nil
 	})
 
 	g.Go(func() error {
 		sched, err := uc.ScheduleFhirClient.FindScheduleByPractitionerRoleID(gctx, practitionerRoleID)
 		if err != nil {
-			schedulesErr = err
+			res.schedulesErr = err
 			return nil
 		}
-		schedules = sched
+		res.schedules = sched
 		return nil
 	})
 
@@ -513,7 +559,7 @@ func (uc *paymentUsecase) fetchPreconditionData(
 		if fe, ok := err.(*resourceFetchError); ok {
 			resType = fe.resource
 		}
-		uc.Log.Error("fetchPreconditionData failed to fetch resource",
+		uc.Log.Error("fetchCommonResources failed to fetch resource",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String("resourceType", resType),
 			zap.Error(err),
@@ -526,7 +572,7 @@ func (uc *paymentUsecase) fetchPreconditionData(
 		)
 	}
 
-	if len(fetchedInvoices) != 1 {
+	if len(res.invoices) != 1 {
 		return nil, exceptions.BuildNewCustomError(
 			nil,
 			constvars.StatusNotFound,
@@ -546,10 +592,10 @@ func (uc *paymentUsecase) fetchPreconditionData(
 			hsErr.Error(),
 		)
 	}
-	fetchedHealthcareService = hs
+	res.healthcareService = hs
 
 	// Fetch Practitioner
-	practitionerRef := fetchedPractitionerRole.Practitioner.Reference
+	practitionerRef := res.practitionerRole.Practitioner.Reference
 	practitionerID := strings.TrimPrefix(practitionerRef, constvars.FHIRRefPrefixPractitioner)
 	practitioner, practErr := uc.PractitionerFhirClient.FindPractitionerByID(ctx, practitionerID)
 	if practErr != nil {
@@ -560,27 +606,7 @@ func (uc *paymentUsecase) fetchPreconditionData(
 			"failed to fetch practitioner",
 		)
 	}
+	res.practitioner = practitioner
 
-	var schedule *fhir_dto.Schedule
-	if schedulesErr == nil && len(schedules) > 0 {
-		schedule = &schedules[0]
-	}
-
-	return &preconditionData{
-		Slot:              fetchedSlot,
-		PractitionerRole:  fetchedPractitionerRole,
-		HealthcareService: fetchedHealthcareService,
-		Practitioner:      practitioner,
-		Patient:           fetchedPatient,
-		Invoice:           &fetchedInvoices[0],
-		Schedule:          schedule,
-	}, nil
-}
-
-// formatMoney formats Money to display string
-func formatMoney(money *fhir_dto.Money) string {
-	if money == nil {
-		return "IDR 0"
-	}
-	return fmt.Sprintf("%s %.0f", money.Currency, money.Value)
+	return &res, nil
 }
