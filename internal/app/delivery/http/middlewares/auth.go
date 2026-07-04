@@ -249,7 +249,7 @@ func (m *Middlewares) validatePractitionerOwnershipInBody(body []byte, practitio
 	return nil
 }
 
-func (m *Middlewares) resolveFHIRIdentity(ctx context.Context, uid string) (role string, id string, err error) {
+func (m *Middlewares) resolveFHIRIdentity(ctx context.Context, uid string) (role, id string, err error) {
 	activeRole, _ := ctx.Value(keyActiveRole).(string)
 
 	if activeRole == constvars.KonsulinRolePatient {

@@ -641,7 +641,7 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 	)
 
 	// 1) Reject guest role
-	roles, _ := ctx.Value("roles").([]string)
+	roles, _ := ctx.Value(constvars.CONTEXT_FHIR_ROLE).([]string)
 	if len(roles) == 0 || (len(roles) == 1 && strings.EqualFold(roles[0], constvars.KonsulinRoleGuest)) {
 		return nil, exceptions.ErrAuthInvalidRole(fmt.Errorf("guest not allowed"))
 	}
@@ -658,7 +658,7 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 	}
 
 	// 2) Extract uid from context
-	uid, _ := ctx.Value("uid").(string)
+	uid, _ := ctx.Value(constvars.CONTEXT_UID).(string)
 
 	// 3) Extract email from req.Body
 	var raw map[string]interface{}
@@ -1491,21 +1491,8 @@ type preconditionData struct {
 	Schedule          *fhir_dto.Schedule
 }
 
-// ensurePreconditionsValid fetches and validates all required resources
-func (uc *paymentUsecase) ensurePreconditionsValid(
-	ctx context.Context,
-	req *requests.AppointmentPaymentRequest,
-) (*preconditionData, error) {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	uid, _ := ctx.Value(constvars.CONTEXT_UID).(string)
-	roles, _ := ctx.Value(constvars.CONTEXT_FHIR_ROLE).([]string)
-	isSuperadmin := slices.Contains(roles, constvars.KonsulinRoleSuperadmin)
-
-	slotID := strings.TrimPrefix(req.SlotID, "Slot/")
-	patientID := strings.TrimPrefix(req.PatientID, constvars.FHIRRefPrefixPatient)
-	invoiceID := strings.TrimPrefix(req.InvoiceID, constvars.FHIRRefPrefixInvoice)
-
-	// Fetch patient with identity validation
+// validatePatientIdentity fetches the patient and verifies the UID matches (or is superadmin).
+func (uc *paymentUsecase) validatePatientIdentity(ctx context.Context, requestID, patientID, uid string, isSuperadmin bool) (*fhir_dto.Patient, error) {
 	fetchedPatient, pErr := uc.PatientFhirClient.FindPatientByID(ctx, patientID)
 	if pErr != nil {
 		uc.Log.Error("paymentUsecase.ensurePreconditionsValid failed to fetch patient",
@@ -1539,8 +1526,73 @@ func (uc *paymentUsecase) ensurePreconditionsValid(
 			"precondition: patient mismatch",
 		)
 	}
+	return fetchedPatient, nil
+}
 
-	// Fetch all other resources via shared helper
+// validateSlotEligibility checks slot status, schedule ownership, and that the slot is in the future.
+func (uc *paymentUsecase) validateSlotEligibility(slot *fhir_dto.Slot, schedules []fhir_dto.Schedule, schedulesErr error, slotID, requestID string) (*fhir_dto.Schedule, error) {
+	if slot.Status != fhir_dto.SlotStatusFree {
+		return nil, exceptions.BuildNewCustomError(
+			nil,
+			constvars.StatusConflict,
+			constvars.SlotNoLongerAvailableMessage,
+			fmt.Sprintf("slot %s has status %s, expected free", slotID, slot.Status),
+		)
+	}
+	scheduleRef := slot.Schedule.Reference
+	if schedulesErr != nil || len(schedules) == 0 {
+		return nil, exceptions.BuildNewCustomError(
+			schedulesErr,
+			constvars.StatusBadRequest,
+			"Failed to validate slot ownership",
+			"failed to find schedule for practitioner role",
+		)
+	}
+	var matchedSchedule *fhir_dto.Schedule
+	for i := range schedules {
+		if "Schedule/"+schedules[i].ID == scheduleRef {
+			matchedSchedule = &schedules[i]
+			break
+		}
+	}
+	if matchedSchedule == nil {
+		return nil, exceptions.BuildNewCustomError(
+			nil,
+			constvars.StatusBadRequest,
+			"Slot does not belong to the specified practitioner role",
+			fmt.Sprintf("slot schedule %s does not match practitioner role", scheduleRef),
+		)
+	}
+	nowLocal := time.Now().In(slot.Start.Location())
+	if slot.Start.Before(nowLocal) || slot.Start.Equal(nowLocal) {
+		return nil, exceptions.BuildNewCustomError(
+			nil,
+			constvars.StatusBadRequest,
+			constvars.SlotInPastMessage,
+			fmt.Sprintf("slot start time %s is not in the future", slot.Start.Format(time.RFC3339)),
+		)
+	}
+	return matchedSchedule, nil
+}
+
+// ensurePreconditionsValid fetches and validates all required resources
+func (uc *paymentUsecase) ensurePreconditionsValid(
+	ctx context.Context,
+	req *requests.AppointmentPaymentRequest,
+) (*preconditionData, error) {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	uid, _ := ctx.Value(constvars.CONTEXT_UID).(string)
+	roles, _ := ctx.Value(constvars.CONTEXT_FHIR_ROLE).([]string)
+	isSuperadmin := slices.Contains(roles, constvars.KonsulinRoleSuperadmin)
+
+	patientID := strings.TrimPrefix(req.PatientID, constvars.FHIRRefPrefixPatient)
+	invoiceID := strings.TrimPrefix(req.InvoiceID, constvars.FHIRRefPrefixInvoice)
+
+	fetchedPatient, err := uc.validatePatientIdentity(ctx, requestID, patientID, uid, isSuperadmin)
+	if err != nil {
+		return nil, err
+	}
+
 	res, err := uc.fetchCommonResources(ctx, req)
 	if err != nil {
 		return nil, err
@@ -1567,49 +1619,10 @@ func (uc *paymentUsecase) ensurePreconditionsValid(
 		)
 	}
 
-	// Slot validations
-	if res.slot.Status != fhir_dto.SlotStatusFree {
-		return nil, exceptions.BuildNewCustomError(
-			nil,
-			constvars.StatusConflict,
-			constvars.SlotNoLongerAvailableMessage,
-			fmt.Sprintf("slot %s has status %s, expected free", slotID, res.slot.Status),
-		)
-	}
-	scheduleRef := res.slot.Schedule.Reference
-	if res.schedulesErr != nil || len(res.schedules) == 0 {
-		return nil, exceptions.BuildNewCustomError(
-			res.schedulesErr,
-			constvars.StatusBadRequest,
-			"Failed to validate slot ownership",
-			"failed to find schedule for practitioner role",
-		)
-	}
-	matchFound := false
-	var matchedSchedule *fhir_dto.Schedule
-	for i := range res.schedules {
-		if "Schedule/"+res.schedules[i].ID == scheduleRef {
-			matchFound = true
-			matchedSchedule = &res.schedules[i]
-			break
-		}
-	}
-	if !matchFound {
-		return nil, exceptions.BuildNewCustomError(
-			nil,
-			constvars.StatusBadRequest,
-			"Slot does not belong to the specified practitioner role",
-			fmt.Sprintf("slot schedule %s does not match practitioner role", scheduleRef),
-		)
-	}
-	nowLocal := time.Now().In(res.slot.Start.Location())
-	if res.slot.Start.Before(nowLocal) || res.slot.Start.Equal(nowLocal) {
-		return nil, exceptions.BuildNewCustomError(
-			nil,
-			constvars.StatusBadRequest,
-			constvars.SlotInPastMessage,
-			fmt.Sprintf("slot start time %s is not in the future", res.slot.Start.Format(time.RFC3339)),
-		)
+	slotID := strings.TrimPrefix(req.SlotID, "Slot/")
+	matchedSchedule, err := uc.validateSlotEligibility(res.slot, res.schedules, res.schedulesErr, slotID, requestID)
+	if err != nil {
+		return nil, err
 	}
 
 	return &preconditionData{

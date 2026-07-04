@@ -10,6 +10,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// contextKey is a custom type for context keys to avoid collisions with other packages.
+type contextKey string
+
 // Deprecated: all context keys must use typed string, such as constvars.ContextKey
 const (
 	keyFHIRRole   = "fhirRole"
@@ -126,6 +129,8 @@ func (m *Middlewares) EnsureAnonymousSession(next http.Handler) http.Handler {
 
 			ctx := context.WithValue(r.Context(), keyRoles, []string{constvars.KonsulinRoleGuest})
 			ctx = context.WithValue(ctx, keyUID, "anonymous")
+			ctx = context.WithValue(ctx, constvars.CONTEXT_FHIR_ROLE, []string{constvars.KonsulinRoleGuest})
+			ctx = context.WithValue(ctx, constvars.CONTEXT_UID, "anonymous")
 
 			m.Log.Info("Ensuring anonymous session for request",
 				zap.String("ip", r.RemoteAddr),

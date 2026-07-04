@@ -68,7 +68,7 @@ func TestFHIRHTTPClient_Do_Status3xx_Redirect(t *testing.T) {
 	logger := zap.NewNop()
 	fhirClient := New(logger)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		// 3xx redirects should be treated as errors by the FHIR client
 		w.WriteHeader(http.StatusTemporaryRedirect) // 307
 		w.Write([]byte(`<html>Redirect</html>`))
@@ -84,7 +84,7 @@ func TestFHIRHTTPClient_Do_Status3xx(t *testing.T) {
 	logger := zap.NewNop()
 	fhirClient := New(logger)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusMovedPermanently) // 301
 		w.Write([]byte(`<html>Redirect</html>`))
 	}))
@@ -99,7 +99,7 @@ func TestFHIRHTTPClient_Do_Status4xx_WithOperationOutcome(t *testing.T) {
 	logger := zap.NewNop()
 	fhirClient := New(logger)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(`{"resourceType":"OperationOutcome","issue":[{"severity":"error","diagnostics":"Resource HealthcareService/not-found not found"}]}`))
 	}))
@@ -115,7 +115,7 @@ func TestFHIRHTTPClient_Do_Status5xx_WithoutOperationOutcome(t *testing.T) {
 	logger := zap.NewNop()
 	fhirClient := New(logger)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`<html>Server Error</html>`))
 	}))
@@ -138,7 +138,7 @@ func TestFHIRHTTPClient_Do_ContextCancelled(t *testing.T) {
 	logger := zap.NewNop()
 	fhirClient := New(logger)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()
 	}))
 	defer server.Close()
@@ -175,7 +175,7 @@ func TestOperationOutcomeParsing(t *testing.T) {
 	logger := zap.NewNop()
 	fhirClient := New(logger)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		outcome := fhir_dto.OperationOutcome{
 			ResourceType: "OperationOutcome",
@@ -203,7 +203,7 @@ func TestDo_RequestCancelledByServer(t *testing.T) {
 	logger := zap.NewNop()
 	fhirClient := New(logger)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		// Simulate an unexpected EOF by closing connection
 		hj, ok := w.(http.Hijacker)
 		if ok {
@@ -229,7 +229,7 @@ func TestDo_ReturnsRawBytes(t *testing.T) {
 
 	expectedBody := `{"resourceType":"HealthcareService","id":"hs-999","name":"General Consultation","extension":[]}`
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(expectedBody))
 	}))
@@ -245,7 +245,7 @@ func TestDo_ErrorWrapping(t *testing.T) {
 	logger := zap.NewNop()
 	fhirClient := New(logger)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(`{"resourceType":"OperationOutcome","issue":[{"severity":"error","diagnostics":"not found"}]}`))
 	}))

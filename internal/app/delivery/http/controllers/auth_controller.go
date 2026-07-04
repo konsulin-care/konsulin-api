@@ -396,6 +396,31 @@ func (ctrl *AuthController) ClaimAnonymousResources(w http.ResponseWriter, r *ht
 	})
 }
 
+// setRoleBody holds the role value from the request body.
+type setRoleBody struct {
+	Role string `json:"role"`
+}
+
+// parseSetRoleBody decodes and validates the role from the request body.
+func (ctrl *AuthController) parseSetRoleBody(r *http.Request) (string, error) {
+	var body setRoleBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		return "", fmt.Errorf("failed to parse body: %w", err)
+	}
+	if body.Role == "" {
+		return "", fmt.Errorf("role is required")
+	}
+	return body.Role, nil
+}
+
+// validateUserRole checks that the requested role is in the user's assigned roles.
+func validateUserRole(role string, userRoles []string) error {
+	if !slices.Contains(userRoles, role) {
+		return fmt.Errorf("role %s is not assigned to user", role)
+	}
+	return nil
+}
+
 // SetActiveRole sets the active role in the SuperTokens session's access token
 // payload so downstream middleware reads it instead of iterating all roles.
 func (ctrl *AuthController) SetActiveRole(w http.ResponseWriter, r *http.Request) {
@@ -406,21 +431,13 @@ func (ctrl *AuthController) SetActiveRole(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var body struct {
-		Role string `json:"role"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	role, err := ctrl.parseSetRoleBody(r)
+	if err != nil {
 		ctrl.Log.Error("AuthController.SetActiveRole failed to parse body",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
-		return
-	}
-
-	if body.Role == "" {
-		ctrl.Log.Error("AuthController.SetActiveRole missing role")
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(fmt.Errorf("role is required")))
 		return
 	}
 
@@ -435,7 +452,6 @@ func (ctrl *AuthController) SetActiveRole(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Validate the role is in the user's assigned roles.
 	userRoles, roleErr := getUserRolesFromSession(sess)
 	if roleErr != nil {
 		ctrl.Log.Error("AuthController.SetActiveRole failed to parse user roles",
@@ -445,19 +461,17 @@ func (ctrl *AuthController) SetActiveRole(w http.ResponseWriter, r *http.Request
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(fmt.Errorf("could not verify user roles")))
 		return
 	}
-	if !slices.Contains(userRoles, body.Role) {
+	if err := validateUserRole(role, userRoles); err != nil {
 		ctrl.Log.Warn("AuthController.SetActiveRole role not assigned",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("role", body.Role),
+			zap.String("role", role),
 		)
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(fmt.Errorf("role %s is not assigned to user", body.Role)))
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
 		return
 	}
 
-	// MergeIntoAccessTokenPayload regenerates the access token and writes new
-	// Set-Cookie headers (sAccessToken, sFrontToken) to w automatically.
 	if err := sess.MergeIntoAccessTokenPayload(map[string]interface{}{
-		constvars.SupertokenPayloadActiveRoleKey: body.Role,
+		constvars.SupertokenPayloadActiveRoleKey: role,
 	}); err != nil {
 		ctrl.Log.Error("AuthController.SetActiveRole merge payload failed",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -469,7 +483,7 @@ func (ctrl *AuthController) SetActiveRole(w http.ResponseWriter, r *http.Request
 
 	ctrl.Log.Info("AuthController.SetActiveRole succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String("role", body.Role),
+		zap.String("role", role),
 	)
 	utils.BuildSuccessResponse(w, http.StatusOK, "active role set", nil)
 }

@@ -80,7 +80,7 @@ func TestGetOverlappingNonFreeSlots(t *testing.T) {
 	slotEnd := time.Date(2026, 7, 4, 10, 0, 0, 0, time.UTC)
 
 	t.Run("no overlap when no non-free slots exist", func(t *testing.T) {
-		slots := []fhir_dto.Slot{}
+		var slots []fhir_dto.Slot
 		result := getOverlappingNonFreeSlots(slots, slotStart, slotEnd)
 		assertOverlapCount(t, len(result), 0)
 	})

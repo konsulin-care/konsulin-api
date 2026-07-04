@@ -15,26 +15,26 @@ type mockPatientClient struct {
 	err      error
 }
 
-func (m *mockPatientClient) FindPatientByIdentifier(_ context.Context, identifier string) ([]fhir_dto.Patient, error) {
+func (m *mockPatientClient) FindPatientByIdentifier(_ context.Context, _ string) ([]fhir_dto.Patient, error) {
 	return m.patients, m.err
 }
 
-func (m *mockPatientClient) FindPatientByID(_ context.Context, _ string) (*fhir_dto.Patient, error) {
+func (_ *mockPatientClient) FindPatientByID(_ context.Context, _ string) (*fhir_dto.Patient, error) {
 	return nil, nil
 }
-func (m *mockPatientClient) FindPatientByEmail(_ context.Context, _ string) ([]fhir_dto.Patient, error) {
+func (_ *mockPatientClient) FindPatientByEmail(_ context.Context, _ string) ([]fhir_dto.Patient, error) {
 	return nil, nil
 }
-func (m *mockPatientClient) FindPatientByPhone(_ context.Context, _ string) ([]fhir_dto.Patient, error) {
+func (_ *mockPatientClient) FindPatientByPhone(_ context.Context, _ string) ([]fhir_dto.Patient, error) {
 	return nil, nil
 }
-func (m *mockPatientClient) CreatePatient(_ context.Context, _ *fhir_dto.Patient) (*fhir_dto.Patient, error) {
+func (_ *mockPatientClient) CreatePatient(_ context.Context, _ *fhir_dto.Patient) (*fhir_dto.Patient, error) {
 	return nil, nil
 }
-func (m *mockPatientClient) UpdatePatient(_ context.Context, _ *fhir_dto.Patient) (*fhir_dto.Patient, error) {
+func (_ *mockPatientClient) UpdatePatient(_ context.Context, _ *fhir_dto.Patient) (*fhir_dto.Patient, error) {
 	return nil, nil
 }
-func (m *mockPatientClient) PatchPatient(_ context.Context, _ *fhir_dto.Patient) (*fhir_dto.Patient, error) {
+func (_ *mockPatientClient) PatchPatient(_ context.Context, _ *fhir_dto.Patient) (*fhir_dto.Patient, error) {
 	return nil, nil
 }
 
@@ -44,26 +44,26 @@ type mockPractitionerClient struct {
 	err           error
 }
 
-func (m *mockPractitionerClient) FindPractitionerByIdentifier(_ context.Context, system, value string) ([]fhir_dto.Practitioner, error) {
+func (m *mockPractitionerClient) FindPractitionerByIdentifier(_ context.Context, _, _ string) ([]fhir_dto.Practitioner, error) {
 	return m.practitioners, m.err
 }
 
-func (m *mockPractitionerClient) FindPractitionerByID(_ context.Context, _ string) (*fhir_dto.Practitioner, error) {
+func (_ *mockPractitionerClient) FindPractitionerByID(_ context.Context, _ string) (*fhir_dto.Practitioner, error) {
 	return nil, nil
 }
-func (m *mockPractitionerClient) FindPractitionerByEmail(_ context.Context, _ string) ([]fhir_dto.Practitioner, error) {
+func (_ *mockPractitionerClient) FindPractitionerByEmail(_ context.Context, _ string) ([]fhir_dto.Practitioner, error) {
 	return nil, nil
 }
-func (m *mockPractitionerClient) FindPractitionerByPhone(_ context.Context, _ string) ([]fhir_dto.Practitioner, error) {
+func (_ *mockPractitionerClient) FindPractitionerByPhone(_ context.Context, _ string) ([]fhir_dto.Practitioner, error) {
 	return nil, nil
 }
-func (m *mockPractitionerClient) CreatePractitioner(_ context.Context, _ *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
+func (_ *mockPractitionerClient) CreatePractitioner(_ context.Context, _ *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
 	return nil, nil
 }
-func (m *mockPractitionerClient) UpdatePractitioner(_ context.Context, _ *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
+func (_ *mockPractitionerClient) UpdatePractitioner(_ context.Context, _ *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
 	return nil, nil
 }
-func (m *mockPractitionerClient) PatchPractitioner(_ context.Context, _ *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
+func (_ *mockPractitionerClient) PatchPractitioner(_ context.Context, _ *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
 	return nil, nil
 }
 

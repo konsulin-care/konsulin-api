@@ -193,6 +193,104 @@ func (uc *paymentUsecase) buildAppointmentPaymentBundle(
 	return entries, appointmentID, paymentNoticeID, nil
 }
 
+// buildDayAdjustmentEntries computes slot adjustments for a single day within an appointment window.
+func (uc *paymentUsecase) buildDayAdjustmentEntries(
+	ctx context.Context,
+	requestID string,
+	precond *preconditionData,
+	role fhir_dto.PractitionerRole,
+	schedule fhir_dto.Schedule,
+	day time.Time,
+	dayEnd time.Time,
+	slotMinutes int,
+	bufferMinutes int,
+) ([]map[string]any, error) {
+	var entries []map[string]any
+
+	// Clip appointment window to the day segment
+	segmentStart := precond.Slot.Start
+	if segmentStart.Before(day) {
+		segmentStart = day
+	}
+	segmentEnd := precond.Slot.End
+	if segmentEnd.After(dayEnd) {
+		segmentEnd = dayEnd
+	}
+	if !segmentEnd.After(segmentStart) {
+		return entries, nil
+	}
+
+	params := contracts.SlotSearchParams{
+		Start:  "lt" + dayEnd.Format(time.RFC3339),
+		End:    "gt" + day.Format(time.RFC3339),
+		Status: "",
+	}
+
+	existingSlots, err := uc.SlotFhirClient.FindSlotsByScheduleWithQuery(ctx, schedule.ID, params)
+	if err != nil {
+		uc.Log.Warn("buildDayAdjustmentEntries failed to fetch existing slots",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("roleId", role.ID),
+			zap.Error(err),
+		)
+		return nil, nil
+	}
+
+	toDelete, toCreate, adjErr := slot.BuildSlotAdjustmentForAppointment(
+		role,
+		schedule,
+		existingSlots,
+		segmentStart,
+		segmentEnd,
+		precond.Slot.ID,
+		slotMinutes,
+		bufferMinutes,
+	)
+	if adjErr != nil {
+		uc.Log.Warn("buildDayAdjustmentEntries failed to compute adjustments",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("roleId", role.ID),
+			zap.Error(adjErr),
+		)
+		return nil, nil
+	}
+
+	for _, slotID := range toDelete {
+		if slotID == precond.Slot.ID {
+			continue
+		}
+		entries = append(entries, map[string]any{
+			"request": map[string]any{
+				"method": "DELETE",
+				"url":    constvars.ResourceSlot + "/" + slotID,
+			},
+		})
+	}
+
+	for _, newSlot := range toCreate {
+		entries = append(entries, map[string]any{
+			"request": map[string]any{
+				"method": "POST",
+				"url":    constvars.ResourceSlot,
+			},
+			"resource": map[string]any{
+				"resourceType": constvars.ResourceSlot,
+				"schedule": map[string]any{
+					"reference": "Schedule/" + schedule.ID,
+				},
+				"status": string(newSlot.Status),
+				"start":  newSlot.Start.Format(time.RFC3339),
+				"end":    newSlot.End.Format(time.RFC3339),
+				"meta": map[string]any{
+					"tag": []map[string]any{{"code": slot.SlotTagSystemGenerated}},
+				},
+			},
+		})
+	}
+
+	return entries, nil
+}
+
 // buildSlotAdjustmentEntries generates bundle entries for slot adjustments across all practitioner roles
 func (uc *paymentUsecase) buildSlotAdjustmentEntries(
 	ctx context.Context,
@@ -228,7 +326,6 @@ func (uc *paymentUsecase) buildSlotAdjustmentEntries(
 			continue
 		}
 
-		// silently using only the first schedule for the role
 		schedule := schedules[0]
 
 		loc, tzErr := role.GetPreferredTimezone()
@@ -244,91 +341,12 @@ func (uc *paymentUsecase) buildSlotAdjustmentEntries(
 		slotStartLocal := precond.Slot.Start.In(loc)
 		slotEndLocal := precond.Slot.End.In(loc)
 		for day := time.Date(slotStartLocal.Year(), slotStartLocal.Month(), slotStartLocal.Day(), 0, 0, 0, 0, loc); !day.After(time.Date(slotEndLocal.Year(), slotEndLocal.Month(), slotEndLocal.Day(), 0, 0, 0, 0, loc)); day = day.Add(24 * time.Hour) {
-			dayStart := day
-			dayEnd := dayStart.Add(24 * time.Hour)
-
-			// Clip appointment window to the day segment
-			segmentStart := precond.Slot.Start
-			if segmentStart.Before(dayStart) {
-				segmentStart = dayStart
+			dayEnd := day.Add(24 * time.Hour)
+			dayEntries, dayErr := uc.buildDayAdjustmentEntries(ctx, requestID, precond, role, schedule, day, dayEnd, slotMinutes, bufferMinutes)
+			if dayErr != nil {
+				return nil, dayErr
 			}
-			segmentEnd := precond.Slot.End
-			if segmentEnd.After(dayEnd) {
-				segmentEnd = dayEnd
-			}
-			if !segmentEnd.After(segmentStart) {
-				continue
-			}
-
-			params := contracts.SlotSearchParams{
-				Start:  "lt" + dayEnd.Format(time.RFC3339),
-				End:    "gt" + dayStart.Format(time.RFC3339),
-				Status: "",
-			}
-
-			existingSlots, err := uc.SlotFhirClient.FindSlotsByScheduleWithQuery(ctx, schedule.ID, params)
-			if err != nil {
-				uc.Log.Warn("buildSlotAdjustmentEntries failed to fetch existing slots",
-					zap.String(constvars.LoggingRequestIDKey, requestID),
-					zap.String("roleId", role.ID),
-					zap.Error(err),
-				)
-				continue
-			}
-
-			toDelete, toCreate, adjErr := slot.BuildSlotAdjustmentForAppointment(
-				role,
-				schedule,
-				existingSlots,
-				segmentStart,
-				segmentEnd,
-				precond.Slot.ID,
-				slotMinutes,
-				bufferMinutes,
-			)
-			if adjErr != nil {
-				uc.Log.Warn("buildSlotAdjustmentEntries failed to compute adjustments",
-					zap.String(constvars.LoggingRequestIDKey, requestID),
-					zap.String("roleId", role.ID),
-					zap.Error(adjErr),
-				)
-				continue
-			}
-
-			for _, slotID := range toDelete {
-				// avoid deleting the selected slot for appointment itself
-				if slotID == precond.Slot.ID {
-					continue
-				}
-
-				entries = append(entries, map[string]any{
-					"request": map[string]any{
-						"method": "DELETE",
-						"url":    constvars.ResourceSlot + "/" + slotID,
-					},
-				})
-			}
-
-			for _, newSlot := range toCreate {
-				entries = append(entries, map[string]any{
-					"request": map[string]any{
-						"method": "POST",
-						"url":    constvars.ResourceSlot,
-					},
-					"resource": map[string]any{
-						"resourceType": constvars.ResourceSlot,
-						"schedule": map[string]any{
-							"reference": "Schedule/" + schedule.ID,
-						},
-						"status": string(newSlot.Status),
-						"start":  newSlot.Start.Format(time.RFC3339),
-						"end":    newSlot.End.Format(time.RFC3339),
-						"meta": map[string]any{
-							"tag": []map[string]any{{"code": slot.SlotTagSystemGenerated}},
-						},
-					},
-				})
-			}
+			entries = append(entries, dayEntries...)
 		}
 	}
 

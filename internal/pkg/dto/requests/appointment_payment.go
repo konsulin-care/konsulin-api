@@ -56,7 +56,7 @@ func (r *AppointmentPaymentRequest) Validate() error {
 }
 
 // isValidReference checks if a reference follows the "ResourceType/ID" format
-func isValidReference(reference string, expectedResourceType string) bool {
+func isValidReference(reference, expectedResourceType string) bool {
 	parts := strings.Split(reference, "/")
 	if len(parts) != 2 {
 		return false

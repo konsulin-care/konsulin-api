@@ -10,10 +10,10 @@ import (
 	"go.uber.org/zap"
 )
 
-const (
-	HeaderAPIKey      = "x-api-key"
-	ContextAPIKeyAuth = "api_key_auth"
-)
+const HeaderAPIKey = "x-api-key"
+
+// ContextAPIKeyAuth is the context key for API key auth status.
+const ContextAPIKeyAuth = constvars.CONTEXT_API_KEY_AUTH
 
 func (m *Middlewares) APIKeyAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -58,6 +58,7 @@ const (
 	CONTEXT_RAW_BODY                 ContextKey = "raw_body"
 	CONTEXT_FHIR_ROLE                ContextKey = "fhir_role"
 	CONTEXT_UID                      ContextKey = "uid"
+	CONTEXT_API_KEY_AUTH             ContextKey = "api_key_auth"
 )
 
 const (
