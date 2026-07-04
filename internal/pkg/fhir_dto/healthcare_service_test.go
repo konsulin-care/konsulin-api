@@ -23,6 +23,46 @@ func TestHealthcareService_ServiceDurationMinutes(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "accepts unit=minutes",
+			hs: &HealthcareService{
+				Extension: []Extension{
+					{Url: "https://konsulin.id/fhir/StructureDefinition/serviceDuration", ValueDuration: &Duration{Value: ptrFloat(30), Unit: "minutes"}},
+				},
+			},
+			want:    30,
+			wantErr: false,
+		},
+		{
+			name: "accepts code=min",
+			hs: &HealthcareService{
+				Extension: []Extension{
+					{Url: "https://konsulin.id/fhir/StructureDefinition/serviceDuration", ValueDuration: &Duration{Value: ptrFloat(45), Code: "min"}},
+				},
+			},
+			want:    45,
+			wantErr: false,
+		},
+		{
+			name: "rejects unit=hours",
+			hs: &HealthcareService{
+				Extension: []Extension{
+					{Url: "https://konsulin.id/fhir/StructureDefinition/serviceDuration", ValueDuration: &Duration{Value: ptrFloat(1), Unit: "hours"}},
+				},
+			},
+			want:    0,
+			wantErr: true,
+		},
+		{
+			name: "rejects code=h",
+			hs: &HealthcareService{
+				Extension: []Extension{
+					{Url: "https://konsulin.id/fhir/StructureDefinition/serviceDuration", ValueDuration: &Duration{Value: ptrFloat(2), Code: "h"}},
+				},
+			},
+			want:    0,
+			wantErr: true,
+		},
+		{
 			name: "nil extensions returns error",
 			hs: &HealthcareService{
 				Extension: nil,
@@ -131,6 +171,46 @@ func TestHealthcareService_ServiceBufferMinutes(t *testing.T) {
 			},
 			want: 10,
 			ok:   true,
+		},
+		{
+			name: "buffer accepts unit=minutes",
+			hs: &HealthcareService{
+				Extension: []Extension{
+					{Url: "https://konsulin.id/fhir/StructureDefinition/serviceBuffer", ValueDuration: &Duration{Value: ptrFloat(15), Unit: "minutes"}},
+				},
+			},
+			want: 15,
+			ok:   true,
+		},
+		{
+			name: "buffer accepts code=min",
+			hs: &HealthcareService{
+				Extension: []Extension{
+					{Url: "https://konsulin.id/fhir/StructureDefinition/serviceBuffer", ValueDuration: &Duration{Value: ptrFloat(5), Code: "min"}},
+				},
+			},
+			want: 5,
+			ok:   true,
+		},
+		{
+			name: "buffer rejects unit=seconds",
+			hs: &HealthcareService{
+				Extension: []Extension{
+					{Url: "https://konsulin.id/fhir/StructureDefinition/serviceBuffer", ValueDuration: &Duration{Value: ptrFloat(300), Unit: "seconds"}},
+				},
+			},
+			want: 0,
+			ok:   false,
+		},
+		{
+			name: "buffer rejects code=s",
+			hs: &HealthcareService{
+				Extension: []Extension{
+					{Url: "https://konsulin.id/fhir/StructureDefinition/serviceBuffer", ValueDuration: &Duration{Value: ptrFloat(120), Code: "s"}},
+				},
+			},
+			want: 0,
+			ok:   false,
 		},
 		{
 			name: "nil extensions returns 0, false",

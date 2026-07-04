@@ -14,32 +14,28 @@ type HealthcareService struct {
 	Extension    []Extension `json:"extension,omitempty"`
 }
 
-// ServiceDurationMinutes returns the slot duration in minutes.
-// It scans extensions for a URL ending with /fhir/StructureDefinition/serviceDuration.
-// Returns error if the extension is missing, value is nil, or value is non-positive.
-func (hs *HealthcareService) ServiceDurationMinutes() (int, error) {
-	for _, ext := range hs.Extension {
-		if strings.HasSuffix(ext.Url, "/fhir/StructureDefinition/serviceDuration") {
-			if ext.ValueDuration == nil || ext.ValueDuration.Value == nil {
-				return 0, errors.New("serviceDuration extension has no value")
-			}
-			v := int(*ext.ValueDuration.Value)
-			if v <= 0 {
-				return 0, errors.New("serviceDuration must be positive")
-			}
-			return v, nil
-		}
+// isDurationMinutes checks whether the Duration unit/code represents minutes.
+// Returns true if unit/code is empty (backwards compatible) or explicitly minutes.
+func isDurationMinutes(d *Duration) bool {
+	if d.Unit != "" && d.Unit != "minutes" {
+		return false
 	}
-	return 0, errors.New("serviceDuration extension not found")
+	if d.Code != "" && d.Code != "min" {
+		return false
+	}
+	return true
 }
 
-// ServiceBufferMinutes returns the buffer duration if present.
-// It scans extensions for a URL ending with /fhir/StructureDefinition/serviceBuffer.
-// Returns the value and true if found and positive. Returns 0, false if absent or invalid.
-func (hs *HealthcareService) ServiceBufferMinutes() (int, bool) {
+// findDurationExtension scans extensions for one ending with the given suffix.
+// Returns the positive integer value and true if the extension exists, has a
+// ValueDuration in minutes, and has a positive value.
+func (hs *HealthcareService) findDurationExtension(suffix string) (int, bool) {
 	for _, ext := range hs.Extension {
-		if strings.HasSuffix(ext.Url, "/fhir/StructureDefinition/serviceBuffer") {
+		if strings.HasSuffix(ext.Url, suffix) {
 			if ext.ValueDuration == nil || ext.ValueDuration.Value == nil {
+				return 0, false
+			}
+			if !isDurationMinutes(ext.ValueDuration) {
 				return 0, false
 			}
 			v := int(*ext.ValueDuration.Value)
@@ -50,4 +46,22 @@ func (hs *HealthcareService) ServiceBufferMinutes() (int, bool) {
 		}
 	}
 	return 0, false
+}
+
+// ServiceDurationMinutes returns the slot duration in minutes.
+// It scans extensions for a URL ending with /fhir/StructureDefinition/serviceDuration.
+// Returns error if the extension is missing, value is nil, non-positive, or not in minutes.
+func (hs *HealthcareService) ServiceDurationMinutes() (int, error) {
+	v, ok := hs.findDurationExtension("/fhir/StructureDefinition/serviceDuration")
+	if !ok {
+		return 0, errors.New("serviceDuration extension not found or has no valid value in minutes")
+	}
+	return v, nil
+}
+
+// ServiceBufferMinutes returns the buffer duration if present.
+// It scans extensions for a URL ending with /fhir/StructureDefinition/serviceBuffer.
+// Returns the value and true if found, positive, and in minutes. Returns 0, false if absent or invalid.
+func (hs *HealthcareService) ServiceBufferMinutes() (int, bool) {
+	return hs.findDurationExtension("/fhir/StructureDefinition/serviceBuffer")
 }
