@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
@@ -10,6 +11,7 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -434,30 +436,22 @@ func (ctrl *AuthController) SetActiveRole(w http.ResponseWriter, r *http.Request
 	}
 
 	// Validate the role is in the user's assigned roles.
-	if raw := sess.GetAccessTokenPayload(); raw != nil {
-		if rolesData, exists := raw[constvars.SupertokenPayloadRolesKey]; exists {
-			if rolesMap, ok := rolesData.(map[string]interface{}); ok {
-				if rolesValue, ok := rolesMap[constvars.SupertokenPayloadRolesValueKey]; ok {
-					if rolesList, ok := rolesValue.([]interface{}); ok {
-						found := false
-						for _, item := range rolesList {
-							if role, ok := item.(string); ok && role == body.Role {
-								found = true
-								break
-							}
-						}
-						if !found {
-							ctrl.Log.Warn("AuthController.SetActiveRole role not assigned",
-								zap.String(constvars.LoggingRequestIDKey, requestID),
-								zap.String("role", body.Role),
-							)
-							utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(fmt.Errorf("role %s is not assigned to user", body.Role)))
-							return
-						}
-					}
-				}
-			}
-		}
+	userRoles, roleErr := getUserRolesFromSession(sess)
+	if roleErr != nil {
+		ctrl.Log.Error("AuthController.SetActiveRole failed to parse user roles",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(roleErr),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(fmt.Errorf("could not verify user roles")))
+		return
+	}
+	if !slices.Contains(userRoles, body.Role) {
+		ctrl.Log.Warn("AuthController.SetActiveRole role not assigned",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("role", body.Role),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(fmt.Errorf("role %s is not assigned to user", body.Role)))
+		return
 	}
 
 	// MergeIntoAccessTokenPayload regenerates the access token and writes new
@@ -478,6 +472,38 @@ func (ctrl *AuthController) SetActiveRole(w http.ResponseWriter, r *http.Request
 		zap.String("role", body.Role),
 	)
 	utils.BuildSuccessResponse(w, http.StatusOK, "active role set", nil)
+}
+
+// getUserRolesFromSession extracts the list of role strings from the SuperTokens
+// access token payload. Returns an empty slice if no roles are found.
+func getUserRolesFromSession(sess sessmodels.SessionContainer) ([]string, error) {
+	raw := sess.GetAccessTokenPayload()
+	if raw == nil {
+		return nil, errors.New("empty access token payload")
+	}
+	rolesData, exists := raw[constvars.SupertokenPayloadRolesKey]
+	if !exists {
+		return nil, nil
+	}
+	rolesMap, ok := rolesData.(map[string]interface{})
+	if !ok {
+		return nil, errors.New("roles not a map")
+	}
+	rolesValue, ok := rolesMap[constvars.SupertokenPayloadRolesValueKey]
+	if !ok {
+		return nil, nil
+	}
+	rolesList, ok := rolesValue.([]interface{})
+	if !ok {
+		return nil, errors.New("roles value not a list")
+	}
+	result := make([]string, 0, len(rolesList))
+	for _, item := range rolesList {
+		if role, ok := item.(string); ok {
+			result = append(result, role)
+		}
+	}
+	return result, nil
 }
 
 // PasswordlessEmailExists exposes the SuperTokens passwordless email lookup
