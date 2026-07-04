@@ -1325,51 +1325,25 @@ func (uc *paymentUsecase) HandleAppointmentPayment(
 	}
 
 	if req.UseOnlinePayment {
-		// Phase 1 flow: reserve slot, create invoice, defer bundle to callback
-		revalidatedSlot.Status = fhir_dto.SlotStatusBusyTentative
-		if _, updateErr := uc.SlotFhirClient.UpdateSlot(ctx, slotID, revalidatedSlot); updateErr != nil {
-			uc.Log.Error("paymentUsecase.HandleAppointmentPayment failed to update slot status",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.String("slotId", slotID),
-				zap.Error(updateErr),
-			)
-			return nil, exceptions.BuildNewCustomError(
-				updateErr,
-				constvars.StatusInternalServerError,
-				"Failed to reserve slot. Please try again.",
-				"slot update failed",
-			)
-		}
-
-		url, xenditErr := uc.createXenditInvoiceForAppointment(ctx, req, precond)
-		if xenditErr != nil {
-			uc.Log.Error("paymentUsecase.HandleAppointmentPayment failed to create Xendit invoice",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(xenditErr),
-			)
-			return nil, xenditErr
-		}
-
-		expiresAt := time.Now().Add(time.Duration(uc.InternalConfig.App.PaymentExpiredTimeInMinutes) * time.Minute)
-
-		uc.Log.Info("paymentUsecase.HandleAppointmentPayment succeeded (Phase 1 reservation)",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("slotId", slotID),
-		)
-
-		return &responses.AppointmentPaymentResponse{
-			Status:     constvars.StatusCreated,
-			Message:    constvars.AppointmentPaymentPendingMessage,
-			SlotID:     req.SlotID,
-			PaymentURL: url,
-			ExpiresAt:  expiresAt.Format(time.RFC3339),
-		}, nil
+		return uc.handleOnlineAppointmentPayment(ctx, req, precond, revalidatedSlot, slotID, requestID)
 	}
 
-	// Offline payment: update slot to busy-unavailable, then execute full bundle immediately
-	revalidatedSlot.Status = fhir_dto.SlotStatusBusyUnavailable
+	return uc.handleOfflineAppointmentPayment(ctx, req, precond, allPractitionerRoles, revalidatedSlot, slotID, requestID)
+}
+
+// handleOnlineAppointmentPayment executes Phase 1 online payment: reserves the slot as
+// busy-tentative and creates a Xendit invoice for the patient to complete payment.
+func (uc *paymentUsecase) handleOnlineAppointmentPayment(
+	ctx context.Context,
+	req *requests.AppointmentPaymentRequest,
+	precond *preconditionData,
+	revalidatedSlot *fhir_dto.Slot,
+	slotID string,
+	requestID string,
+) (*responses.AppointmentPaymentResponse, error) {
+	revalidatedSlot.Status = fhir_dto.SlotStatusBusyTentative
 	if _, updateErr := uc.SlotFhirClient.UpdateSlot(ctx, slotID, revalidatedSlot); updateErr != nil {
-		uc.Log.Error("paymentUsecase.HandleAppointmentPayment failed to update slot status",
+		uc.Log.Error("paymentUsecase.handleOnlineAppointmentPayment failed to update slot status",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String("slotId", slotID),
 			zap.Error(updateErr),
@@ -1381,9 +1355,62 @@ func (uc *paymentUsecase) HandleAppointmentPayment(
 			"slot update failed",
 		)
 	}
+
+	url, xenditErr := uc.createXenditInvoiceForAppointment(ctx, req, precond)
+	if xenditErr != nil {
+		uc.Log.Error("paymentUsecase.handleOnlineAppointmentPayment failed to create Xendit invoice",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(xenditErr),
+		)
+		return nil, xenditErr
+	}
+
+	expiresAt := time.Now().Add(time.Duration(uc.InternalConfig.App.PaymentExpiredTimeInMinutes) * time.Minute)
+
+	uc.Log.Info("paymentUsecase.HandleAppointmentPayment succeeded (Phase 1 reservation)",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("slotId", slotID),
+	)
+
+	return &responses.AppointmentPaymentResponse{
+		Status:     constvars.StatusCreated,
+		Message:    constvars.AppointmentPaymentPendingMessage,
+		SlotID:     req.SlotID,
+		PaymentURL: url,
+		ExpiresAt:  expiresAt.Format(time.RFC3339),
+	}, nil
+}
+
+// handleOfflineAppointmentPayment executes offline payment: updates the slot to
+// busy-unavailable, builds and executes the FHIR bundle, then sends a best-effort
+// webhook notification to the provider.
+func (uc *paymentUsecase) handleOfflineAppointmentPayment(
+	ctx context.Context,
+	req *requests.AppointmentPaymentRequest,
+	precond *preconditionData,
+	allPractitionerRoles []fhir_dto.PractitionerRole,
+	revalidatedSlot *fhir_dto.Slot,
+	slotID string,
+	requestID string,
+) (*responses.AppointmentPaymentResponse, error) {
+	revalidatedSlot.Status = fhir_dto.SlotStatusBusyUnavailable
+	if _, updateErr := uc.SlotFhirClient.UpdateSlot(ctx, slotID, revalidatedSlot); updateErr != nil {
+		uc.Log.Error("paymentUsecase.handleOfflineAppointmentPayment failed to update slot status",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("slotId", slotID),
+			zap.Error(updateErr),
+		)
+		return nil, exceptions.BuildNewCustomError(
+			updateErr,
+			constvars.StatusInternalServerError,
+			"Failed to reserve slot. Please try again.",
+			"slot update failed",
+		)
+	}
+
 	bundleEntries, appointmentID, paymentNoticeID, bundleErr := uc.buildAppointmentPaymentBundle(ctx, req, precond, allPractitionerRoles)
 	if bundleErr != nil {
-		uc.Log.Error("paymentUsecase.HandleAppointmentPayment failed to build bundle",
+		uc.Log.Error("paymentUsecase.handleOfflineAppointmentPayment failed to build bundle",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(bundleErr),
 		)
@@ -1396,7 +1423,7 @@ func (uc *paymentUsecase) HandleAppointmentPayment(
 		"entry":        bundleEntries,
 	}
 	if _, execErr := uc.BundleFhirClient.PostTransactionBundle(ctx, bundle); execErr != nil {
-		uc.Log.Error("paymentUsecase.HandleAppointmentPayment bundle execution failed",
+		uc.Log.Error("paymentUsecase.handleOfflineAppointmentPayment bundle execution failed",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(execErr),
 		)
