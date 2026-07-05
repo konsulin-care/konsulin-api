@@ -276,19 +276,36 @@ func (m *Middlewares) validatePractitionerOwnershipInBody(body []byte, practitio
 	return nil
 }
 
+// lookupPatient looks up a Patient FHIR resource by Supertoken UID.
+// Returns the Patient ID if found, or an empty string if not found.
+// Returns an error if the FHIR query fails or if multiple Patient resources match.
+func (m *Middlewares) lookupPatient(ctx context.Context, uid string) (string, error) {
+	pats, err := m.PatientFhirClient.FindPatientByIdentifier(
+		ctx,
+		fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, uid),
+	)
+	if err != nil {
+		return "", err
+	}
+	if len(pats) > 1 {
+		return "", fmt.Errorf("multiple Patient resources for uid %s", uid)
+	}
+	if len(pats) == 1 {
+		return pats[0].ID, nil
+	}
+	return "", nil
+}
+
 func (m *Middlewares) resolveFHIRIdentity(ctx context.Context, uid string) (role, id string, err error) {
 	activeRole, _ := ctx.Value(keyActiveRole).(string)
 
 	if activeRole == constvars.KonsulinRolePatient {
-		pats, err := m.PatientFhirClient.FindPatientByIdentifier(
-			ctx,
-			fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, uid),
-		)
+		patID, err := m.lookupPatient(ctx, uid)
 		if err != nil {
 			return "", "", err
 		}
-		if len(pats) > 0 {
-			return constvars.KonsulinRolePatient, pats[0].ID, nil
+		if patID != "" {
+			return constvars.KonsulinRolePatient, patID, nil
 		}
 	}
 
@@ -310,15 +327,12 @@ func (m *Middlewares) resolveFHIRIdentity(ctx context.Context, uid string) (role
 	}
 
 	if activeRole != constvars.KonsulinRolePatient {
-		pats, err := m.PatientFhirClient.FindPatientByIdentifier(
-			ctx,
-			fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, uid),
-		)
+		patID, err := m.lookupPatient(ctx, uid)
 		if err != nil {
 			return "", "", err
 		}
-		if len(pats) > 0 {
-			return constvars.KonsulinRolePatient, pats[0].ID, nil
+		if patID != "" {
+			return constvars.KonsulinRolePatient, patID, nil
 		}
 	}
 	return "", "", fmt.Errorf("no Practitioner/Patient found for uid %s", uid)

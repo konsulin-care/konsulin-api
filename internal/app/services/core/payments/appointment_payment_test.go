@@ -1,10 +1,15 @@
 package payments
 
 import (
+	"context"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	"konsulin-service/internal/pkg/fhir_dto"
+
+	"go.uber.org/zap"
 )
 
 // assertFieldEquals is a test helper that reduces cognitive complexity by avoiding
@@ -71,6 +76,76 @@ func TestParseAppointmentExternalID(t *testing.T) {
 		_, err := parseAppointmentExternalID("appointment::pr-456:pat-789:inv-012:hs-999")
 		if err == nil {
 			t.Error("expected error for empty slot ID")
+		}
+	})
+}
+
+// mockPractitionerFhirClient mocks contracts.PractitionerFhirClient for payment tests.
+type mockPractitionerFhirClient struct {
+	practitioner *fhir_dto.Practitioner
+	err          error
+}
+
+func (m *mockPractitionerFhirClient) FindPractitionerByID(_ context.Context, _ string) (*fhir_dto.Practitioner, error) {
+	return m.practitioner, m.err
+}
+func (*mockPractitionerFhirClient) FindPractitionerByIdentifier(_ context.Context, _, _ string) ([]fhir_dto.Practitioner, error) {
+	return nil, nil
+}
+func (*mockPractitionerFhirClient) FindPractitionerByEmail(_ context.Context, _ string) ([]fhir_dto.Practitioner, error) {
+	return nil, nil
+}
+func (*mockPractitionerFhirClient) FindPractitionerByPhone(_ context.Context, _ string) ([]fhir_dto.Practitioner, error) {
+	return nil, nil
+}
+func (*mockPractitionerFhirClient) CreatePractitioner(_ context.Context, _ *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
+	return nil, nil
+}
+func (*mockPractitionerFhirClient) UpdatePractitioner(_ context.Context, _ *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
+	return nil, nil
+}
+func (*mockPractitionerFhirClient) PatchPractitioner(_ context.Context, _ *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
+	return nil, nil
+}
+
+func TestFetchPractitioner(t *testing.T) {
+	t.Run("returns practitioner when found", func(t *testing.T) {
+		uc := &paymentUsecase{
+			PractitionerFhirClient: &mockPractitionerFhirClient{
+				practitioner: &fhir_dto.Practitioner{ID: "prac-123"},
+			},
+			Log: zap.NewNop(),
+		}
+
+		prac, err := uc.fetchPractitioner(context.Background(), "Practitioner/prac-123")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if prac == nil {
+			t.Fatal("expected practitioner, got nil")
+		}
+		if prac.ID != "prac-123" {
+			t.Errorf("expected prac-123, got %s", prac.ID)
+		}
+	})
+
+	t.Run("returns error when client fails", func(t *testing.T) {
+		uc := &paymentUsecase{
+			PractitionerFhirClient: &mockPractitionerFhirClient{
+				err: errors.New("connection failed"),
+			},
+			Log: zap.NewNop(),
+		}
+
+		prac, err := uc.fetchPractitioner(context.Background(), "Practitioner/prac-456")
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if prac != nil {
+			t.Errorf("expected nil practitioner on error, got %v", prac)
+		}
+		if !strings.Contains(err.Error(), "failed to fetch practitioner") {
+			t.Errorf("expected error containing 'failed to fetch practitioner', got %v", err)
 		}
 	})
 }

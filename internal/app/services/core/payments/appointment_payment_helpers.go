@@ -536,6 +536,16 @@ func resolveHealthcareServiceID(req *requests.AppointmentPaymentRequest, role *f
 	return hsID
 }
 
+// fetchPractitioner fetches a Practitioner by its FHIR reference (e.g. "Practitioner/abc-123").
+func (uc *paymentUsecase) fetchPractitioner(ctx context.Context, practitionerRef string) (*fhir_dto.Practitioner, error) {
+	practitionerID := strings.TrimPrefix(practitionerRef, constvars.FHIRRefPrefixPractitioner)
+	practitioner, err := uc.PractitionerFhirClient.FindPractitionerByID(ctx, practitionerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch practitioner: %w", err)
+	}
+	return practitioner, nil
+}
+
 // fetchCommonResources fetches all resources shared by fetchPreconditionData and
 // ensurePreconditionsValid: slot, practitioner role, invoice, schedule, healthcare
 // service, and practitioner. Patient fetch is handled by the caller.
@@ -630,9 +640,7 @@ func (uc *paymentUsecase) fetchCommonResources(
 	res.healthcareService = hs
 
 	// Fetch Practitioner
-	practitionerRef := res.practitionerRole.Practitioner.Reference
-	practitionerID := strings.TrimPrefix(practitionerRef, constvars.FHIRRefPrefixPractitioner)
-	practitioner, practErr := uc.PractitionerFhirClient.FindPractitionerByID(ctx, practitionerID)
+	practitioner, practErr := uc.fetchPractitioner(ctx, res.practitionerRole.Practitioner.Reference)
 	if practErr != nil {
 		return nil, exceptions.BuildNewCustomError(
 			practErr,

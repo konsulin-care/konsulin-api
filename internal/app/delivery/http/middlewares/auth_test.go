@@ -140,6 +140,28 @@ func TestNeedsFHIRResolution(t *testing.T) {
 	}
 }
 
+func TestResolveFHIRIdentity_ActiveRolePatient_MultiMatch(t *testing.T) {
+	// When activeRole is "Patient" and multiple Patient FHIR resources exist,
+	// resolveFHIRIdentity should return an error mirroring the Practitioner multi-match guard.
+	mw := &Middlewares{
+		PractitionerFhirClient: &mockPractitionerClient{},
+		PatientFhirClient: &mockPatientClient{
+			patients: []fhir_dto.Patient{
+				{ID: "pat-1"},
+				{ID: "pat-2"},
+			},
+		},
+	}
+
+	ctx := context.WithValue(context.Background(), keyActiveRole, constvars.KonsulinRolePatient)
+	role, id, err := mw.resolveFHIRIdentity(ctx, "user-123")
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "multiple Patient resources")
+	assert.Empty(t, role)
+	assert.Empty(t, id)
+}
+
 func TestResolveFHIRIdentity_ActiveRolePatient_NoPatientResource(t *testing.T) {
 	// When activeRole is "Patient" but no Patient FHIR resource exists,
 	// it should fall through to Practitioner lookup.
