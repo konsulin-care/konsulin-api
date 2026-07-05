@@ -193,6 +193,14 @@ func (uc *paymentUsecase) buildAppointmentPaymentBundle(
 	return entries, appointmentID, paymentNoticeID, nil
 }
 
+// DayAdjustmentConfig groups the intra-day parameters for slot adjustment computation.
+type DayAdjustmentConfig struct {
+	Day           time.Time
+	DayEnd        time.Time
+	SlotMinutes   int
+	BufferMinutes int
+}
+
 // buildDayAdjustmentEntries computes slot adjustments for a single day within an appointment window.
 func (uc *paymentUsecase) buildDayAdjustmentEntries(
 	ctx context.Context,
@@ -200,29 +208,26 @@ func (uc *paymentUsecase) buildDayAdjustmentEntries(
 	precond *preconditionData,
 	role fhir_dto.PractitionerRole,
 	schedule fhir_dto.Schedule,
-	day time.Time,
-	dayEnd time.Time,
-	slotMinutes int,
-	bufferMinutes int,
+	config DayAdjustmentConfig,
 ) ([]map[string]any, error) {
 	var entries []map[string]any
 
 	// Clip appointment window to the day segment
 	segmentStart := precond.Slot.Start
-	if segmentStart.Before(day) {
-		segmentStart = day
+	if segmentStart.Before(config.Day) {
+		segmentStart = config.Day
 	}
 	segmentEnd := precond.Slot.End
-	if segmentEnd.After(dayEnd) {
-		segmentEnd = dayEnd
+	if segmentEnd.After(config.DayEnd) {
+		segmentEnd = config.DayEnd
 	}
 	if !segmentEnd.After(segmentStart) {
 		return entries, nil
 	}
 
 	params := contracts.SlotSearchParams{
-		Start:  "lt" + dayEnd.Format(time.RFC3339),
-		End:    "gt" + day.Format(time.RFC3339),
+		Start:  "lt" + config.DayEnd.Format(time.RFC3339),
+		End:    "gt" + config.Day.Format(time.RFC3339),
 		Status: "",
 	}
 
@@ -243,8 +248,8 @@ func (uc *paymentUsecase) buildDayAdjustmentEntries(
 		segmentStart,
 		segmentEnd,
 		precond.Slot.ID,
-		slotMinutes,
-		bufferMinutes,
+		config.SlotMinutes,
+		config.BufferMinutes,
 	)
 	if adjErr != nil {
 		uc.Log.Warn("buildDayAdjustmentEntries failed to compute adjustments",
@@ -342,7 +347,9 @@ func (uc *paymentUsecase) buildSlotAdjustmentEntries(
 		slotEndLocal := precond.Slot.End.In(loc)
 		for day := time.Date(slotStartLocal.Year(), slotStartLocal.Month(), slotStartLocal.Day(), 0, 0, 0, 0, loc); !day.After(time.Date(slotEndLocal.Year(), slotEndLocal.Month(), slotEndLocal.Day(), 0, 0, 0, 0, loc)); day = day.Add(24 * time.Hour) {
 			dayEnd := day.Add(24 * time.Hour)
-			dayEntries, dayErr := uc.buildDayAdjustmentEntries(ctx, requestID, precond, role, schedule, day, dayEnd, slotMinutes, bufferMinutes)
+			dayEntries, dayErr := uc.buildDayAdjustmentEntries(ctx, requestID, precond, role, schedule, DayAdjustmentConfig{
+				Day: day, DayEnd: dayEnd, SlotMinutes: slotMinutes, BufferMinutes: bufferMinutes,
+			})
 			if dayErr != nil {
 				return nil, dayErr
 			}
@@ -519,6 +526,16 @@ type fetchedResources struct {
 	schedulesErr      error
 }
 
+// resolveHealthcareServiceID derives the healthcare service ID from the request
+// or falls back to the practitioner role's referenced service.
+func resolveHealthcareServiceID(req *requests.AppointmentPaymentRequest, role *fhir_dto.PractitionerRole) string {
+	hsID := strings.TrimPrefix(req.HealthcareServiceID, constvars.FHIRRefPrefixHealthcareService)
+	if hsID == "" && role != nil && len(role.HealthcareService) > 0 {
+		hsID = strings.TrimPrefix(role.HealthcareService[0].Reference, constvars.FHIRRefPrefixHealthcareService)
+	}
+	return hsID
+}
+
 // fetchCommonResources fetches all resources shared by fetchPreconditionData and
 // ensurePreconditionsValid: slot, practitioner role, invoice, schedule, healthcare
 // service, and practitioner. Patient fetch is handled by the caller.
@@ -600,10 +617,7 @@ func (uc *paymentUsecase) fetchCommonResources(
 	}
 
 	// Fetch HealthcareService — derive from PractitionerRole if not explicitly provided
-	hsID := strings.TrimPrefix(req.HealthcareServiceID, constvars.FHIRRefPrefixHealthcareService)
-	if hsID == "" && len(res.practitionerRole.HealthcareService) > 0 {
-		hsID = strings.TrimPrefix(res.practitionerRole.HealthcareService[0].Reference, constvars.FHIRRefPrefixHealthcareService)
-	}
+	hsID := resolveHealthcareServiceID(req, res.practitionerRole)
 	hs, hsErr := uc.fetchHealthcareService(ctx, hsID)
 	if hsErr != nil {
 		return nil, exceptions.BuildNewCustomError(

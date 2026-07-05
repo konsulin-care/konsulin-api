@@ -18,6 +18,16 @@ func mockSession(payload map[string]interface{}) sessmodels.SessionContainer {
 	}
 }
 
+// buildRolesPayload builds the SuperTokens access token payload with the given
+// roles value. rolesValue can be []string, []interface{}, or nil for testing.
+func buildRolesPayload(rolesValue interface{}) map[string]interface{} {
+	return map[string]interface{}{
+		constvars.SupertokenPayloadRolesKey: map[string]interface{}{
+			constvars.SupertokenPayloadRolesValueKey: rolesValue,
+		},
+	}
+}
+
 func TestGetUserRolesFromSession(t *testing.T) {
 	t.Run("returns error on nil payload", func(t *testing.T) {
 		sess := mockSession(nil)
@@ -41,14 +51,7 @@ func TestGetUserRolesFromSession(t *testing.T) {
 	})
 
 	t.Run("parses roles from []interface{} format", func(t *testing.T) {
-		sess := mockSession(map[string]interface{}{
-			constvars.SupertokenPayloadRolesKey: map[string]interface{}{
-				constvars.SupertokenPayloadRolesValueKey: []interface{}{
-					"Patient",
-					"Researcher",
-				},
-			},
-		})
+		sess := mockSession(buildRolesPayload([]interface{}{"Patient", "Researcher"}))
 		roles, err := getUserRolesFromSession(sess)
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
@@ -65,14 +68,7 @@ func TestGetUserRolesFromSession(t *testing.T) {
 	})
 
 	t.Run("parses roles from []string format", func(t *testing.T) {
-		sess := mockSession(map[string]interface{}{
-			constvars.SupertokenPayloadRolesKey: map[string]interface{}{
-				constvars.SupertokenPayloadRolesValueKey: []string{
-					"Patient",
-					"Clinic Admin",
-				},
-			},
-		})
+		sess := mockSession(buildRolesPayload([]string{"Patient", "Clinic Admin"}))
 		roles, err := getUserRolesFromSession(sess)
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
@@ -102,11 +98,7 @@ func TestGetUserRolesFromSession(t *testing.T) {
 	})
 
 	t.Run("returns error when roles value is unexpected type", func(t *testing.T) {
-		sess := mockSession(map[string]interface{}{
-			constvars.SupertokenPayloadRolesKey: map[string]interface{}{
-				constvars.SupertokenPayloadRolesValueKey: "not-a-list",
-			},
-		})
+		sess := mockSession(buildRolesPayload("not-a-list"))
 		_, err := getUserRolesFromSession(sess)
 		if err == nil {
 			t.Error("expected error for unexpected type")
