@@ -402,7 +402,7 @@ type setRoleBody struct {
 }
 
 // parseSetRoleBody decodes and validates the role from the request body.
-func (ctrl *AuthController) parseSetRoleBody(r *http.Request) (string, error) {
+func parseSetRoleBody(r *http.Request) (string, error) {
 	var body setRoleBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		return "", fmt.Errorf("failed to parse body: %w", err)
@@ -431,7 +431,7 @@ func (ctrl *AuthController) SetActiveRole(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	role, err := ctrl.parseSetRoleBody(r)
+	role, err := parseSetRoleBody(r)
 	if err != nil {
 		ctrl.Log.Error("AuthController.SetActiveRole failed to parse body",
 			zap.String(constvars.LoggingRequestIDKey, requestID),

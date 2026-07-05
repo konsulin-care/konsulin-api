@@ -1544,7 +1544,7 @@ func (uc *paymentUsecase) validatePatientIdentity(ctx context.Context, requestID
 }
 
 // validateSlotEligibility checks slot status, schedule ownership, and that the slot is in the future.
-func (uc *paymentUsecase) validateSlotEligibility(slot *fhir_dto.Slot, schedules []fhir_dto.Schedule, schedulesErr error, slotID, requestID string) (*fhir_dto.Schedule, error) {
+func (_ *paymentUsecase) validateSlotEligibility(slot *fhir_dto.Slot, schedules []fhir_dto.Schedule, schedulesErr error, slotID, _ string) (*fhir_dto.Schedule, error) {
 	if slot.Status != fhir_dto.SlotStatusFree {
 		return nil, exceptions.BuildNewCustomError(
 			nil,

@@ -62,6 +62,7 @@ func TestAppointmentPaymentResponse_Marshaling(t *testing.T) {
 	assertFieldOmitted(t, raw, "paymentNotice")
 	assertFieldValue(t, raw, "expiresAt", "2026-07-04T11:00:00+07:00")
 	assertFieldValue(t, raw, "slot", "Slot/abc-123")
+	})
 }
 
 func TestAppointmentPaymentResponse_IncludesSetFields(t *testing.T) {

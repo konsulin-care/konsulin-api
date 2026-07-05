@@ -20,46 +20,46 @@ type mockSlotFhirClient struct {
 	err  error
 }
 
-func (m *mockSlotFhirClient) FindSlotByID(_ context.Context, slotID string) (*fhir_dto.Slot, error) {
+func (m *mockSlotFhirClient) FindSlotByID(_ context.Context, _ string) (*fhir_dto.Slot, error) {
 	return m.slot, m.err
 }
-func (m *mockSlotFhirClient) FindSlotByScheduleID(_ context.Context, _ string) ([]fhir_dto.Slot, error) {
+func (*mockSlotFhirClient) FindSlotByScheduleID(_ context.Context, _ string) ([]fhir_dto.Slot, error) {
 	return nil, nil
 }
-func (m *mockSlotFhirClient) FindSlotByScheduleAndTimeRange(_ context.Context, _ string, _, _ time.Time) ([]fhir_dto.Slot, error) {
+func (*mockSlotFhirClient) FindSlotByScheduleAndTimeRange(_ context.Context, _ string, _, _ time.Time) ([]fhir_dto.Slot, error) {
 	return nil, nil
 }
-func (m *mockSlotFhirClient) FindSlotByScheduleIDAndStatus(_ context.Context, _, _ string) ([]fhir_dto.Slot, error) {
+func (*mockSlotFhirClient) FindSlotByScheduleIDAndStatus(_ context.Context, _, _ string) ([]fhir_dto.Slot, error) {
 	return nil, nil
 }
-func (m *mockSlotFhirClient) CreateSlot(_ context.Context, _ *fhir_dto.Slot) (*fhir_dto.Slot, error) {
+func (*mockSlotFhirClient) CreateSlot(_ context.Context, _ *fhir_dto.Slot) (*fhir_dto.Slot, error) {
 	return nil, nil
 }
-func (m *mockSlotFhirClient) UpdateSlot(_ context.Context, _ string, _ *fhir_dto.Slot) (*fhir_dto.Slot, error) {
+func (*mockSlotFhirClient) UpdateSlot(_ context.Context, _ string, _ *fhir_dto.Slot) (*fhir_dto.Slot, error) {
 	return nil, nil
 }
-func (m *mockSlotFhirClient) FindSlotsByScheduleWithQuery(_ context.Context, _ string, _ contracts.SlotSearchParams) ([]fhir_dto.Slot, error) {
+func (*mockSlotFhirClient) FindSlotsByScheduleWithQuery(_ context.Context, _ string, _ contracts.SlotSearchParams) ([]fhir_dto.Slot, error) {
 	return nil, nil
 }
-func (m *mockSlotFhirClient) PostTransactionBundle(_ context.Context, _ map[string]interface{}) (*fhir_dto.FHIRBundle, error) {
+func (*mockSlotFhirClient) PostTransactionBundle(_ context.Context, _ map[string]interface{}) (*fhir_dto.FHIRBundle, error) {
 	return nil, nil
 }
 
 // mockSlotUsecase mocks contracts.SlotUsecaseIface for notification tests.
 type mockSlotUsecase struct{}
 
-func (m *mockSlotUsecase) HandleAutomatedSlotGeneration(_ context.Context, _ fhir_dto.PractitionerRole) {
+func (*mockSlotUsecase) HandleAutomatedSlotGeneration(_ context.Context, _ fhir_dto.PractitionerRole) {
 }
-func (m *mockSlotUsecase) HandleOnDemandSlotRegeneration(_ context.Context, _ string) error {
+func (*mockSlotUsecase) HandleOnDemandSlotRegeneration(_ context.Context, _ string) error {
 	return nil
 }
-func (m *mockSlotUsecase) HandleSetUnavailabilityForMultiplePractitionerRoles(_ context.Context, _ contracts.SetUnavailabilityForMultiplePractitionerRolesInput) (*contracts.SetUnavailableOutcome, error) {
+func (*mockSlotUsecase) HandleSetUnavailabilityForMultiplePractitionerRoles(_ context.Context, _ contracts.SetUnavailabilityForMultiplePractitionerRolesInput) (*contracts.SetUnavailableOutcome, error) {
 	return nil, nil
 }
-func (m *mockSlotUsecase) AcquireLocksForAppointment(_ context.Context, _ []fhir_dto.PractitionerRole, _, _ time.Time, _ time.Duration) (func(context.Context), error) {
+func (*mockSlotUsecase) AcquireLocksForAppointment(_ context.Context, _ []fhir_dto.PractitionerRole, _, _ time.Time, _ time.Duration) (func(context.Context), error) {
 	return func(_ context.Context) {}, nil
 }
-func (m *mockSlotUsecase) AcquireLocksForSlot(_ context.Context, _ *fhir_dto.Slot, _ time.Duration) (func(context.Context), error) {
+func (*mockSlotUsecase) AcquireLocksForSlot(_ context.Context, _ *fhir_dto.Slot, _ time.Duration) (func(context.Context), error) {
 	return func(_ context.Context) {}, nil
 }
 

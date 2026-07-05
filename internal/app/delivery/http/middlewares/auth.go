@@ -83,39 +83,16 @@ func (m *Middlewares) Authenticate(next http.Handler) http.Handler {
 
 func (m *Middlewares) Auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var fhirRole, fhirID string
 		var err error
 		ctxIface := r.Context()
 		roles, _ := ctxIface.Value(keyRoles).([]string)
 		uid, _ := ctxIface.Value(keyUID).(string)
 
-		if len(roles) == 1 && roles[0] == constvars.KonsulinRoleSuperadmin && uid == "api-key-superadmin" {
-
-			fhirRole = constvars.KonsulinRoleSuperadmin
-			fhirID = ""
-		} else if !isOnlyGuest(roles) && needsFHIRResolution(roles) {
-			fhirRole, fhirID, err = m.resolveFHIRIdentity(ctxIface, uid)
-			if err != nil {
-				m.Log.Error("Auth.resolveFHIRIdentity", zap.Error(err))
-				utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
-				return
-			}
-		} else if !isOnlyGuest(roles) {
-			// Non-FHIR roles (Clinic Admin, Researcher) have no FHIR identity.
-			// Use the first non-guest role as fhirRole with empty fhirID.
-			for _, role := range roles {
-				if role != constvars.KonsulinRoleGuest {
-					fhirRole = role
-					fhirID = ""
-					break
-				}
-			}
-			if fhirRole == "" {
-				fhirRole = constvars.KonsulinRoleGuest
-			}
-		} else {
-			fhirRole = constvars.KonsulinRoleGuest
-			fhirID = ""
+		fhirRole, fhirID, err := m.resolveUserRoles(ctxIface, roles, uid)
+		if err != nil {
+			m.Log.Error("Auth.resolveUserRoles", zap.Error(err))
+			utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
+			return
 		}
 
 		ctxIface = context.WithValue(ctxIface, keyFHIRRole, fhirRole)
@@ -184,6 +161,30 @@ func needsFHIRResolution(roles []string) bool {
 		}
 	}
 	return false
+}
+
+// resolveUserRoles determines the FHIR role and ID to use for authorization.
+// Returns (fhirRole, fhirID, error). For Guest and non-FHIR roles, fhirID is empty.
+func (m *Middlewares) resolveUserRoles(ctx context.Context, roles []string, uid string) (string, string, error) {
+	if len(roles) == 1 && roles[0] == constvars.KonsulinRoleSuperadmin && uid == "api-key-superadmin" {
+		return constvars.KonsulinRoleSuperadmin, "", nil
+	}
+	if !isOnlyGuest(roles) && needsFHIRResolution(roles) {
+		fhirRole, fhirID, err := m.resolveFHIRIdentity(ctx, uid)
+		if err != nil {
+			return "", "", err
+		}
+		return fhirRole, fhirID, nil
+	}
+	if !isOnlyGuest(roles) {
+		for _, role := range roles {
+			if role != constvars.KonsulinRoleGuest {
+				return role, "", nil
+			}
+		}
+		return constvars.KonsulinRoleGuest, "", nil
+	}
+	return constvars.KonsulinRoleGuest, "", nil
 }
 
 func (m *Middlewares) validatePostRequestBody(ctx context.Context, body []byte, fhirRole, fhirID string) error {

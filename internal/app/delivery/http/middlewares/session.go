@@ -13,13 +13,12 @@ import (
 // contextKey is a custom type for context keys to avoid collisions with other packages.
 type contextKey string
 
-// Deprecated: all context keys must use typed string, such as constvars.ContextKey
 const (
-	keyFHIRRole   = "fhirRole"
-	keyFHIRID     = "fhirID"
-	keyRoles      = "roles"
-	keyUID        = "uid"
-	keyActiveRole = "activeRole"
+	keyFHIRRole   contextKey = "fhirRole"
+	keyFHIRID     contextKey = "fhirID"
+	keyRoles      contextKey = "roles"
+	keyUID        contextKey = "uid"
+	keyActiveRole contextKey = "activeRole"
 )
 
 func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
