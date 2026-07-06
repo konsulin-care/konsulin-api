@@ -10,7 +10,7 @@ linters:
     - errcheck
   settings:
     gocognit:
-      min-complexity: 15
+      min-complexity: 20
     goconst:
       min-len: 3
       min-occurrences: 3

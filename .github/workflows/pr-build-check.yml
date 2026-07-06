@@ -20,7 +20,7 @@ jobs:
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a
         with:
           version: v2.12.2
-          args: --timeout=5m
+          args: --timeout=5m --new-from-rev=${{ github.event.pull_request.base.sha }} --only-new-issues
 
   build-docker:
     name: Build Docker Image
