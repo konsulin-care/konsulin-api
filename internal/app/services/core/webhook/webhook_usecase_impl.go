@@ -301,45 +301,61 @@ func (u *usecase) determineSubjectFromRequester(ctx context.Context) (string, er
 	roles := ctx.Value(constvars.CONTEXT_FHIR_ROLE).([]string)
 	uid := ctx.Value(constvars.CONTEXT_UID).(string)
 
-	// Guest
-	for _, r := range roles {
-		if strings.EqualFold(r, constvars.KonsulinRoleGuest) {
-			return string(constvars.ServiceRequestSubjectGuest), nil
-		}
+	// Guest short-circuit
+	if hasRole(roles, constvars.KonsulinRoleGuest) {
+		return string(constvars.ServiceRequestSubjectGuest), nil
 	}
 
 	// Prefer Practitioner over Patient if both present
-	if slices.Contains(roles, constvars.KonsulinRolePractitioner) {
-		if strings.TrimSpace(uid) == "" {
-			return "", exceptions.ErrClientCustomMessage(exceptions.BuildNewCustomError(nil, constvars.StatusUnauthorized, "missing uid in context", "MISSING_UID"))
-		}
-		pracs, err := u.practitionerFhir.FindPractitionerByIdentifier(ctx, constvars.FhirSupertokenSystemIdentifier, uid)
-		if err != nil {
-			return "", err
-		}
-		if len(pracs) < 1 {
-			return "", exceptions.ErrGetFHIRResource(nil, constvars.ResourcePractitioner)
-		}
-		return fmt.Sprintf("%s/%s", constvars.ResourcePractitioner, pracs[0].ID), nil
+	if hasRole(roles, constvars.KonsulinRolePractitioner) {
+		return u.resolvePractitionerSubject(ctx, uid)
 	}
 
-	if slices.Contains(roles, constvars.KonsulinRolePatient) {
-		if strings.TrimSpace(uid) == "" {
-			return "", exceptions.ErrClientCustomMessage(exceptions.BuildNewCustomError(nil, constvars.StatusUnauthorized, "missing uid in context", "MISSING_UID"))
-		}
-		ident := constvars.FhirSupertokenSystemIdentifier + "|" + uid
-		pats, err := u.patientFhir.FindPatientByIdentifier(ctx, ident)
-		if err != nil {
-			return "", err
-		}
-		if len(pats) < 1 {
-			return "", exceptions.ErrGetFHIRResource(nil, constvars.ResourcePatient)
-		}
-		return fmt.Sprintf("%s/%s", constvars.ResourcePatient, pats[0].ID), nil
+	if hasRole(roles, constvars.KonsulinRolePatient) {
+		return u.resolvePatientSubject(ctx, uid)
 	}
 
 	// Fallback to guest
 	return string(constvars.ServiceRequestSubjectGuest), nil
+}
+
+// hasRole returns true if any role in the list matches the target (case-insensitive).
+func hasRole(roles []string, target string) bool {
+	for _, r := range roles {
+		if strings.EqualFold(r, target) {
+			return true
+		}
+	}
+	return false
+}
+
+func (u *usecase) resolvePractitionerSubject(ctx context.Context, uid string) (string, error) {
+	if strings.TrimSpace(uid) == "" {
+		return "", exceptions.ErrClientCustomMessage(exceptions.BuildNewCustomError(nil, constvars.StatusUnauthorized, "missing uid in context", "MISSING_UID"))
+	}
+	pracs, err := u.practitionerFhir.FindPractitionerByIdentifier(ctx, constvars.FhirSupertokenSystemIdentifier, uid)
+	if err != nil {
+		return "", err
+	}
+	if len(pracs) < 1 {
+		return "", exceptions.ErrGetFHIRResource(nil, constvars.ResourcePractitioner)
+	}
+	return fmt.Sprintf("%s/%s", constvars.ResourcePractitioner, pracs[0].ID), nil
+}
+
+func (u *usecase) resolvePatientSubject(ctx context.Context, uid string) (string, error) {
+	if strings.TrimSpace(uid) == "" {
+		return "", exceptions.ErrClientCustomMessage(exceptions.BuildNewCustomError(nil, constvars.StatusUnauthorized, "missing uid in context", "MISSING_UID"))
+	}
+	ident := constvars.FhirSupertokenSystemIdentifier + "|" + uid
+	pats, err := u.patientFhir.FindPatientByIdentifier(ctx, ident)
+	if err != nil {
+		return "", err
+	}
+	if len(pats) < 1 {
+		return "", exceptions.ErrGetFHIRResource(nil, constvars.ResourcePatient)
+	}
+	return fmt.Sprintf("%s/%s", constvars.ResourcePatient, pats[0].ID), nil
 }
 
 func (u *usecase) handleAsyncService(ctx context.Context, in *EnqueueInput) (*EnqueueOutput, error) {
@@ -572,51 +588,13 @@ func (u *usecase) authorizeSynchronous(ctx context.Context, roles []string, meth
 }
 
 func (u *usecase) validateSynchronousBody(ctx context.Context, roles []string, userIdentifierId string, body []byte, contentType string) error {
-	if containsRole(roles, constvars.KonsulinRoleGuest) || containsRole(roles, constvars.KonsulinRoleSuperadmin) {
+	if hasRole(roles, constvars.KonsulinRoleGuest) || hasRole(roles, constvars.KonsulinRoleSuperadmin) {
 		return nil
 	}
 
-	var email, phone, chatwoot string
-
-	// Parse body based on content type
-	mediaType, params, err := mime.ParseMediaType(contentType)
+	email, phone, chatwoot, err := parseBodyFields(body, contentType)
 	if err != nil {
-		return exceptions.BuildNewCustomError(err, constvars.StatusBadRequest, "Invalid content type", "WEBHOOK_INVALID_CONTENT_TYPE")
-	}
-
-	switch mediaType {
-	case constvars.MIMEApplicationJSON:
-		var tmp map[string]interface{}
-		if err := json.Unmarshal(body, &tmp); err != nil {
-			return exceptions.ErrCannotParseJSON(err)
-		}
-
-		email = rootString(tmp, "email")
-		phone = rootString(tmp, "phone_number")
-		chatwoot = rootString(tmp, "chatwoot_id")
-	case constvars.MIMEMultipartForm:
-		boundary, ok := params["boundary"]
-		if !ok {
-			return exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, "boundary is required for multipart/form-data", "WEBHOOK_INVALID_CONTENT_TYPE")
-		}
-
-		mr := multipart.NewReader(bytes.NewReader(body), boundary)
-		form, err := mr.ReadForm(32 << 20)
-		if err != nil {
-			return exceptions.ErrCannotParseMultipartForm(err)
-		}
-
-		if v, ok := form.Value["email"]; ok && len(v) > 0 {
-			email = v[0]
-		}
-		if v, ok := form.Value["phone_number"]; ok && len(v) > 0 {
-			phone = v[0]
-		}
-		if v, ok := form.Value["chatwoot_id"]; ok && len(v) > 0 {
-			chatwoot = v[0]
-		}
-	default:
-		return exceptions.BuildNewCustomError(nil, constvars.StatusUnsupportedMediaType, "Content-Type must be application/json or multipart/form-data", "WEBHOOK_UNSUPPORTED_MEDIA_TYPE")
+		return err
 	}
 
 	if email == "" && phone == "" && chatwoot == "" {
@@ -632,46 +610,7 @@ func (u *usecase) validateSynchronousBody(ctx context.Context, roles []string, u
 		return exceptions.BuildNewCustomError(nil, constvars.StatusUnauthorized, "Not authorized", "WEBHOOK_SYNC_MISSING_UID")
 	}
 
-	switch role {
-	case constvars.KonsulinRolePractitioner, constvars.KonsulinRoleClinician:
-		pracs, err := u.practitionerFhir.FindPractitionerByIdentifier(ctx, constvars.FhirSupertokenSystemIdentifier, userIdentifierId)
-		if err != nil {
-			return err
-		}
-		if len(pracs) == 0 {
-			return exceptions.BuildNewCustomError(nil, constvars.StatusNotFound, "practitioner not found", "WEBHOOK_SYNC_USER_NOT_FOUND")
-		}
-
-		prac := pracs[0]
-
-		return validateContactFields(email, phone, chatwoot, prac.GetEmailAddresses(), prac.GetPhoneNumbers(), prac.Identifier, constvars.ResourcePractitioner)
-	case constvars.KonsulinRoleClinicAdmin:
-		persons, err := u.personFhir.Search(ctx, contracts.PersonSearchInput{
-			Identifier: fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, userIdentifierId),
-		})
-		if err != nil {
-			return err
-		}
-		if len(persons) == 0 {
-			return exceptions.BuildNewCustomError(nil, constvars.StatusNotFound, "person not found", "WEBHOOK_SYNC_USER_NOT_FOUND")
-		}
-		person := persons[0]
-		return validateContactFields(email, phone, chatwoot, person.GetEmailAddresses(), person.GetPhoneNumbers(), person.Identifier, constvars.ResourcePerson)
-	case constvars.KonsulinRolePatient:
-		pats, err := u.patientFhir.FindPatientByIdentifier(ctx, fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, userIdentifierId))
-		if err != nil {
-			return err
-		}
-		if len(pats) == 0 {
-			return exceptions.BuildNewCustomError(nil, constvars.StatusNotFound, "patient not found", "WEBHOOK_SYNC_USER_NOT_FOUND")
-		}
-
-		pat := pats[0]
-
-		return validateContactFields(email, phone, chatwoot, pat.GetEmailAddresses(), pat.GetPhoneNumbers(), pat.Identifier, constvars.ResourcePatient)
-	default:
-		return exceptions.BuildNewCustomError(nil, constvars.StatusUnauthorized, "Not authorized", "WEBHOOK_SYNC_UNSUPPORTED_ROLE")
-	}
+	return u.validateContactByRole(ctx, role, userIdentifierId, email, phone, chatwoot)
 }
 
 func (u *usecase) forwardSynchronous(ctx context.Context, service, method string, body []byte, contentType string) (*HandleSynchronousWebhookServiceOutput, error) {
@@ -720,6 +659,106 @@ func (u *usecase) enqueueFallback(ctx context.Context, service, method string, b
 	return err
 }
 
+// parseBodyFields extracts email, phone, and chatwoot from request body based on content type.
+func parseBodyFields(body []byte, contentType string) (email, phone, chatwoot string, err error) {
+	mediaType, params, parseErr := mime.ParseMediaType(contentType)
+	if parseErr != nil {
+		return "", "", "", exceptions.BuildNewCustomError(parseErr, constvars.StatusBadRequest, "Invalid content type", "WEBHOOK_INVALID_CONTENT_TYPE")
+	}
+
+	switch mediaType {
+	case constvars.MIMEApplicationJSON:
+		return parseJSONBodyFields(body)
+	case constvars.MIMEMultipartForm:
+		return parseMultipartBodyFields(body, params["boundary"])
+	default:
+		return "", "", "", exceptions.BuildNewCustomError(nil, constvars.StatusUnsupportedMediaType, "Content-Type must be application/json or multipart/form-data", "WEBHOOK_UNSUPPORTED_MEDIA_TYPE")
+	}
+}
+
+// parseJSONBodyFields extracts contact fields from a JSON request body.
+func parseJSONBodyFields(body []byte) (email, phone, chatwoot string, err error) {
+	var tmp map[string]interface{}
+	if err := json.Unmarshal(body, &tmp); err != nil {
+		return "", "", "", exceptions.ErrCannotParseJSON(err)
+	}
+	return rootString(tmp, "email"), rootString(tmp, "phone_number"), rootString(tmp, "chatwoot_id"), nil
+}
+
+// parseMultipartBodyFields extracts contact fields from a multipart/form-data body.
+func parseMultipartBodyFields(body []byte, boundary string) (email, phone, chatwoot string, err error) {
+	if boundary == "" {
+		return "", "", "", exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, "boundary is required for multipart/form-data", "WEBHOOK_INVALID_CONTENT_TYPE")
+	}
+
+	mr := multipart.NewReader(bytes.NewReader(body), boundary)
+	form, formErr := mr.ReadForm(32 << 20)
+	if formErr != nil {
+		return "", "", "", exceptions.ErrCannotParseMultipartForm(formErr)
+	}
+
+	if v, ok := form.Value["email"]; ok && len(v) > 0 {
+		email = v[0]
+	}
+	if v, ok := form.Value["phone_number"]; ok && len(v) > 0 {
+		phone = v[0]
+	}
+	if v, ok := form.Value["chatwoot_id"]; ok && len(v) > 0 {
+		chatwoot = v[0]
+	}
+	return email, phone, chatwoot, nil
+}
+
+// validateContactByRole dispatches contact validation to the correct FHIR resource lookup.
+func (u *usecase) validateContactByRole(ctx context.Context, role, userIdentifierId, email, phone, chatwoot string) error {
+	switch role {
+	case constvars.KonsulinRolePractitioner, constvars.KonsulinRoleClinician:
+		return u.validatePractitionerContact(ctx, userIdentifierId, email, phone, chatwoot)
+	case constvars.KonsulinRoleClinicAdmin:
+		return u.validateClinicAdminContact(ctx, userIdentifierId, email, phone, chatwoot)
+	case constvars.KonsulinRolePatient:
+		return u.validatePatientContact(ctx, userIdentifierId, email, phone, chatwoot)
+	default:
+		return exceptions.BuildNewCustomError(nil, constvars.StatusUnauthorized, "Not authorized", "WEBHOOK_SYNC_UNSUPPORTED_ROLE")
+	}
+}
+
+func (u *usecase) validatePractitionerContact(ctx context.Context, userIdentifierId, email, phone, chatwoot string) error {
+	pracs, err := u.practitionerFhir.FindPractitionerByIdentifier(ctx, constvars.FhirSupertokenSystemIdentifier, userIdentifierId)
+	if err != nil {
+		return err
+	}
+	if len(pracs) == 0 {
+		return exceptions.BuildNewCustomError(nil, constvars.StatusNotFound, "practitioner not found", "WEBHOOK_SYNC_USER_NOT_FOUND")
+	}
+	return validateContactFields(email, phone, chatwoot, pracs[0].GetEmailAddresses(), pracs[0].GetPhoneNumbers(), pracs[0].Identifier, constvars.ResourcePractitioner)
+}
+
+func (u *usecase) validateClinicAdminContact(ctx context.Context, userIdentifierId, email, phone, chatwoot string) error {
+	persons, err := u.personFhir.Search(ctx, contracts.PersonSearchInput{
+		Identifier: fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, userIdentifierId),
+	})
+	if err != nil {
+		return err
+	}
+	if len(persons) == 0 {
+		return exceptions.BuildNewCustomError(nil, constvars.StatusNotFound, "person not found", "WEBHOOK_SYNC_USER_NOT_FOUND")
+	}
+	return validateContactFields(email, phone, chatwoot, persons[0].GetEmailAddresses(), persons[0].GetPhoneNumbers(), persons[0].Identifier, constvars.ResourcePerson)
+}
+
+func (u *usecase) validatePatientContact(ctx context.Context, userIdentifierId, email, phone, chatwoot string) error {
+	pats, err := u.patientFhir.FindPatientByIdentifier(ctx, fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, userIdentifierId))
+	if err != nil {
+		return err
+	}
+	if len(pats) == 0 {
+		return exceptions.BuildNewCustomError(nil, constvars.StatusNotFound, "patient not found", "WEBHOOK_SYNC_USER_NOT_FOUND")
+	}
+	return validateContactFields(email, phone, chatwoot, pats[0].GetEmailAddresses(), pats[0].GetPhoneNumbers(), pats[0].Identifier, constvars.ResourcePatient)
+}
+
+// rootString extracts a string value from a map, handling string and float64 types.
 func rootString(m map[string]interface{}, key string) string {
 	if m == nil {
 		return ""
@@ -755,15 +794,6 @@ func selectRoleForValidation(roles []string) string {
 		}
 	}
 	return ""
-}
-
-func containsRole(roles []string, target string) bool {
-	for _, r := range roles {
-		if strings.EqualFold(r, target) {
-			return true
-		}
-	}
-	return false
 }
 
 func validateContactFields(email, phone, chatwoot string, emails []string, phones []string, identifiers []fhir_dto.Identifier, resource string) error {

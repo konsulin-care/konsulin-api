@@ -154,51 +154,25 @@ func (ctrl *WebhookController) HandleEnqueueWebHook(w http.ResponseWriter, r *ht
 		return
 	}
 
-	// Extract service_name from URL path (simple split, route attaches this under /hook/{service})
-	// Expecting router to mount as /{prefix}/{version}/hook/{service}
-	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-	serviceName := ""
-	if len(parts) >= 4 {
-		serviceName = parts[len(parts)-1]
-	}
-
-	// Validate serviceName: alphanumeric only; max len 256
-	if len(serviceName) == 0 || len(serviceName) > 256 {
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrClientCustomMessage(exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, "Invalid service name", "WEBHOOK_INVALID_SERVICE_NAME")))
-		return
-	}
-	if ok, _ := regexp.MatchString(`^[A-Za-z0-9-]+$`, serviceName); !ok {
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrClientCustomMessage(exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, "Invalid service name", "WEBHOOK_INVALID_SERVICE_NAME")))
-		return
-	}
-
-	// Read raw JSON body
-	raw, err := io.ReadAll(r.Body)
+	serviceName, err := extractServiceName(r.URL.Path)
 	if err != nil {
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrReadBody(err))
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
+	}
+
+	raw, readErr := io.ReadAll(r.Body)
+	if readErr != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrReadBody(readErr))
 		return
 	}
 	defer func() { _ = r.Body.Close() }()
 
-	// Basic JSON check
-	var tmp map[string]interface{}
-	if err := json.Unmarshal(raw, &tmp); err != nil {
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+	if err := validateJSONBody(raw); err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, err)
 		return
 	}
 
-	// Rate limit evaluation before enqueue
-	// Derive actor ID: API key superadmin or uid or "anonymous"
-	actorID := "anonymous"
-	if v := r.Context().Value(constvars.CONTEXT_API_KEY_AUTH); v != nil {
-		if b, ok := v.(bool); ok && b {
-			actorID = "api-key-superadmin"
-		}
-	}
-	if uid, ok := r.Context().Value(constvars.CONTEXT_UID).(string); ok && uid != "" && !strings.EqualFold(uid, "anonymous") {
-		actorID = uid
-	}
-
+	actorID := deriveActorID(r.Context())
 	eval, evalErr := ctrl.Limiter.Evaluate(r.Context(), &ratelimiter.EvaluateInput{ServiceName: serviceName, NowUTC: time.Now().UTC(), ActorID: actorID})
 	if evalErr != nil {
 		utils.BuildErrorResponse(ctrl.Log, w, evalErr)
@@ -214,23 +188,59 @@ func (ctrl *WebhookController) HandleEnqueueWebHook(w http.ResponseWriter, r *ht
 		return
 	}
 
-	// Attach forwarded JWT header (if any) into context for usecase auth evaluation
 	fwd := r.Header.Get(webhook.JWTForwardedFromPaymentServiceHeader)
 	ctx := context.WithValue(r.Context(), webhook.ContextKeyJWTForwardedValue, fwd)
 
-	out, err := ctrl.Usecase.Enqueue(ctx, &webhook.EnqueueInput{
+	out, ucErr := ctrl.Usecase.Enqueue(ctx, &webhook.EnqueueInput{
 		ServiceName: serviceName,
 		Method:      constvars.MethodPost,
 		RawJSON:     raw,
 	})
-	if err != nil {
-		// If 429 expected, return with Retry-After set by caller requirement later in router or here we can set minimal
-		// Prefer standard error handling
-		utils.BuildErrorResponse(ctrl.Log, w, err)
+	if ucErr != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, ucErr)
 		return
 	}
 
 	utils.BuildSuccessResponse(w, constvars.StatusAccepted, constvars.ResponseSuccess, out)
+}
+
+// extractServiceName extracts the last segment of a /{prefix}/{version}/hook/{service} path.
+func extractServiceName(path string) (string, error) {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	serviceName := ""
+	if len(parts) >= 4 {
+		serviceName = parts[len(parts)-1]
+	}
+
+	if len(serviceName) == 0 || len(serviceName) > 256 {
+		return "", exceptions.ErrClientCustomMessage(exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, "Invalid service name", "WEBHOOK_INVALID_SERVICE_NAME"))
+	}
+	if ok, _ := regexp.MatchString(`^[A-Za-z0-9-]+$`, serviceName); !ok {
+		return "", exceptions.ErrClientCustomMessage(exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, "Invalid service name", "WEBHOOK_INVALID_SERVICE_NAME"))
+	}
+	return serviceName, nil
+}
+
+// validateJSONBody checks that the raw body is valid JSON.
+func validateJSONBody(raw []byte) error {
+	var tmp map[string]interface{}
+	if err := json.Unmarshal(raw, &tmp); err != nil {
+		return exceptions.ErrCannotParseJSON(err)
+	}
+	return nil
+}
+
+// deriveActorID extracts the actor identifier from context for rate limiting.
+func deriveActorID(ctx context.Context) string {
+	if v := ctx.Value(constvars.CONTEXT_API_KEY_AUTH); v != nil {
+		if b, ok := v.(bool); ok && b {
+			return "api-key-superadmin"
+		}
+	}
+	if uid, ok := ctx.Value(constvars.CONTEXT_UID).(string); ok && uid != "" && !strings.EqualFold(uid, "anonymous") {
+		return uid
+	}
+	return "anonymous"
 }
 
 func (ctrl *WebhookController) HandleAsyncServiceResultCallback(w http.ResponseWriter, r *http.Request) {
