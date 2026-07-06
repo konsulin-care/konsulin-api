@@ -76,97 +76,138 @@ func (l *HookRateLimiter) Evaluate(ctx context.Context, in *EvaluateInput) (*Eva
 		return &EvaluateOutput{Allowed: true}, nil
 	}
 
-	// Monthly quota keys
-	monthKey := fmt.Sprintf("HOOK:QUOTA:%s:%s", in.NowUTC.Format("200601"), service)
 	actorID := strings.TrimSpace(in.ActorID)
-	var monthKeyUser string
-	if actorID != "" {
-		monthKeyUser = fmt.Sprintf("HOOK:QUOTA_USER:%s:%s:%s", in.NowUTC.Format("200601"), service, actorID)
-	}
-	// TTL until the end of month (UTC)
-	firstOfNextMonth := time.Date(in.NowUTC.Year(), in.NowUTC.Month()+1, 1, 0, 0, 0, 0, time.UTC)
-	ttlMonthly := time.Until(firstOfNextMonth)
 
-	// Read current monthly count (service)
-	currentMonthlyStr, _ := l.redis.Get(ctx, monthKey)
-	var currentMonthly int
-	if currentMonthlyStr != "" {
-		_ = json.Unmarshal([]byte(currentMonthlyStr), &currentMonthly)
-	}
-	// Read current monthly count (user)
-	var currentMonthlyUser int
-	if monthKeyUser != "" {
-		currentMonthlyUserStr, _ := l.redis.Get(ctx, monthKeyUser)
-		if currentMonthlyUserStr != "" {
-			_ = json.Unmarshal([]byte(currentMonthlyUserStr), &currentMonthlyUser)
-		}
-	}
+	monthKey, monthKeyUser, ttlMonthly := buildMonthlyQuotaKeys(service, actorID, in.NowUTC)
+	minuteKey, minuteKeyUser, ttlMinute := buildMinuteWindowKeys(service, actorID, in.NowUTC)
 
-	if (currentMonthly >= l.monthlyQuota && l.monthlyQuota > 0) ||
-		(monthKeyUser != "" && currentMonthlyUser >= l.monthlyQuota && l.monthlyQuota > 0) {
-		// Over monthly quota => Retry-After until next month boundary
+	currentMonthly, currentMonthlyUser, monthlyExceeded, err := checkMonthlyQuota(ctx, l.redis, monthKey, monthKeyUser, l.monthlyQuota)
+	if err != nil {
+		return nil, err
+	}
+	if monthlyExceeded {
 		return &EvaluateOutput{Allowed: false, RetryAfterSecs: int(ttlMonthly.Seconds()) + 1, LimitedByMonthly: true}, nil
 	}
 
-	// 60s window keys
-	minuteKey := fmt.Sprintf("HOOK:LIMIT:%s:%s", in.NowUTC.Format("200601021504"), service)
-	var minuteKeyUser string
-	if actorID != "" {
-		minuteKeyUser = fmt.Sprintf("HOOK:LIMIT_USER:%s:%s:%s", in.NowUTC.Format("200601021504"), service, actorID)
+	currentMinute, currentMinuteUser, minuteExceeded, err := checkMinuteWindow(ctx, l.redis, minuteKey, minuteKeyUser, l.rateLimit)
+	if err != nil {
+		return nil, err
 	}
-	// TTL until end of the current minute window
-	nextMinute := in.NowUTC.Truncate(time.Minute).Add(time.Minute)
-	ttlMinute := time.Until(nextMinute)
-
-	// Read current minute count (service)
-	currentMinuteStr, _ := l.redis.Get(ctx, minuteKey)
-	var currentMinute int
-	if currentMinuteStr != "" {
-		_ = json.Unmarshal([]byte(currentMinuteStr), &currentMinute)
-	}
-	// Read current minute count (user)
-	var currentMinuteUser int
-	if minuteKeyUser != "" {
-		currentMinuteUserStr, _ := l.redis.Get(ctx, minuteKeyUser)
-		if currentMinuteUserStr != "" {
-			_ = json.Unmarshal([]byte(currentMinuteUserStr), &currentMinuteUser)
-		}
-	}
-
-	if (currentMinute >= l.rateLimit && l.rateLimit > 0) ||
-		(minuteKeyUser != "" && currentMinuteUser >= l.rateLimit && l.rateLimit > 0) {
-		// Over per-minute window => Retry-After until next minute
+	if minuteExceeded {
 		return &EvaluateOutput{Allowed: false, RetryAfterSecs: int(ttlMinute.Seconds()) + 1, LimitedByMonthly: false}, nil
 	}
 
-	// Increment counters with TTL set if first time (service)
+	incrementCounters(ctx, l.redis, minuteKey, minuteKeyUser, monthKey, monthKeyUser, ttlMinute, ttlMonthly, currentMinute, currentMinuteUser, currentMonthly, currentMonthlyUser)
+
+	return &EvaluateOutput{Allowed: true}, nil
+}
+
+// buildMonthlyQuotaKeys generates Redis keys and TTL for monthly quota tracking.
+func buildMonthlyQuotaKeys(service, actorID string, nowUTC time.Time) (monthKey, monthKeyUser string, ttl time.Duration) {
+	monthKey = fmt.Sprintf("HOOK:QUOTA:%s:%s", nowUTC.Format("200601"), service)
+	if actorID != "" {
+		monthKeyUser = fmt.Sprintf("HOOK:QUOTA_USER:%s:%s:%s", nowUTC.Format("200601"), service, actorID)
+	}
+	firstOfNextMonth := time.Date(nowUTC.Year(), nowUTC.Month()+1, 1, 0, 0, 0, 0, time.UTC)
+	ttl = time.Until(firstOfNextMonth)
+	return
+}
+
+// buildMinuteWindowKeys generates Redis keys and TTL for 60s window tracking.
+func buildMinuteWindowKeys(service, actorID string, nowUTC time.Time) (minuteKey, minuteKeyUser string, ttl time.Duration) {
+	minuteKey = fmt.Sprintf("HOOK:LIMIT:%s:%s", nowUTC.Format("200601021504"), service)
+	if actorID != "" {
+		minuteKeyUser = fmt.Sprintf("HOOK:LIMIT_USER:%s:%s:%s", nowUTC.Format("200601021504"), service, actorID)
+	}
+	nextMinute := nowUTC.Truncate(time.Minute).Add(time.Minute)
+	ttl = time.Until(nextMinute)
+	return
+}
+
+// checkMonthlyQuota reads counters and returns current values plus exceeded flag.
+func checkMonthlyQuota(ctx context.Context, redis contracts.RedisRepository, monthKey, monthKeyUser string, monthlyQuota int) (currentMonthly, currentMonthlyUser int, exceeded bool, err error) {
+	currentMonthly, err = readIntCounter(ctx, redis, monthKey)
+	if err != nil {
+		return 0, 0, false, err
+	}
+	if monthlyQuota > 0 && currentMonthly >= monthlyQuota {
+		return currentMonthly, 0, true, nil
+	}
+
+	if monthKeyUser != "" {
+		currentMonthlyUser, err = readIntCounter(ctx, redis, monthKeyUser)
+		if err != nil {
+			return 0, 0, false, err
+		}
+		if monthlyQuota > 0 && currentMonthlyUser >= monthlyQuota {
+			return currentMonthly, currentMonthlyUser, true, nil
+		}
+	}
+	return currentMonthly, currentMonthlyUser, false, nil
+}
+
+// checkMinuteWindow reads counters and returns current values plus exceeded flag.
+func checkMinuteWindow(ctx context.Context, redis contracts.RedisRepository, minuteKey, minuteKeyUser string, rateLimit int) (currentMinute, currentMinuteUser int, exceeded bool, err error) {
+	currentMinute, err = readIntCounter(ctx, redis, minuteKey)
+	if err != nil {
+		return 0, 0, false, err
+	}
+	if rateLimit > 0 && currentMinute >= rateLimit {
+		return currentMinute, 0, true, nil
+	}
+
+	if minuteKeyUser != "" {
+		currentMinuteUser, err = readIntCounter(ctx, redis, minuteKeyUser)
+		if err != nil {
+			return 0, 0, false, err
+		}
+		if rateLimit > 0 && currentMinuteUser >= rateLimit {
+			return currentMinute, currentMinuteUser, true, nil
+		}
+	}
+	return currentMinute, currentMinuteUser, false, nil
+}
+
+// readIntCounter reads a JSON-stored integer counter from Redis.
+func readIntCounter(ctx context.Context, redis contracts.RedisRepository, key string) (int, error) {
+	str, _ := redis.Get(ctx, key)
+	if str == "" {
+		return 0, nil
+	}
+	var val int
+	if err := json.Unmarshal([]byte(str), &val); err != nil {
+		return 0, err
+	}
+	return val, nil
+}
+
+// incrementCounters increments service-level and user-level counters with TTL.
+func incrementCounters(ctx context.Context, redis contracts.RedisRepository, minuteKey, minuteKeyUser, monthKey, monthKeyUser string, ttlMinute, ttlMonthly time.Duration, currentMinute, currentMinuteUser, currentMonthly, currentMonthlyUser int) {
 	if currentMinute == 0 {
-		_ = l.redis.Set(ctx, minuteKey, 1, ttlMinute+time.Second)
+		_ = redis.Set(ctx, minuteKey, 1, ttlMinute+time.Second)
 	} else {
-		_ = l.redis.Increment(ctx, minuteKey)
+		_ = redis.Increment(ctx, minuteKey)
 	}
 
 	if currentMonthly == 0 {
-		_ = l.redis.Set(ctx, monthKey, 1, ttlMonthly+time.Minute)
+		_ = redis.Set(ctx, monthKey, 1, ttlMonthly+time.Minute)
 	} else {
-		_ = l.redis.Increment(ctx, monthKey)
+		_ = redis.Increment(ctx, monthKey)
 	}
 
-	// Increment user-specific counters
 	if minuteKeyUser != "" {
 		if currentMinuteUser == 0 {
-			_ = l.redis.Set(ctx, minuteKeyUser, 1, ttlMinute+time.Second)
+			_ = redis.Set(ctx, minuteKeyUser, 1, ttlMinute+time.Second)
 		} else {
-			_ = l.redis.Increment(ctx, minuteKeyUser)
-		}
-	}
-	if monthKeyUser != "" {
-		if currentMonthlyUser == 0 {
-			_ = l.redis.Set(ctx, monthKeyUser, 1, ttlMonthly+time.Minute)
-		} else {
-			_ = l.redis.Increment(ctx, monthKeyUser)
+			_ = redis.Increment(ctx, minuteKeyUser)
 		}
 	}
 
-	return &EvaluateOutput{Allowed: true}, nil
+	if monthKeyUser != "" {
+		if currentMonthlyUser == 0 {
+			_ = redis.Set(ctx, monthKeyUser, 1, ttlMonthly+time.Minute)
+		} else {
+			_ = redis.Increment(ctx, monthKeyUser)
+		}
+	}
 }
