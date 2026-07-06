@@ -144,35 +144,48 @@ func loadInternalConfigWithEnv() *InternalConfig {
 		},
 	}
 
-	// Validate mandatory sensitive fields in non-dev environments
-	if cfg.App.Env != constvars.EnvLocal && cfg.App.Env != constvars.EnvDev && cfg.App.Env != constvars.EnvDevelopment && cfg.App.Env != constvars.EnvTest {
-		if cfg.JWT.Secret == "" {
-			log.Fatalf("APP_JWT_SECRET is required in %s environment", cfg.App.Env)
-		}
-		if cfg.Webhook.JWTHookKey == "" {
-			log.Fatalf("JWT_HOOK_KEY is required in %s environment", cfg.App.Env)
-		}
-		if cfg.PaymentGateway.Username == "" || cfg.PaymentGateway.ApiKey == "" {
-			log.Fatalf("Payment gateway credentials (APP_PAYMENT_GATEWAY_USERNAME, APP_PAYMENT_GATEWAY_API_KEY) are required in %s environment", cfg.App.Env)
-		}
-		if cfg.Xendit.APIKey == "" {
-			log.Fatalf("APP_XENDIT_API_KEY is required in %s environment", cfg.App.Env)
-		}
-		if cfg.PaymentGateway.BaseUrl == "" {
-			log.Fatalf("APP_PAYMENT_GATEWAY_BASE_URL is required in %s environment", cfg.App.Env)
-		}
-	}
+	validateNonDevConfig(cfg)
+	validateBasePrices(cfg)
+	normalizeWebhookConfig(cfg)
+	normalizeSlotCronSpec(cfg)
 
-	// this is a safe guard to ensure that no base price is left unset
-	// this must be prevented because it will trigger failed payment
-	// if the amount calculation resulting in 0
+	return cfg
+}
+
+// validateNonDevConfig ensures mandatory sensitive fields are set in non-dev environments.
+func validateNonDevConfig(cfg *InternalConfig) {
+	if cfg.App.Env == constvars.EnvLocal || cfg.App.Env == constvars.EnvDev || cfg.App.Env == constvars.EnvDevelopment || cfg.App.Env == constvars.EnvTest {
+		return
+	}
+	if cfg.JWT.Secret == "" {
+		log.Fatalf("APP_JWT_SECRET is required in %s environment", cfg.App.Env)
+	}
+	if cfg.Webhook.JWTHookKey == "" {
+		log.Fatalf("JWT_HOOK_KEY is required in %s environment", cfg.App.Env)
+	}
+	if cfg.PaymentGateway.Username == "" || cfg.PaymentGateway.ApiKey == "" {
+		log.Fatalf("Payment gateway credentials (APP_PAYMENT_GATEWAY_USERNAME, APP_PAYMENT_GATEWAY_API_KEY) are required in %s environment", cfg.App.Env)
+	}
+	if cfg.Xendit.APIKey == "" {
+		log.Fatalf("APP_XENDIT_API_KEY is required in %s environment", cfg.App.Env)
+	}
+	if cfg.PaymentGateway.BaseUrl == "" {
+		log.Fatalf("APP_PAYMENT_GATEWAY_BASE_URL is required in %s environment", cfg.App.Env)
+	}
+}
+
+// validateBasePrices ensures no service base price is left unset (would cause $0 payments).
+func validateBasePrices(cfg *InternalConfig) {
 	if cfg.ServicePricing.AnalyzeBasePrice <= 0 ||
 		cfg.ServicePricing.ReportBasePrice <= 0 ||
 		cfg.ServicePricing.PerformanceReportBasePrice <= 0 ||
 		cfg.ServicePricing.AccessDatasetBasePrice <= 0 {
 		log.Fatalf("invalid service base price configuration: all BASE_PRICE_* must be > 0")
 	}
+}
 
+// normalizeWebhookConfig validates and sets defaults for webhook synchronous service config.
+func normalizeWebhookConfig(cfg *InternalConfig) {
 	if len(cfg.Webhook.SynchronousServiceNames) == 0 {
 		log.Fatalf("invalid webhook configuration: HOOK_SYNC_SERVICE_NAMES must be set and non-empty")
 	}
@@ -187,18 +200,15 @@ func loadInternalConfigWithEnv() *InternalConfig {
 	default:
 		cfg.Webhook.SynchronousServiceFailurePolicy = "return_error"
 	}
+}
 
-	// Validate/normalize cron spec now; default to @daily if empty or invalid
+// normalizeSlotCronSpec validates the slot worker cron spec and defaults to @daily if invalid.
+func normalizeSlotCronSpec(cfg *InternalConfig) {
 	spec := cfg.App.SlotWorkerCronSpec
-
 	if _, err := cron.ParseStandard(spec); err != nil {
 		log.Printf("slot worker: invalid cron spec '%s': %v, defaulting to @daily", spec, err)
-		spec = "@daily"
+		cfg.App.SlotWorkerCronSpec = "@daily"
 	}
-	// store normalized spec back
-	cfg.App.SlotWorkerCronSpec = spec
-
-	return cfg
 }
 
 func loadDriverConfigWithYAML() *DriverConfig {
