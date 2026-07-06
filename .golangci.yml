@@ -1,0 +1,22 @@
+version: "2"
+linters:
+  default: none
+  enable:
+    - gocognit
+    - goconst
+    - dupl
+    - govet
+    - staticcheck
+    - errcheck
+  settings:
+    gocognit:
+      min-complexity: 15
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+    dupl:
+      threshold: 50
+  exclusions:
+    paths:
+      - ".*_test\\.go$"
+      - vendor

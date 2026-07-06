@@ -37,9 +37,10 @@ The backend aims for a **Clean Architecture** pattern with **API Gateway** desig
 ## Technology Stack
 
 ### Core Technologies
-- **Language**: Go 1.22.3
+- **Language**: Go 1.26 (managed via mise)
 - **HTTP Router**: Chi v5
 - **Architecture**: Clean Architecture with API Gateway pattern
+- **Toolchain**: [mise](https://mise.jdx.dev) for reproducible, version-pinned tooling (Go, golangci-lint, gocognit, pre-commit)
 
 ### Data Storage
 - **Primary Data**: Blaze FHIR Server (FHIR R4 compliant)
@@ -58,7 +59,7 @@ The backend aims for a **Clean Architecture** pattern with **API Gateway** desig
 
 ## Prerequisites
 
-- Go 1.22.3 or later
+- [mise](https://mise.jdx.dev) — multi-language tool version manager
 - Docker & Docker Compose
 - Git
 
@@ -70,12 +71,31 @@ git clone https://github.com/yourusername/be-konsulin.git
 cd be-konsulin
 ```
 
-### 2. Install Dependencies
+### 2. Install Mise-Managed Tools
+All tool versions are pinned in `.mise.toml` for reproducible environments. Run:
+```bash
+mise install
+```
+This installs Go, golangci-lint, gocognit, and pre-commit at their pinned versions.
+
+### 3. Install Pre-Commit Hooks
+Quality gates run automatically before every commit:
+```bash
+pre-commit install
+```
+Hooks enforce:
+- **golangci-lint**: gocognit (complexity <15), goconst (duplicate literals), dupl (code duplication), govet, staticcheck, errcheck
+- **gofumpt**: strict Go formatting
+- **go mod tidy**: prevents dependency drift
+- **go test**: runs unit tests on changed modules
+- **pre-commit-hooks**: file size, YAML, EOF, whitespace checks
+
+### 4. Install Go Dependencies
 ```bash
 go mod tidy
 ```
 
-### 3. Configure Environment
+### 5. Configure Environment
 Create a `.env` file in the root directory using `.env.example` as a template:
 ```bash
 cp .env.example .env
@@ -83,7 +103,7 @@ cp .env.example .env
 
 **Ask fellow Engineers for .env credentials**
 
-### 4. Start Development Services
+### 6. Start Development Services
 Start the required services (PostgreSQL for SuperTokens, Redis, Blaze FHIR server, SuperTokens):
 ```bash
 docker-compose up -d
@@ -95,7 +115,7 @@ This will start:
 - `blaze-core-konsulin`: Blaze FHIR server for healthcare data (port 8080)
 - `supertokens-core-konsulin`: SuperTokens authentication service (port 3567)
 
-### 5. Run the Backend Service
+### 7. Run the Backend Service
 ```bash
 go run cmd/http/main.go
 ```

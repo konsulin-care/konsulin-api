@@ -25,3 +25,5 @@ resources/http-client.env.json
 deployments/.vault
 
 dbconfig.yml
+
+.pre-commit-config.yaml.bak
