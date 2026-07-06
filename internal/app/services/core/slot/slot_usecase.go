@@ -471,49 +471,49 @@ func (s *SlotUsecase) HandleSetUnavailabilityForMultiplePractitionerRoles(ctx co
 			continue
 		}
 		entries = append(entries, map[string]any{
-			"request": map[string]any{"method": "DELETE", "url": "Slot/" + id},
+			constvars.FhirFieldRequest: map[string]any{constvars.FhirFieldMethod: constvars.MethodDelete, constvars.FhirFieldURL: "Slot/" + id},
 		})
 	}
 	for _, c := range creations {
 		entries = append(entries, map[string]any{
-			"request": map[string]any{"method": "POST", "url": "Slot"},
-			"resource": map[string]any{
-				"resourceType": "Slot",
-				"schedule":     map[string]any{"reference": "Schedule/" + c.scheduleID},
-				"status":       string(input.SlotStatus),
-				"meta": map[string]any{
-					"tag": []map[string]any{{"code": slotTagUserGenerated}},
+			constvars.FhirFieldRequest: map[string]any{constvars.FhirFieldMethod: constvars.MethodPost, constvars.FhirFieldURL: constvars.ResourceSlot},
+			constvars.FhirFieldResource: map[string]any{
+				constvars.FhirFieldResourceType: constvars.ResourceSlot,
+				"schedule":                     map[string]any{constvars.FhirFieldReference: "Schedule/" + c.scheduleID},
+				constvars.FhirFieldStatus:       string(input.SlotStatus),
+				constvars.FhirFieldMeta: map[string]any{
+					constvars.FhirFieldTag: []map[string]any{{constvars.FhirFieldCode: slotTagUserGenerated}},
 				},
 				"comment": input.Reason,
-				"start":   c.start.Format(time.RFC3339),
-				"end":     c.end.Format(time.RFC3339),
+				constvars.FhirFieldStart: c.start.Format(time.RFC3339),
+				constvars.FhirFieldEnd:   c.end.Format(time.RFC3339),
 			},
 		})
 	}
 	// Add free slot creations after adjustment (system-generated)
 	for _, fc := range createFree {
 		entries = append(entries, map[string]any{
-			"request": map[string]any{"method": "POST", "url": "Slot"},
-			"resource": map[string]any{
-				"resourceType": "Slot",
-				"schedule":     map[string]any{"reference": "Schedule/" + fc.scheduleID},
-				"status":       string(fhir_dto.SlotStatusFree),
-				"start":        fc.start.Format(time.RFC3339),
-				"end":          fc.end.Format(time.RFC3339),
-				"meta": map[string]any{
-					"tag": []map[string]any{{"code": SlotTagSystemGenerated}},
+			constvars.FhirFieldRequest: map[string]any{constvars.FhirFieldMethod: constvars.MethodPost, constvars.FhirFieldURL: constvars.ResourceSlot},
+			constvars.FhirFieldResource: map[string]any{
+				constvars.FhirFieldResourceType: constvars.ResourceSlot,
+				"schedule":                     map[string]any{constvars.FhirFieldReference: "Schedule/" + fc.scheduleID},
+				constvars.FhirFieldStatus:       string(fhir_dto.SlotStatusFree),
+				constvars.FhirFieldStart:        fc.start.Format(time.RFC3339),
+				constvars.FhirFieldEnd:          fc.end.Format(time.RFC3339),
+				constvars.FhirFieldMeta: map[string]any{
+					constvars.FhirFieldTag: []map[string]any{{constvars.FhirFieldCode: SlotTagSystemGenerated}},
 				},
 			},
 		})
 	}
 	for _, rb := range updatedRoleBodies {
 		entries = append(entries, map[string]any{
-			"request":  map[string]any{"method": "PUT", "url": "PractitionerRole/" + rb.ID},
-			"resource": rb,
+			constvars.FhirFieldRequest:  map[string]any{constvars.FhirFieldMethod: constvars.MethodPut, constvars.FhirFieldURL: "PractitionerRole/" + rb.ID},
+			constvars.FhirFieldResource: rb,
 		})
 	}
 
-	bundle := map[string]any{"resourceType": "Bundle", "type": "transaction", "entry": entries}
+	bundle := map[string]any{constvars.FhirFieldResourceType: constvars.ResourceBundle, constvars.FhirBundleFieldType: constvars.FhirBundleTypeTransaction, constvars.FhirFieldEntry: entries}
 
 	if _, err := s.bundles.PostTransactionBundle(ctx, bundle); err != nil {
 		s.logger.With(zap.Error(err)).Error("failed to post transaction bundle")

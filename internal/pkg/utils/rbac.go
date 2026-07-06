@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"konsulin-service/internal/pkg/constvars"
 	"net/url"
 	"strings"
 )
@@ -83,7 +84,7 @@ func RequiresPatientOwnership(resourceType string) bool {
 
 func RequiresPractitionerOwnership(resourceType string) bool {
 	practitionerSpecificResources := map[string]bool{
-		"Practitioner":                true,
+		string(constvars.ResourcePractitioner):       true,
 		"Schedule":                    true,
 		"Encounter":                   true,
 		"Observation":                 true,

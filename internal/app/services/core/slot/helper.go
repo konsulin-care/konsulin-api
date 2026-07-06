@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"net/url"
 	"sort"
@@ -472,7 +473,7 @@ func buildFHIRSlots(scheduleID string, intervals []interval, status fhir_dto.Slo
 	out := make([]fhir_dto.Slot, 0, len(intervals))
 	for _, iv := range intervals {
 		out = append(out, fhir_dto.Slot{
-			ResourceType: "Slot",
+			ResourceType: constvars.ResourceSlot,
 			Schedule:     fhir_dto.Reference{Reference: "Schedule/" + scheduleID, Type: "Schedule"},
 			Status:       status,
 			Start:        iv.Start,
@@ -499,28 +500,28 @@ func buildCreateSlotsTransactionBundle(scheduleID string, slots []fhir_dto.Slot)
 	for _, s := range slots {
 		startISO := s.Start.Format(time.RFC3339)
 		entry := map[string]any{
-			"request": map[string]any{
-				"method":      "POST",
-				"url":         "Slot",
-				"ifNoneExist": "schedule=Schedule/" + scheduleID + "&start=" + url.QueryEscape(startISO),
+			constvars.FhirFieldRequest: map[string]any{
+				constvars.FhirFieldMethod: constvars.MethodPost,
+				constvars.FhirFieldURL:    constvars.ResourceSlot,
+				"ifNoneExist":             "schedule=Schedule/" + scheduleID + "&start=" + url.QueryEscape(startISO),
 			},
-			"resource": map[string]any{
-				"resourceType": "Slot",
-				"schedule":     map[string]any{"reference": "Schedule/" + scheduleID},
-				"status":       string(s.Status),
-				"start":        startISO,
-				"end":          s.End.Format(time.RFC3339),
-				"meta": map[string]any{
-					"tag": []map[string]any{{"code": SlotTagSystemGenerated}},
+			constvars.FhirFieldResource: map[string]any{
+				constvars.FhirFieldResourceType: constvars.ResourceSlot,
+				"schedule":                     map[string]any{constvars.FhirFieldReference: "Schedule/" + scheduleID},
+				constvars.FhirFieldStatus:       string(s.Status),
+				constvars.FhirFieldStart:        startISO,
+				constvars.FhirFieldEnd:          s.End.Format(time.RFC3339),
+				constvars.FhirFieldMeta: map[string]any{
+					constvars.FhirFieldTag: []map[string]any{{constvars.FhirFieldCode: SlotTagSystemGenerated}},
 				},
 			},
 		}
 		entries = append(entries, entry)
 	}
 	return map[string]any{
-		"resourceType": "Bundle",
-		"type":         "transaction",
-		"entry":        entries,
+		constvars.FhirFieldResourceType: constvars.ResourceBundle,
+		constvars.FhirBundleFieldType:   constvars.FhirBundleTypeTransaction,
+		constvars.FhirFieldEntry:        entries,
 	}
 }
 

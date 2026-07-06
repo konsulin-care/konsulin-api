@@ -104,7 +104,7 @@ func (u *User) ConvertToPatientFhirDeactivationRequest() *fhir_dto.Patient {
 	var extensions []fhir_dto.Extension
 	for _, education := range u.Educations {
 		extensions = append(extensions, fhir_dto.Extension{
-			Url:         "http://example.org/fhir/StructureDefinition/education",
+			Url:         constvars.FhirEducationExtensionURL,
 			ValueString: education,
 		})
 	}
@@ -124,19 +124,19 @@ func (u *User) ConvertToPatientFhirDeactivationRequest() *fhir_dto.Patient {
 			{
 				System: fhir_dto.ContactPointSystemEmail,
 				Value:  u.Email,
-				Use:    "home",
+				Use:    constvars.FhirAddressUseHome,
 			},
 			{
 				System: fhir_dto.ContactPointSystemPhone,
 				Value:  u.WhatsAppNumber,
-				Use:    "mobile",
+				Use:    constvars.FhirTelecomUseMobile,
 			},
 		},
 		Gender:    u.Gender,
 		BirthDate: u.BirthDate,
 		Address: []fhir_dto.Address{
 			{
-				Use:  "home",
+				Use:  constvars.FhirAddressUseHome,
 				Line: strings.Split(u.Address, ", "),
 			},
 		},
@@ -148,7 +148,7 @@ func (u *User) ConvertToPractitionerFhirDeactivationRequest() *fhir_dto.Practiti
 	var extensions []fhir_dto.Extension
 	for _, education := range u.Educations {
 		extensions = append(extensions, fhir_dto.Extension{
-			Url:         "http://example.org/fhir/StructureDefinition/education",
+			Url:         constvars.FhirEducationExtensionURL,
 			ValueString: education,
 		})
 	}
@@ -168,19 +168,19 @@ func (u *User) ConvertToPractitionerFhirDeactivationRequest() *fhir_dto.Practiti
 			{
 				System: fhir_dto.ContactPointSystemEmail,
 				Value:  u.Email,
-				Use:    "home",
+				Use:    constvars.FhirAddressUseHome,
 			},
 			{
 				System: fhir_dto.ContactPointSystemPhone,
 				Value:  u.WhatsAppNumber,
-				Use:    "mobile",
+				Use:    constvars.FhirTelecomUseMobile,
 			},
 		},
 		Gender:    u.Gender,
 		BirthDate: u.BirthDate,
 		Address: []fhir_dto.Address{
 			{
-				Use:  "home",
+				Use:  constvars.FhirAddressUseHome,
 				Line: strings.Split(u.Address, ", "),
 			},
 		},

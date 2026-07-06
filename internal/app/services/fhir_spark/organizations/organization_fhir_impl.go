@@ -100,7 +100,7 @@ func (c *organizationFhirClient) FindAll(ctx context.Context, nameFilter, fetchT
 		}
 
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("organizationFhirClient.FindAll FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -186,7 +186,7 @@ func (c *organizationFhirClient) FindOrganizationByID(ctx context.Context, organ
 		}
 
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("organizationFhirClient.FindOrganizationByID FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -271,7 +271,7 @@ func (c *organizationFhirClient) Update(ctx context.Context, organization fhir_d
 		}
 
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("organizationFhirClient.Update FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),

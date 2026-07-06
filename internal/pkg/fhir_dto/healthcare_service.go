@@ -2,6 +2,7 @@ package fhir_dto
 
 import (
 	"errors"
+	"konsulin-service/internal/pkg/constvars"
 	"strings"
 )
 
@@ -17,10 +18,10 @@ type HealthcareService struct {
 // isDurationMinutes checks whether the Duration unit/code represents minutes.
 // Returns true if unit/code is empty (backwards compatible) or explicitly minutes.
 func isDurationMinutes(d *Duration) bool {
-	if d.Unit != "" && d.Unit != "minutes" {
+	if d.Unit != "" && d.Unit != constvars.HealthcareServiceUnitMinutes {
 		return false
 	}
-	if d.Code != "" && d.Code != "min" {
+	if d.Code != "" && d.Code != constvars.HealthcareServiceCodeMin {
 		return false
 	}
 	return true

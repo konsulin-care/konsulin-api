@@ -62,7 +62,7 @@ func BuildFhirPatientRegistrationRequest(username, email string) *fhir_dto.Patie
 			{
 				System: fhir_dto.ContactPointSystemEmail,
 				Value:  email,
-				Use:    "home",
+				Use:    constvars.FhirAddressUseHome,
 			},
 		},
 	}
@@ -75,7 +75,7 @@ func BuildFhirPatientWhatsAppRegistrationRequest(phoneNumber string) *fhir_dto.P
 			{
 				System: fhir_dto.ContactPointSystemPhone,
 				Value:  phoneNumber,
-				Use:    "mobile",
+				Use:    constvars.FhirTelecomUseMobile,
 			},
 		},
 	}
@@ -85,7 +85,7 @@ func BuildFhirPatientUpdateProfileRequest(request *requests.UpdateProfile, patie
 	var extensions []fhir_dto.Extension
 	for _, education := range request.Educations {
 		extensions = append(extensions, fhir_dto.Extension{
-			Url:         "http://example.org/fhir/StructureDefinition/education",
+			Url:         constvars.FhirEducationExtensionURL,
 			ValueString: education,
 		})
 	}
@@ -104,19 +104,19 @@ func BuildFhirPatientUpdateProfileRequest(request *requests.UpdateProfile, patie
 			{
 				System: fhir_dto.ContactPointSystemEmail,
 				Value:  request.Email,
-				Use:    "home",
+				Use:    constvars.FhirAddressUseHome,
 			},
 			{
 				System: fhir_dto.ContactPointSystemPhone,
 				Value:  request.WhatsAppNumber,
-				Use:    "mobile",
+				Use:    constvars.FhirTelecomUseMobile,
 			},
 		},
 		Gender:    request.Gender,
 		BirthDate: request.BirthDate,
 		Address: []fhir_dto.Address{
 			{
-				Use:  "home",
+				Use:  constvars.FhirAddressUseHome,
 				Line: strings.Split(request.Address, ", "),
 			},
 		},
@@ -131,7 +131,7 @@ func BuildFhirPractitionerRegistrationRequest(username, email string) *fhir_dto.
 			{
 				System: fhir_dto.ContactPointSystemEmail,
 				Value:  email,
-				Use:    "work",
+				Use:    constvars.FhirAddressUseWork,
 			},
 		},
 	}
@@ -154,7 +154,7 @@ func BuildFhirPractitionerUpdateProfileRequest(request *requests.UpdateProfile, 
 	var extensions []fhir_dto.Extension
 	for _, education := range request.Educations {
 		extensions = append(extensions, fhir_dto.Extension{
-			Url:         "http://example.org/fhir/StructureDefinition/education",
+			Url:         constvars.FhirEducationExtensionURL,
 			ValueString: education,
 		})
 	}
@@ -173,19 +173,19 @@ func BuildFhirPractitionerUpdateProfileRequest(request *requests.UpdateProfile, 
 			{
 				System: fhir_dto.ContactPointSystemEmail,
 				Value:  request.Email,
-				Use:    "work",
+				Use:    constvars.FhirAddressUseWork,
 			},
 			{
 				System: fhir_dto.ContactPointSystemPhone,
 				Value:  request.WhatsAppNumber,
-				Use:    "mobile",
+				Use:    constvars.FhirTelecomUseMobile,
 			},
 		},
 		Gender:    request.Gender,
 		BirthDate: request.BirthDate,
 		Address: []fhir_dto.Address{
 			{
-				Use:  "work",
+				Use:  constvars.FhirAddressUseWork,
 				Line: strings.Split(request.Address, ", "),
 			},
 		},
@@ -229,20 +229,20 @@ func BuildPractitionerRolesBundleRequestByPractitionerID(practitionerID string, 
 	}
 
 	bundle := map[string]interface{}{
-		"resourceType": "Bundle",
-		"type":         "transaction",
-		"entry":        []interface{}{},
+		constvars.FhirFieldResourceType: constvars.ResourceBundle,
+		constvars.FhirBundleFieldType:   constvars.FhirBundleTypeTransaction,
+		constvars.FhirFieldEntry:        []interface{}{},
 	}
 
 	for _, practitionerRole := range practitionerRoles {
 		entry := map[string]interface{}{
-			"resource": practitionerRole,
-			"request": map[string]string{
-				"method": "POST",
-				"url":    "PractitionerRole",
+			constvars.FhirFieldResource: practitionerRole,
+			constvars.FhirFieldRequest: map[string]string{
+				constvars.FhirFieldMethod: constvars.MethodPost,
+				constvars.FhirFieldURL:    "PractitionerRole",
 			},
 		}
-		bundle["entry"] = append(bundle["entry"].([]interface{}), entry)
+		bundle[constvars.FhirFieldEntry] = append(bundle[constvars.FhirFieldEntry].([]interface{}), entry)
 	}
 
 	return bundle

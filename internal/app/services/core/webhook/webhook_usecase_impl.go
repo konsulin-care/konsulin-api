@@ -141,9 +141,14 @@ type GetAsyncServiceResultOutput struct {
 	Note            string             `json:"note"`
 }
 
-// JWTForwardedFromPaymentServiceHeader is a special header key that will be checked to
-// ensure the request comes from trusted payment service.
+// JWTForwardedFromPaymentServiceHeader is the HTTP header name for forwarded JWT from payment service.
 const JWTForwardedFromPaymentServiceHeader = "X-Forwarded-From-Payment-Service"
+
+// ContextKeyJWTForwarded is the context key type for forwarded JWT from payment service.
+// Using a custom type avoids collisions when used with context.WithValue (SA1029).
+type ContextKeyJWTForwarded string
+
+const ContextKeyJWTForwardedValue ContextKeyJWTForwarded = "jwt-forwarded-from-payment"
 
 // PAYMENT_SERVICE_SUB is the expected JWT subject for forwarded requests from payment service
 const PAYMENT_SERVICE_SUB = "payment-service"
@@ -187,7 +192,7 @@ func (u *usecase) Enqueue(ctx context.Context, in *EnqueueInput) (*EnqueueOutput
 
 	// Auth gate: support forwarded JWT header from payment service
 	forwarded := ""
-	if v := ctx.Value(JWTForwardedFromPaymentServiceHeader); v != nil {
+	if v := ctx.Value(ContextKeyJWTForwardedValue); v != nil {
 		if s, ok := v.(string); ok {
 			forwarded = s
 		}
@@ -241,7 +246,7 @@ func (u *usecase) HandleSynchronousWebhookService(ctx context.Context, in *Handl
 	}
 
 	forwarded := ""
-	if v := ctx.Value(JWTForwardedFromPaymentServiceHeader); v != nil {
+	if v := ctx.Value(ContextKeyJWTForwardedValue); v != nil {
 		if s, ok := v.(string); ok {
 			forwarded = s
 		}

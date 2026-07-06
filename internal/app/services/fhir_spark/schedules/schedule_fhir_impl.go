@@ -95,7 +95,7 @@ func (c *scheduleFhirClient) CreateSchedule(ctx context.Context, request *fhir_d
 		}
 
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("scheduleFhirClient.CreateSchedule FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -169,7 +169,7 @@ func (c *scheduleFhirClient) FindScheduleByPractitionerID(ctx context.Context, p
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSchedule)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("scheduleFhirClient.FindScheduleByPractitionerID FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -258,7 +258,7 @@ func (c *scheduleFhirClient) FindScheduleByPractitionerRoleID(ctx context.Contex
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSchedule)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("scheduleFhirClient.FindScheduleByPractitionerRoleID FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -330,7 +330,7 @@ func (c *scheduleFhirClient) Search(ctx context.Context, params contracts.Schedu
 		var outcome fhir_dto.OperationOutcome
 		_ = json.Unmarshal(bodyBytes, &outcome)
 		if len(outcome.Issue) > 0 {
-			return nil, exceptions.ErrGetFHIRResource(fmt.Errorf(outcome.Issue[0].Diagnostics), constvars.ResourceSchedule)
+			return nil, exceptions.ErrGetFHIRResource(fmt.Errorf("%s", outcome.Issue[0].Diagnostics), constvars.ResourceSchedule)
 		}
 		return nil, exceptions.ErrGetFHIRResource(fmt.Errorf("status %d", resp.StatusCode), constvars.ResourceSchedule)
 	}

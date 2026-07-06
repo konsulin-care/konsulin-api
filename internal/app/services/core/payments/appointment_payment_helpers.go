@@ -57,11 +57,11 @@ func (uc *paymentUsecase) buildAppointmentPaymentBundle(
 		},
 	}
 	entries = append(entries, map[string]any{
-		"request": map[string]any{
-			"method": "PUT",
-			"url":    constvars.ResourcePaymentReconciliation + "/" + paymentReconID,
+		constvars.FhirFieldRequest: map[string]any{
+			constvars.FhirFieldMethod: constvars.MethodPut,
+			constvars.FhirFieldURL:    constvars.ResourcePaymentReconciliation + "/" + paymentReconID,
 		},
-		"resource": paymentRecon,
+		constvars.FhirFieldResource: paymentRecon,
 	})
 
 	paymentNotice := fhir_dto.PaymentNotice{
@@ -386,11 +386,12 @@ func (uc *paymentUsecase) notifyProviderAsync(
 	contact := make(map[string]string)
 	if len(input.patient.Telecom) > 0 {
 		for _, telecom := range input.patient.Telecom {
-			if telecom.System == "phone" {
+			switch telecom.System {
+			case "phone":
 				contact["phone"] = telecom.Value
-			} else if telecom.System == "email" {
+			case "email":
 				contact["email"] = telecom.Value
-			}
+		}
 		}
 	}
 	payload["contact"] = contact

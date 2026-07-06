@@ -93,7 +93,7 @@ func (c *invoiceFhirClient) Search(ctx context.Context, params contracts.Invoice
 		}
 
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("invoiceFhirClient.Search FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),

@@ -1422,18 +1422,18 @@ func (uc *paymentUsecase) handleOfflineAppointmentPayment(
 
 	// Include the slot status update in the same transaction bundle for atomicity
 	slotUpdateEntry := map[string]any{
-		"request": map[string]any{
-			"method": "PUT",
-			"url":    constvars.ResourceSlot + "/" + slotID,
+		constvars.FhirFieldRequest: map[string]any{
+			constvars.FhirFieldMethod: constvars.MethodPut,
+			constvars.FhirFieldURL:    constvars.ResourceSlot + "/" + slotID,
 		},
-		"resource": revalidatedSlot,
+		constvars.FhirFieldResource: revalidatedSlot,
 	}
 	bundleEntries = append(bundleEntries, slotUpdateEntry)
 
 	bundle := map[string]any{
-		"resourceType": "Bundle",
-		"type":         "transaction",
-		"entry":        bundleEntries,
+		constvars.FhirFieldResourceType: constvars.ResourceBundle,
+		constvars.FhirBundleFieldType:   constvars.FhirBundleTypeTransaction,
+		constvars.FhirFieldEntry:        bundleEntries,
 	}
 	if _, execErr := uc.BundleFhirClient.PostTransactionBundle(ctx, bundle); execErr != nil {
 		uc.Log.Error("paymentUsecase.handleOfflineAppointmentPayment bundle execution failed",

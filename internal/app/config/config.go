@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/utils"
 	"log"
 	"os"
@@ -25,7 +26,7 @@ func init() {
 
 	env := os.Getenv("APP_ENV")
 	if env == "" {
-		env = "local"
+		env = constvars.EnvLocal
 	}
 
 	internalCfg = loadInternalConfigWithEnv()
@@ -54,7 +55,7 @@ func loadInternalConfigWithEnv() *InternalConfig {
 		App: App{
 
 			// General App Settings with Defaults
-			Env:            utils.GetEnvString("APP_ENV", "local"),
+			Env:            utils.GetEnvString("APP_ENV", constvars.EnvLocal),
 			Port:           utils.GetEnvString("APP_PORT", "3200"),
 			Version:        utils.GetEnvString("APP_VERSION", "v1"),
 			Address:        utils.GetEnvString("APP_ADDRESS", "localhost"),
@@ -144,7 +145,7 @@ func loadInternalConfigWithEnv() *InternalConfig {
 	}
 
 	// Validate mandatory sensitive fields in non-dev environments
-	if cfg.App.Env != "local" && cfg.App.Env != "dev" && cfg.App.Env != "development" && cfg.App.Env != "test" {
+	if cfg.App.Env != constvars.EnvLocal && cfg.App.Env != constvars.EnvDev && cfg.App.Env != constvars.EnvDevelopment && cfg.App.Env != constvars.EnvTest {
 		if cfg.JWT.Secret == "" {
 			log.Fatalf("APP_JWT_SECRET is required in %s environment", cfg.App.Env)
 		}
@@ -243,10 +244,10 @@ func loadDriverConfigWithEnv() *DriverConfig {
 	// Check current environment
 	env := os.Getenv("APP_ENV")
 	if env == "" {
-		env = "local"
+		env = constvars.EnvLocal
 	}
 
-	if env != "local" && env != "dev" && env != "development" && env != "test" {
+	if env != constvars.EnvLocal && env != constvars.EnvDev && env != constvars.EnvDevelopment && env != constvars.EnvTest {
 		// Validate Redis Password
 		if cfg.Redis.Password == "" {
 			log.Fatalf("REDIS_PASSWORD is required in %s environment", env)

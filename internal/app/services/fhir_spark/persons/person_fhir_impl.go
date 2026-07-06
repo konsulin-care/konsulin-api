@@ -67,7 +67,7 @@ func (c *personFhirClient) FindPersonByEmail(ctx context.Context, email string) 
 		)
 		return nil, exceptions.ErrSendHTTPRequest(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != constvars.StatusOK {
 		bodyBytes, err := io.ReadAll(resp.Body)
@@ -88,7 +88,7 @@ func (c *personFhirClient) FindPersonByEmail(ctx context.Context, email string) 
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePerson)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("personFhirClient.FindPersonByEmail FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -155,7 +155,7 @@ func (c *personFhirClient) FindPersonByPhone(ctx context.Context, phone string) 
 		)
 		return nil, exceptions.ErrSendHTTPRequest(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != constvars.StatusOK {
 		bodyBytes, err := io.ReadAll(resp.Body)
@@ -176,7 +176,7 @@ func (c *personFhirClient) FindPersonByPhone(ctx context.Context, phone string) 
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePerson)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("personFhirClient.FindPersonByPhone FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -250,7 +250,7 @@ func (c *personFhirClient) Search(ctx context.Context, params contracts.PersonSe
 		)
 		return nil, exceptions.ErrSendHTTPRequest(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != constvars.StatusOK {
 		bodyBytes, err := io.ReadAll(resp.Body)
@@ -264,7 +264,7 @@ func (c *personFhirClient) Search(ctx context.Context, params contracts.PersonSe
 		var outcome fhir_dto.OperationOutcome
 		_ = json.Unmarshal(bodyBytes, &outcome)
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("personFhirClient.Search FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -333,7 +333,7 @@ func (c *personFhirClient) Create(ctx context.Context, person *fhir_dto.Person) 
 		)
 		return nil, exceptions.ErrSendHTTPRequest(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != constvars.StatusCreated {
 		bodyBytes, err := io.ReadAll(resp.Body)
@@ -354,7 +354,7 @@ func (c *personFhirClient) Create(ctx context.Context, person *fhir_dto.Person) 
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePerson)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("personFhirClient.Create FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -415,7 +415,7 @@ func (c *personFhirClient) Update(ctx context.Context, person *fhir_dto.Person) 
 		)
 		return nil, exceptions.ErrSendHTTPRequest(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != constvars.StatusOK {
 		bodyBytes, err := io.ReadAll(resp.Body)
@@ -436,7 +436,7 @@ func (c *personFhirClient) Update(ctx context.Context, person *fhir_dto.Person) 
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePerson)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("personFhirClient.Update FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),

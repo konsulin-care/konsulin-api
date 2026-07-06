@@ -77,7 +77,7 @@ func (w *Worker) runOnce(ctx context.Context) {
 		w.log.Info("slot.worker: leader lock not acquired; another instance is running")
 		return
 	}
-	defer w.locker.Unlock(ctx, leaderLockKey, token)
+	defer func() { _ = w.locker.Unlock(ctx, leaderLockKey, token) }()
 
 	// Start TTL refresher goroutine
 	refreshCtx, cancelRefresh := context.WithCancel(ctx)

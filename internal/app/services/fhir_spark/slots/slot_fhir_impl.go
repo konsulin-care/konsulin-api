@@ -90,7 +90,7 @@ func (c *slotFhirClient) FindSlotByScheduleID(ctx context.Context, scheduleID st
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("slotFhirClient.FindSlotByScheduleID FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -180,7 +180,7 @@ func (c *slotFhirClient) FindSlotByID(ctx context.Context, slotID string) (*fhir
 		}
 
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("slotFhirClient.FindSlotByID FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -257,7 +257,7 @@ func (c *slotFhirClient) FindSlotByScheduleIDAndStatus(ctx context.Context, sche
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("slotFhirClient.FindSlotByScheduleIDAndStatus FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -350,7 +350,7 @@ func (c *slotFhirClient) CreateSlot(ctx context.Context, request *fhir_dto.Slot)
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("slotFhirClient.CreateSlot FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -499,7 +499,7 @@ func (c *slotFhirClient) FindSlotByScheduleAndTimeRange(ctx context.Context, sch
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("slotFhirClient.FindSlotByScheduleAndTimeRange FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -618,7 +618,7 @@ func (c *slotFhirClient) FindSlotsByScheduleWithQuery(ctx context.Context, sched
 				return nil, exceptions.ErrGetFHIRResource(uerr, constvars.ResourceSlot)
 			}
 			if len(outcome.Issue) > 0 {
-				fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+				fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 				c.Log.Error("slotFhirClient.FindSlotsByScheduleWithQuery FHIR error",
 					zap.String(constvars.LoggingRequestIDKey, requestID),
 					zap.Error(fhirErrorIssue),
@@ -706,7 +706,7 @@ func (c *slotFhirClient) PostTransactionBundle(ctx context.Context, bundle map[s
 			return nil, exceptions.ErrCreateFHIRResource(uerr, constvars.ResourceSlot)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("slotFhirClient.PostTransactionBundle FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),

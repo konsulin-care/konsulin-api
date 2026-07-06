@@ -95,7 +95,7 @@ func (c *patientFhirClient) CreatePatient(ctx context.Context, request *fhir_dto
 		}
 
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("patientFhirClient.CreatePatient FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -170,7 +170,7 @@ func (c *patientFhirClient) FindPatientByID(ctx context.Context, patientID strin
 		}
 
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("patientFhirClient.FindPatientByID FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -243,7 +243,7 @@ func (c *patientFhirClient) FindPatientByIdentifier(ctx context.Context, identif
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePatient)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("patientFhirClient.FindPatientByIdentifier FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -338,7 +338,7 @@ func (c *patientFhirClient) UpdatePatient(ctx context.Context, request *fhir_dto
 		}
 
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("patientFhirClient.UpdatePatient FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -421,7 +421,7 @@ func (c *patientFhirClient) PatchPatient(ctx context.Context, request *fhir_dto.
 		}
 
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("patientFhirClient.PatchPatient FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -497,7 +497,7 @@ func (c *patientFhirClient) FindPatientByEmail(ctx context.Context, email string
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePatient)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("patientFhirClient.FindPatientByEmail FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -585,7 +585,7 @@ func (c *patientFhirClient) FindPatientByPhone(ctx context.Context, phone string
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePatient)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("patientFhirClient.FindPatientByPhone FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),

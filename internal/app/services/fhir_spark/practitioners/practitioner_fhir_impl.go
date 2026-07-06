@@ -93,7 +93,7 @@ func (c *practitionerFhirClient) CreatePractitioner(ctx context.Context, request
 			return nil, exceptions.ErrCreateFHIRResource(err, constvars.ResourcePractitioner)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("practitionerFhirClient.CreatePractitioner FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -167,7 +167,7 @@ func (c *practitionerFhirClient) FindPractitionerByID(ctx context.Context, pract
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePractitioner)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("practitionerFhirClient.FindPractitionerByID FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -251,7 +251,7 @@ func (c *practitionerFhirClient) UpdatePractitioner(ctx context.Context, request
 			return nil, exceptions.ErrUpdateFHIRResource(err, constvars.ResourcePractitioner)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("practitionerFhirClient.UpdatePractitioner FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -327,7 +327,7 @@ func (c *practitionerFhirClient) FindPractitionerByIdentifier(ctx context.Contex
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePractitioner)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("practitionerFhirClient.FindPractitionerByIdentifier FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -420,7 +420,7 @@ func (c *practitionerFhirClient) FindPractitionerByEmail(ctx context.Context, em
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePractitioner)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("practitionerFhirClient.FindPractitionerByEmail FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -513,7 +513,7 @@ func (c *practitionerFhirClient) FindPractitionerByPhone(ctx context.Context, ph
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePractitioner)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("practitionerFhirClient.FindPractitionerByPhone FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -609,7 +609,7 @@ func (c *practitionerFhirClient) PatchPractitioner(ctx context.Context, request 
 			return nil, exceptions.ErrUpdateFHIRResource(err, constvars.ResourcePractitioner)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("practitionerFhirClient.PatchPractitioner FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),

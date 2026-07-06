@@ -66,7 +66,7 @@ func (c *practitionerRoleFhirClient) Search(ctx context.Context, params contract
 		var outcome fhir_dto.OperationOutcome
 		_ = json.Unmarshal(bodyBytes, &outcome)
 		if len(outcome.Issue) > 0 {
-			return nil, exceptions.ErrGetFHIRResource(fmt.Errorf(outcome.Issue[0].Diagnostics), constvars.ResourcePractitionerRole)
+			return nil, exceptions.ErrGetFHIRResource(fmt.Errorf("%s", outcome.Issue[0].Diagnostics), constvars.ResourcePractitionerRole)
 		}
 		return nil, exceptions.ErrGetFHIRResource(fmt.Errorf("status %d", resp.StatusCode), constvars.ResourcePractitionerRole)
 	}
@@ -141,7 +141,7 @@ func (c *practitionerRoleFhirClient) DeletePractitionerRoleByID(ctx context.Cont
 		}
 
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("practitionerRoleFhirClient.DeletePractitionerRoleByID FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -205,7 +205,7 @@ func (c *practitionerRoleFhirClient) FindPractitionerRoleByOrganizationID(ctx co
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePractitionerRole)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("practitionerRoleFhirClient.FindPractitionerRoleByOrganizationID FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -304,7 +304,7 @@ func (c *practitionerRoleFhirClient) FindPractitionerRoleByCustomRequest(ctx con
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePractitionerRole)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("practitionerRoleFhirClient.FindPractitionerRoleByCustomRequest FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -390,7 +390,7 @@ func (c *practitionerRoleFhirClient) FindPractitionerRoleByPractitionerID(ctx co
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePractitionerRole)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("practitionerRoleFhirClient.FindPractitionerRoleByPractitionerID FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -483,7 +483,7 @@ func (c *practitionerRoleFhirClient) FindPractitionerRoleByPractitionerIDAndName
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePractitionerRole)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("practitionerRoleFhirClient.FindPractitionerRoleByPractitionerIDAndName FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -573,7 +573,7 @@ func (c *practitionerRoleFhirClient) FindPractitionerRoleByPractitionerIDAndOrga
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePractitionerRole)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("practitionerRoleFhirClient.FindPractitionerRoleByPractitionerIDAndOrganizationID FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -668,7 +668,7 @@ func (c *practitionerRoleFhirClient) CreatePractitionerRoles(ctx context.Context
 		}
 
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("practitionerRoleFhirClient.CreatePractitionerRoles FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -740,7 +740,7 @@ func (c *practitionerRoleFhirClient) CreatePractitionerRole(ctx context.Context,
 		}
 
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("practitionerRoleFhirClient.CreatePractitionerRole FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -826,7 +826,7 @@ func (c *practitionerRoleFhirClient) UpdatePractitionerRole(ctx context.Context,
 		}
 
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("practitionerRoleFhirClient.UpdatePractitionerRole FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),
@@ -902,7 +902,7 @@ func (c *practitionerRoleFhirClient) FindPractitionerRoleByID(ctx context.Contex
 			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourcePractitionerRole)
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("practitionerRoleFhirClient.FindPractitionerRoleByID FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),

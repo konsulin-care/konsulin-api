@@ -580,14 +580,14 @@ func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email 
 		telecom = append(telecom, fhir_dto.ContactPoint{
 			System: fhir_dto.ContactPointSystemEmail,
 			Value:  email,
-			Use:    "work",
+			Use:    constvars.FhirAddressUseWork,
 		})
 	}
 	if strings.TrimSpace(phone) != "" {
 		telecom = append(telecom, fhir_dto.ContactPoint{
 			System: fhir_dto.ContactPointSystemPhone,
 			Value:  phone,
-			Use:    "work",
+			Use:    constvars.FhirAddressUseWork,
 		})
 	}
 
@@ -769,14 +769,14 @@ func (uc *userUsecase) createPatientIfNotExists(ctx context.Context, email strin
 		telecom = append(telecom, fhir_dto.ContactPoint{
 			System: fhir_dto.ContactPointSystemEmail,
 			Value:  email,
-			Use:    "work",
+			Use:    constvars.FhirAddressUseWork,
 		})
 	}
 	if strings.TrimSpace(phone) != "" {
 		telecom = append(telecom, fhir_dto.ContactPoint{
 			System: fhir_dto.ContactPointSystemPhone,
 			Value:  phone,
-			Use:    "work",
+			Use:    constvars.FhirAddressUseWork,
 		})
 	}
 
@@ -913,14 +913,14 @@ func (uc *userUsecase) createPersonIfNotExists(ctx context.Context, email string
 		telecom = append(telecom, fhir_dto.ContactPoint{
 			System: fhir_dto.ContactPointSystemEmail,
 			Value:  email,
-			Use:    "work",
+			Use:    constvars.FhirAddressUseWork,
 		})
 	}
 	if strings.TrimSpace(phone) != "" {
 		telecom = append(telecom, fhir_dto.ContactPoint{
 			System: fhir_dto.ContactPointSystemPhone,
 			Value:  phone,
-			Use:    "work",
+			Use:    constvars.FhirAddressUseWork,
 		})
 	}
 

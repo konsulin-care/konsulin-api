@@ -94,8 +94,7 @@ func (ctrl *WebhookController) HandleSynchronousWebHook(w http.ResponseWriter, r
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrReadBody(err))
 		return
 	}
-
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	contentType := r.Header.Get(constvars.HeaderContentType)
 
@@ -125,7 +124,7 @@ func (ctrl *WebhookController) HandleSynchronousWebHook(w http.ResponseWriter, r
 		}
 	}
 
-	ctx := context.WithValue(r.Context(), webhook.JWTForwardedFromPaymentServiceHeader, r.Header.Get(webhook.JWTForwardedFromPaymentServiceHeader))
+	ctx := context.WithValue(r.Context(), webhook.ContextKeyJWTForwardedValue, r.Header.Get(webhook.JWTForwardedFromPaymentServiceHeader))
 	out, err := ctrl.Usecase.HandleSynchronousWebhookService(ctx, &webhook.HandleSynchronousWebhookServiceInput{
 		ServiceName: serviceName,
 		Method:      constvars.MethodPost,
@@ -179,7 +178,7 @@ func (ctrl *WebhookController) HandleEnqueueWebHook(w http.ResponseWriter, r *ht
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrReadBody(err))
 		return
 	}
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	// Basic JSON check
 	var tmp map[string]interface{}
@@ -217,7 +216,7 @@ func (ctrl *WebhookController) HandleEnqueueWebHook(w http.ResponseWriter, r *ht
 
 	// Attach forwarded JWT header (if any) into context for usecase auth evaluation
 	fwd := r.Header.Get(webhook.JWTForwardedFromPaymentServiceHeader)
-	ctx := context.WithValue(r.Context(), webhook.JWTForwardedFromPaymentServiceHeader, fwd)
+	ctx := context.WithValue(r.Context(), webhook.ContextKeyJWTForwardedValue, fwd)
 
 	out, err := ctrl.Usecase.Enqueue(ctx, &webhook.EnqueueInput{
 		ServiceName: serviceName,
@@ -251,7 +250,7 @@ func (ctrl *WebhookController) HandleAsyncServiceResultCallback(w http.ResponseW
 		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrReadBody(err))
 		return
 	}
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	var req AsyncServiceResultRequest
 	if err := json.Unmarshal(raw, &req); err != nil {

@@ -65,7 +65,7 @@ func (c *FHIRHTTPClient) Do(ctx context.Context, method, url string, body io.Rea
 	if err != nil {
 		return nil, fmt.Errorf("%w: send request: %w", ErrFHIRRequestFailed, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
