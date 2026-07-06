@@ -56,12 +56,12 @@ func TestAppointmentPaymentResponse_Marshaling(t *testing.T) {
 			ExpiresAt:  "2026-07-04T11:00:00+07:00",
 		}
 
-	raw := marshalAndUnmarshal(t, resp)
+		raw := marshalAndUnmarshal(t, resp)
 
-	assertFieldOmitted(t, raw, "appointment")
-	assertFieldOmitted(t, raw, "paymentNotice")
-	assertFieldValue(t, raw, "expiresAt", "2026-07-04T11:00:00+07:00")
-	assertFieldValue(t, raw, "slot", "Slot/abc-123")
+		assertFieldOmitted(t, raw, "appointment")
+		assertFieldOmitted(t, raw, "paymentNotice")
+		assertFieldValue(t, raw, "expiresAt", "2026-07-04T11:00:00+07:00")
+		assertFieldValue(t, raw, "slot", "Slot/abc-123")
 	})
 }
 

@@ -283,7 +283,7 @@ func TestFetchCommonResources_EmptyHealthcareServiceID(t *testing.T) {
 			},
 			PractitionerRoleFhirClient: &mockPractitionerRoleFhirClient{
 				role: &fhir_dto.PractitionerRole{
-					ID:          "pr-456",
+					ID:           "pr-456",
 					Practitioner: fhir_dto.Reference{Reference: "Practitioner/prac-001"},
 					// No HealthcareService — triggers the empty hsID guard
 				},
