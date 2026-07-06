@@ -628,6 +628,15 @@ func (uc *paymentUsecase) fetchCommonResources(
 
 	// Fetch HealthcareService — derive from PractitionerRole if not explicitly provided
 	hsID := resolveHealthcareServiceID(req, res.practitionerRole)
+	if hsID == "" {
+		practitionerRoleID := strings.TrimPrefix(req.PractitionerRoleID, constvars.FHIRRefPrefixPractitionerRole)
+		return nil, exceptions.BuildNewCustomError(
+			fmt.Errorf("healthcare service could not be resolved: not provided in request and no HealthcareService reference found in PractitionerRole %s", practitionerRoleID),
+			constvars.StatusBadRequest,
+			"Healthcare service is required for this appointment. Please provide a valid healthcareServiceId.",
+			"healthcareServiceID resolution failed",
+		)
+	}
 	hs, hsErr := uc.fetchHealthcareService(ctx, hsID)
 	if hsErr != nil {
 		return nil, exceptions.BuildNewCustomError(
