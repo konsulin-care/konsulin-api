@@ -773,29 +773,50 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 }
 
 func (uc *paymentUsecase) mapXenditError(ctx context.Context, err *common.XenditSdkError, httpResp *http.Response) *exceptions.CustomError {
+	logXenditErrorResponse(ctx, uc.Log, httpResp)
+
+	statusCode := extractStatusCodeFromXenditError(err, httpResp)
+	rawMsg := extractMessageFromXenditError(err)
+	devMsg := fmt.Sprintf("xendit error code=%s message=%s", err.ErrorCode(), rawMsg)
+	wrappedErr := errors.New(devMsg)
+
+	if err.ErrorCode() == "API_VALIDATION_ERROR" || statusCode == http.StatusBadRequest {
+		return exceptions.BuildNewCustomError(wrappedErr, constvars.StatusBadRequest, rawMsg, devMsg)
+	}
+	return exceptions.BuildNewCustomError(wrappedErr, statusCode, rawMsg, devMsg)
+}
+
+// logXenditErrorResponse logs the Xendit error response body if available.
+func logXenditErrorResponse(ctx context.Context, log *zap.Logger, httpResp *http.Response) {
+	if httpResp == nil || httpResp.Body == nil {
+		return
+	}
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-
-	// Log response body if available
-	if httpResp != nil && httpResp.Body != nil {
-		bodyBytes, readErr := io.ReadAll(httpResp.Body)
-		if readErr == nil && len(bodyBytes) > 0 {
-			uc.Log.Error("paymentUsecase.mapXenditError Xendit error response body",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.String("response_body", string(bodyBytes)),
-				zap.Int("status_code", httpResp.StatusCode),
-			)
-		}
+	bodyBytes, readErr := io.ReadAll(httpResp.Body)
+	if readErr == nil && len(bodyBytes) > 0 {
+		log.Error("paymentUsecase.mapXenditError Xendit error response body",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("response_body", string(bodyBytes)),
+			zap.Int("status_code", httpResp.StatusCode),
+		)
 	}
+}
 
-	statusCode := constvars.StatusInternalServerError
+// extractStatusCodeFromXenditError determines HTTP status from Xendit SDK error or HTTP response.
+func extractStatusCodeFromXenditError(err *common.XenditSdkError, httpResp *http.Response) int {
 	if httpResp != nil && httpResp.StatusCode > 0 {
-		statusCode = httpResp.StatusCode
-	} else if statusText := strings.TrimSpace(err.Status()); statusText != "" {
+		return httpResp.StatusCode
+	}
+	if statusText := strings.TrimSpace(err.Status()); statusText != "" {
 		if parsed, convErr := strconv.Atoi(statusText); convErr == nil {
-			statusCode = parsed
+			return parsed
 		}
 	}
+	return constvars.StatusInternalServerError
+}
 
+// extractMessageFromXenditError extracts a user-facing message from a Xendit error.
+func extractMessageFromXenditError(err *common.XenditSdkError) string {
 	rawMsg := strings.TrimSpace(err.Error())
 	if raw := err.RawResponse(); raw != nil {
 		if messageAny, ok := raw["message"]; ok {
@@ -807,17 +828,9 @@ func (uc *paymentUsecase) mapXenditError(ctx context.Context, err *common.Xendit
 		}
 	}
 	if rawMsg == "" {
-		rawMsg = constvars.ErrClientCannotProcessRequest
+		return constvars.ErrClientCannotProcessRequest
 	}
-
-	devMsg := fmt.Sprintf("xendit error code=%s message=%s", err.ErrorCode(), rawMsg)
-	wrappedErr := errors.New(devMsg)
-
-	if err.ErrorCode() == "API_VALIDATION_ERROR" || statusCode == http.StatusBadRequest {
-		return exceptions.BuildNewCustomError(wrappedErr, constvars.StatusBadRequest, rawMsg, devMsg)
-	}
-
-	return exceptions.BuildNewCustomError(wrappedErr, statusCode, rawMsg, devMsg)
+	return rawMsg
 }
 
 // createXenditInvoiceForAppointment creates a Xendit invoice for appointment payment

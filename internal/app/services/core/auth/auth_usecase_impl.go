@@ -120,240 +120,93 @@ func (uc *authUsecase) LogoutUser(ctx context.Context, sessionData string) error
 }
 
 func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.SupertokenPasswordlessCreateMagicLink) error {
-	start := time.Now()
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	hasPhone := strings.TrimSpace(request.Phone) != ""
 	hasEmail := strings.TrimSpace(request.Email) != ""
 
-	uc.Log.Debug("Starting magic link creation",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingEmailKey, request.Email),
-		zap.String("phone", request.Phone),
-		zap.Strings(constvars.LoggingRolesKey, request.Roles),
-	)
-
-	// Phone flow (WhatsApp): generate magic link in SuperTokens and deliver via internal webhook.
 	if hasPhone && !hasEmail {
-		phoneDigits := utils.NormalizePhoneDigits(request.Phone)
-		if err := utils.ValidateInternationalPhoneDigits(phoneDigits); err != nil {
-			return err
-		}
-
-		// SuperTokens can accept digits-only phone numbers; we intentionally never include a '+'.
-		plessResponse, err := passwordless.SignInUpByPhoneNumber(uc.InternalConfig.Supertoken.KonsulinTenantID, phoneDigits)
-		if err != nil {
-			uc.Log.Error("Failed to create user account (phone)",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.String("phone", phoneDigits),
-				zap.String(constvars.LoggingErrorTypeKey, "SuperTokens API"),
-				zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
-				zap.Error(err),
-			)
-			return err
-		}
-
-		inviteLink, err := passwordless.CreateMagicLinkByPhoneNumber(uc.InternalConfig.Supertoken.KonsulinTenantID, phoneDigits)
-		if err != nil {
-			uc.Log.Error("Failed to generate magic link (phone)",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.String("phone", phoneDigits),
-				zap.String(constvars.LoggingErrorTypeKey, "SuperTokens API"),
-				zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
-				zap.Error(err),
-			)
-			return err
-		}
-
-		if request.RedirectToPath != "" {
-			inviteLink = utils.AppendRedirectToMagicLink(inviteLink, request.RedirectToPath)
-			uc.Log.Info("redirect path appended to magic link (phone)",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.String("phone", phoneDigits),
-				zap.String("redirect_to_path", request.RedirectToPath),
-			)
-		}
-
-		if len(request.Roles) > 0 {
-			uc.Log.Info("Assigning roles to user (phone)",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.String("phone", phoneDigits),
-				zap.Strings(constvars.LoggingRolesKey, request.Roles),
-			)
-
-			for _, role := range request.Roles {
-				response, err := userroles.AddRoleToUser(uc.InternalConfig.Supertoken.KonsulinTenantID, plessResponse.User.ID, role, nil)
-				if err != nil {
-					uc.Log.Error("Failed to assign role to user (phone)",
-						zap.String(constvars.LoggingRequestIDKey, requestID),
-						zap.String("phone", phoneDigits),
-						zap.String("role", role),
-						zap.String(constvars.LoggingErrorTypeKey, "role assignment"),
-						zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
-						zap.Error(err),
-					)
-					return err
-				}
-				if response.UnknownRoleError != nil {
-					return fmt.Errorf("unknown role found when assigning role %s: %v", role, response.UnknownRoleError)
-				}
-			}
-		}
-
-		// Initialize FHIR resources similarly to email flow.
-		initializeResourcesInput := &contracts.InitializeNewUserFHIRResourcesInput{
-			Phone:            phoneDigits,
-			SuperTokenUserID: plessResponse.User.ID,
-		}
-		initializeResourcesInput.ToogleByRoles(request.Roles)
-		initializeResourceCtx, initializeResourceCtxCancel := context.WithDeadline(ctx, time.Now().Add(10*time.Second))
-		defer initializeResourceCtxCancel()
-		if _, err := uc.UserUsecase.InitializeNewUserFHIRResources(initializeResourceCtx, initializeResourcesInput); err != nil {
-			uc.Log.Error("Failed to initialize new user FHIR resources (phone)",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.String("phone", phoneDigits),
-				zap.String(constvars.LoggingErrorTypeKey, "FHIR resources initialization"),
-				zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
-				zap.Error(err),
-			)
-			return err
-		}
-
-		err = passwordless.SendSms(smsdelivery.SmsType{
-			PasswordlessLogin: &smsdelivery.PasswordlessLoginType{
-				UrlWithLinkCode: &inviteLink,
-				PhoneNumber:     phoneDigits,
-			},
-		})
-
-		if err != nil {
-			uc.Log.Error("Failed to send magic link (phone)",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.String("phone", phoneDigits),
-				zap.String(constvars.LoggingErrorTypeKey, "SuperTokens API"),
-				zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
-				zap.Error(err),
-			)
-			return err
-		}
-
-		uc.Log.Info("Magic link creation completed successfully (phone)",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("phone", phoneDigits),
-			zap.Strings(constvars.LoggingRolesKey, request.Roles),
-			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
-			zap.Bool(constvars.LoggingSuccessKey, true),
-		)
-		return nil
+		return uc.handlePhoneMagicLink(ctx, request)
 	}
 
-	plessResponse, err := passwordless.SignInUpByEmail(uc.InternalConfig.Supertoken.KonsulinTenantID, request.Email)
-	if err != nil {
-		uc.Log.Error("Failed to create user account",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingEmailKey, request.Email),
-			zap.String(constvars.LoggingErrorTypeKey, "SuperTokens API"),
-			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
-			zap.Error(err),
-		)
+	return uc.handleEmailMagicLink(ctx, request)
+}
+
+func (uc *authUsecase) handlePhoneMagicLink(ctx context.Context, request *requests.SupertokenPasswordlessCreateMagicLink) error {
+	start := time.Now()
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	phoneDigits := utils.NormalizePhoneDigits(request.Phone)
+
+	if err := utils.ValidateInternationalPhoneDigits(phoneDigits); err != nil {
 		return err
 	}
 
-	inviteLink, err := passwordless.CreateMagicLinkByEmail(uc.InternalConfig.Supertoken.KonsulinTenantID, request.Email)
+	plessResponse, err := passwordless.SignInUpByPhoneNumber(uc.InternalConfig.Supertoken.KonsulinTenantID, phoneDigits)
 	if err != nil {
-		uc.Log.Error("Failed to generate magic link",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingEmailKey, request.Email),
-			zap.String(constvars.LoggingErrorTypeKey, "SuperTokens API"),
-			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
-			zap.Error(err),
-		)
-		return err
+		return logAndCreateLinkError(uc.Log, "Failed to create user account (phone)", requestID, err, start)
+	}
+
+	inviteLink, err := passwordless.CreateMagicLinkByPhoneNumber(uc.InternalConfig.Supertoken.KonsulinTenantID, phoneDigits)
+	if err != nil {
+		return logAndCreateLinkError(uc.Log, "Failed to generate magic link (phone)", requestID, err, start)
 	}
 
 	if request.RedirectToPath != "" {
 		inviteLink = utils.AppendRedirectToMagicLink(inviteLink, request.RedirectToPath)
-		uc.Log.Info("redirect path appended to magic link (email)",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingEmailKey, request.Email),
-			zap.String("redirect_to_path", request.RedirectToPath),
-		)
 	}
 
-	if len(request.Roles) > 0 {
-		uc.Log.Info("Assigning roles to user",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingEmailKey, request.Email),
-			zap.Strings(constvars.LoggingRolesKey, request.Roles),
-		)
-
-		for _, role := range request.Roles {
-			response, err := userroles.AddRoleToUser(uc.InternalConfig.Supertoken.KonsulinTenantID, plessResponse.User.ID, role, nil)
-			if err != nil {
-				uc.Log.Error("Failed to assign role to user",
-					zap.String(constvars.LoggingRequestIDKey, requestID),
-					zap.String(constvars.LoggingEmailKey, request.Email),
-					zap.String("role", role),
-					zap.String(constvars.LoggingErrorTypeKey, "role assignment"),
-					zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
-					zap.Error(err),
-				)
-				return err
-			}
-
-			if response.UnknownRoleError != nil {
-				uc.Log.Error("Unknown role provided",
-					zap.String(constvars.LoggingRequestIDKey, requestID),
-					zap.String(constvars.LoggingEmailKey, request.Email),
-					zap.String("role", role),
-					zap.String(constvars.LoggingErrorTypeKey, "unknown role"),
-					zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
-				)
-				return fmt.Errorf("unknown role found when assigning role %s: %v", role, response.UnknownRoleError)
-			}
-
-			if response.OK.DidUserAlreadyHaveRole {
-				uc.Log.Debug("User already has role",
-					zap.String(constvars.LoggingRequestIDKey, requestID),
-					zap.String(constvars.LoggingEmailKey, request.Email),
-					zap.String("role", role),
-				)
-			} else {
-				uc.Log.Info("Role assigned successfully",
-					zap.String(constvars.LoggingRequestIDKey, requestID),
-					zap.String(constvars.LoggingEmailKey, request.Email),
-					zap.String("role", role),
-				)
-			}
-		}
-	} else {
-		uc.Log.Debug("No roles to assign - existing user",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingEmailKey, request.Email),
-		)
-	}
-
-	initializeResourcesInput := &contracts.InitializeNewUserFHIRResourcesInput{
-		Email:            request.Email,
-		SuperTokenUserID: plessResponse.User.ID,
-	}
-	initializeResourcesInput.ToogleByRoles(request.Roles)
-	initializeResourceCtx, initializeResourceCtxCancel := context.WithDeadline(ctx, time.Now().Add(10*time.Second))
-	defer initializeResourceCtxCancel()
-	initializeResources, err := uc.UserUsecase.InitializeNewUserFHIRResources(initializeResourceCtx, initializeResourcesInput)
-	if err != nil {
-		uc.Log.Error("Failed to initialize new user FHIR resources",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingEmailKey, request.Email),
-			zap.String(constvars.LoggingErrorTypeKey, "FHIR resources initialization"),
-			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
-			zap.Error(err),
-		)
+	if err := assignMagicLinkRoles(ctx, uc, requestID, plessResponse.User.ID, request.Roles, start); err != nil {
 		return err
 	}
 
-	// NOTE: this must run after we call webhook [base]/api/v1/hook/synchronous/modify-profile
-	// because the underlying email delivery service relies on the result
-	// of profile synchronization (omnichannel service).
+	if _, err := initializeMagicLinkFHIR(ctx, uc, requestID, plessResponse.User.ID, request.Roles, request.Email, phoneDigits, start); err != nil {
+		return err
+	}
+
+	if err := passwordless.SendSms(smsdelivery.SmsType{
+		PasswordlessLogin: &smsdelivery.PasswordlessLoginType{
+			UrlWithLinkCode: &inviteLink,
+			PhoneNumber:     phoneDigits,
+		},
+	}); err != nil {
+		return logAndCreateLinkError(uc.Log, "Failed to send magic link (phone)", requestID, err, start)
+	}
+
+	uc.Log.Info("Magic link creation completed successfully (phone)",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("phone", phoneDigits),
+		zap.Strings(constvars.LoggingRolesKey, request.Roles),
+		zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
+		zap.Bool(constvars.LoggingSuccessKey, true),
+	)
+	return nil
+}
+
+func (uc *authUsecase) handleEmailMagicLink(ctx context.Context, request *requests.SupertokenPasswordlessCreateMagicLink) error {
+	start := time.Now()
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+
+	plessResponse, err := passwordless.SignInUpByEmail(uc.InternalConfig.Supertoken.KonsulinTenantID, request.Email)
+	if err != nil {
+		return logAndCreateLinkError(uc.Log, "Failed to create user account", requestID, err, start)
+	}
+
+	inviteLink, err := passwordless.CreateMagicLinkByEmail(uc.InternalConfig.Supertoken.KonsulinTenantID, request.Email)
+	if err != nil {
+		return logAndCreateLinkError(uc.Log, "Failed to generate magic link", requestID, err, start)
+	}
+
+	if request.RedirectToPath != "" {
+		inviteLink = utils.AppendRedirectToMagicLink(inviteLink, request.RedirectToPath)
+	}
+
+	if err := assignMagicLinkRoles(ctx, uc, requestID, plessResponse.User.ID, request.Roles, start); err != nil {
+		return err
+	}
+
+	initializeResources, err := initializeMagicLinkFHIR(ctx, uc, requestID, plessResponse.User.ID, request.Roles, request.Email, "", start)
+	if err != nil {
+		return err
+	}
+
 	emailData := emaildelivery.EmailType{
 		PasswordlessLogin: &emaildelivery.PasswordlessLoginType{
 			Email:           request.Email,
@@ -361,19 +214,11 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Su
 		},
 	}
 
-	err = passwordless.SendEmail(emailData)
-	if err != nil {
-		uc.Log.Error("Failed to send magic link email",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingEmailKey, request.Email),
-			zap.String(constvars.LoggingErrorTypeKey, "email delivery"),
-			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
-			zap.Error(err),
-		)
-		return err
+	if err := passwordless.SendEmail(emailData); err != nil {
+		return logAndCreateLinkError(uc.Log, "Failed to send magic link email", requestID, err, start)
 	}
 
-	uc.Log.Info("Magic link creation completed successfully",
+	uc.Log.Info("Magic link creation completed successfully (email)",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String(constvars.LoggingEmailKey, request.Email),
 		zap.Strings(constvars.LoggingRolesKey, request.Roles),
@@ -384,6 +229,90 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Su
 		zap.String("initialized_resources_person_id", initializeResources.PersonID),
 	)
 	return nil
+}
+
+// logAndCreateLinkError logs a magic link error with standard fields and returns it.
+func logAndCreateLinkError(log *zap.Logger, msg, requestID string, err error, start time.Time) error {
+	log.Error(msg,
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingErrorTypeKey, "SuperTokens API"),
+		zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
+		zap.Error(err),
+	)
+	return err
+}
+
+// assignMagicLinkRoles assigns SuperTokens roles to a user during magic link creation.
+func assignMagicLinkRoles(ctx context.Context, uc *authUsecase, requestID, userID string, roles []string, start time.Time) error {
+	for _, role := range roles {
+		response, err := userroles.AddRoleToUser(uc.InternalConfig.Supertoken.KonsulinTenantID, userID, role, nil)
+		if err != nil {
+			logAndCreateLinkError(uc.Log, "Failed to assign role to user", requestID, err, start)
+			return err
+		}
+		if response.UnknownRoleError != nil {
+			return fmt.Errorf("unknown role found when assigning role %s: %v", role, response.UnknownRoleError)
+		}
+	}
+	return nil
+}
+
+// initializeMagicLinkFHIR creates FHIR resources during magic link creation.
+func initializeMagicLinkFHIR(ctx context.Context, uc *authUsecase, requestID, superTokenUserID string, roles []string, email, phone string, start time.Time) (*contracts.InitializeNewUserFHIRResourcesOutput, error) {
+	input := &contracts.InitializeNewUserFHIRResourcesInput{
+		Email:            email,
+		Phone:            phone,
+		SuperTokenUserID: superTokenUserID,
+	}
+	input.ToogleByRoles(roles)
+	initCtx, cancel := context.WithDeadline(ctx, time.Now().Add(10*time.Second))
+	defer cancel()
+	output, err := uc.UserUsecase.InitializeNewUserFHIRResources(initCtx, input)
+	if err != nil {
+		uc.Log.Error("Failed to initialize new user FHIR resources",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+	return output, nil
+}
+
+// lookupFHIRResourceIDs finds patient and practitioner FHIR IDs for a SuperTokens user.
+func lookupFHIRResourceIDs(ctx context.Context, uc *authUsecase, userID, requestID string) (patientIDs, practitionerIDs []string, err error) {
+	identifier := fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, userID)
+
+	patients, err := uc.PatientFhirClient.FindPatientByIdentifier(ctx, identifier)
+	if err != nil {
+		uc.Log.Error("authUsecase error finding patient by identifier",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("identifier", identifier),
+			zap.Error(err),
+		)
+		return nil, nil, err
+	}
+	for _, p := range patients {
+		if p.ID != "" {
+			patientIDs = append(patientIDs, p.ID)
+		}
+	}
+
+	practitioners, err := uc.PractitionerFhirClient.FindPractitionerByIdentifier(ctx, constvars.FhirSupertokenSystemIdentifier, userID)
+	if err != nil {
+		uc.Log.Error("authUsecase error finding practitioner by identifier",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("identifier", userID),
+			zap.Error(err),
+		)
+		return nil, nil, err
+	}
+	for _, prac := range practitioners {
+		if prac.ID != "" {
+			practitionerIDs = append(practitionerIDs, prac.ID)
+		}
+	}
+	return patientIDs, practitionerIDs, nil
 }
 
 func (uc *authUsecase) CreateAnonymousSession(ctx context.Context, existingToken string, forceNew bool) (*contracts.AnonymousSessionResult, error) {
@@ -471,44 +400,7 @@ func (uc *authUsecase) ClaimAnonymousResources(ctx context.Context, supertokensU
 		return nil, err
 	}
 
-	entries := make([]map[string]any, 0, len(responses))
-	refs := make([]string, 0, len(responses))
-	for _, response := range responses {
-		if !canClaimQuestionnaireResponse(response, ownerRef) {
-			continue
-		}
-
-		updated := response
-		changed := false
-
-		if updated.Author.Reference != ownerRef {
-			updated.Author.Reference = ownerRef
-			changed = true
-		}
-		if updated.Subject.Reference != ownerRef {
-			updated.Subject.Reference = ownerRef
-			changed = true
-		}
-
-		if updated.Identifier != nil && updated.Identifier.System == constvars.AnonymousSessionIdentifierSystem && updated.Identifier.Value == guestID {
-			updated.Identifier = nil
-			changed = true
-		}
-
-		if !changed {
-			continue
-		}
-
-		entry := map[string]any{
-			"resource": updated,
-			"request": map[string]any{
-				"method": http.MethodPut,
-				"url":    fmt.Sprintf("%s/%s", constvars.ResourceQuestionnaireResponse, updated.ID),
-			},
-		}
-		entries = append(entries, entry)
-		refs = append(refs, fmt.Sprintf("%s/%s", constvars.ResourceQuestionnaireResponse, updated.ID))
-	}
+	entries, refs := buildClaimEntries(responses, ownerRef, guestID)
 
 	if len(entries) == 0 {
 		return &contracts.ClaimAnonymousResourcesOutput{}, nil
@@ -604,6 +496,49 @@ func (uc *authUsecase) resolveOwnerReferenceBySupertokensID(ctx context.Context,
 	return fmt.Sprintf("Patient/%s", patients[0].ID), nil
 }
 
+// buildClaimEntries builds FHIR batch entries for claiming questionnaire responses.
+func buildClaimEntries(responses []fhir_dto.QuestionnaireResponse, ownerRef, guestID string) (entries []map[string]any, refs []string) {
+	entries = make([]map[string]any, 0, len(responses))
+	refs = make([]string, 0, len(responses))
+	for _, response := range responses {
+		if !canClaimQuestionnaireResponse(response, ownerRef) {
+			continue
+		}
+
+		updated := response
+		changed := false
+
+		if updated.Author.Reference != ownerRef {
+			updated.Author.Reference = ownerRef
+			changed = true
+		}
+		if updated.Subject.Reference != ownerRef {
+			updated.Subject.Reference = ownerRef
+			changed = true
+		}
+
+		if updated.Identifier != nil && updated.Identifier.System == constvars.AnonymousSessionIdentifierSystem && updated.Identifier.Value == guestID {
+			updated.Identifier = nil
+			changed = true
+		}
+
+		if !changed {
+			continue
+		}
+
+		entry := map[string]any{
+			"resource": updated,
+			"request": map[string]any{
+				"method": http.MethodPut,
+				"url":    fmt.Sprintf("%s/%s", constvars.ResourceQuestionnaireResponse, updated.ID),
+			},
+		}
+		entries = append(entries, entry)
+		refs = append(refs, fmt.Sprintf("%s/%s", constvars.ResourceQuestionnaireResponse, updated.ID))
+	}
+	return entries, refs
+}
+
 func canClaimQuestionnaireResponse(response fhir_dto.QuestionnaireResponse, ownerRef string) bool {
 	if strings.TrimSpace(response.Subject.Reference) != "" && response.Subject.Reference != ownerRef {
 		return false
@@ -639,37 +574,12 @@ func (uc *authUsecase) CheckUserExists(ctx context.Context, email string) (*cont
 	}
 
 	if user != nil {
-		identifier := fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, user.ID)
-
-		patients, err := uc.PatientFhirClient.FindPatientByIdentifier(ctx, identifier)
+		patientIDs, practitionerIDs, err := lookupFHIRResourceIDs(ctx, uc, user.ID, requestID)
 		if err != nil {
-			uc.Log.Error("authUsecase.CheckUserExists error finding patient by identifier",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.String("identifier", identifier),
-				zap.Error(err),
-			)
 			return nil, err
 		}
-		for _, p := range patients {
-			if p.ID != "" {
-				output.PatientIds = append(output.PatientIds, p.ID)
-			}
-		}
-
-		practitioners, err := uc.PractitionerFhirClient.FindPractitionerByIdentifier(ctx, constvars.FhirSupertokenSystemIdentifier, user.ID)
-		if err != nil {
-			uc.Log.Error("authUsecase.CheckUserExists error finding practitioner by identifier",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.String("identifier", user.ID),
-				zap.Error(err),
-			)
-			return nil, err
-		}
-		for _, prac := range practitioners {
-			if prac.ID != "" {
-				output.PractitionerIds = append(output.PractitionerIds, prac.ID)
-			}
-		}
+		output.PatientIds = patientIDs
+		output.PractitionerIds = practitionerIDs
 	}
 	uc.Log.Info("authUsecase.CheckUserExists completed",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -711,37 +621,12 @@ func (uc *authUsecase) CheckUserExistsByPhone(ctx context.Context, phone string)
 	}
 
 	if user != nil {
-		identifier := fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, user.ID)
-
-		patients, err := uc.PatientFhirClient.FindPatientByIdentifier(ctx, identifier)
+		patientIDs, practitionerIDs, err := lookupFHIRResourceIDs(ctx, uc, user.ID, requestID)
 		if err != nil {
-			uc.Log.Error("authUsecase.CheckUserExistsByPhone error finding patient by identifier",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.String("identifier", identifier),
-				zap.Error(err),
-			)
 			return nil, err
 		}
-		for _, p := range patients {
-			if p.ID != "" {
-				output.PatientIds = append(output.PatientIds, p.ID)
-			}
-		}
-
-		practitioners, err := uc.PractitionerFhirClient.FindPractitionerByIdentifier(ctx, constvars.FhirSupertokenSystemIdentifier, user.ID)
-		if err != nil {
-			uc.Log.Error("authUsecase.CheckUserExistsByPhone error finding practitioner by identifier",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.String("identifier", user.ID),
-				zap.Error(err),
-			)
-			return nil, err
-		}
-		for _, prac := range practitioners {
-			if prac.ID != "" {
-				output.PractitionerIds = append(output.PractitionerIds, prac.ID)
-			}
-		}
+		output.PatientIds = patientIDs
+		output.PractitionerIds = practitionerIDs
 	}
 
 	uc.Log.Info("authUsecase.CheckUserExistsByPhone completed",
