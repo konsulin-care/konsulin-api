@@ -40,7 +40,7 @@ The backend aims for a **Clean Architecture** pattern with **API Gateway** desig
 - **Language**: Go 1.26 (managed via mise)
 - **HTTP Router**: Chi v5
 - **Architecture**: Clean Architecture with API Gateway pattern
-- **Toolchain**: [mise](https://mise.jdx.dev) for reproducible, version-pinned tooling (Go, golangci-lint, gocognit, pre-commit)
+- **Toolchain**: [mise](https://mise.jdx.dev) for reproducible, version-pinned tooling (Go, golangci-lint, pre-commit)
 
 ### Data Storage
 - **Primary Data**: Blaze FHIR Server (FHIR R4 compliant)
@@ -76,7 +76,7 @@ All tool versions are pinned in `.mise.toml` for reproducible environments. Run:
 ```bash
 mise install
 ```
-This installs Go, golangci-lint, gocognit, and pre-commit at their pinned versions.
+This installs Go, golangci-lint, and pre-commit at their pinned versions.
 
 ### 3. Install Pre-Commit Hooks
 Quality gates run automatically before every commit:
