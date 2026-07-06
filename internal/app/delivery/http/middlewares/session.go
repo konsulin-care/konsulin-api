@@ -10,14 +10,15 @@ import (
 	"go.uber.org/zap"
 )
 
-// Deprecated: all context keys must use typed string, such as constvars.ContextKey
+// contextKey is a custom type for context keys to avoid collisions with other packages.
+type contextKey string
+
 const (
-	keyFHIRRole                               = "fhirRole"
-	keyFHIRID                                 = "fhirID"
-	keyRoles                                  = "roles"
-	keyUID                                    = "uid"
-	supertokenAccessTokenPayloadRolesKey      = "st-role"
-	supertokenAccessTokenPayloadRolesValueKey = "v"
+	keyFHIRRole   contextKey = "fhirRole"
+	keyFHIRID     contextKey = "fhirID"
+	keyRoles      contextKey = "roles"
+	keyUID        contextKey = "uid"
+	keyActiveRole contextKey = "activeRole"
 )
 
 func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
@@ -33,13 +34,14 @@ func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
 
 		roles := []string{constvars.KonsulinRoleGuest}
 		uid := ""
+		activeRole := ""
 
 		if sess != nil {
 			uid = sess.GetUserID()
 			if raw := sess.GetAccessTokenPayload(); raw != nil {
-				if rolesData, exists := raw[supertokenAccessTokenPayloadRolesKey]; exists {
+				if rolesData, exists := raw[constvars.SupertokenPayloadRolesKey]; exists {
 					if rolesMap, ok := rolesData.(map[string]interface{}); ok {
-						if rolesValue, ok := rolesMap[supertokenAccessTokenPayloadRolesValueKey]; ok {
+						if rolesValue, ok := rolesMap[constvars.SupertokenPayloadRolesValueKey]; ok {
 							if rolesList, ok := rolesValue.([]interface{}); ok {
 
 								roles = []string{}
@@ -51,6 +53,10 @@ func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
 							}
 						}
 					}
+				}
+
+				if v, ok := raw[constvars.SupertokenPayloadActiveRoleKey].(string); ok && v != "" {
+					activeRole = v
 				}
 			}
 		} else {
@@ -68,6 +74,9 @@ func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
 
 		ctx := context.WithValue(r.Context(), keyRoles, roles)
 		ctx = context.WithValue(ctx, keyUID, uid)
+		if activeRole != "" {
+			ctx = context.WithValue(ctx, keyActiveRole, activeRole)
+		}
 
 		// new keys for context will be used for now and one and this
 		// will deprecate the use of untyped string in context keys
@@ -119,6 +128,8 @@ func (m *Middlewares) EnsureAnonymousSession(next http.Handler) http.Handler {
 
 			ctx := context.WithValue(r.Context(), keyRoles, []string{constvars.KonsulinRoleGuest})
 			ctx = context.WithValue(ctx, keyUID, "anonymous")
+			ctx = context.WithValue(ctx, constvars.CONTEXT_FHIR_ROLE, []string{constvars.KonsulinRoleGuest})
+			ctx = context.WithValue(ctx, constvars.CONTEXT_UID, "anonymous")
 
 			m.Log.Info("Ensuring anonymous session for request",
 				zap.String("ip", r.RemoteAddr),

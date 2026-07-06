@@ -8,12 +8,13 @@ import (
 )
 
 type AppointmentPaymentRequest struct {
-	PatientID          string `json:"patientId"`
-	InvoiceID          string `json:"invoiceId"`
-	UseOnlinePayment   bool   `json:"useOnlinePayment"`
-	PractitionerRoleID string `json:"practitionerRoleId"`
-	SlotID             string `json:"slotId"`
-	Condition          string `json:"condition"`
+	PatientID           string `json:"patientId"`
+	InvoiceID           string `json:"invoiceId"`
+	UseOnlinePayment    bool   `json:"useOnlinePayment"`
+	PractitionerRoleID  string `json:"practitionerRoleId"`
+	SlotID              string `json:"slotId"`
+	HealthcareServiceID string `json:"healthcareServiceId"`
+	Condition           string `json:"condition"`
 }
 
 // Validate checks required fields and reference formats.
@@ -44,11 +45,15 @@ func (r *AppointmentPaymentRequest) Validate() error {
 		return fmt.Errorf("slotId must follow format: %s/ID", constvars.ResourceSlot)
 	}
 
+	if strings.TrimSpace(r.HealthcareServiceID) != "" && !isValidReference(r.HealthcareServiceID, constvars.ResourceHealthcareService) {
+		return fmt.Errorf("healthcareServiceId must follow format: %s/ID", constvars.ResourceHealthcareService)
+	}
+
 	return nil
 }
 
 // isValidReference checks if a reference follows the "ResourceType/ID" format
-func isValidReference(reference string, expectedResourceType string) bool {
+func isValidReference(reference, expectedResourceType string) bool {
 	parts := strings.Split(reference, "/")
 	if len(parts) != 2 {
 		return false

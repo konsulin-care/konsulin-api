@@ -13,4 +13,5 @@ func attachAuthRoutes(router chi.Router, middlewares *middlewares.Middlewares, a
 	router.Patch("/anonymous/claim", authController.ClaimAnonymousResources)
 	router.With(middlewares.Authenticate).Post("/logout", authController.Logout)
 	router.Get("/passwordless/email/exists", authController.PasswordlessEmailExists)
+	router.Post("/active-role", authController.SetActiveRole)
 }

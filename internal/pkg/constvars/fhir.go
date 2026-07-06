@@ -100,6 +100,15 @@ const (
 	DEFAULT_CLINICIAN_DESIRED_DAYS_PARAMS = "sun,mon,tue,wed,thu,fri,sat"
 )
 
+// FHIR reference prefix constants for building and parsing resource references.
+const (
+	FHIRRefPrefixPatient           = "Patient/"
+	FHIRRefPrefixInvoice           = "Invoice/"
+	FHIRRefPrefixPractitionerRole  = "PractitionerRole/"
+	FHIRRefPrefixHealthcareService = "HealthcareService/"
+	FHIRRefPrefixPractitioner      = "Practitioner/"
+)
+
 const (
 	FhirSupertokenSystemIdentifier      = "https://login.konsulin.care/userid"
 	KonsulinOmnichannelSystemIdentifier = "https://login.konsulin.care/chatwoot-id"

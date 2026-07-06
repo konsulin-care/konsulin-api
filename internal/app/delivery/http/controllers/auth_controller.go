@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
@@ -10,11 +11,14 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/goccy/go-json"
+	"github.com/supertokens/supertokens-golang/recipe/session"
+	"github.com/supertokens/supertokens-golang/recipe/session/sessmodels"
 	"go.uber.org/zap"
 )
 
@@ -390,6 +394,133 @@ func (ctrl *AuthController) ClaimAnonymousResources(w http.ResponseWriter, r *ht
 		"count":         result.Count,
 		"referenceList": result.ReferenceList,
 	})
+}
+
+// setRoleBody holds the role value from the request body.
+type setRoleBody struct {
+	Role string `json:"role"`
+}
+
+// parseSetRoleBody decodes and validates the role from the request body.
+func parseSetRoleBody(r *http.Request) (string, error) {
+	var body setRoleBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		return "", fmt.Errorf("failed to parse body: %w", err)
+	}
+	if body.Role == "" {
+		return "", fmt.Errorf("role is required")
+	}
+	return body.Role, nil
+}
+
+// validateUserRole checks that the requested role is in the user's assigned roles.
+func validateUserRole(role string, userRoles []string) error {
+	if !slices.Contains(userRoles, role) {
+		return fmt.Errorf("role %s is not assigned to user", role)
+	}
+	return nil
+}
+
+// SetActiveRole sets the active role in the SuperTokens session's access token
+// payload so downstream middleware reads it instead of iterating all roles.
+func (ctrl *AuthController) SetActiveRole(w http.ResponseWriter, r *http.Request) {
+	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	if !ok || requestID == "" {
+		ctrl.Log.Error("AuthController.SetActiveRole requestID not found in context")
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingRequestID(nil))
+		return
+	}
+
+	role, err := parseSetRoleBody(r)
+	if err != nil {
+		ctrl.Log.Error("AuthController.SetActiveRole failed to parse body",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+		return
+	}
+
+	sessRequired := true
+	sess, err := session.GetSession(r, w, &sessmodels.VerifySessionOptions{SessionRequired: &sessRequired})
+	if err != nil {
+		ctrl.Log.Error("AuthController.SetActiveRole session not found",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrSupertokensSessionMissing(err))
+		return
+	}
+
+	userRoles, roleErr := getUserRolesFromSession(sess)
+	if roleErr != nil {
+		ctrl.Log.Error("AuthController.SetActiveRole failed to parse user roles",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(roleErr),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(fmt.Errorf("could not verify user roles")))
+		return
+	}
+	if err := validateUserRole(role, userRoles); err != nil {
+		ctrl.Log.Warn("AuthController.SetActiveRole role not assigned",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("role", role),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
+		return
+	}
+
+	if err := sess.MergeIntoAccessTokenPayload(map[string]interface{}{
+		constvars.SupertokenPayloadActiveRoleKey: role,
+	}); err != nil {
+		ctrl.Log.Error("AuthController.SetActiveRole merge payload failed",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.BuildNewCustomError(err, http.StatusInternalServerError, "internal server error", "merge into access token payload failed"))
+		return
+	}
+
+	ctrl.Log.Info("AuthController.SetActiveRole succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("role", role),
+	)
+	utils.BuildSuccessResponse(w, http.StatusOK, "active role set", nil)
+}
+
+// getUserRolesFromSession extracts the list of role strings from the SuperTokens
+// access token payload. Returns an empty slice if no roles are found.
+func getUserRolesFromSession(sess sessmodels.SessionContainer) ([]string, error) {
+	raw := sess.GetAccessTokenPayload()
+	if raw == nil {
+		return nil, errors.New("empty access token payload")
+	}
+	rolesData, exists := raw[constvars.SupertokenPayloadRolesKey]
+	if !exists {
+		return nil, nil
+	}
+	rolesMap, ok := rolesData.(map[string]interface{})
+	if !ok {
+		return nil, errors.New("roles not a map")
+	}
+	rolesValue, ok := rolesMap[constvars.SupertokenPayloadRolesValueKey]
+	if !ok {
+		return nil, nil
+	}
+	var result []string
+	if rolesList, ok := rolesValue.([]interface{}); ok {
+		result = make([]string, 0, len(rolesList))
+		for _, item := range rolesList {
+			if role, ok := item.(string); ok {
+				result = append(result, role)
+			}
+		}
+	} else if rolesList, ok := rolesValue.([]string); ok {
+		result = rolesList
+	} else {
+		return nil, errors.New("roles value not a list")
+	}
+	return result, nil
 }
 
 // PasswordlessEmailExists exposes the SuperTokens passwordless email lookup

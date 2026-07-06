@@ -83,26 +83,16 @@ func (m *Middlewares) Authenticate(next http.Handler) http.Handler {
 
 func (m *Middlewares) Auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var fhirRole, fhirID string
 		var err error
 		ctxIface := r.Context()
 		roles, _ := ctxIface.Value(keyRoles).([]string)
 		uid, _ := ctxIface.Value(keyUID).(string)
 
-		if len(roles) == 1 && roles[0] == constvars.KonsulinRoleSuperadmin && uid == "api-key-superadmin" {
-
-			fhirRole = constvars.KonsulinRoleSuperadmin
-			fhirID = ""
-		} else if !isOnlyGuest(roles) {
-			fhirRole, fhirID, err = m.resolveFHIRIdentity(ctxIface, uid)
-			if err != nil {
-				m.Log.Error("Auth.resolveFHIRIdentity", zap.Error(err))
-				utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
-				return
-			}
-		} else {
-			fhirRole = constvars.KonsulinRoleGuest
-			fhirID = ""
+		fhirRole, fhirID, err := m.resolveUserRoles(ctxIface, roles, uid)
+		if err != nil {
+			m.Log.Error("Auth.resolveUserRoles", zap.Error(err))
+			utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
+			return
 		}
 
 		ctxIface = context.WithValue(ctxIface, keyFHIRRole, fhirRole)
@@ -153,11 +143,48 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 	})
 }
 
+// isOnlyGuest returns true if the only role in the slice is Guest.
 func isOnlyGuest(roles []string) bool {
 	if len(roles) != 1 {
 		return false
 	}
 	return strings.EqualFold(roles[0], constvars.KonsulinRoleGuest)
+}
+
+// needsFHIRResolution returns true if any role in the slice requires FHIR
+// identity resolution (Patient or Practitioner). Roles like Clinic Admin,
+// Researcher, and Guest do not have FHIR identities.
+func needsFHIRResolution(roles []string) bool {
+	for _, role := range roles {
+		if role == constvars.KonsulinRolePatient || role == constvars.KonsulinRolePractitioner {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveUserRoles determines the FHIR role and ID to use for authorization.
+// Returns (fhirRole, fhirID, error). For Guest and non-FHIR roles, fhirID is empty.
+func (m *Middlewares) resolveUserRoles(ctx context.Context, roles []string, uid string) (string, string, error) {
+	if len(roles) == 1 && roles[0] == constvars.KonsulinRoleSuperadmin && uid == "api-key-superadmin" {
+		return constvars.KonsulinRoleSuperadmin, "", nil
+	}
+	if !isOnlyGuest(roles) && needsFHIRResolution(roles) {
+		fhirRole, fhirID, err := m.resolveFHIRIdentity(ctx, uid)
+		if err != nil {
+			return "", "", err
+		}
+		return fhirRole, fhirID, nil
+	}
+	if !isOnlyGuest(roles) {
+		for _, role := range roles {
+			if role != constvars.KonsulinRoleGuest {
+				return role, "", nil
+			}
+		}
+		return constvars.KonsulinRoleGuest, "", nil
+	}
+	return constvars.KonsulinRoleGuest, "", nil
 }
 
 func (m *Middlewares) validatePostRequestBody(ctx context.Context, body []byte, fhirRole, fhirID string) error {
@@ -249,7 +276,39 @@ func (m *Middlewares) validatePractitionerOwnershipInBody(body []byte, practitio
 	return nil
 }
 
-func (m *Middlewares) resolveFHIRIdentity(ctx context.Context, uid string) (role string, id string, err error) {
+// lookupPatient looks up a Patient FHIR resource by Supertoken UID.
+// Returns the Patient ID if found, or an empty string if not found.
+// Returns an error if the FHIR query fails or if multiple Patient resources match.
+func (m *Middlewares) lookupPatient(ctx context.Context, uid string) (string, error) {
+	pats, err := m.PatientFhirClient.FindPatientByIdentifier(
+		ctx,
+		fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, uid),
+	)
+	if err != nil {
+		return "", err
+	}
+	if len(pats) > 1 {
+		return "", fmt.Errorf("multiple Patient resources for uid %s", uid)
+	}
+	if len(pats) == 1 {
+		return pats[0].ID, nil
+	}
+	return "", nil
+}
+
+func (m *Middlewares) resolveFHIRIdentity(ctx context.Context, uid string) (role, id string, err error) {
+	activeRole, _ := ctx.Value(keyActiveRole).(string)
+
+	if activeRole == constvars.KonsulinRolePatient {
+		patID, err := m.lookupPatient(ctx, uid)
+		if err != nil {
+			return "", "", err
+		}
+		if patID != "" {
+			return constvars.KonsulinRolePatient, patID, nil
+		}
+	}
+
 	pracs, err := m.PractitionerFhirClient.FindPractitionerByIdentifier(
 		ctx,
 		constvars.FhirSupertokenSystemIdentifier,
@@ -267,25 +326,16 @@ func (m *Middlewares) resolveFHIRIdentity(ctx context.Context, uid string) (role
 		return constvars.KonsulinRolePractitioner, pracs[0].ID, nil
 	}
 
-	pats, err := m.PatientFhirClient.FindPatientByIdentifier(
-		ctx,
-		fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, uid),
-	)
-
-	if err != nil {
-		return "", "", err
+	if activeRole != constvars.KonsulinRolePatient {
+		patID, err := m.lookupPatient(ctx, uid)
+		if err != nil {
+			return "", "", err
+		}
+		if patID != "" {
+			return constvars.KonsulinRolePatient, patID, nil
+		}
 	}
-	if len(pats) == 0 {
-		return "", "", fmt.Errorf("no Practitioner/Patient found for uid %s", uid)
-	}
-
-	// supress error for multiple patients found
-	// if len(pats) > 1 {
-	// 	fmt.Println("MULTIPLE PATIENTS FOUND FOR UID", uid)
-	// 	fmt.Println("PATIENTS", pats)
-	// 	return "", "", fmt.Errorf("multiple Patient resources for uid %s", uid)
-	// }
-	return constvars.KonsulinRolePatient, pats[0].ID, nil
+	return "", "", fmt.Errorf("no Practitioner/Patient found for uid %s", uid)
 }
 
 func resolveIdentifierToPatientID(ctx context.Context, identifier string, patientClient contracts.PatientFhirClient) (string, error) {

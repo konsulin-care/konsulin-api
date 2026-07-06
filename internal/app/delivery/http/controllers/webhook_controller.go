@@ -191,12 +191,12 @@ func (ctrl *WebhookController) HandleEnqueueWebHook(w http.ResponseWriter, r *ht
 	// Rate limit evaluation before enqueue
 	// Derive actor ID: API key superadmin or uid or "anonymous"
 	actorID := "anonymous"
-	if v := r.Context().Value("api_key_auth"); v != nil {
+	if v := r.Context().Value(constvars.CONTEXT_API_KEY_AUTH); v != nil {
 		if b, ok := v.(bool); ok && b {
 			actorID = "api-key-superadmin"
 		}
 	}
-	if uid, ok := r.Context().Value("uid").(string); ok && uid != "" && !strings.EqualFold(uid, "anonymous") {
+	if uid, ok := r.Context().Value(constvars.CONTEXT_UID).(string); ok && uid != "" && !strings.EqualFold(uid, "anonymous") {
 		actorID = uid
 	}
 

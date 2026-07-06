@@ -58,6 +58,7 @@ const (
 	CONTEXT_RAW_BODY                 ContextKey = "raw_body"
 	CONTEXT_FHIR_ROLE                ContextKey = "fhir_role"
 	CONTEXT_UID                      ContextKey = "uid"
+	CONTEXT_API_KEY_AUTH             ContextKey = "api_key_auth"
 )
 
 const (
@@ -78,3 +79,10 @@ const (
 // This resource ID is used to reference the Konsulin organization in the FHIR resources.
 // For now, it is used in the payment service as the recipient and issuer for the payment service.
 const KonsulinOrganizationResourceID = "Konsulin"
+
+// SuperTokens access token payload keys shared across middlewares and controllers.
+const (
+	SupertokenPayloadRolesKey      = "st-role"
+	SupertokenPayloadRolesValueKey = "v"
+	SupertokenPayloadActiveRoleKey = "st-active-role"
+)

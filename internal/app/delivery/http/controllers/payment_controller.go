@@ -307,7 +307,7 @@ func (ctrl *PaymentController) HandleAppointmentPayment(w http.ResponseWriter, r
 
 	ctrl.Log.Info("PaymentController.HandleAppointmentPayment succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String("appointmentId", resp.AppointmentID),
+		zap.String("slotId", resp.SlotID),
 	)
-	utils.BuildSuccessResponse(w, constvars.StatusCreated, constvars.AppointmentPaymentSuccessMessage, resp)
+	utils.BuildSuccessResponse(w, constvars.StatusCreated, resp.Message, resp)
 }
