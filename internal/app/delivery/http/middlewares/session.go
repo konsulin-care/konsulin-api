@@ -21,6 +21,45 @@ const (
 	keyActiveRole contextKey = "activeRole"
 )
 
+// extractRolesFromAccessToken extracts the roles list from a SuperTokens access token payload.
+func extractRolesFromAccessToken(raw map[string]interface{}) []string {
+	rolesData, exists := raw[constvars.SupertokenPayloadRolesKey]
+	if !exists {
+		return nil
+	}
+	rolesMap, ok := rolesData.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	rolesValue, ok := rolesMap[constvars.SupertokenPayloadRolesValueKey]
+	if !ok {
+		return nil
+	}
+	rolesList, ok := rolesValue.([]interface{})
+	if !ok {
+		return nil
+	}
+	roles := make([]string, 0, len(rolesList))
+	for _, item := range rolesList {
+		if role, ok := item.(string); ok {
+			roles = append(roles, role)
+		}
+	}
+	return roles
+}
+
+// buildSessionAuth extracts uid, roles and activeRole from a SuperTokens session.
+func buildSessionAuth(sess sessmodels.SessionContainer) (uid string, roles []string, activeRole string) {
+	uid = sess.GetUserID()
+	if raw := sess.GetAccessTokenPayload(); raw != nil {
+		roles = extractRolesFromAccessToken(raw)
+		if v, ok := raw[constvars.SupertokenPayloadActiveRoleKey].(string); ok && v != "" {
+			activeRole = v
+		}
+	}
+	return
+}
+
 func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
@@ -32,38 +71,15 @@ func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
 		sessRequired := false
 		sess, _ := session.GetSession(r, w, &sessmodels.VerifySessionOptions{SessionRequired: &sessRequired})
 
-		roles := []string{constvars.KonsulinRoleGuest}
+		var roles []string
 		uid := ""
 		activeRole := ""
 
 		if sess != nil {
-			uid = sess.GetUserID()
-			if raw := sess.GetAccessTokenPayload(); raw != nil {
-				if rolesData, exists := raw[constvars.SupertokenPayloadRolesKey]; exists {
-					if rolesMap, ok := rolesData.(map[string]interface{}); ok {
-						if rolesValue, ok := rolesMap[constvars.SupertokenPayloadRolesValueKey]; ok {
-							if rolesList, ok := rolesValue.([]interface{}); ok {
-
-								roles = []string{}
-								for _, item := range rolesList {
-									if role, ok := item.(string); ok {
-										roles = append(roles, role)
-									}
-								}
-							}
-						}
-					}
-				}
-
-				if v, ok := raw[constvars.SupertokenPayloadActiveRoleKey].(string); ok && v != "" {
-					activeRole = v
-				}
-			}
+			uid, roles, activeRole = buildSessionAuth(sess)
 		} else {
-
 			uid = "anonymous"
 			roles = []string{constvars.KonsulinRoleGuest}
-
 			m.Log.Info("Anonymous session created",
 				zap.String("ip", r.RemoteAddr),
 				zap.String("user_agent", r.UserAgent()),
@@ -77,9 +93,6 @@ func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
 		if activeRole != "" {
 			ctx = context.WithValue(ctx, keyActiveRole, activeRole)
 		}
-
-		// new keys for context will be used for now and one and this
-		// will deprecate the use of untyped string in context keys
 		ctx = context.WithValue(ctx, constvars.CONTEXT_FHIR_ROLE, roles)
 		ctx = context.WithValue(ctx, constvars.CONTEXT_UID, uid)
 
