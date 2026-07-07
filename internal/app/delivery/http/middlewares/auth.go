@@ -244,7 +244,7 @@ func (m *Middlewares) validatePatientOwnershipInBody(body []byte, patientID stri
 
 // validateBodySubjectRef checks that the subject.reference matches the given prefix and ID.
 func validateBodySubjectRef(body []byte, id, prefix string) error {
-	subject := gjson.GetBytes(body, "subject.reference").String()
+	subject := gjson.GetBytes(body, constvars.FhirGJSONPathSubjectRef).String()
 	if subject == "" {
 		return nil
 	}
@@ -490,7 +490,7 @@ func validatePatientResourceOwnership(ctx context.Context, fhirID, resourceType 
 }
 
 func validatePatientConditionResource(resourceStr, fhirID string) bool {
-	subjectRef := gjson.Get(resourceStr, "subject.reference").String()
+	subjectRef := gjson.Get(resourceStr, constvars.FhirGJSONPathSubjectRef).String()
 	return strings.HasPrefix(subjectRef, constvars.FHIRRefPrefixPatient) && strings.TrimPrefix(subjectRef, constvars.FHIRRefPrefixPatient) == fhirID
 }
 
@@ -511,7 +511,7 @@ func validatePatientSlotResource(resourceStr string) bool {
 
 func checkPatientRefs(resourceStr, fhirID string) bool {
 	for _, ref := range []string{
-		gjson.Get(resourceStr, "subject.reference").String(),
+		gjson.Get(resourceStr, constvars.FhirGJSONPathSubjectRef).String(),
 		gjson.Get(resourceStr, "patient.reference").String(),
 		gjson.Get(resourceStr, "actor.reference").String(),
 	} {
