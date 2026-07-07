@@ -157,7 +157,7 @@ func (uc *authUsecase) handlePhoneMagicLink(ctx context.Context, request *reques
 		return err
 	}
 
-	if _, err := initializeMagicLinkFHIR(ctx, uc, plessResponse.User.ID, request.Roles, request.Email, phoneDigits); err != nil {
+	if _, err := initializeMagicLinkFHIR(ctx, uc, requestID, plessResponse.User.ID, request.Roles, request.Email, phoneDigits, start); err != nil {
 		return err
 	}
 
@@ -202,7 +202,7 @@ func (uc *authUsecase) handleEmailMagicLink(ctx context.Context, request *reques
 		return err
 	}
 
-	initializeResources, err := initializeMagicLinkFHIR(ctx, uc, plessResponse.User.ID, request.Roles, request.Email, "")
+	initializeResources, err := initializeMagicLinkFHIR(ctx, uc, requestID, plessResponse.User.ID, request.Roles, request.Email, "", start)
 	if err != nil {
 		return err
 	}
@@ -258,7 +258,7 @@ func assignMagicLinkRoles(_ context.Context, uc *authUsecase, requestID, userID 
 }
 
 // initializeMagicLinkFHIR creates FHIR resources during magic link creation.
-func initializeMagicLinkFHIR(ctx context.Context, uc *authUsecase, superTokenUserID string, roles []string, email, phone string) (*contracts.InitializeNewUserFHIRResourcesOutput, error) {
+func initializeMagicLinkFHIR(ctx context.Context, uc *authUsecase, requestID string, superTokenUserID string, roles []string, email, phone string, start time.Time) (*contracts.InitializeNewUserFHIRResourcesOutput, error) {
 	input := &contracts.InitializeNewUserFHIRResourcesInput{
 		Email:            email,
 		Phone:            phone,
@@ -267,7 +267,17 @@ func initializeMagicLinkFHIR(ctx context.Context, uc *authUsecase, superTokenUse
 	input.ToogleByRoles(roles)
 	initCtx, cancel := context.WithDeadline(ctx, time.Now().Add(10*time.Second))
 	defer cancel()
-	return uc.UserUsecase.InitializeNewUserFHIRResources(initCtx, input)
+	res, err := uc.UserUsecase.InitializeNewUserFHIRResources(initCtx, input)
+	if err != nil {
+		uc.Log.Error("Failed to initialize FHIR resources during magic link creation",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingErrorTypeKey, "FHIR initialization"),
+			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+	return res, nil
 }
 
 // lookupFHIRResourceIDs finds patient and practitioner FHIR IDs for a SuperTokens user.
