@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -166,6 +167,11 @@ func (m *Middlewares) doFHIRProxyRequest(r *http.Request, target string, client 
 		fullURL += "?" + r.URL.RawQuery
 	}
 
+	// SSRF protection: verify the final URL host matches the expected target.
+	if verr := validateProxyURLHost(fullURL, target); verr != nil {
+		return nil, nil, nil, exceptions.ErrCreateHTTPRequest(verr)
+	}
+
 	bodyBytes, _ = r.Context().Value(constvars.CONTEXT_RAW_BODY).([]byte)
 	if bodyBytes == nil {
 		bodyBytes = []byte{}
@@ -307,10 +313,46 @@ func (m *Middlewares) writeBridgeResponse(w http.ResponseWriter, resp *http.Resp
 	}
 }
 
+// allowedRedirectHost returns a CheckRedirect function that only allows redirects
+// to the exact same host:port as expectedHost. This prevents SSRF via redirect following.
+func allowedRedirectHost(expectedHost string) func(*http.Request, []*http.Request) error {
+	return func(req *http.Request, via []*http.Request) error {
+		if req.URL.Host != expectedHost {
+			return fmt.Errorf("redirect to %q blocked: host must be %q", req.URL.Host, expectedHost)
+		}
+		if len(via) >= 10 {
+			return fmt.Errorf("too many redirects")
+		}
+		return nil
+	}
+}
+
+// validateProxyURLHost checks that the constructed proxy URL's host matches the target.
+// Returns an error if the host does not match, preventing SSRF via URL injection.
+func validateProxyURLHost(fullURL, target string) error {
+	parsedURL, err := url.Parse(fullURL)
+	if err != nil {
+		return fmt.Errorf("invalid proxy URL: %w", err)
+	}
+	parsedTarget, err := url.Parse(target)
+	if err != nil {
+		return fmt.Errorf("invalid target URL: %w", err)
+	}
+	if parsedURL.Host != parsedTarget.Host {
+		return fmt.Errorf("SSRF: proxy URL host %q does not match target host %q", parsedURL.Host, parsedTarget.Host)
+	}
+	return nil
+}
+
 func (m *Middlewares) Bridge(target string) http.Handler {
+	parsedTarget, err := url.Parse(target)
+	if err != nil {
+		panic(fmt.Sprintf("invalid FHIR target URL: %v", err))
+	}
 	client := &http.Client{
 		Timeout:   15 * time.Second,
 		Transport: &http.Transport{MaxIdleConnsPerHost: 100},
+		CheckRedirect: allowedRedirectHost(parsedTarget.Host),
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp, respBody, bodyBytes, err := m.doFHIRProxyRequest(r, target, client)
@@ -993,6 +1035,15 @@ func buildTxProxyURL(target string, r *http.Request, prefix, version string) str
 }
 
 func (m *Middlewares) TxProxy(target string) http.Handler {
+	parsedTarget, err := url.Parse(target)
+	if err != nil {
+		panic(fmt.Sprintf("invalid TxProxy target URL: %v", err))
+	}
+	client := &http.Client{
+		Timeout:   15 * time.Second,
+		Transport: &http.Transport{MaxIdleConnsPerHost: 100},
+		CheckRedirect: allowedRedirectHost(parsedTarget.Host),
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := m.authTxProxyAccess(w, r); err != nil {
 			return
@@ -1004,17 +1055,24 @@ func (m *Middlewares) TxProxy(target string) http.Handler {
 			return
 		}
 
+		// SSRF protection: verify the final URL host matches the expected target.
+		if verr := validateProxyURLHost(fullURL, target); verr != nil {
+			m.Log.Error("TxProxy URL validation failed", zap.Error(verr))
+			utils.BuildErrorResponse(m.Log, w, exceptions.ErrCreateHTTPRequest(verr))
+			return
+		}
+
 		bodyBytes, _ := r.Context().Value(constvars.CONTEXT_RAW_BODY).([]byte)
 		if bodyBytes == nil {
 			bodyBytes = []byte{}
 		}
 
-		m.doTxProxyRequest(w, r, fullURL, bodyBytes)
+		m.doTxProxyRequest(w, r, fullURL, bodyBytes, client)
 	})
 }
 
 // doTxProxyRequest executes a proxy request to the terminology server and streams the response.
-func (m *Middlewares) doTxProxyRequest(w http.ResponseWriter, r *http.Request, fullURL string, bodyBytes []byte) {
+func (m *Middlewares) doTxProxyRequest(w http.ResponseWriter, r *http.Request, fullURL string, bodyBytes []byte, client *http.Client) {
 	proxyCtx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 	defer cancel()
 
@@ -1029,7 +1087,7 @@ func (m *Middlewares) doTxProxyRequest(w http.ResponseWriter, r *http.Request, f
 		req.Header.Set("Content-Type", contentType)
 	}
 
-	resp, err := m.HTTPClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(proxyCtx.Err(), context.DeadlineExceeded) {
 			utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerDeadlineExceeded(err))
