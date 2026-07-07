@@ -153,9 +153,4 @@ type PostFHIRProxyFHIRServerResponse struct {
 // PostFHIRProxyHook is called after a successful proxied FHIR request. Both params are structs for extensibility.
 type PostFHIRProxyHook func(PostFHIRProxyUserRequestDetail, PostFHIRProxyFHIRServerResponse) error
 
-type User struct {
-	ID    string
-	Roles []string
-}
 
-const UserContextKey ContextKey = "user_context"
