@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -217,4 +218,80 @@ func TestBridge_ClientHasCheckRedirect(t *testing.T) {
 	// The proxy should successfully route and get a response.
 	// 400+ would indicate the request failed before reaching the backend.
 	assert.Less(t, rr.Code, 400, "proxy should forward request and receive response")
+}
+
+func TestDoFHIRProxyRequest_SSRFPathInjection(t *testing.T) {
+	tests := []struct {
+		name        string
+		path        string
+		target      string
+		wantHost    string
+		wantURLPath string
+		wantErr     bool
+	}{
+		{
+			name:        "normal path",
+			path:        "/fhir/Patient/123",
+			target:      "https://fhir.example.com",
+			wantHost:    "fhir.example.com",
+			wantURLPath: "/Patient/123",
+			wantErr:     false,
+		},
+		{
+			name:        "path with query is forwarded separately",
+			path:        "/fhir/Observation?_tag=test",
+			target:      "https://fhir.example.com",
+			wantHost:    "fhir.example.com",
+			wantURLPath: "/Observation",
+			wantErr:     false,
+		},
+		{
+			name:        "path traversal blocked",
+			path:        "/fhir/../../etc/passwd",
+			target:      "https://fhir.example.com",
+			wantErr:     true,
+		},
+		{
+			name:        "SSRF host mismatch is rejected",
+			path:        "/fhir/Patient/1",
+			target:      "https://fhir.example.com",
+			wantHost:    "fhir.example.com",
+			wantURLPath: "/Patient/1",
+			wantErr:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var actualURL *url.URL
+			mockClient := &http.Client{
+				Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+					actualURL = req.URL
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Body:       io.NopCloser(strings.NewReader(`{}`)),
+						Header:     make(http.Header),
+					}, nil
+				}),
+			}
+
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			_, _, _, err := doFHIRProxyRequest(req, tt.target, mockClient)
+
+			if tt.wantErr {
+				assert.Error(t, err, "should reject malicious path")
+				return
+			}
+			assert.NoError(t, err, "request should succeed")
+			assert.Equal(t, tt.wantHost, actualURL.Host, "request host should match target")
+			assert.Equal(t, tt.wantURLPath, actualURL.Path, "request path should be properly constructed")
+		})
+	}
+}
+
+// roundTripperFunc adapts a function to http.RoundTripper.
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }

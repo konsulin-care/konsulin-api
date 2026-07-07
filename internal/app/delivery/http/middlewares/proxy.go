@@ -156,16 +156,18 @@ func doFHIRProxyRequest(r *http.Request, target string, client *http.Client) (re
 		return nil, nil, nil, exceptions.ErrCreateHTTPRequest(err)
 	}
 
-	fullURL := target
+	// Build the URL using url.URL semantics to prevent URL injection.
+	// This properly encodes special characters in the path and separates
+	// query parameters from the path, unlike string concatenation.
+	targetURL, pErr := url.Parse(target)
+	if pErr != nil {
+		return nil, nil, nil, exceptions.ErrCreateHTTPRequest(pErr)
+	}
 	if path != "" {
-		if !strings.HasSuffix(target, "/") && !strings.HasPrefix(path, "/") {
-			fullURL += "/"
-		}
-		fullURL += path
+		targetURL = targetURL.JoinPath(path)
 	}
-	if r.URL.RawQuery != "" {
-		fullURL += "?" + r.URL.RawQuery
-	}
+	targetURL.RawQuery = r.URL.RawQuery
+	fullURL := targetURL.String()
 
 	// SSRF protection: verify the final URL host matches the expected target.
 	if verr := validateProxyURLHost(fullURL, target); verr != nil {
