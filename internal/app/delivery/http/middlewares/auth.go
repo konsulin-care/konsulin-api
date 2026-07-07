@@ -825,33 +825,44 @@ func checkPractitionerPublicResourceQuery(fhirID string, u *url.URL) bool {
 			}
 		}
 	}
-
 	if !hasOwnershipParams {
 		return true
 	}
 
-	parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
-	if len(parts) >= 2 {
-		var res, id string
-		if strings.EqualFold(parts[0], "fhir") && len(parts) >= 3 {
-			res, id = parts[1], parts[2]
-		} else {
-			res, id = parts[0], parts[1]
-		}
-		if res == "Practitioner" && id == fhirID {
-			return true
-		}
+	if checkPractitionerQueryPath(fhirID, u) {
+		return true
 	}
+	if checkPractitionerQueryParams(fhirID, q) {
+		return true
+	}
+	return checkPractitionerHasQuery(fhirID, q)
+}
 
+func checkPractitionerQueryPath(fhirID string, u *url.URL) bool {
+	parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
+	if len(parts) < 2 {
+		return false
+	}
+	var res, id string
+	if strings.EqualFold(parts[0], "fhir") && len(parts) >= 3 {
+		res, id = parts[1], parts[2]
+	} else {
+		res, id = parts[0], parts[1]
+	}
+	return res == "Practitioner" && id == fhirID
+}
+
+func checkPractitionerQueryParams(fhirID string, q url.Values) bool {
 	if p := q.Get("practitioner"); p != "" && strings.TrimPrefix(p, "Practitioner/") == fhirID {
 		return true
 	}
 	if a := q.Get("actor"); a != "" && strings.TrimPrefix(a, "Practitioner/") == fhirID {
 		return true
 	}
-	if q.Get("patient") != "" || strings.HasPrefix(q.Get("subject"), "Patient/") {
-		return true
-	}
+	return q.Get("patient") != "" || strings.HasPrefix(q.Get("subject"), "Patient/")
+}
+
+func checkPractitionerHasQuery(fhirID string, q url.Values) bool {
 	for key, values := range q {
 		if strings.HasPrefix(key, "_has") && strings.Contains(key, "practitioner") {
 			for _, value := range values {
@@ -865,35 +876,56 @@ func checkPractitionerPublicResourceQuery(fhirID string, u *url.URL) bool {
 }
 
 func checkPractitionerOwnershipParams(ctx context.Context, fhirID string, u *url.URL, resourceType string, practitionerClient contracts.PractitionerFhirClient) bool {
+	if checkPractitionerPathOwnership(fhirID, u) {
+		return true
+	}
+	q := u.Query()
+	if checkPractitionerIdentifierOwnership(ctx, q, fhirID) {
+		return true
+	}
+	if checkPractitionerQueryOwnership(q, resourceType, fhirID) {
+		return true
+	}
+	if checkPractitionerHasQueryOwnership(q, fhirID) {
+		return true
+	}
+	return checkPractitionerEmailOwnership(ctx, q, fhirID, practitionerClient)
+}
+
+func checkPractitionerPathOwnership(fhirID string, u *url.URL) bool {
 	parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
-	if len(parts) >= 2 {
-		var res, id string
-		if strings.EqualFold(parts[0], "fhir") && len(parts) >= 3 {
-			res, id = parts[1], parts[2]
-		} else {
-			res, id = parts[0], parts[1]
-		}
-		if res == "Practitioner" && id == fhirID {
+	if len(parts) < 2 {
+		return false
+	}
+	var res, id string
+	if strings.EqualFold(parts[0], "fhir") && len(parts) >= 3 {
+		res, id = parts[1], parts[2]
+	} else {
+		res, id = parts[0], parts[1]
+	}
+	return res == "Practitioner" && id == fhirID
+}
+
+func checkPractitionerIdentifierOwnership(ctx context.Context, q url.Values, fhirID string) bool {
+	ids, ok := q["identifier"]
+	if !ok {
+		return false
+	}
+	uidCtx, _ := ctx.Value(keyUID).(string)
+	for _, idv := range ids {
+		parts := strings.SplitN(idv, "|", 2)
+		if len(parts) == 2 {
+			if parts[0] == constvars.FhirSupertokenSystemIdentifier && parts[1] == uidCtx {
+				return true
+			}
+		} else if idv == uidCtx {
 			return true
 		}
 	}
+	return false
+}
 
-	q := u.Query()
-
-	if ids, ok := q["identifier"]; ok {
-		uidCtx, _ := ctx.Value(keyUID).(string)
-		for _, idv := range ids {
-			parts := strings.SplitN(idv, "|", 2)
-			if len(parts) == 2 {
-				if parts[0] == constvars.FhirSupertokenSystemIdentifier && parts[1] == uidCtx {
-					return true
-				}
-			} else if idv == uidCtx {
-				return true
-			}
-		}
-	}
-
+func checkPractitionerQueryOwnership(q url.Values, resourceType, fhirID string) bool {
 	if p := q.Get("practitioner"); p != "" && strings.TrimPrefix(p, "Practitioner/") == fhirID {
 		return true
 	}
@@ -903,10 +935,7 @@ func checkPractitionerOwnershipParams(ctx context.Context, fhirID string, u *url
 	if a := q.Get("actor"); a != "" && strings.TrimPrefix(a, "Practitioner/") == fhirID {
 		return true
 	}
-	if q.Get("patient") != "" {
-		return true
-	}
-	if strings.HasPrefix(q.Get("subject"), "Patient/") {
+	if q.Get("patient") != "" || strings.HasPrefix(q.Get("subject"), "Patient/") {
 		return true
 	}
 	if participant := q.Get("participant"); participant != "" {
@@ -917,6 +946,10 @@ func checkPractitionerOwnershipParams(ctx context.Context, fhirID string, u *url
 			return true
 		}
 	}
+	return false
+}
+
+func checkPractitionerHasQueryOwnership(q url.Values, fhirID string) bool {
 	for key, values := range q {
 		if strings.HasPrefix(key, "_has") && strings.Contains(key, "practitioner") {
 			for _, value := range values {
@@ -926,14 +959,19 @@ func checkPractitionerOwnershipParams(ctx context.Context, fhirID string, u *url
 			}
 		}
 	}
-	if email := q.Get("email"); email != "" {
-		practitioners, err := practitionerClient.FindPractitionerByEmail(ctx, email)
-		if err != nil || len(practitioners) != 1 {
-			return false
-		}
-		return practitioners[0].ID == fhirID
-	}
 	return false
+}
+
+func checkPractitionerEmailOwnership(ctx context.Context, q url.Values, fhirID string, practitionerClient contracts.PractitionerFhirClient) bool {
+	email := q.Get("email")
+	if email == "" {
+		return false
+	}
+	practitioners, err := practitionerClient.FindPractitionerByEmail(ctx, email)
+	if err != nil || len(practitioners) != 1 {
+		return false
+	}
+	return practitioners[0].ID == fhirID
 }
 
 func isBundle(r *http.Request) bool {

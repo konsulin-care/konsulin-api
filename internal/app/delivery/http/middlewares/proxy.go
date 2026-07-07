@@ -799,16 +799,8 @@ func genericOwnershipPatterns(raw json.RawMessage, oc *ownershipContext) (bool, 
 	}
 
 	// participant[*].actor.reference
-	if parts, ok := res["participant"]; ok {
-		if arr, ok := parts.([]any); ok {
-			for _, item := range arr {
-				if pm, ok := item.(map[string]any); ok {
-					if ref := extractReference(pm["actor"]); ref != "" && matchesOwnedRef(ref, oc) {
-						return true, nil
-					}
-				}
-			}
-		}
+	if checkParticipantOwnership(res, oc) {
+		return true, nil
 	}
 
 	// Fallback: recursive scan of all "reference" fields.
@@ -820,6 +812,28 @@ func genericOwnershipPatterns(raw json.RawMessage, oc *ownershipContext) (bool, 
 		}
 	}
 	return false, nil
+}
+
+// checkParticipantOwnership searches participant[*].actor.reference for a match.
+func checkParticipantOwnership(res map[string]any, oc *ownershipContext) bool {
+	parts, ok := res["participant"]
+	if !ok {
+		return false
+	}
+	arr, ok := parts.([]any)
+	if !ok {
+		return false
+	}
+	for _, item := range arr {
+		pm, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if ref := extractReference(pm["actor"]); ref != "" && matchesOwnedRef(ref, oc) {
+			return true
+		}
+	}
+	return false
 }
 
 // extractReference gets the "reference" field from a FHIR reference object.
@@ -947,55 +961,50 @@ func (m *Middlewares) TxProxy(target string) http.Handler {
 			bodyBytes = []byte{}
 		}
 
-		// Hard timeout for upstream terminology server requests.
-		// If a request/connection is ongoing for > 5 minutes, cancel it and return 504.
-		// this behaviour is requested here: https://github.com/konsulin-care/konsulin-api/pull/291#issuecomment-3728978396
-		proxyCtx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
-		defer cancel()
-
-		req, err := http.NewRequestWithContext(proxyCtx, r.Method, fullURL, bytes.NewReader(bodyBytes))
-		if err != nil {
-			utils.BuildErrorResponse(m.Log, w, exceptions.ErrCreateHTTPRequest(err))
-			return
-		}
-
-		req.Header.Set("Accept", "application/fhir+json")
-
-		if contentType := r.Header.Get("Content-Type"); contentType != "" {
-			req.Header.Set("Content-Type", contentType)
-		}
-
-		resp, err := m.HTTPClient.Do(req)
-		if err != nil {
-			// Return 504 on deadline exceeded.
-			if errors.Is(err, context.DeadlineExceeded) || errors.Is(proxyCtx.Err(), context.DeadlineExceeded) {
-				utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerDeadlineExceeded(err))
-				return
-			}
-			utils.BuildErrorResponse(m.Log, w, exceptions.ErrSendHTTPRequest(err))
-			return
-		}
-		defer resp.Body.Close()
-
-		for k, v := range resp.Header {
-			if strings.HasPrefix(k, "Access-Control-") {
-				continue
-			}
-			if k == "Content-Length" || k == "Connection" {
-				continue
-			}
-
-			for _, val := range v {
-				w.Header().Add(k, val)
-			}
-		}
-
-		w.WriteHeader(resp.StatusCode)
-		_, err = io.Copy(w, resp.Body)
-		if err != nil {
-			m.Log.Warn("failed to copy response body", zap.Error(err))
-		}
+		m.doTxProxyRequest(w, r, fullURL, bodyBytes)
 	})
+}
+
+// doTxProxyRequest executes a proxy request to the terminology server and streams the response.
+func (m *Middlewares) doTxProxyRequest(w http.ResponseWriter, r *http.Request, fullURL string, bodyBytes []byte) {
+	proxyCtx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(proxyCtx, r.Method, fullURL, bytes.NewReader(bodyBytes))
+	if err != nil {
+		utils.BuildErrorResponse(m.Log, w, exceptions.ErrCreateHTTPRequest(err))
+		return
+	}
+
+	req.Header.Set("Accept", "application/fhir+json")
+	if contentType := r.Header.Get("Content-Type"); contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+
+	resp, err := m.HTTPClient.Do(req)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(proxyCtx.Err(), context.DeadlineExceeded) {
+			utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+			return
+		}
+		utils.BuildErrorResponse(m.Log, w, exceptions.ErrSendHTTPRequest(err))
+		return
+	}
+	defer resp.Body.Close()
+
+	for k, v := range resp.Header {
+		if strings.HasPrefix(k, "Access-Control-") || k == "Content-Length" || k == "Connection" {
+			continue
+		}
+		for _, val := range v {
+			w.Header().Add(k, val)
+		}
+	}
+
+	w.WriteHeader(resp.StatusCode)
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		m.Log.Warn("failed to copy response body", zap.Error(err))
+	}
 }
 
 // collectReferences walks arbitrary JSON and collects all "reference" string fields.
