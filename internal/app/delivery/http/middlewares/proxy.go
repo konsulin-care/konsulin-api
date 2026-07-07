@@ -135,10 +135,24 @@ func encodeBodyFromFiltering(body []byte, enc bodyEncoding) ([]byte, error) {
 }
 
 // doFHIRProxyRequest builds the FHIR proxy URL, creates the HTTP request, and executes it.
-func (m *Middlewares) doFHIRProxyRequest(r *http.Request, target string, client *http.Client) (resp *http.Response, respBody []byte, bodyBytes []byte, err error) {
-	path := strings.TrimPrefix(r.URL.Path, "/fhir/")
+// sanitizeProxyPath validates and sanitizes the proxied path to prevent injection.
+func sanitizeProxyPath(path string) (string, error) {
 	if path == "/fhir" {
-		path = ""
+		return "", nil
+	}
+	if strings.Contains(path, "..") {
+		return "", fmt.Errorf("invalid path: path traversal detected")
+	}
+	if strings.HasPrefix(path, "/") {
+		return "", fmt.Errorf("invalid path: unexpected leading slash")
+	}
+	return path, nil
+}
+
+func (m *Middlewares) doFHIRProxyRequest(r *http.Request, target string, client *http.Client) (resp *http.Response, respBody []byte, bodyBytes []byte, err error) {
+	path, err := sanitizeProxyPath(strings.TrimPrefix(r.URL.Path, "/fhir/"))
+	if err != nil {
+		return nil, nil, nil, exceptions.ErrCreateHTTPRequest(err)
 	}
 
 	fullURL := target
@@ -520,24 +534,27 @@ func (m *Middlewares) buildOwnershipContext(
 }
 
 // resolvePractitionerPatientIDs populates PatientIDs and PractitionerRoleIDs for a practitioner.
-func (m *Middlewares) resolvePractitionerPatientIDs(ctx context.Context, oc *ownershipContext, fhirID string) {
-	if !oc.HasPractitionerRole || len(oc.PatientIDs) > 0 || fhirID == "" {
+// resolveRelatedPatientIDsByEmail populates PatientIDs by matching practitioner emails to patients.
+func (m *Middlewares) resolveRelatedPatientIDsByEmail(ctx context.Context, oc *ownershipContext, fhirID string) {
+	prac, err := m.PractitionerFhirClient.FindPractitionerByID(ctx, fhirID)
+	if err != nil || prac == nil {
 		return
 	}
-	prac, err := m.PractitionerFhirClient.FindPractitionerByID(ctx, fhirID)
-	if err == nil && prac != nil {
-		for _, em := range prac.GetEmailAddresses() {
-			pats, err := m.PatientFhirClient.FindPatientByEmail(ctx, em)
-			if err != nil {
-				continue
-			}
-			for _, p := range pats {
-				if p.ID != "" {
-					oc.PatientIDs[p.ID] = struct{}{}
-				}
+	for _, em := range prac.GetEmailAddresses() {
+		pats, err := m.PatientFhirClient.FindPatientByEmail(ctx, em)
+		if err != nil {
+			continue
+		}
+		for _, p := range pats {
+			if p.ID != "" {
+				oc.PatientIDs[p.ID] = struct{}{}
 			}
 		}
 	}
+}
+
+// resolvePractitionerRoleIDs populates PractitionerRoleIDs for the given practitioner.
+func (m *Middlewares) resolvePractitionerRoleIDs(ctx context.Context, oc *ownershipContext, fhirID string) {
 	practitionerRoles, err := m.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerID(ctx, fhirID)
 	if err != nil {
 		m.Log.Warn("failed to find practitioner roles by practitioner ID. skipping practitioner role population", zap.String("practitionerID", fhirID), zap.Error(err))
@@ -548,6 +565,14 @@ func (m *Middlewares) resolvePractitionerPatientIDs(ctx context.Context, oc *own
 			oc.PractitionerRoleIDs = append(oc.PractitionerRoleIDs, pr.ID)
 		}
 	}
+}
+
+func (m *Middlewares) resolvePractitionerPatientIDs(ctx context.Context, oc *ownershipContext, fhirID string) {
+	if !oc.HasPractitionerRole || len(oc.PatientIDs) > 0 || fhirID == "" {
+		return
+	}
+	m.resolveRelatedPatientIDsByEmail(ctx, oc, fhirID)
+	m.resolvePractitionerRoleIDs(ctx, oc, fhirID)
 }
 
 // ownershipChecker is a resource-specific, last-resort ownership function.
@@ -594,6 +619,40 @@ var resourceSpecificOwnershipCheckers = map[string]ownershipChecker{
 
 // resourceOwnedByContext centralizes ownership checks for a single FHIR resource.
 // It is used by both bundle-level and single-resource filters.
+// cannotProvePatientOwnership returns true if patient-only resource exists but caller has no patient context.
+func cannotProvePatientOwnership(resourceType string, oc *ownershipContext) bool {
+	return utils.RequiresPatientOwnership(resourceType) && !utils.RequiresPractitionerOwnership(resourceType) && len(oc.PatientIDs) == 0 && !oc.HasPatientRole
+}
+
+// cannotProvePractitionerOwnership returns true if practitioner-only resource exists but caller has no practitioner context.
+func cannotProvePractitionerOwnership(resourceType string, oc *ownershipContext) bool {
+	return utils.RequiresPractitionerOwnership(resourceType) && !utils.RequiresPatientOwnership(resourceType) && len(oc.PractitionerIDs) == 0 && !oc.HasPractitionerRole
+}
+
+// checkGenericOwnership runs generic ownership patterns, handling errors per fail-closed policy.
+func (m *Middlewares) checkGenericOwnership(raw json.RawMessage, resourceType, id string, oc *ownershipContext) bool {
+	if ok, err := genericOwnershipPatterns(raw, oc); err == nil {
+		return ok
+	} else if !m.handleOwnershipCheckError(resourceType, id, err) {
+		return false
+	}
+	return false
+}
+
+// checkResourceSpecificOwnership runs resource-specific ownership checkers.
+func (m *Middlewares) checkResourceSpecificOwnership(raw json.RawMessage, resourceType, id string, oc *ownershipContext) bool {
+	checker, ok := resourceSpecificOwnershipCheckers[resourceType]
+	if !ok {
+		return false
+	}
+	if ok2, err := checker(raw, oc); err == nil && ok2 {
+		return true
+	} else if err != nil {
+		m.handleOwnershipCheckError(resourceType, id, err)
+	}
+	return false
+}
+
 func (m *Middlewares) resourceOwnedByContext(
 	raw json.RawMessage,
 	resourceType string,
@@ -610,35 +669,15 @@ func (m *Middlewares) resourceOwnedByContext(
 		return true
 	}
 
-	// If a resource requires *only* patient or *only* practitioner ownership,
-	// and we lack the corresponding IDs/roles, we can't prove ownership.
-	if requiresPatient && !requiresPract && len(oc.PatientIDs) == 0 && !oc.HasPatientRole {
-		return false
-	}
-	if requiresPract && !requiresPatient && len(oc.PractitionerIDs) == 0 && !oc.HasPractitionerRole {
+	if cannotProvePatientOwnership(resourceType, oc) || cannotProvePractitionerOwnership(resourceType, oc) {
 		return false
 	}
 
-	if simpleOwnershipCheck(resourceType, id, oc) {
+	if simpleOwnershipCheck(resourceType, id, oc) || m.checkGenericOwnership(raw, resourceType, id, oc) {
 		return true
 	}
 
-	if ok, err := genericOwnershipPatterns(raw, oc); err == nil && ok {
-		return true
-	} else if err != nil && !m.handleOwnershipCheckError(resourceType, id, err) {
-		return false
-	}
-
-	if checker, ok := resourceSpecificOwnershipCheckers[resourceType]; ok {
-		if ok2, err := checker(raw, oc); err == nil && ok2 {
-			return true
-		} else if err != nil {
-			m.handleOwnershipCheckError(resourceType, id, err)
-		}
-	}
-
-	// If we reach here, we couldn't prove ownership.
-	return false
+	return m.checkResourceSpecificOwnership(raw, resourceType, id, oc)
 }
 
 // failClosedOnErrorFromResource is a function that determines if we should fail closed on error from a resource.
@@ -937,6 +976,15 @@ func buildTxProxyURL(target string, r *http.Request, prefix, version string) str
 		return ""
 	}
 	relativePath := strings.TrimPrefix(r.URL.Path, fmt.Sprintf("/%s/%s/tx", prefix, version))
+	if relativePath == "" {
+		return target
+	}
+	if strings.Contains(relativePath, "..") {
+		return ""
+	}
+	if !strings.HasPrefix(relativePath, "/") {
+		relativePath = "/" + relativePath
+	}
 	fullURL := target + relativePath
 	if r.URL.RawQuery != "" {
 		fullURL += "?" + r.URL.RawQuery
@@ -1008,26 +1056,37 @@ func (m *Middlewares) doTxProxyRequest(w http.ResponseWriter, r *http.Request, f
 }
 
 // collectReferences walks arbitrary JSON and collects all "reference" string fields.
-func collectReferences(v any, out *[]string, depth int) {
-	// prevent infinite recursion. 30 is arbitrary.
+// collectMapReferences walks a JSON object and collects "reference" fields into out.
+func collectMapReferences(m map[string]any, out *[]string, depth int) {
 	if depth > 30 {
 		return
 	}
-
-	switch t := v.(type) {
-	case map[string]any:
-		for k, vv := range t {
-			if k == "reference" {
-				if s, ok := vv.(string); ok {
-					*out = append(*out, s)
-				}
-			} else {
-				collectReferences(vv, out, depth+1)
+	for k, vv := range m {
+		if k == "reference" {
+			if s, ok := vv.(string); ok {
+				*out = append(*out, s)
 			}
-		}
-	case []any:
-		for _, vv := range t {
+		} else {
 			collectReferences(vv, out, depth+1)
 		}
+	}
+}
+
+// collectArrayReferences walks a JSON array and collects "reference" fields into out.
+func collectArrayReferences(arr []any, out *[]string, depth int) {
+	if depth > 30 {
+		return
+	}
+	for _, vv := range arr {
+		collectReferences(vv, out, depth+1)
+	}
+}
+
+func collectReferences(v any, out *[]string, depth int) {
+	switch t := v.(type) {
+	case map[string]any:
+		collectMapReferences(t, out, depth)
+	case []any:
+		collectArrayReferences(t, out, depth)
 	}
 }
