@@ -17,6 +17,7 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
 
+	"github.com/casbin/casbin/v2"
 	"go.uber.org/zap"
 
 	"slices"
@@ -210,33 +211,42 @@ func (m *Middlewares) filterFHIRResponse(ctx context.Context, resp *http.Respons
 	}
 
 	if rMethod := resp.Request.Method; rMethod == http.MethodGet && fhirID != "" {
-		if bundle, isBundle, _ := decodeBundle(bodyAfterFilters); isBundle {
-			removed := m.applyOwnershipFilterToBundle(ctx, bundle, roles, fhirRole, fhirID)
-			if removed > 0 {
-				if bundle.Total != nil {
-					v := len(bundle.Entry)
-					bundle.Total = &v
-				}
-				bodyAfterFilters, _ = encodeBundle(bundle)
-				mutated = true
-			}
-		} else {
-			filteredBody, allowed, ferr := m.filterSingleResourceByOwnership(ctx, bodyAfterFilters, roles, fhirRole, fhirID)
-			if ferr != nil {
-				m.Log.Info(fmt.Sprintf("single-resource ownership filtering failed for {%s/%s}; failing closed", fhirRole, fhirID), zap.Error(ferr))
-				return nil, "", false, exceptions.ErrServerProcess(ferr)
-			}
-			if !allowed {
-				return nil, "", false, exceptions.ErrAuthInvalidRole(fmt.Errorf("forbidden: ownership cannot be proven"))
-			}
-			if filteredBody != nil {
-				bodyAfterFilters = filteredBody
-				mutated = true
-			}
+		var ownershipErr error
+		bodyAfterFilters, mutated, ownershipErr = m.applyOwnershipFilter(ctx, bodyAfterFilters, roles, fhirRole, fhirID)
+		if ownershipErr != nil {
+			return nil, "", false, ownershipErr
 		}
 	}
 
 	return bodyAfterFilters, enc, mutated, nil
+}
+
+// applyOwnershipFilter handles bundle and single-resource ownership filtering.
+func (m *Middlewares) applyOwnershipFilter(ctx context.Context, body []byte, roles []string, fhirRole, fhirID string) ([]byte, bool, error) {
+	if bundle, isBundle, _ := decodeBundle(body); isBundle {
+		removed := m.applyOwnershipFilterToBundle(ctx, bundle, roles, fhirRole, fhirID)
+		if removed > 0 {
+			if bundle.Total != nil {
+				v := len(bundle.Entry)
+				bundle.Total = &v
+			}
+			filtered, _ := encodeBundle(bundle)
+			return filtered, true, nil
+		}
+		return body, false, nil
+	}
+
+	filteredBody, allowed, ferr := m.filterSingleResourceByOwnership(ctx, body, roles, fhirRole, fhirID)
+	if ferr != nil {
+		return nil, false, exceptions.ErrServerProcess(ferr)
+	}
+	if !allowed {
+		return nil, false, exceptions.ErrAuthInvalidRole(fmt.Errorf("forbidden: ownership cannot be proven"))
+	}
+	if filteredBody != nil {
+		return filteredBody, true, nil
+	}
+	return body, false, nil
 }
 
 // runPostFHIRProxyHooks executes all registered post-proxy hooks and returns error messages.
@@ -347,68 +357,26 @@ func (m *Middlewares) filterResponseResourceAgainstRBAC(body []byte, roles []str
 		return body, 0, nil
 	}
 
-	var envelope struct {
-		ResourceType string `json:"resourceType"`
-	}
-	if err := json.Unmarshal(body, &envelope); err != nil {
-		// cannot inspect safely -> skip RBAC filtering
+	if !strings.EqualFold(extractResourceTypeFromJSON(body), "Bundle") {
 		return body, 0, nil
 	}
 
-	if !strings.EqualFold(envelope.ResourceType, "Bundle") {
-		return body, 0, nil
-	}
-
-	type entry struct {
-		FullURL  string          `json:"fullUrl,omitempty"`
-		Resource json.RawMessage `json:"resource"`
-		Search   map[string]any  `json:"search,omitempty"`
-	}
 	var bundle struct {
-		ResourceType string  `json:"resourceType"`
-		ID           string  `json:"id,omitempty"`
-		Type         string  `json:"type,omitempty"`
-		Total        *int    `json:"total,omitempty"`
-		Link         any     `json:"link,omitempty"`
-		Entry        []entry `json:"entry"`
+		ResourceType string        `json:"resourceType"`
+		ID           string        `json:"id,omitempty"`
+		Type         string        `json:"type,omitempty"`
+		Total        *int          `json:"total,omitempty"`
+		Link         any           `json:"link,omitempty"`
+		Entry        []BundleEntry `json:"entry"`
 	}
 
 	if err := json.Unmarshal(body, &bundle); err != nil {
 		return body, 0, nil
 	}
 
-	removed := 0
-	filtered := make([]entry, 0, len(bundle.Entry))
-	for _, e := range bundle.Entry {
-		var resEnv struct {
-			ResourceType string `json:"resourceType"`
-		}
-		if err := json.Unmarshal(e.Resource, &resEnv); err != nil {
-			filtered = append(filtered, e)
-			continue
-		}
-		if resEnv.ResourceType == "" {
-			filtered = append(filtered, e)
-			continue
-		}
-
-		allowedForAnyRole := false
-		for _, role := range roles {
-
-			if allowed(m.Enforcer, role, http.MethodGet, "/fhir/"+resEnv.ResourceType) {
-				allowedForAnyRole = true
-				break
-			}
-		}
-		if allowedForAnyRole {
-			filtered = append(filtered, e)
-		} else {
-			removed++
-		}
-	}
+	filtered, removed := filterBundleEntriesByRBAC(bundle.Entry, roles, m.Enforcer)
 
 	if removed == 0 {
-
 		return body, 0, nil
 	}
 
@@ -419,6 +387,46 @@ func (m *Middlewares) filterResponseResourceAgainstRBAC(body []byte, roles []str
 	}
 
 	return filteredJSON, removed, nil
+}
+
+// filterBundleEntriesByRBAC filters Bundle entries by RBAC permission for each resourceType.
+func filterBundleEntriesByRBAC(entries []BundleEntry, roles []string, enf *casbin.Enforcer) ([]BundleEntry, int) {
+	removed := 0
+	filtered := make([]BundleEntry, 0, len(entries))
+	for _, e := range entries {
+		resourceType := extractResourceTypeFromJSON(e.Resource)
+		if resourceType == "" {
+			filtered = append(filtered, e)
+			continue
+		}
+		if rbacAllowedAnyRole(enf, roles, resourceType) {
+			filtered = append(filtered, e)
+		} else {
+			removed++
+		}
+	}
+	return filtered, removed
+}
+
+// rbacAllowedAnyRole checks if any role can access a given FHIR resource type.
+func rbacAllowedAnyRole(enf *casbin.Enforcer, roles []string, resourceType string) bool {
+	for _, role := range roles {
+		if allowed(enf, role, http.MethodGet, "/fhir/"+resourceType) {
+			return true
+		}
+	}
+	return false
+}
+
+// extractResourceTypeFromJSON parses the resource type from a FHIR JSON body.
+func extractResourceTypeFromJSON(body []byte) string {
+	var env struct {
+		ResourceType string `json:"resourceType"`
+	}
+	if err := json.Unmarshal(body, &env); err != nil {
+		return ""
+	}
+	return env.ResourceType
 }
 
 // BundleEntry and Bundle represent a minimal FHIR Bundle envelope for filtering.
@@ -617,32 +625,15 @@ func (m *Middlewares) resourceOwnedByContext(
 
 	if ok, err := genericOwnershipPatterns(raw, oc); err == nil && ok {
 		return true
-	} else if err != nil {
-		if m.failClosedOnErrorFromResource(resourceType, id) {
-			return false
-		}
-
-		m.Log.Warn("resorting to fail open on error from resource",
-			zap.String("resourceType", resourceType),
-			zap.String("id", id),
-			zap.Error(err),
-		)
-		return true
+	} else if err != nil && !m.handleOwnershipCheckError(resourceType, id, err) {
+		return false
 	}
 
 	if checker, ok := resourceSpecificOwnershipCheckers[resourceType]; ok {
 		if ok2, err := checker(raw, oc); err == nil && ok2 {
 			return true
 		} else if err != nil {
-			if m.failClosedOnErrorFromResource(resourceType, id) {
-				return false
-			}
-
-			m.Log.Warn("resorting to fail open on error from resource",
-				zap.String("resourceType", resourceType),
-				zap.String("id", id),
-				zap.Error(err),
-			)
+			m.handleOwnershipCheckError(resourceType, id, err)
 		}
 	}
 
@@ -679,6 +670,20 @@ func (m *Middlewares) failClosedOnErrorFromResource(resourceType string, resourc
 	}
 
 	return false
+}
+
+// handleOwnershipCheckError decides whether to fail closed or open on an ownership check error.
+// Returns true if we should proceed (fail open), false if we should deny (fail closed).
+func (m *Middlewares) handleOwnershipCheckError(resourceType, id string, err error) bool {
+	if m.failClosedOnErrorFromResource(resourceType, id) {
+		return false
+	}
+	m.Log.Warn("resorting to fail open on error from resource",
+		zap.String("resourceType", resourceType),
+		zap.String("id", id),
+		zap.Error(err),
+	)
+	return true
 }
 
 // applyOwnershipFilterToBundle mutates bundle.Entry in-place, keeping only owned resources.

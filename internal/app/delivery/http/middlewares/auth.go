@@ -211,40 +211,45 @@ func (m *Middlewares) validatePostRequestBody(ctx context.Context, body []byte, 
 }
 
 func (m *Middlewares) validatePatientOwnershipInBody(body []byte, patientID string) error {
-	if subject := gjson.GetBytes(body, "subject.reference").String(); subject != "" {
-		if !strings.HasPrefix(subject, "Patient/") {
-			return fmt.Errorf("invalid subject reference format: %s", subject)
-		}
-		subjectID := strings.TrimPrefix(subject, "Patient/")
-		if subjectID != patientID {
-			return fmt.Errorf("patient %s is trying to create resource for different patient %s", patientID, subjectID)
-		}
+	if err := validateBodySubjectRef(body, patientID, "Patient"); err != nil {
+		return err
 	}
+	if err := validateBodyArrayRefs(body, "performer", patientID, "Patient"); err != nil {
+		return err
+	}
+	return validateBodyArrayRefs(body, "actor", patientID, "Patient")
+}
 
-	performers := gjson.GetBytes(body, "performer").Array()
-	for _, performer := range performers {
-		if ref := performer.Get("reference").String(); ref != "" {
-			if strings.HasPrefix(ref, "Patient/") {
-				performerID := strings.TrimPrefix(ref, "Patient/")
-				if performerID != patientID {
-					return fmt.Errorf("patient %s is trying to create resource with different patient performer %s", patientID, performerID)
-				}
+// validateBodySubjectRef checks that the subject.reference matches the given prefix and ID.
+func validateBodySubjectRef(body []byte, id, prefix string) error {
+	subject := gjson.GetBytes(body, "subject.reference").String()
+	if subject == "" {
+		return nil
+	}
+	if !strings.HasPrefix(subject, prefix+"/") {
+		return fmt.Errorf("invalid subject reference format: %s", subject)
+	}
+	subjectID := strings.TrimPrefix(subject, prefix+"/")
+	if subjectID != id {
+		return fmt.Errorf("%s %s is trying to create resource for different %s %s", prefix, id, prefix, subjectID)
+	}
+	return nil
+}
+
+// validateBodyArrayRefs checks that all references in a JSON array field match the given prefix and ID.
+func validateBodyArrayRefs(body []byte, field, id, prefix string) error {
+	for _, item := range gjson.GetBytes(body, field).Array() {
+		ref := item.Get("reference").String()
+		if ref == "" {
+			continue
+		}
+		if strings.HasPrefix(ref, prefix+"/") {
+			itemID := strings.TrimPrefix(ref, prefix+"/")
+			if itemID != id {
+				return fmt.Errorf("%s %s is trying to create resource with different %s %s", prefix, id, prefix, itemID)
 			}
 		}
 	}
-
-	actors := gjson.GetBytes(body, "actor").Array()
-	for _, actor := range actors {
-		if ref := actor.Get("reference").String(); ref != "" {
-			if strings.HasPrefix(ref, "Patient/") {
-				actorID := strings.TrimPrefix(ref, "Patient/")
-				if actorID != patientID {
-					return fmt.Errorf("patient %s is trying to create resource with different patient actor %s", patientID, actorID)
-				}
-			}
-		}
-	}
-
 	return nil
 }
 
@@ -432,45 +437,50 @@ func validateResourceOwnership(ctx context.Context, fhirID, role, resourceType s
 
 func validatePatientResourceOwnership(ctx context.Context, fhirID, resourceType string, resource []byte, questionnaireResponseClient contracts.QuestionnaireResponseFhirClient) bool {
 	resourceStr := string(resource)
-	if resourceType == "Condition" {
-		subjectRef := gjson.Get(resourceStr, "subject.reference").String()
-		if strings.HasPrefix(subjectRef, "Patient/") {
-			return strings.TrimPrefix(subjectRef, "Patient/") == fhirID
-		}
+	switch resourceType {
+	case "Condition":
+		return validatePatientConditionResource(resourceStr, fhirID)
+	case "Appointment":
+		return validatePatientAppointmentResource(resourceStr, fhirID)
+	case "Slot":
+		return validatePatientSlotResource(resourceStr)
+	case constvars.ResourceQuestionnaireResponse:
+		return validateQuestionnaireResponseOwner(ctx, fhirID, resourceStr, questionnaireResponseClient)
+	case constvars.ResourcePatient:
+		return gjson.Get(resourceStr, "id").String() == fhirID
+	default:
+		return checkPatientRefs(resourceStr, fhirID)
 	}
-	if resourceType == "Appointment" {
-		participants := gjson.Get(resourceStr, "participant").Array()
-		for _, participant := range participants {
-			actorRef := participant.Get("actor.reference").String()
-			if strings.HasPrefix(actorRef, "Patient/") {
-				if strings.TrimPrefix(actorRef, "Patient/") == fhirID {
-					return true
-				}
-			}
-		}
-	}
-	if resourceType == "Slot" {
-		status := gjson.Get(resourceStr, "status").String()
-		if status == "busy" || status == "busy-unavailable" {
+}
+
+func validatePatientConditionResource(resourceStr, fhirID string) bool {
+	subjectRef := gjson.Get(resourceStr, "subject.reference").String()
+	return strings.HasPrefix(subjectRef, "Patient/") && strings.TrimPrefix(subjectRef, "Patient/") == fhirID
+}
+
+func validatePatientAppointmentResource(resourceStr, fhirID string) bool {
+	for _, participant := range gjson.Get(resourceStr, "participant").Array() {
+		actorRef := participant.Get("actor.reference").String()
+		if strings.HasPrefix(actorRef, "Patient/") && strings.TrimPrefix(actorRef, "Patient/") == fhirID {
 			return true
 		}
 	}
-	if resourceType == constvars.ResourceQuestionnaireResponse {
-		return validateQuestionnaireResponseOwner(ctx, fhirID, resourceStr, questionnaireResponseClient)
-	}
-	if resourceType == constvars.ResourcePatient {
-		return gjson.Get(resourceStr, "id").String() == fhirID
-	}
-	patientRefs := []string{
+	return false
+}
+
+func validatePatientSlotResource(resourceStr string) bool {
+	status := gjson.Get(resourceStr, "status").String()
+	return status == "busy" || status == "busy-unavailable"
+}
+
+func checkPatientRefs(resourceStr, fhirID string) bool {
+	for _, ref := range []string{
 		gjson.Get(resourceStr, "subject.reference").String(),
 		gjson.Get(resourceStr, "patient.reference").String(),
 		gjson.Get(resourceStr, "actor.reference").String(),
-	}
-	for _, ref := range patientRefs {
-		if strings.HasPrefix(ref, "Patient/") {
-			if strings.TrimPrefix(ref, "Patient/") == fhirID {
-				return true
-			}
+	} {
+		if strings.HasPrefix(ref, "Patient/") && strings.TrimPrefix(ref, "Patient/") == fhirID {
+			return true
 		}
 	}
 	return false
@@ -478,37 +488,40 @@ func validatePatientResourceOwnership(ctx context.Context, fhirID, resourceType 
 
 func validatePractitionerResourceOwnership(ctx context.Context, fhirID, resourceType string, resource []byte, practitionerRoleClient contracts.PractitionerRoleFhirClient, scheduleClient contracts.ScheduleFhirClient) bool {
 	resourceStr := string(resource)
-	if resourceType == "Invoice" {
-		participants := gjson.Get(resourceStr, "participant").Array()
-		for _, participant := range participants {
-			actorRef := participant.Get("actor.reference").String()
-			if strings.HasPrefix(actorRef, "PractitionerRole/") {
-				return true
-			}
-			if strings.HasPrefix(actorRef, "Practitioner/") {
-				if strings.TrimPrefix(actorRef, "Practitioner/") == fhirID {
-					return true
-				}
-			}
+	switch resourceType {
+	case "Invoice":
+		return validatePractitionerInvoiceResource(resourceStr, fhirID)
+	case constvars.ResourcePractitioner:
+		return gjson.Get(resourceStr, "id").String() == fhirID
+	case constvars.ResourceSchedule:
+		return validateScheduleOwnership(ctx, fhirID, resourceStr, practitionerRoleClient, scheduleClient)
+	default:
+		return checkPractitionerRefs(resourceStr, fhirID)
+	}
+}
+
+func validatePractitionerInvoiceResource(resourceStr, fhirID string) bool {
+	for _, participant := range gjson.Get(resourceStr, "participant").Array() {
+		actorRef := participant.Get("actor.reference").String()
+		if strings.HasPrefix(actorRef, "PractitionerRole/") {
+			return true
+		}
+		if strings.HasPrefix(actorRef, "Practitioner/") && strings.TrimPrefix(actorRef, "Practitioner/") == fhirID {
+			return true
 		}
 	}
-	if resourceType == constvars.ResourcePractitioner {
-		return gjson.Get(resourceStr, "id").String() == fhirID
-	}
-	if resourceType == constvars.ResourceSchedule {
-		return validateScheduleOwnership(ctx, fhirID, resourceStr, practitionerRoleClient, scheduleClient)
-	}
-	practitionerRefs := []string{
+	return false
+}
+
+func checkPractitionerRefs(resourceStr, fhirID string) bool {
+	for _, ref := range []string{
 		gjson.Get(resourceStr, "practitioner.reference").String(),
 		gjson.Get(resourceStr, "actor.reference").String(),
 		gjson.Get(resourceStr, "performer.reference").String(),
 		gjson.Get(resourceStr, "author.reference").String(),
-	}
-	for _, ref := range practitionerRefs {
-		if strings.HasPrefix(ref, "Practitioner/") {
-			if strings.TrimPrefix(ref, "Practitioner/") == fhirID {
-				return true
-			}
+	} {
+		if strings.HasPrefix(ref, "Practitioner/") && strings.TrimPrefix(ref, "Practitioner/") == fhirID {
+			return true
 		}
 	}
 	return false
@@ -627,22 +640,8 @@ func ownsPatientQuery(ctx context.Context, fhirID string, u *url.URL, resourceTy
 
 	q := u.Query()
 
-	if p := q.Get("patient"); p != "" {
-		return strings.TrimPrefix(p, "Patient/") == fhirID
-	}
-	if s := q.Get("subject"); s != "" {
-		return strings.TrimPrefix(s, "Patient/") == fhirID
-	}
-	if a := q.Get("actor"); a != "" {
-		return strings.TrimPrefix(a, "Patient/") == fhirID
-	}
-	if qr := q.Get("questionnaire"); qr != "" {
+	if checkPatientQueryRefs(q, resourceType, fhirID) {
 		return true
-	}
-	if resourceType == constvars.ResourcePatient {
-		if val := q.Get("_id"); val != "" {
-			return val == fhirID
-		}
 	}
 
 	if checkPatientIdentifierOwnership(ctx, q, fhirID, patientClient, practitionerClient) {
@@ -652,6 +651,25 @@ func ownsPatientQuery(ctx context.Context, fhirID string, u *url.URL, resourceTy
 		return true
 	}
 
+	return false
+}
+
+// checkPatientQueryRefs checks common patient query parameters for ownership.
+func checkPatientQueryRefs(q url.Values, resourceType, fhirID string) bool {
+	for _, param := range []string{"patient", "subject", "actor"} {
+		if val := q.Get(param); val != "" && strings.TrimPrefix(val, "Patient/") == fhirID {
+			return true
+		}
+	}
+	// questionnaire is always allowed for patients
+	if q.Get("questionnaire") != "" {
+		return true
+	}
+	if resourceType == constvars.ResourcePatient {
+		if val := q.Get("_id"); val != "" && val == fhirID {
+			return true
+		}
+	}
 	return false
 }
 
