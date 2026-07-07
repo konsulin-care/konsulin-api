@@ -525,7 +525,7 @@ func buildCreateSlotsTransactionBundle(scheduleID string, slots []fhir_dto.Slot)
 			},
 			constvars.FhirFieldResource: map[string]any{
 				constvars.FhirFieldResourceType: constvars.ResourceSlot,
-				"schedule":                      map[string]any{constvars.FhirFieldReference: constvars.FHIRRefPrefixSchedule + scheduleID},
+				constvars.FhirFieldSchedule:     map[string]any{constvars.FhirFieldReference: constvars.FHIRRefPrefixSchedule + scheduleID},
 				constvars.FhirFieldStatus:       string(s.Status),
 				constvars.FhirFieldStart:        startISO,
 				constvars.FhirFieldEnd:          s.End.Format(time.RFC3339),
@@ -578,7 +578,7 @@ func buildOverrideSlotsTransactionBundle(scheduleID string, deleteIDs []string, 
 			},
 			"resource": map[string]any{
 				"resourceType": "Slot",
-				"schedule":     map[string]any{"reference": constvars.FHIRRefPrefixSchedule + scheduleID},
+				constvars.FhirFieldSchedule: map[string]any{"reference": constvars.FHIRRefPrefixSchedule + scheduleID},
 				"status":       string(s.Status),
 				"start":        startISO,
 				"end":          s.End.Format(time.RFC3339),

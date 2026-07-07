@@ -2,15 +2,10 @@ repos:
   - repo: https://github.com/golangci/golangci-lint
     rev: v2.12.2
     hooks:
-      - id: golangci-lint-full
+      - id: golangci-lint
         args: [--timeout=5m]
 
-  - repo: https://github.com/tekWizely/pre-commit-golang
-    rev: v1.0.0-rc1
-    hooks:
-      - id: go-fumpt-repo
-      - id: go-mod-tidy-repo
-      - id: go-test-repo-mod
+
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0

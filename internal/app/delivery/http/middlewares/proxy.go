@@ -185,7 +185,7 @@ func doFHIRProxyRequest(r *http.Request, target string, client *http.Client) (re
 		return nil, nil, nil, exceptions.ErrCreateHTTPRequest(err)
 	}
 	req.Header = r.Header.Clone()
-	if r.Method == "POST" || r.Method == "PUT" || r.Method == "PATCH" {
+	if r.Method == constvars.MethodPost || r.Method == constvars.MethodPut || r.Method == constvars.MethodPatch {
 		req.Header.Set("Content-Type", "application/fhir+json")
 	}
 	req.Header.Set("Accept", "application/fhir+json")
@@ -197,10 +197,10 @@ func doFHIRProxyRequest(r *http.Request, target string, client *http.Client) (re
 
 	respBody, readErr := io.ReadAll(resp.Body)
 	if readErr != nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, nil, bodyBytes, exceptions.ErrReadBody(readErr)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
 	return resp, respBody, bodyBytes, nil
@@ -372,7 +372,7 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 			utils.BuildErrorResponse(m.Log, w, err)
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode >= http.StatusBadRequest {
 			fhirErr := exceptions.BuildNewCustomError(fmt.Errorf("%s", string(respBody)), resp.StatusCode, string(respBody), constvars.ErrDevServerProcess)

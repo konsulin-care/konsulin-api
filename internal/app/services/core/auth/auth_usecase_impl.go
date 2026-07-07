@@ -247,7 +247,7 @@ func assignMagicLinkRoles(_ context.Context, uc *authUsecase, requestID, userID 
 	for _, role := range roles {
 		response, err := userroles.AddRoleToUser(uc.InternalConfig.Supertoken.KonsulinTenantID, userID, role, nil)
 		if err != nil {
-			logAndCreateLinkError(uc.Log, "Failed to assign role to user", requestID, err, start)
+			_ = logAndCreateLinkError(uc.Log, "Failed to assign role to user", requestID, err, start)
 			return err
 		}
 		if response.UnknownRoleError != nil {

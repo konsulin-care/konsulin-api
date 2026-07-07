@@ -247,7 +247,7 @@ func validateNonDevConfig(cfg *InternalConfig) error {
 		return fmt.Errorf("JWT_HOOK_KEY is required in %s environment", cfg.App.Env)
 	}
 	if cfg.PaymentGateway.Username == "" || cfg.PaymentGateway.ApiKey == "" {
-		return fmt.Errorf("Payment gateway credentials (APP_PAYMENT_GATEWAY_USERNAME, APP_PAYMENT_GATEWAY_API_KEY) are required in %s environment", cfg.App.Env)
+		return fmt.Errorf("payment gateway credentials (APP_PAYMENT_GATEWAY_USERNAME, APP_PAYMENT_GATEWAY_API_KEY) are required in %s environment", cfg.App.Env)
 	}
 	if cfg.Xendit.APIKey == "" {
 		return fmt.Errorf("APP_XENDIT_API_KEY is required in %s environment", cfg.App.Env)

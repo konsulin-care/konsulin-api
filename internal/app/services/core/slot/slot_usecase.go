@@ -456,7 +456,7 @@ func buildBusySlotEntry(c createItem, slotStatus fhir_dto.SlotStatus, reason str
 		constvars.FhirFieldRequest: map[string]any{constvars.FhirFieldMethod: constvars.MethodPost, constvars.FhirFieldURL: constvars.ResourceSlot},
 		constvars.FhirFieldResource: map[string]any{
 			constvars.FhirFieldResourceType: constvars.ResourceSlot,
-			"schedule":                      map[string]any{constvars.FhirFieldReference: constvars.FHIRRefPrefixSchedule + c.scheduleID},
+			constvars.FhirFieldSchedule:     map[string]any{constvars.FhirFieldReference: constvars.FHIRRefPrefixSchedule + c.scheduleID},
 			constvars.FhirFieldStatus:       string(slotStatus),
 			constvars.FhirFieldMeta: map[string]any{
 				constvars.FhirFieldTag: []map[string]any{{constvars.FhirFieldCode: slotTagUserGenerated}},
@@ -474,7 +474,7 @@ func buildFreeSlotEntry(fc freeCreateItem) map[string]any {
 		constvars.FhirFieldRequest: map[string]any{constvars.FhirFieldMethod: constvars.MethodPost, constvars.FhirFieldURL: constvars.ResourceSlot},
 		constvars.FhirFieldResource: map[string]any{
 			constvars.FhirFieldResourceType: constvars.ResourceSlot,
-			"schedule":                      map[string]any{constvars.FhirFieldReference: constvars.FHIRRefPrefixSchedule + fc.scheduleID},
+			constvars.FhirFieldSchedule:     map[string]any{constvars.FhirFieldReference: constvars.FHIRRefPrefixSchedule + fc.scheduleID},
 			constvars.FhirFieldStatus:       string(fhir_dto.SlotStatusFree),
 			constvars.FhirFieldStart:        fc.start.Format(time.RFC3339),
 			constvars.FhirFieldEnd:          fc.end.Format(time.RFC3339),

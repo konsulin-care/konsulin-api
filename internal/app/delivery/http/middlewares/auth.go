@@ -85,7 +85,7 @@ func (m *Middlewares) Authenticate(next http.Handler) http.Handler {
 // handleAuthPostBody reads and validates the POST request body, restoring it for downstream use.
 func (m *Middlewares) handleAuthPostBody(w http.ResponseWriter, r *http.Request, ctxIface context.Context, fhirRole, fhirID string) error {
 	body, _ := io.ReadAll(r.Body)
-	r.Body.Close()
+	_ = r.Body.Close()
 
 	if err := m.validatePostRequestBody(ctxIface, body, fhirRole, fhirID); err != nil {
 		return err
@@ -101,7 +101,7 @@ func (m *Middlewares) handleAuthBundle(w http.ResponseWriter, r *http.Request, c
 		return false, nil
 	}
 	body, _ := io.ReadAll(r.Body)
-	r.Body.Close()
+	_ = r.Body.Close()
 
 	if err := scanBundle(ctxIface, m.Enforcer, body, roles, ctxIface.Value(keyFHIRID).(string), m.PatientFhirClient, m.PractitionerFhirClient, m.PractitionerRoleFhirClient, m.ScheduleFhirClient, m.QuestionnaireResponseFhirClient); err != nil {
 		return true, err
@@ -115,9 +115,9 @@ func (m *Middlewares) handleAuthSingleResource(w http.ResponseWriter, r *http.Re
 	fullURL := r.URL.RequestURI()
 
 	var resourceBody []byte
-	if r.Method == "PUT" || r.Method == "POST" {
+	if r.Method == constvars.MethodPut || r.Method == constvars.MethodPost {
 		body, _ := io.ReadAll(r.Body)
-		r.Body.Close()
+		_ = r.Body.Close()
 		resourceBody = body
 		r.Body = io.NopCloser(bytes.NewReader(body))
 	}
@@ -142,7 +142,7 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 		ctxIface = context.WithValue(ctxIface, keyFHIRID, fhirID)
 		r = r.WithContext(ctxIface)
 
-		if r.Method == "POST" {
+		if r.Method == constvars.MethodPost {
 			if err := m.handleAuthPostBody(w, r, ctxIface, fhirRole, fhirID); err != nil {
 				utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
 				return
@@ -276,43 +276,26 @@ func validateBodyArrayRefs(body []byte, field, id, prefix string) error {
 }
 
 func (m *Middlewares) validatePractitionerOwnershipInBody(body []byte, practitionerID string) error {
-	if err := validatePerformerRefs(body, practitionerID); err != nil {
+	if err := validatePractitionerRefs(body, "performer", practitionerID); err != nil {
 		return err
 	}
-	return validateActorRefs(body, practitionerID)
+	return validatePractitionerRefs(body, "actor", practitionerID)
 }
 
-// validatePerformerRefs checks that all performer references match the practitioner.
-func validatePerformerRefs(body []byte, practitionerID string) error {
-	for _, performer := range gjson.GetBytes(body, "performer").Array() {
-		ref := performer.Get("reference").String()
+// validatePractitionerRefs checks that all references in the given field
+// match the practitioner's FHIR ID.
+func validatePractitionerRefs(body []byte, field, practitionerID string) error {
+	for _, item := range gjson.GetBytes(body, field).Array() {
+		ref := item.Get("reference").String()
 		if ref == "" {
 			continue
 		}
 		if !strings.HasPrefix(ref, constvars.FHIRRefPrefixPractitioner) {
 			continue
 		}
-		performerID := strings.TrimPrefix(ref, constvars.FHIRRefPrefixPractitioner)
-		if performerID != practitionerID {
-			return fmt.Errorf("practitioner %s is trying to create resource with different practitioner performer %s", practitionerID, performerID)
-		}
-	}
-	return nil
-}
-
-// validateActorRefs checks that all actor references match the practitioner.
-func validateActorRefs(body []byte, practitionerID string) error {
-	for _, actor := range gjson.GetBytes(body, "actor").Array() {
-		ref := actor.Get("reference").String()
-		if ref == "" {
-			continue
-		}
-		if !strings.HasPrefix(ref, constvars.FHIRRefPrefixPractitioner) {
-			continue
-		}
-		actorID := strings.TrimPrefix(ref, constvars.FHIRRefPrefixPractitioner)
-		if actorID != practitionerID {
-			return fmt.Errorf("practitioner %s is trying to create resource with different practitioner actor %s", practitionerID, actorID)
+		id := strings.TrimPrefix(ref, constvars.FHIRRefPrefixPractitioner)
+		if id != practitionerID {
+			return fmt.Errorf("practitioner %s is trying to create resource with different practitioner %s %s", practitionerID, field, id)
 		}
 	}
 	return nil
@@ -578,14 +561,13 @@ func validateQuestionnaireResponseOwner(ctx context.Context, fhirID, resourceStr
 	if authorRef == "" && subjectRef == "" {
 		return true
 	}
-	sameOwner := true
 	if strings.HasPrefix(authorRef, constvars.FHIRRefPrefixPatient) && strings.TrimPrefix(authorRef, constvars.FHIRRefPrefixPatient) != fhirID {
-		sameOwner = false
+		return false
 	}
 	if strings.HasPrefix(subjectRef, constvars.FHIRRefPrefixPatient) && strings.TrimPrefix(subjectRef, constvars.FHIRRefPrefixPatient) != fhirID {
-		sameOwner = false
+		return false
 	}
-	return sameOwner
+	return true
 }
 
 // scheduleActorOwnedByPractitioner checks if any actor in the schedule references the practitioner.
@@ -636,11 +618,11 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 		return true
 	}
 
-	if method == "POST" {
+	if method == constvars.MethodPost {
 		return true
 	}
 
-	if method == "PUT" && len(resource) > 0 {
+	if method == constvars.MethodPut && len(resource) > 0 {
 		return validateResourceOwnership(ctx, fhirID, role, resourceType, resource, practitionerRoleClient, scheduleClient, questionnaireResponseClient)
 	}
 

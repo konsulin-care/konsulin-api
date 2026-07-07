@@ -55,9 +55,9 @@ func (u *User) ConvertToBsonM() bson.M {
 		"resetTokenExpiry":   u.ResetTokenExpiry,
 		"whatsAppOtpExpiry":  u.WhatsAppOTPExpiry,
 		"user_role":          u.Role,
-		"createdAt":          u.TimeModel.CreatedAt,
-		"updatedAt":          u.TimeModel.UpdatedAt,
-		"deletedAt":          u.TimeModel.DeletedAt,
+		"createdAt":          u.CreatedAt,
+		"updatedAt":          u.UpdatedAt,
+		"deletedAt":          u.DeletedAt,
 	}
 }
 

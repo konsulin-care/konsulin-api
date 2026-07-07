@@ -81,7 +81,7 @@ func (l *HookRateLimiter) Evaluate(ctx context.Context, in *EvaluateInput) (*Eva
 	monthKey, monthKeyUser, ttlMonthly := buildMonthlyQuotaKeys(service, actorID, in.NowUTC)
 	minuteKey, minuteKeyUser, ttlMinute := buildMinuteWindowKeys(service, actorID, in.NowUTC)
 
-	currentMonthly, currentMonthlyUser, monthlyExceeded, err := checkMonthlyQuota(ctx, l.redis, monthKey, monthKeyUser, l.monthlyQuota)
+	currentMonthly, currentMonthlyUser, monthlyExceeded, err := checkCounter(ctx, l.redis, monthKey, monthKeyUser, l.monthlyQuota)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +89,7 @@ func (l *HookRateLimiter) Evaluate(ctx context.Context, in *EvaluateInput) (*Eva
 		return &EvaluateOutput{Allowed: false, RetryAfterSecs: int(ttlMonthly.Seconds()) + 1, LimitedByMonthly: true}, nil
 	}
 
-	currentMinute, currentMinuteUser, minuteExceeded, err := checkMinuteWindow(ctx, l.redis, minuteKey, minuteKeyUser, l.rateLimit)
+	currentMinute, currentMinuteUser, minuteExceeded, err := checkCounter(ctx, l.redis, minuteKey, minuteKeyUser, l.rateLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -131,48 +131,27 @@ func buildMinuteWindowKeys(service, actorID string, nowUTC time.Time) (minuteKey
 	return
 }
 
-// checkMonthlyQuota reads counters and returns current values plus exceeded flag.
-func checkMonthlyQuota(ctx context.Context, redis contracts.RedisRepository, monthKey, monthKeyUser string, monthlyQuota int) (currentMonthly, currentMonthlyUser int, exceeded bool, err error) {
-	currentMonthly, err = readIntCounter(ctx, redis, monthKey)
+// checkCounter reads counters and returns current values plus exceeded flag.
+// Used for both monthly quota and minute-window rate limiting.
+func checkCounter(ctx context.Context, redis contracts.RedisRepository, key, keyUser string, limit int) (current, currentUser int, exceeded bool, err error) {
+	current, err = readIntCounter(ctx, redis, key)
 	if err != nil {
 		return 0, 0, false, err
 	}
-	if monthlyQuota > 0 && currentMonthly >= monthlyQuota {
-		return currentMonthly, 0, true, nil
+	if limit > 0 && current >= limit {
+		return current, 0, true, nil
 	}
 
-	if monthKeyUser != "" {
-		currentMonthlyUser, err = readIntCounter(ctx, redis, monthKeyUser)
+	if keyUser != "" {
+		currentUser, err = readIntCounter(ctx, redis, keyUser)
 		if err != nil {
 			return 0, 0, false, err
 		}
-		if monthlyQuota > 0 && currentMonthlyUser >= monthlyQuota {
-			return currentMonthly, currentMonthlyUser, true, nil
+		if limit > 0 && currentUser >= limit {
+			return current, currentUser, true, nil
 		}
 	}
-	return currentMonthly, currentMonthlyUser, false, nil
-}
-
-// checkMinuteWindow reads counters and returns current values plus exceeded flag.
-func checkMinuteWindow(ctx context.Context, redis contracts.RedisRepository, minuteKey, minuteKeyUser string, rateLimit int) (currentMinute, currentMinuteUser int, exceeded bool, err error) {
-	currentMinute, err = readIntCounter(ctx, redis, minuteKey)
-	if err != nil {
-		return 0, 0, false, err
-	}
-	if rateLimit > 0 && currentMinute >= rateLimit {
-		return currentMinute, 0, true, nil
-	}
-
-	if minuteKeyUser != "" {
-		currentMinuteUser, err = readIntCounter(ctx, redis, minuteKeyUser)
-		if err != nil {
-			return 0, 0, false, err
-		}
-		if rateLimit > 0 && currentMinuteUser >= rateLimit {
-			return currentMinute, currentMinuteUser, true, nil
-		}
-	}
-	return currentMinute, currentMinuteUser, false, nil
+	return current, currentUser, false, nil
 }
 
 // readIntCounter reads a JSON-stored integer counter from Redis.
