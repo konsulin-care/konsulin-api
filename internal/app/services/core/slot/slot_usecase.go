@@ -102,10 +102,11 @@ func (s *SlotUsecase) HandleSetUnavailabilityForMultiplePractitionerRoles(ctx co
 	}
 	defer func() { resolved.release(context.Background()) }()
 
-	allIdempotentSlots := &[]contracts.CreatedSlotItem{}
-	allIdempotentPRIDs := &[]string{}
-	out, err := s.processRoleWindows(ctx, roles, resolved, input, unavailableReason,
-		allIdempotentSlots, allIdempotentPRIDs)
+	state := &idempotentState{
+		Slots: &[]contracts.CreatedSlotItem{},
+		PRIDs: &[]string{},
+	}
+	out, err := s.processRoleWindows(ctx, roles, resolved, input, unavailableReason, state)
 
 	if err != nil {
 		return nil, err
@@ -123,6 +124,12 @@ type createItem struct {
 type freeCreateItem struct {
 	scheduleID string
 	start, end time.Time
+}
+
+// idempotentState tracks created slot items and practitioner role IDs for idempotency.
+type idempotentState struct {
+	Slots *[]contracts.CreatedSlotItem
+	PRIDs *[]string
 }
 
 // resolvedWindows holds per-role schedule data after resolution and lock acquisition.
@@ -278,8 +285,7 @@ func (s *SlotUsecase) processSingleRoleWindow(
 	resolved *resolvedWindows,
 	input contracts.SetUnavailabilityForMultiplePractitionerRolesInput,
 	unavailableReason string,
-	allIdempotentSlots *[]contracts.CreatedSlotItem,
-	allIdempotentPRIDs *[]string,
+	state *idempotentState,
 ) (*singleRoleResult, error) {
 	scheduleID := resolved.schedulesByRole[pr.ID]
 
@@ -294,7 +300,7 @@ func (s *SlotUsecase) processSingleRoleWindow(
 		return nil, exceptions.BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, "failed to find slots for conflict detection")
 	}
 
-	deletableIDs, isIdempotent, err := s.detectRoleWindowConflicts(slots, pr, winStart, winEnd, input.SlotStatus, unavailableReason, allIdempotentSlots, allIdempotentPRIDs)
+	deletableIDs, isIdempotent, err := s.detectRoleWindowConflicts(slots, pr, winStart, winEnd, input.SlotStatus, unavailableReason, state)
 	if err != nil {
 		res := &singleRoleResult{}
 		for _, c := range slots {
@@ -339,7 +345,7 @@ func (s *SlotUsecase) processSingleRoleWindow(
 
 	roleLoc, _ := pr.GetPreferredTimezone()
 	for _, td := range s.dayTargetsForWindow(scheduleID, roleLoc, winStart, winEnd) {
-		if err := s.processDayAdjustment(ctx, td, scheduleID, winStart, winEnd, input.SlotStatus, plan, cfg, &res.Deletions, &res.CreatedFree); err != nil {
+		if err := s.processDayAdjustment(ctx, td, winStart, winEnd, input.SlotStatus, plan, cfg, &res.Deletions, &res.CreatedFree); err != nil {
 			return res, err
 		}
 	}
@@ -354,8 +360,7 @@ func (s *SlotUsecase) processRoleWindows(
 	resolved *resolvedWindows,
 	input contracts.SetUnavailabilityForMultiplePractitionerRolesInput,
 	unavailableReason string,
-	allIdempotentSlots *[]contracts.CreatedSlotItem,
-	allIdempotentPRIDs *[]string,
+	state *idempotentState,
 ) (*contracts.SetUnavailableOutcome, error) {
 	var deletions []string
 	var creations []createItem
@@ -367,7 +372,7 @@ func (s *SlotUsecase) processRoleWindows(
 		winStart := resolved.startByRole[pr.ID]
 		winEnd := resolved.endByRole[pr.ID]
 
-		sr, err := s.processSingleRoleWindow(ctx, pr, winStart, winEnd, resolved, input, unavailableReason, allIdempotentSlots, allIdempotentPRIDs)
+		sr, err := s.processSingleRoleWindow(ctx, pr, winStart, winEnd, resolved, input, unavailableReason, state)
 		if err != nil {
 			return out, err
 		}
@@ -382,78 +387,111 @@ func (s *SlotUsecase) processRoleWindows(
 		updatedRoleBodies = append(updatedRoleBodies, sr.UpdatedRole)
 	}
 
-	return s.postUnavailabilityBundle(ctx, out, deletions, creations, createFree, updatedRoleBodies, allIdempotentSlots, allIdempotentPRIDs, input)
+	mutation := &bundleMutation{
+		Deletions:    deletions,
+		Creations:    creations,
+		CreateFree:   createFree,
+		UpdatedRoles: updatedRoleBodies,
+	}
+	return s.postUnavailabilityBundle(ctx, out, mutation, state, input)
+}
+
+// postUnavailabilityBundle builds and posts the FHIR transaction bundle for unavailability changes.
+// buildDeletionEntries builds bundle entries for deleting slots.
+func buildDeletionEntries(deletions []string) []map[string]any {
+	seen := make(map[string]struct{}, len(deletions))
+	var entries []map[string]any
+	for _, id := range deletions {
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		entries = append(entries, map[string]any{
+			constvars.FhirFieldRequest: map[string]any{constvars.FhirFieldMethod: constvars.MethodDelete, constvars.FhirFieldURL: "Slot/" + id},
+		})
+	}
+	return entries
+}
+
+// buildBusySlotEntry builds a bundle entry for creating a busy slot.
+func buildBusySlotEntry(c createItem, slotStatus fhir_dto.SlotStatus, reason string) map[string]any {
+	return map[string]any{
+		constvars.FhirFieldRequest: map[string]any{constvars.FhirFieldMethod: constvars.MethodPost, constvars.FhirFieldURL: constvars.ResourceSlot},
+		constvars.FhirFieldResource: map[string]any{
+			constvars.FhirFieldResourceType: constvars.ResourceSlot,
+			"schedule":                      map[string]any{constvars.FhirFieldReference: constvars.FHIRRefPrefixSchedule + c.scheduleID},
+			constvars.FhirFieldStatus:       string(slotStatus),
+			constvars.FhirFieldMeta: map[string]any{
+				constvars.FhirFieldTag: []map[string]any{{constvars.FhirFieldCode: slotTagUserGenerated}},
+			},
+			"comment":                reason,
+			constvars.FhirFieldStart: c.start.Format(time.RFC3339),
+			constvars.FhirFieldEnd:   c.end.Format(time.RFC3339),
+		},
+	}
+}
+
+// buildFreeSlotEntry builds a bundle entry for creating a free slot.
+func buildFreeSlotEntry(fc freeCreateItem) map[string]any {
+	return map[string]any{
+		constvars.FhirFieldRequest: map[string]any{constvars.FhirFieldMethod: constvars.MethodPost, constvars.FhirFieldURL: constvars.ResourceSlot},
+		constvars.FhirFieldResource: map[string]any{
+			constvars.FhirFieldResourceType: constvars.ResourceSlot,
+			"schedule":                      map[string]any{constvars.FhirFieldReference: constvars.FHIRRefPrefixSchedule + fc.scheduleID},
+			constvars.FhirFieldStatus:       string(fhir_dto.SlotStatusFree),
+			constvars.FhirFieldStart:        fc.start.Format(time.RFC3339),
+			constvars.FhirFieldEnd:          fc.end.Format(time.RFC3339),
+			constvars.FhirFieldMeta: map[string]any{
+				constvars.FhirFieldTag: []map[string]any{{constvars.FhirFieldCode: SlotTagSystemGenerated}},
+			},
+		},
+	}
+}
+
+// buildRoleUpdateEntry builds a bundle entry for updating a practitioner role.
+func buildRoleUpdateEntry(rb fhir_dto.PractitionerRole) map[string]any {
+	return map[string]any{
+		constvars.FhirFieldRequest:  map[string]any{constvars.FhirFieldMethod: constvars.MethodPut, constvars.FhirFieldURL: "PractitionerRole/" + rb.ID},
+		constvars.FhirFieldResource: rb,
+	}
+}
+
+// bundleMutation holds the pending mutation state for a FHIR transaction bundle.
+type bundleMutation struct {
+	Deletions    []string
+	Creations    []createItem
+	CreateFree   []freeCreateItem
+	UpdatedRoles []fhir_dto.PractitionerRole
 }
 
 // postUnavailabilityBundle builds and posts the FHIR transaction bundle for unavailability changes.
 func (s *SlotUsecase) postUnavailabilityBundle(
 	ctx context.Context,
 	out *contracts.SetUnavailableOutcome,
-	deletions []string,
-	creations []createItem,
-	createFree []freeCreateItem,
-	updatedRoleBodies []fhir_dto.PractitionerRole,
-	allIdempotentSlots *[]contracts.CreatedSlotItem,
-	allIdempotentPRIDs *[]string,
+	mutation *bundleMutation,
+	state *idempotentState,
 	input contracts.SetUnavailabilityForMultiplePractitionerRolesInput,
 ) (*contracts.SetUnavailableOutcome, error) {
-	if len(deletions) == 0 && len(creations) == 0 && len(updatedRoleBodies) == 0 && len(createFree) == 0 {
+	noChanges := len(mutation.Deletions) == 0 && len(mutation.Creations) == 0 && len(mutation.UpdatedRoles) == 0 && len(mutation.CreateFree) == 0
+	if noChanges {
 		out.Created = false
-		out.CreatedSlots = append(out.CreatedSlots, *allIdempotentSlots...)
-		out.UpdatedPractitionerIDs = append(out.UpdatedPractitionerIDs, *allIdempotentPRIDs...)
+		out.CreatedSlots = append(out.CreatedSlots, *state.Slots...)
+		out.UpdatedPractitionerIDs = append(out.UpdatedPractitionerIDs, *state.PRIDs...)
 		return out, nil
 	}
 
-	entries := make([]map[string]any, 0, len(deletions)+len(creations)+len(updatedRoleBodies))
-	seenDel := make(map[string]struct{}, len(deletions))
-	for _, id := range deletions {
-		if id == "" {
-			continue
-		}
-		if _, ok := seenDel[id]; ok {
-			continue
-		}
-		seenDel[id] = struct{}{}
-		entries = append(entries, map[string]any{
-			constvars.FhirFieldRequest: map[string]any{constvars.FhirFieldMethod: constvars.MethodDelete, constvars.FhirFieldURL: "Slot/" + id},
-		})
+	entries := buildDeletionEntries(mutation.Deletions)
+	for _, c := range mutation.Creations {
+		entries = append(entries, buildBusySlotEntry(c, input.SlotStatus, input.Reason))
 	}
-	for _, c := range creations {
-		entries = append(entries, map[string]any{
-			constvars.FhirFieldRequest: map[string]any{constvars.FhirFieldMethod: constvars.MethodPost, constvars.FhirFieldURL: constvars.ResourceSlot},
-			constvars.FhirFieldResource: map[string]any{
-				constvars.FhirFieldResourceType: constvars.ResourceSlot,
-				"schedule":                      map[string]any{constvars.FhirFieldReference: "Schedule/" + c.scheduleID},
-				constvars.FhirFieldStatus:       string(input.SlotStatus),
-				constvars.FhirFieldMeta: map[string]any{
-					constvars.FhirFieldTag: []map[string]any{{constvars.FhirFieldCode: slotTagUserGenerated}},
-				},
-				"comment":                input.Reason,
-				constvars.FhirFieldStart: c.start.Format(time.RFC3339),
-				constvars.FhirFieldEnd:   c.end.Format(time.RFC3339),
-			},
-		})
+	for _, fc := range mutation.CreateFree {
+		entries = append(entries, buildFreeSlotEntry(fc))
 	}
-	for _, fc := range createFree {
-		entries = append(entries, map[string]any{
-			constvars.FhirFieldRequest: map[string]any{constvars.FhirFieldMethod: constvars.MethodPost, constvars.FhirFieldURL: constvars.ResourceSlot},
-			constvars.FhirFieldResource: map[string]any{
-				constvars.FhirFieldResourceType: constvars.ResourceSlot,
-				"schedule":                      map[string]any{constvars.FhirFieldReference: "Schedule/" + fc.scheduleID},
-				constvars.FhirFieldStatus:       string(fhir_dto.SlotStatusFree),
-				constvars.FhirFieldStart:        fc.start.Format(time.RFC3339),
-				constvars.FhirFieldEnd:          fc.end.Format(time.RFC3339),
-				constvars.FhirFieldMeta: map[string]any{
-					constvars.FhirFieldTag: []map[string]any{{constvars.FhirFieldCode: SlotTagSystemGenerated}},
-				},
-			},
-		})
-	}
-	for _, rb := range updatedRoleBodies {
-		entries = append(entries, map[string]any{
-			constvars.FhirFieldRequest:  map[string]any{constvars.FhirFieldMethod: constvars.MethodPut, constvars.FhirFieldURL: "PractitionerRole/" + rb.ID},
-			constvars.FhirFieldResource: rb,
-		})
+	for _, rb := range mutation.UpdatedRoles {
+		entries = append(entries, buildRoleUpdateEntry(rb))
 	}
 
 	bundle := map[string]any{constvars.FhirFieldResourceType: constvars.ResourceBundle, constvars.FhirBundleFieldType: constvars.FhirBundleTypeTransaction, constvars.FhirFieldEntry: entries}
@@ -462,7 +500,7 @@ func (s *SlotUsecase) postUnavailabilityBundle(
 		return out, exceptions.BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, "failed to post transaction bundle")
 	}
 
-	for _, c := range creations {
+	for _, c := range mutation.Creations {
 		got, gerr := s.slots.FindSlotsByScheduleWithQuery(ctx, c.scheduleID, contracts.SlotSearchParams{
 			Start:  "ge" + c.start.Format(time.RFC3339),
 			End:    "le" + c.end.Format(time.RFC3339),
@@ -474,10 +512,10 @@ func (s *SlotUsecase) postUnavailabilityBundle(
 			out.CreatedSlots = append(out.CreatedSlots, contracts.CreatedSlotItem{ID: "", Status: string(input.SlotStatus)})
 		}
 	}
-	for _, rb := range updatedRoleBodies {
+	for _, rb := range mutation.UpdatedRoles {
 		out.UpdatedPractitionerIDs = append(out.UpdatedPractitionerIDs, rb.ID)
 	}
-	out.Created = len(creations) > 0
+	out.Created = len(mutation.Creations) > 0
 	return out, nil
 }
 
@@ -485,7 +523,6 @@ func (s *SlotUsecase) postUnavailabilityBundle(
 func (s *SlotUsecase) processDayAdjustment(
 	ctx context.Context,
 	td dayLockTarget,
-	scheduleID string,
 	winStart, winEnd time.Time,
 	slotStatus fhir_dto.SlotStatus,
 	plan weeklyPlan,
@@ -495,6 +532,7 @@ func (s *SlotUsecase) processDayAdjustment(
 ) error {
 	day := td.Day
 	loc := td.Location
+	scheduleID := td.ScheduleID
 	windowsForDay := plan.forWeekday(day.Weekday())
 	if len(windowsForDay) == 0 {
 		return nil
@@ -521,26 +559,35 @@ func (s *SlotUsecase) processDayAdjustment(
 }
 
 // detectRoleWindowConflicts detects conflicting slots, idempotency, and deletable IDs for one role's window.
+// isSlotConflicting checks if a slot status indicates a booked conflict.
+func isSlotConflicting(status fhir_dto.SlotStatus) bool {
+	return status == fhir_dto.SlotStatusBusyUnavailable || status == fhir_dto.SlotStatusBusyTentative
+}
+
+// isSlotDeletable checks if a slot should be deleted during unavailability window adjustment.
+func isSlotDeletable(status fhir_dto.SlotStatus) bool {
+	return status == fhir_dto.SlotStatusFree || status == fhir_dto.SlotStatusBusyTentative
+}
+
 func (s *SlotUsecase) detectRoleWindowConflicts(
 	slots []fhir_dto.Slot,
 	pr fhir_dto.PractitionerRole,
 	winStart, winEnd time.Time,
 	slotStatus fhir_dto.SlotStatus,
 	unavailableReason string,
-	allIdempotentSlots *[]contracts.CreatedSlotItem,
-	allIdempotentPRIDs *[]string,
+	state *idempotentState,
 ) (deletableIDs []string, isIdempotent bool, conflictErr error) {
 	for _, sl := range slots {
-		if sl.Status == fhir_dto.SlotStatusBusyUnavailable || sl.Status == fhir_dto.SlotStatusBusyTentative {
+		if isSlotConflicting(sl.Status) {
 			conflictErr = exceptions.BuildNewCustomError(nil, constvars.StatusConflict, constvars.ErrClientCannotProcessRequest, "conflict detected with existing booked slots")
 		}
 		if sl.Start.Equal(winStart) && sl.End.Equal(winEnd) && sl.Status == slotStatus {
 			isIdempotent = true
-			*allIdempotentSlots = append(*allIdempotentSlots, contracts.CreatedSlotItem{
+			*state.Slots = append(*state.Slots, contracts.CreatedSlotItem{
 				ID:     sl.ID,
 				Status: string(sl.Status),
 			})
-			*allIdempotentPRIDs = append(*allIdempotentPRIDs, pr.ID)
+			*state.PRIDs = append(*state.PRIDs, pr.ID)
 		}
 	}
 
@@ -550,10 +597,8 @@ func (s *SlotUsecase) detectRoleWindowConflicts(
 	}
 
 	for _, sl := range slots {
-		if sl.Status == fhir_dto.SlotStatusFree || sl.Status == fhir_dto.SlotStatusBusyTentative {
-			if sl.End.After(winStart) && sl.Start.Before(winEnd) {
-				deletableIDs = append(deletableIDs, sl.ID)
-			}
+		if isSlotDeletable(sl.Status) && sl.End.After(winStart) && sl.Start.Before(winEnd) {
+			deletableIDs = append(deletableIDs, sl.ID)
 		}
 	}
 
@@ -605,6 +650,25 @@ func computeAdjustedIntervals(day time.Time, loc *time.Location, daySlots []fhir
 	return adjusted
 }
 
+// collectDeletableSlotIDs collects IDs of existing free slots whose intervals are not in the adjusted set.
+func collectDeletableSlotIDs(existingFree []fhir_dto.Slot, toDeleteIntervals []interval) []string {
+	if len(toDeleteIntervals) == 0 {
+		return nil
+	}
+	want := make(map[string]struct{}, len(toDeleteIntervals))
+	for _, iv := range toDeleteIntervals {
+		want[intervalKey(iv.Start, iv.End)] = struct{}{}
+	}
+	var ids []string
+	for _, slt := range existingFree {
+		k := intervalKey(slt.Start, slt.End)
+		if _, ok := want[k]; ok && slt.ID != "" {
+			ids = append(ids, slt.ID)
+		}
+	}
+	return ids
+}
+
 // matchFreeSlotIntervals computes which free slot intervals to delete/create to match the adjusted set.
 func matchFreeSlotIntervals(daySlots []fhir_dto.Slot, adjusted []interval, scheduleID string, deletions *[]string, createFree *[]freeCreateItem) error {
 	var existingFree []fhir_dto.Slot
@@ -616,20 +680,7 @@ func matchFreeSlotIntervals(daySlots []fhir_dto.Slot, adjusted []interval, sched
 	existingFreeIntervals := intervalsFromSlots(existingFree)
 
 	toDeleteIntervals := differenceByIntervalKey(existingFreeIntervals, adjusted)
-	if len(toDeleteIntervals) > 0 {
-		want := make(map[string]struct{}, len(toDeleteIntervals))
-		for _, iv := range toDeleteIntervals {
-			want[intervalKey(iv.Start, iv.End)] = struct{}{}
-		}
-		for _, slt := range existingFree {
-			k := intervalKey(slt.Start, slt.End)
-			if _, ok := want[k]; ok {
-				if slt.ID != "" {
-					*deletions = append(*deletions, slt.ID)
-				}
-			}
-		}
-	}
+	*deletions = append(*deletions, collectDeletableSlotIDs(existingFree, toDeleteIntervals)...)
 
 	toCreateIntervals := differenceByIntervalKey(adjusted, existingFreeIntervals)
 	for _, iv := range toCreateIntervals {
@@ -1323,7 +1374,7 @@ func (s *SlotUsecase) AcquireLocksForSlot(
 		return func(context.Context) {}, fmt.Errorf("slot has no schedule reference")
 	}
 
-	scheduleID := strings.TrimPrefix(scheduleRef, "Schedule/")
+	scheduleID := strings.TrimPrefix(scheduleRef, constvars.FHIRRefPrefixSchedule)
 	if scheduleID == "" {
 		return func(context.Context) {}, fmt.Errorf("invalid schedule reference format: %s", scheduleRef)
 	}
