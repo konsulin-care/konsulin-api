@@ -391,6 +391,30 @@ func (uc *authUsecase) buildEmailDeliveryConfig() *emaildelivery.TypeInput {
 	}
 }
 
+// buildAccessTokenPayload builds the roles payload for the SuperTokens access token.
+func buildAccessTokenPayload(userID, tenantId string, payload map[string]interface{}) {
+	if userID == "" {
+		payload[supertokenAccessTokenPayloadRolesKey] = map[string]interface{}{
+			supertokenAccessTokenPayloadRolesValueKey: []interface{}{constvars.KonsulinRoleGuest},
+		}
+		return
+	}
+	rolesResp, err := userroles.GetRolesForUser(tenantId, userID)
+	if err == nil && rolesResp.OK != nil {
+		roles := make([]interface{}, len(rolesResp.OK.Roles))
+		for i, role := range rolesResp.OK.Roles {
+			roles[i] = role
+		}
+		payload[supertokenAccessTokenPayloadRolesKey] = map[string]interface{}{
+			supertokenAccessTokenPayloadRolesValueKey: roles,
+		}
+	} else {
+		payload[supertokenAccessTokenPayloadRolesKey] = map[string]interface{}{
+			supertokenAccessTokenPayloadRolesValueKey: []interface{}{constvars.KonsulinRoleGuest},
+		}
+	}
+}
+
 // buildSessionConfig constructs the session recipe configuration.
 func (uc *authUsecase) buildSessionConfig(cookieSameSite *string, cookieSecure *bool) *sessmodels.TypeInput {
 	return &sessmodels.TypeInput{
@@ -402,28 +426,7 @@ func (uc *authUsecase) buildSessionConfig(cookieSameSite *string, cookieSecure *
 					if accessTokenPayload == nil {
 						accessTokenPayload = make(map[string]interface{})
 					}
-
-					if userID == "" {
-						accessTokenPayload[supertokenAccessTokenPayloadRolesKey] = map[string]interface{}{
-							supertokenAccessTokenPayloadRolesValueKey: []interface{}{constvars.KonsulinRoleGuest},
-						}
-					} else {
-						rolesResp, err := userroles.GetRolesForUser(tenantId, userID)
-						if err == nil && rolesResp.OK != nil {
-							roles := make([]interface{}, len(rolesResp.OK.Roles))
-							for i, role := range rolesResp.OK.Roles {
-								roles[i] = role
-							}
-							accessTokenPayload[supertokenAccessTokenPayloadRolesKey] = map[string]interface{}{
-								supertokenAccessTokenPayloadRolesValueKey: roles,
-							}
-						} else {
-							accessTokenPayload[supertokenAccessTokenPayloadRolesKey] = map[string]interface{}{
-								supertokenAccessTokenPayloadRolesValueKey: []interface{}{constvars.KonsulinRoleGuest},
-							}
-						}
-					}
-
+					buildAccessTokenPayload(userID, tenantId, accessTokenPayload)
 					return originalCreateNewSession(userID, accessTokenPayload, sessionDataInDatabase, disableAntiCsrf, tenantId, userContext)
 				}
 
@@ -444,6 +447,31 @@ func (uc *authUsecase) buildDashboardConfig() *dashboardmodels.TypeInput {
 	}
 }
 
+// sendSMSViaWebhook sends a magic link via the SMS webhook, with phone validation.
+func (uc *authUsecase) sendSMSViaWebhook(input smsdelivery.PasswordlessLoginType) error {
+	if input.UrlWithLinkCode == nil {
+		return errors.New("passwordless sms delivery: missing UrlWithLinkCode")
+	}
+	phoneDigits := strings.TrimSpace(input.PhoneNumber)
+	if phoneDigits == "" {
+		return errors.New("passwordless sms delivery: missing PhoneNumber")
+	}
+	phoneDigitsNormalized := utils.NormalizePhoneDigits(phoneDigits)
+	if err := utils.ValidateInternationalPhoneDigits(phoneDigitsNormalized); err != nil {
+		return err
+	}
+	timeoutSeconds := uc.InternalConfig.Webhook.HTTPTimeoutInSeconds
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = 10
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
+	defer cancel()
+	return uc.MagicLinkDelivery.SendMagicLink(ctx, contracts.SendMagicLinkInput{
+		URL:   *input.UrlWithLinkCode,
+		Phone: phoneDigitsNormalized,
+	})
+}
+
 // buildSMSDeliveryConfig constructs the SMS delivery config for passwordless login.
 func (uc *authUsecase) buildSMSDeliveryConfig() *smsdelivery.TypeInput {
 	return &smsdelivery.TypeInput{
@@ -452,38 +480,10 @@ func (uc *authUsecase) buildSMSDeliveryConfig() *smsdelivery.TypeInput {
 				if input.PasswordlessLogin == nil {
 					return errors.New("passwordless sms delivery: missing PasswordlessLogin payload")
 				}
-				if input.PasswordlessLogin.UrlWithLinkCode == nil {
-					return errors.New("passwordless sms delivery: missing UrlWithLinkCode")
-				}
-
-				phoneDigits := strings.TrimSpace(input.PasswordlessLogin.PhoneNumber)
-				if phoneDigits == "" {
-					return errors.New("passwordless sms delivery: missing PhoneNumber")
-				}
-
-				phoneDigitsNormalized := utils.NormalizePhoneDigits(phoneDigits)
-				if err := utils.ValidateInternationalPhoneDigits(phoneDigitsNormalized); err != nil {
+				if err := uc.sendSMSViaWebhook(*input.PasswordlessLogin); err != nil {
+					uc.Log.Error("authUsecase.SmsDelivery.SendSms error calling magiclink webhook", zap.Error(err))
 					return err
 				}
-
-				timeoutSeconds := uc.InternalConfig.Webhook.HTTPTimeoutInSeconds
-				if timeoutSeconds <= 0 {
-					timeoutSeconds = 10
-				}
-				ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
-				defer cancel()
-
-				err := uc.MagicLinkDelivery.SendMagicLink(ctx, contracts.SendMagicLinkInput{
-					URL:   *input.PasswordlessLogin.UrlWithLinkCode,
-					Phone: phoneDigitsNormalized,
-				})
-				if err != nil {
-					uc.Log.Error("authUsecase.SmsDelivery.SendSms error calling magiclink webhook",
-						zap.Error(err),
-					)
-					return err
-				}
-
 				return nil
 			}
 			return originalImplementation
