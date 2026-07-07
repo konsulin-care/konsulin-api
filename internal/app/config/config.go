@@ -29,9 +29,16 @@ func init() {
 		env = constvars.EnvLocal
 	}
 
-	internalCfg = loadInternalConfigWithEnv()
+	var loadErr error
+	internalCfg, loadErr = loadInternalConfigWithEnv()
+	if loadErr != nil {
+		log.Fatal(loadErr.Error())
+	}
 
-	driverCfg = loadDriverConfigWithEnv()
+	driverCfg, loadErr = loadDriverConfigWithEnv()
+	if loadErr != nil {
+		log.Fatal(loadErr.Error())
+	}
 }
 
 func loadViperConfig(env string) error {
@@ -50,7 +57,7 @@ func loadInternalConfigWithYAML() *InternalConfig {
 	return &config
 }
 
-func loadInternalConfigWithEnv() *InternalConfig {
+func loadInternalConfigWithEnv() (*InternalConfig, error) {
 	cfg := &InternalConfig{
 		App: App{
 
@@ -145,17 +152,17 @@ func loadInternalConfigWithEnv() *InternalConfig {
 	}
 
 	if err := validateNonDevConfig(cfg); err != nil {
-		log.Fatal(err.Error())
+		return nil, err
 	}
 	if err := validateBasePrices(cfg); err != nil {
-		log.Fatal(err.Error())
+		return nil, err
 	}
 	if err := normalizeWebhookConfig(cfg); err != nil {
-		log.Fatal(err.Error())
+		return nil, err
 	}
 	normalizeSlotCronSpec(cfg)
 
-	return cfg
+	return cfg, nil
 }
 
 // normalizeSlotCronSpec validates the slot worker cron spec and defaults to @daily if invalid.
@@ -176,7 +183,7 @@ func loadDriverConfigWithYAML() *DriverConfig {
 	return &config
 }
 
-func loadDriverConfigWithEnv() *DriverConfig {
+func loadDriverConfigWithEnv() (*DriverConfig, error) {
 	cfg := &DriverConfig{
 		Redis: Redis{
 			Host:     utils.GetEnvString("REDIS_HOST", "localhost"),
@@ -214,10 +221,10 @@ func loadDriverConfigWithEnv() *DriverConfig {
 	}
 
 	if err := validateNonDevDriverConfig(cfg, env); err != nil {
-		log.Fatal(err.Error())
+		return nil, err
 	}
 
-	return cfg
+	return cfg, nil
 }
 
 func NewInternalConfig() *InternalConfig {

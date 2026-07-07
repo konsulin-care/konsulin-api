@@ -83,7 +83,7 @@ func (m *Middlewares) Authenticate(next http.Handler) http.Handler {
 }
 
 // handleAuthPostBody reads and validates the POST request body, restoring it for downstream use.
-func (m *Middlewares) handleAuthPostBody(w http.ResponseWriter, r *http.Request, ctxIface context.Context, fhirRole, fhirID string) error {
+func (m *Middlewares) handleAuthPostBody(ctxIface context.Context, r *http.Request, fhirRole, fhirID string) error {
 	body, _ := io.ReadAll(r.Body)
 	_ = r.Body.Close()
 
@@ -96,7 +96,7 @@ func (m *Middlewares) handleAuthPostBody(w http.ResponseWriter, r *http.Request,
 }
 
 // handleAuthBundle scans the bundle request body for authorization and returns whether it was a bundle.
-func (m *Middlewares) handleAuthBundle(w http.ResponseWriter, r *http.Request, ctxIface context.Context, roles []string) (bool, error) {
+func (m *Middlewares) handleAuthBundle(ctxIface context.Context, r *http.Request, roles []string) (bool, error) {
 	if !isBundle(r) {
 		return false, nil
 	}
@@ -111,7 +111,7 @@ func (m *Middlewares) handleAuthBundle(w http.ResponseWriter, r *http.Request, c
 }
 
 // handleAuthSingleResource validates a single FHIR resource request.
-func (m *Middlewares) handleAuthSingleResource(w http.ResponseWriter, r *http.Request, ctxIface context.Context, roles []string) error {
+func (m *Middlewares) handleAuthSingleResource(ctxIface context.Context, r *http.Request, roles []string) error {
 	fullURL := r.URL.RequestURI()
 
 	var resourceBody []byte
@@ -143,13 +143,13 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 		r = r.WithContext(ctxIface)
 
 		if r.Method == constvars.MethodPost {
-			if err := m.handleAuthPostBody(w, r, ctxIface, fhirRole, fhirID); err != nil {
+			if err := m.handleAuthPostBody(ctxIface, r, fhirRole, fhirID); err != nil {
 				utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
 				return
 			}
 		}
 
-		if isBundle, err := m.handleAuthBundle(w, r, ctxIface, roles); err != nil {
+		if isBundle, err := m.handleAuthBundle(ctxIface, r, roles); err != nil {
 			utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
 			return
 		} else if isBundle {
@@ -157,7 +157,7 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 			return
 		}
 
-		if err := m.handleAuthSingleResource(w, r, ctxIface, roles); err != nil {
+		if err := m.handleAuthSingleResource(ctxIface, r, roles); err != nil {
 			utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
 			return
 		}

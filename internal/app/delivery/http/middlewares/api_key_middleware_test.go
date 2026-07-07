@@ -169,7 +169,7 @@ func TestAPIKeyAuth_Optional(t *testing.T) {
 		req := httptest.NewRequest("POST", "/api/v1/some-endpoint", nil)
 		req.Header.Set(HeaderAPIKey, "invalid-api-key")
 
-		handler := middlewares.APIKeyAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler := middlewares.APIKeyAuth(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 			t.Error("handler should not be called for invalid API key")
 		}))
 
