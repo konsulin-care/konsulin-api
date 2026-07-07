@@ -144,62 +144,18 @@ func loadInternalConfigWithEnv() *InternalConfig {
 		},
 	}
 
-	validateNonDevConfig(cfg)
-	validateBasePrices(cfg)
-	normalizeWebhookConfig(cfg)
+	if err := validateNonDevConfig(cfg); err != nil {
+		log.Fatal(err.Error())
+	}
+	if err := validateBasePrices(cfg); err != nil {
+		log.Fatal(err.Error())
+	}
+	if err := normalizeWebhookConfig(cfg); err != nil {
+		log.Fatal(err.Error())
+	}
 	normalizeSlotCronSpec(cfg)
 
 	return cfg
-}
-
-// validateNonDevConfig ensures mandatory sensitive fields are set in non-dev environments.
-func validateNonDevConfig(cfg *InternalConfig) {
-	if cfg.App.Env == constvars.EnvLocal || cfg.App.Env == constvars.EnvDev || cfg.App.Env == constvars.EnvDevelopment || cfg.App.Env == constvars.EnvTest {
-		return
-	}
-	if cfg.JWT.Secret == "" {
-		log.Fatalf("APP_JWT_SECRET is required in %s environment", cfg.App.Env)
-	}
-	if cfg.Webhook.JWTHookKey == "" {
-		log.Fatalf("JWT_HOOK_KEY is required in %s environment", cfg.App.Env)
-	}
-	if cfg.PaymentGateway.Username == "" || cfg.PaymentGateway.ApiKey == "" {
-		log.Fatalf("Payment gateway credentials (APP_PAYMENT_GATEWAY_USERNAME, APP_PAYMENT_GATEWAY_API_KEY) are required in %s environment", cfg.App.Env)
-	}
-	if cfg.Xendit.APIKey == "" {
-		log.Fatalf("APP_XENDIT_API_KEY is required in %s environment", cfg.App.Env)
-	}
-	if cfg.PaymentGateway.BaseUrl == "" {
-		log.Fatalf("APP_PAYMENT_GATEWAY_BASE_URL is required in %s environment", cfg.App.Env)
-	}
-}
-
-// validateBasePrices ensures no service base price is left unset (would cause $0 payments).
-func validateBasePrices(cfg *InternalConfig) {
-	if cfg.ServicePricing.AnalyzeBasePrice <= 0 ||
-		cfg.ServicePricing.ReportBasePrice <= 0 ||
-		cfg.ServicePricing.PerformanceReportBasePrice <= 0 ||
-		cfg.ServicePricing.AccessDatasetBasePrice <= 0 {
-		log.Fatalf("invalid service base price configuration: all BASE_PRICE_* must be > 0")
-	}
-}
-
-// normalizeWebhookConfig validates and sets defaults for webhook synchronous service config.
-func normalizeWebhookConfig(cfg *InternalConfig) {
-	if len(cfg.Webhook.SynchronousServiceNames) == 0 {
-		log.Fatalf("invalid webhook configuration: HOOK_SYNC_SERVICE_NAMES must be set and non-empty")
-	}
-	if cfg.Webhook.SynchronousServiceRateLimit <= 0 {
-		cfg.Webhook.SynchronousServiceRateLimit = 60
-	}
-	if cfg.Webhook.SynchronousServiceWindowSeconds <= 0 {
-		cfg.Webhook.SynchronousServiceWindowSeconds = 60
-	}
-	switch cfg.Webhook.SynchronousServiceFailurePolicy {
-	case "return_error", "enqueue_request":
-	default:
-		cfg.Webhook.SynchronousServiceFailurePolicy = "return_error"
-	}
 }
 
 // normalizeSlotCronSpec validates the slot worker cron spec and defaults to @daily if invalid.
@@ -257,20 +213,8 @@ func loadDriverConfigWithEnv() *DriverConfig {
 		env = constvars.EnvLocal
 	}
 
-	if env != constvars.EnvLocal && env != constvars.EnvDev && env != constvars.EnvDevelopment && env != constvars.EnvTest {
-		// Validate Redis Password
-		if cfg.Redis.Password == "" {
-			log.Fatalf("REDIS_PASSWORD is required in %s environment", env)
-		}
-
-		// Validate RabbitMQ Credentials
-		if cfg.RabbitMQ.Username == "" || cfg.RabbitMQ.Password == "" {
-			log.Fatalf("RabbitMQ credentials (RABBITMQ_USERNAME, RABBITMQ_PASSWORD) are required in %s environment", env)
-		}
-		// Validate SuperTokens API key Credentials
-		if cfg.Supertoken.APIKey == "" {
-			log.Fatalf("Supertoken API key is required in %s environment", env)
-		}
+	if err := validateNonDevDriverConfig(cfg, env); err != nil {
+		log.Fatal(err.Error())
 	}
 
 	return cfg
@@ -289,6 +233,76 @@ func GetInternalConfig() *InternalConfig {
 }
 func GetDriverConfig() *DriverConfig {
 	return driverCfg
+}
+
+// validateNonDevConfig ensures mandatory sensitive fields are set in non-dev environments.
+func validateNonDevConfig(cfg *InternalConfig) error {
+	if cfg.App.Env == constvars.EnvLocal || cfg.App.Env == constvars.EnvDev || cfg.App.Env == constvars.EnvDevelopment || cfg.App.Env == constvars.EnvTest {
+		return nil
+	}
+	if cfg.JWT.Secret == "" {
+		return fmt.Errorf("APP_JWT_SECRET is required in %s environment", cfg.App.Env)
+	}
+	if cfg.Webhook.JWTHookKey == "" {
+		return fmt.Errorf("JWT_HOOK_KEY is required in %s environment", cfg.App.Env)
+	}
+	if cfg.PaymentGateway.Username == "" || cfg.PaymentGateway.ApiKey == "" {
+		return fmt.Errorf("Payment gateway credentials (APP_PAYMENT_GATEWAY_USERNAME, APP_PAYMENT_GATEWAY_API_KEY) are required in %s environment", cfg.App.Env)
+	}
+	if cfg.Xendit.APIKey == "" {
+		return fmt.Errorf("APP_XENDIT_API_KEY is required in %s environment", cfg.App.Env)
+	}
+	if cfg.PaymentGateway.BaseUrl == "" {
+		return fmt.Errorf("APP_PAYMENT_GATEWAY_BASE_URL is required in %s environment", cfg.App.Env)
+	}
+	return nil
+}
+
+// validateBasePrices ensures no service base price is left unset (would cause $0 payments).
+func validateBasePrices(cfg *InternalConfig) error {
+	if cfg.ServicePricing.AnalyzeBasePrice <= 0 ||
+		cfg.ServicePricing.ReportBasePrice <= 0 ||
+		cfg.ServicePricing.PerformanceReportBasePrice <= 0 ||
+		cfg.ServicePricing.AccessDatasetBasePrice <= 0 {
+		return fmt.Errorf("invalid service base price configuration: all BASE_PRICE_* must be > 0")
+	}
+	return nil
+}
+
+// normalizeWebhookConfig validates and sets defaults for webhook synchronous service config.
+func normalizeWebhookConfig(cfg *InternalConfig) error {
+	if len(cfg.Webhook.SynchronousServiceNames) == 0 {
+		return fmt.Errorf("invalid webhook configuration: HOOK_SYNC_SERVICE_NAMES must be set and non-empty")
+	}
+	if cfg.Webhook.SynchronousServiceRateLimit <= 0 {
+		cfg.Webhook.SynchronousServiceRateLimit = 60
+	}
+	if cfg.Webhook.SynchronousServiceWindowSeconds <= 0 {
+		cfg.Webhook.SynchronousServiceWindowSeconds = 60
+	}
+	switch cfg.Webhook.SynchronousServiceFailurePolicy {
+	case "return_error", "enqueue_request":
+	default:
+		cfg.Webhook.SynchronousServiceFailurePolicy = "return_error"
+	}
+	return nil
+}
+
+// validateNonDevDriverConfig ensures mandatory sensitive fields are set in non-dev environments.
+func validateNonDevDriverConfig(cfg *DriverConfig, env string) error {
+	if env == constvars.EnvLocal || env == constvars.EnvDev || env == constvars.EnvDevelopment || env == constvars.EnvTest {
+		return nil
+	}
+	if cfg.Redis.Password == "" {
+		return fmt.Errorf("REDIS_PASSWORD is required in %s environment", env)
+	}
+	if cfg.RabbitMQ.Username == "" || cfg.RabbitMQ.Password == "" {
+		return fmt.Errorf("RabbitMQ credentials (RABBITMQ_USERNAME, RABBITMQ_PASSWORD) are required in %s environment", env)
+	}
+	if cfg.Supertoken.APIKey == "" {
+		return fmt.Errorf("Supertoken API key is required in %s environment", env)
+	}
+	return nil
 }
 
 // parseCSVToLowerSlice parses a comma-separated string into a slice of trimmed, lowercased strings.
