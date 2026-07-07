@@ -143,9 +143,9 @@ func evaluateFallbackAuth(ctx context.Context) error {
 // extractAuthContextOutput reads auth values from context into a struct.
 func extractAuthContextOutput(ctx context.Context) *ExtractAuthContextOutput {
 	return &ExtractAuthContextOutput{
-		IsAPIKey:    extractAPIKeyAuth(ctx),
-		UID:         extractUID(ctx),
-		Roles:       extractRoles(ctx),
+		IsAPIKey:     extractAPIKeyAuth(ctx),
+		UID:          extractUID(ctx),
+		Roles:        extractRoles(ctx),
 		IsSuperadmin: extractIsSuperadmin(ctx),
 	}
 }

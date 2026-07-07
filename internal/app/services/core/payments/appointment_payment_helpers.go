@@ -391,7 +391,7 @@ func (uc *paymentUsecase) notifyProviderAsync(
 				contact["phone"] = telecom.Value
 			case "email":
 				contact["email"] = telecom.Value
-		}
+			}
 		}
 	}
 	payload["contact"] = contact

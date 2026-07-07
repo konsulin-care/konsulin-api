@@ -796,23 +796,23 @@ func checkPerResourceTypeOwnership(fhirID string, u *url.URL, resourceType strin
 		return author != "" && strings.TrimPrefix(author, "Practitioner/") == fhirID
 	}
 	if resourceType == "Appointment" {
-			q := u.Query()
+		q := u.Query()
 
-			if p := q.Get("practitioner"); p != "" {
-				id := strings.TrimPrefix(p, "Practitioner/")
-				return id == fhirID
-			}
+		if p := q.Get("practitioner"); p != "" {
+			id := strings.TrimPrefix(p, "Practitioner/")
+			return id == fhirID
+		}
 
-			if a := q.Get("actor"); a != "" {
-				id := strings.TrimPrefix(a, "Practitioner/")
-				return id == fhirID
-			}
-
-			return false
+		if a := q.Get("actor"); a != "" {
+			id := strings.TrimPrefix(a, "Practitioner/")
+			return id == fhirID
 		}
 
 		return false
 	}
+
+	return false
+}
 
 func checkPractitionerPublicResourceQuery(fhirID string, u *url.URL) bool {
 	q := u.Query()

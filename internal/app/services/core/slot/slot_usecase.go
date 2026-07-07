@@ -127,7 +127,7 @@ type freeCreateItem struct {
 
 // resolvedWindows holds per-role schedule data after resolution and lock acquisition.
 type resolvedWindows struct {
-	schedulesByRole      map[string]string
+	schedulesByRole       map[string]string
 	scheduleCommentByRole map[string]string
 	startByRole           map[string]time.Time
 	endByRole             map[string]time.Time
@@ -138,7 +138,7 @@ type resolvedWindows struct {
 func (s *SlotUsecase) resolveAndLockWindows(ctx context.Context, roles []fhir_dto.PractitionerRole, input contracts.SetUnavailabilityForMultiplePractitionerRolesInput) (*resolvedWindows, error) {
 	windows := make([]lockWindow, 0, len(roles))
 	res := &resolvedWindows{
-		schedulesByRole:      make(map[string]string, len(roles)),
+		schedulesByRole:       make(map[string]string, len(roles)),
 		scheduleCommentByRole: make(map[string]string, len(roles)),
 		startByRole:           make(map[string]time.Time),
 		endByRole:             make(map[string]time.Time),
@@ -423,12 +423,12 @@ func (s *SlotUsecase) postUnavailabilityBundle(
 			constvars.FhirFieldRequest: map[string]any{constvars.FhirFieldMethod: constvars.MethodPost, constvars.FhirFieldURL: constvars.ResourceSlot},
 			constvars.FhirFieldResource: map[string]any{
 				constvars.FhirFieldResourceType: constvars.ResourceSlot,
-				"schedule":                     map[string]any{constvars.FhirFieldReference: "Schedule/" + c.scheduleID},
+				"schedule":                      map[string]any{constvars.FhirFieldReference: "Schedule/" + c.scheduleID},
 				constvars.FhirFieldStatus:       string(input.SlotStatus),
 				constvars.FhirFieldMeta: map[string]any{
 					constvars.FhirFieldTag: []map[string]any{{constvars.FhirFieldCode: slotTagUserGenerated}},
 				},
-				"comment": input.Reason,
+				"comment":                input.Reason,
 				constvars.FhirFieldStart: c.start.Format(time.RFC3339),
 				constvars.FhirFieldEnd:   c.end.Format(time.RFC3339),
 			},
@@ -439,7 +439,7 @@ func (s *SlotUsecase) postUnavailabilityBundle(
 			constvars.FhirFieldRequest: map[string]any{constvars.FhirFieldMethod: constvars.MethodPost, constvars.FhirFieldURL: constvars.ResourceSlot},
 			constvars.FhirFieldResource: map[string]any{
 				constvars.FhirFieldResourceType: constvars.ResourceSlot,
-				"schedule":                     map[string]any{constvars.FhirFieldReference: "Schedule/" + fc.scheduleID},
+				"schedule":                      map[string]any{constvars.FhirFieldReference: "Schedule/" + fc.scheduleID},
 				constvars.FhirFieldStatus:       string(fhir_dto.SlotStatusFree),
 				constvars.FhirFieldStart:        fc.start.Format(time.RFC3339),
 				constvars.FhirFieldEnd:          fc.end.Format(time.RFC3339),

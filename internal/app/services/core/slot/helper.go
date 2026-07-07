@@ -521,7 +521,7 @@ func buildCreateSlotsTransactionBundle(scheduleID string, slots []fhir_dto.Slot)
 			},
 			constvars.FhirFieldResource: map[string]any{
 				constvars.FhirFieldResourceType: constvars.ResourceSlot,
-				"schedule":                     map[string]any{constvars.FhirFieldReference: "Schedule/" + scheduleID},
+				"schedule":                      map[string]any{constvars.FhirFieldReference: "Schedule/" + scheduleID},
 				constvars.FhirFieldStatus:       string(s.Status),
 				constvars.FhirFieldStart:        startISO,
 				constvars.FhirFieldEnd:          s.End.Format(time.RFC3339),

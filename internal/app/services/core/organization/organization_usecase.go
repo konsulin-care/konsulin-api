@@ -127,11 +127,11 @@ func (uc *Usecase) RegisterPractitionerRoleAndSchedule(ctx context.Context, in c
 		{
 			constvars.FhirFieldResource: map[string]any{
 				constvars.FhirFieldResourceType: constvars.ResourcePractitionerRole,
-				"id":           practitionerRoleID,
-				"active":       false,
-				"practitioner": map[string]any{constvars.FhirFieldReference: "Practitioner/" + practitioner.ID},
-				"organization": map[string]any{constvars.FhirFieldReference: "Organization/" + in.OrganizationID},
-				"period":       map[string]any{constvars.FhirFieldStart: now},
+				"id":                            practitionerRoleID,
+				"active":                        false,
+				"practitioner":                  map[string]any{constvars.FhirFieldReference: "Practitioner/" + practitioner.ID},
+				"organization":                  map[string]any{constvars.FhirFieldReference: "Organization/" + in.OrganizationID},
+				"period":                        map[string]any{constvars.FhirFieldStart: now},
 			},
 			constvars.FhirFieldRequest: map[string]any{
 				constvars.FhirFieldMethod: http.MethodPut,
@@ -141,7 +141,7 @@ func (uc *Usecase) RegisterPractitionerRoleAndSchedule(ctx context.Context, in c
 		{
 			constvars.FhirFieldResource: map[string]any{
 				constvars.FhirFieldResourceType: constvars.ResourceSchedule,
-				"id":           scheduleID,
+				"id":                            scheduleID,
 				"actor": []map[string]any{
 					{constvars.FhirFieldReference: "Practitioner/" + practitioner.ID},
 					{constvars.FhirFieldReference: "PractitionerRole/" + practitionerRoleID},
