@@ -506,37 +506,40 @@ func (m *Middlewares) buildOwnershipContext(
 		oc.PractitionerIDs[fhirID] = struct{}{}
 	}
 
-	if oc.HasPractitionerRole && len(oc.PatientIDs) == 0 && fhirID != "" {
-		prac, err := m.PractitionerFhirClient.FindPractitionerByID(ctx, fhirID)
-		if err == nil && prac != nil {
-			emails := prac.GetEmailAddresses()
-			for _, em := range emails {
-				pats, err := m.PatientFhirClient.FindPatientByEmail(ctx, em)
-				if err != nil {
-					continue
-				}
-				for _, p := range pats {
-					if p.ID != "" {
-						oc.PatientIDs[p.ID] = struct{}{}
-					}
-				}
+	m.resolvePractitionerPatientIDs(ctx, oc, fhirID)
+
+	return oc
+}
+
+// resolvePractitionerPatientIDs populates PatientIDs and PractitionerRoleIDs for a practitioner.
+func (m *Middlewares) resolvePractitionerPatientIDs(ctx context.Context, oc *ownershipContext, fhirID string) {
+	if !oc.HasPractitionerRole || len(oc.PatientIDs) > 0 || fhirID == "" {
+		return
+	}
+	prac, err := m.PractitionerFhirClient.FindPractitionerByID(ctx, fhirID)
+	if err == nil && prac != nil {
+		for _, em := range prac.GetEmailAddresses() {
+			pats, err := m.PatientFhirClient.FindPatientByEmail(ctx, em)
+			if err != nil {
+				continue
 			}
-		}
-
-		practitionerRoles, err := m.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerID(ctx, fhirID)
-		if err != nil {
-			m.Log.Warn("failed to find practitioner roles by practitioner ID. skipping practitioner role population", zap.String("practitionerID", fhirID), zap.Error(err))
-			return oc
-		}
-
-		for _, pr := range practitionerRoles {
-			if pr.ID != "" {
-				oc.PractitionerRoleIDs = append(oc.PractitionerRoleIDs, pr.ID)
+			for _, p := range pats {
+				if p.ID != "" {
+					oc.PatientIDs[p.ID] = struct{}{}
+				}
 			}
 		}
 	}
-
-	return oc
+	practitionerRoles, err := m.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerID(ctx, fhirID)
+	if err != nil {
+		m.Log.Warn("failed to find practitioner roles by practitioner ID. skipping practitioner role population", zap.String("practitionerID", fhirID), zap.Error(err))
+		return
+	}
+	for _, pr := range practitionerRoles {
+		if pr.ID != "" {
+			oc.PractitionerRoleIDs = append(oc.PractitionerRoleIDs, pr.ID)
+		}
+	}
 }
 
 // ownershipChecker is a resource-specific, last-resort ownership function.
@@ -679,6 +682,14 @@ func (m *Middlewares) failClosedOnErrorFromResource(resourceType string, resourc
 }
 
 // applyOwnershipFilterToBundle mutates bundle.Entry in-place, keeping only owned resources.
+// bundleEntryInfo caches resource metadata for ownership filtering.
+type bundleEntryInfo struct {
+	idx          int
+	owned        bool
+	resourceType string
+	id           string
+}
+
 func (m *Middlewares) applyOwnershipFilterToBundle(
 	ctx context.Context,
 	bundle *Bundle,
@@ -686,51 +697,29 @@ func (m *Middlewares) applyOwnershipFilterToBundle(
 	fhirRole, fhirID string,
 ) int {
 	oc := m.buildOwnershipContext(ctx, roles, fhirRole, fhirID)
+	infos, allowedRefs := m.evaluateBundleOwnership(ctx, bundle, oc)
+	return filterBundleEntries(bundle, infos, allowedRefs, m.Log)
+}
 
-	// struct to cache resource info to avoid double unmarshalling
-	type entryInfo struct {
-		idx          int
-		owned        bool
-		resourceType string
-		id           string
-	}
-
-	infos := make([]entryInfo, len(bundle.Entry))
-	// allowedRefs tracks the IDs of resources that are referenced by owned resources
+// evaluateBundleOwnership determines direct ownership for each bundle entry and collects allowed refs.
+func (m *Middlewares) evaluateBundleOwnership(ctx context.Context, bundle *Bundle, oc *ownershipContext) ([]bundleEntryInfo, map[string]struct{}) {
+	infos := make([]bundleEntryInfo, len(bundle.Entry))
 	allowedRefs := make(map[string]struct{})
 
-	// Determine direct ownership and collect outgoing references from owned resources
 	for i, e := range bundle.Entry {
 		var env struct {
 			ResourceType string `json:"resourceType"`
 			ID           string `json:"id,omitempty"`
 		}
 		if err := json.Unmarshal(e.Resource, &env); err != nil || env.ResourceType == "" {
-			if m.failClosedOnErrorFromResource(env.ResourceType, env.ID) {
-				infos[i] = entryInfo{idx: i, owned: false}
-			} else {
-				infos[i] = entryInfo{idx: i, owned: true}
-			}
+			owned := !m.failClosedOnErrorFromResource(env.ResourceType, env.ID)
+			infos[i] = bundleEntryInfo{idx: i, owned: owned}
 			continue
 		}
-
 		owned := m.resourceOwnedByContext(e.Resource, env.ResourceType, env.ID, oc)
-		infos[i] = entryInfo{
-			idx:          i,
-			owned:        owned,
-			resourceType: env.ResourceType,
-			id:           env.ID,
-		}
+		infos[i] = bundleEntryInfo{idx: i, owned: owned, resourceType: env.ResourceType, id: env.ID}
 
-		if owned {
-			// If we own this resource, we should also be allowed to see resources it references.
-			// We scan the owned resource for all "reference" fields.
-			// however, this feature will only be available if the requester has a practitioner role
-			// as per the requirement
-			if !oc.HasPractitionerRole {
-				continue
-			}
-
+		if owned && oc.HasPractitionerRole {
 			var resMap map[string]any
 			if err := json.Unmarshal(e.Resource, &resMap); err == nil {
 				var refs []string
@@ -741,33 +730,27 @@ func (m *Middlewares) applyOwnershipFilterToBundle(
 			}
 		}
 	}
+	return infos, allowedRefs
+}
 
+// filterBundleEntries removes entries that are neither owned nor referenced by owned resources.
+func filterBundleEntries(bundle *Bundle, infos []bundleEntryInfo, allowedRefs map[string]struct{}, log *zap.Logger) int {
 	removed := 0
 	filtered := make([]BundleEntry, 0, len(bundle.Entry))
-
-	// Filter based on direct ownership OR if referenced by an owned resource
 	for i, e := range bundle.Entry {
 		info := infos[i]
 		if info.owned {
 			filtered = append(filtered, e)
 			continue
 		}
-
-		// If not directly owned, check if this resource was referenced by an owned resource.
-		// We check standard "ResourceType/ID" format.
 		refKey := fmt.Sprintf("%s/%s", info.resourceType, info.id)
-
-		// Check if the resource's relative reference (ResourceType/ID) is in allowed list
-		_, isReferenced := allowedRefs[refKey]
-
-		if isReferenced {
+		if _, isReferenced := allowedRefs[refKey]; isReferenced {
 			filtered = append(filtered, e)
 		} else {
-			m.Log.Info("removing resource from bundle", zap.String("resourceType", info.resourceType), zap.String("resourceID", info.id))
+			log.Info("removing resource from bundle", zap.String("resourceType", info.resourceType), zap.String("resourceID", info.id))
 			removed++
 		}
 	}
-
 	bundle.Entry = filtered
 	return removed
 }
@@ -803,39 +786,9 @@ func genericOwnershipPatterns(raw json.RawMessage, oc *ownershipContext) (bool, 
 		return false, err
 	}
 
-	extractRef := func(v any) string {
-		if m, ok := v.(map[string]any); ok {
-			if s, ok := m["reference"].(string); ok {
-				return s
-			}
-		}
-		return ""
-	}
-
-	// subject.reference
-	if subj, ok := res["subject"]; ok {
-		if ref := extractRef(subj); ref != "" && matchesOwnedRef(ref, oc) {
-			return true, nil
-		}
-	}
-
-	// patient.reference
-	if pat, ok := res["patient"]; ok {
-		if ref := extractRef(pat); ref != "" && matchesOwnedRef(ref, oc) {
-			return true, nil
-		}
-	}
-
-	// recipient.reference
-	if rec, ok := res["recipient"]; ok {
-		if ref := extractRef(rec); ref != "" && matchesOwnedRef(ref, oc) {
-			return true, nil
-		}
-	}
-
-	// actor.reference at root
-	if act, ok := res["actor"]; ok {
-		if ref := extractRef(act); ref != "" && matchesOwnedRef(ref, oc) {
+	// Check well-known reference fields first.
+	for _, field := range []string{"subject", "patient", "recipient", "actor"} {
+		if ref := extractReference(res[field]); ref != "" && matchesOwnedRef(ref, oc) {
 			return true, nil
 		}
 	}
@@ -845,10 +798,8 @@ func genericOwnershipPatterns(raw json.RawMessage, oc *ownershipContext) (bool, 
 		if arr, ok := parts.([]any); ok {
 			for _, item := range arr {
 				if pm, ok := item.(map[string]any); ok {
-					if actor, ok := pm["actor"]; ok {
-						if ref := extractRef(actor); ref != "" && matchesOwnedRef(ref, oc) {
-							return true, nil
-						}
+					if ref := extractReference(pm["actor"]); ref != "" && matchesOwnedRef(ref, oc) {
+						return true, nil
 					}
 				}
 			}
@@ -863,8 +814,17 @@ func genericOwnershipPatterns(raw json.RawMessage, oc *ownershipContext) (bool, 
 			return true, nil
 		}
 	}
-
 	return false, nil
+}
+
+// extractReference gets the "reference" field from a FHIR reference object.
+func extractReference(v any) string {
+	if m, ok := v.(map[string]any); ok {
+		if s, ok := m["reference"].(string); ok {
+			return s
+		}
+	}
+	return ""
 }
 
 // filterSingleResourceByOwnership applies the same ownership rules as the bundle
