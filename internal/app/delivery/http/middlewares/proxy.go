@@ -1022,6 +1022,10 @@ func (m *Middlewares) authTxProxyAccess(w http.ResponseWriter, r *http.Request) 
 }
 
 // buildTxProxyURL builds the full URL for the terminology server proxy.
+// Uses url.URL semantics to prevent URL injection, mirroring the same
+// SSRF-hardened pattern used in doFHIRProxyRequest. Path segments are
+// properly encoded and any special characters (//, @, etc.) are handled
+// as literal path content, not host/authority separators.
 func buildTxProxyURL(target string, r *http.Request, prefix, version string) string {
 	q := r.URL.Query()
 	hasFilter := strings.TrimSpace(q.Get("filter")) != ""
@@ -1036,14 +1040,13 @@ func buildTxProxyURL(target string, r *http.Request, prefix, version string) str
 	if strings.Contains(relativePath, "..") {
 		return ""
 	}
-	if !strings.HasPrefix(relativePath, "/") {
-		relativePath = "/" + relativePath
+	targetURL, err := url.Parse(target)
+	if err != nil {
+		return ""
 	}
-	fullURL := target + relativePath
-	if r.URL.RawQuery != "" {
-		fullURL += "?" + r.URL.RawQuery
-	}
-	return fullURL
+	targetURL = targetURL.JoinPath(relativePath)
+	targetURL.RawQuery = r.URL.RawQuery
+	return targetURL.String()
 }
 
 func (m *Middlewares) TxProxy(target string) http.Handler {

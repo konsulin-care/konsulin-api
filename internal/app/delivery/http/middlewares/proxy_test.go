@@ -289,6 +289,93 @@ func TestDoFHIRProxyRequest_SSRFPathInjection(t *testing.T) {
 	}
 }
 
+func TestBuildTxProxyURL_SSRF(t *testing.T) {
+	tests := []struct {
+		name      string
+		target    string
+		path      string
+		prefix    string
+		version   string
+		wantHost  string
+		wantPath  string
+		wantQuery string
+		wantEmpty bool
+		wantExact string
+	}{
+		{
+			name:   "normal path with filter",
+			target: "https://tx.example.com/fhir",
+			path:   "/v1/v1/tx/ValueSet/$expand?filter=test",
+			prefix: "v1", version: "v1",
+			wantHost: "tx.example.com", wantPath: "/fhir/ValueSet/$expand", wantQuery: "filter=test",
+		},
+		{
+			name:   "normal path with count",
+			target: "https://tx.example.com/fhir",
+			path:   "/v1/v1/tx/ValueSet/$expand?count=10",
+			prefix: "v1", version: "v1",
+			wantHost: "tx.example.com", wantPath: "/fhir/ValueSet/$expand", wantQuery: "count=10",
+		},
+		{
+			name:   "no filter or count returns empty",
+			target: "https://tx.example.com/fhir",
+			path:   "/v1/v1/tx/ValueSet/$expand",
+			prefix: "v1", version: "v1",
+			wantEmpty: true,
+		},
+		{
+			name:   "empty relative path returns target",
+			target: "https://tx.example.com/fhir",
+			path:   "/v1/v1/tx?filter=test",
+			prefix: "v1", version: "v1",
+			wantExact: "https://tx.example.com/fhir",
+		},
+		{
+			name:   "path traversal blocked",
+			target: "https://tx.example.com/fhir",
+			path:   "/v1/v1/tx/../etc/passwd?filter=test",
+			prefix: "v1", version: "v1",
+			wantEmpty: true,
+		},
+		{
+			name:   "at sign in relative path is path literal not host separator",
+			target: "https://tx.example.com/fhir",
+			path:   "/v1/v1/tx/@evil.com:443/api?filter=test",
+			prefix: "v1", version: "v1",
+			wantHost: "tx.example.com", wantPath: "/fhir/@evil.com:443/api", wantQuery: "filter=test",
+		},
+		{
+			name:   "double slash in relative path is normalized",
+			target: "https://tx.example.com/fhir",
+			path:   "/v1/v1/tx//evil.com/path?filter=test",
+			prefix: "v1", version: "v1",
+			wantHost: "tx.example.com", wantPath: "/fhir/evil.com/path", wantQuery: "filter=test",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			result := buildTxProxyURL(tt.target, req, tt.prefix, tt.version)
+
+			if tt.wantEmpty {
+				assert.Empty(t, result, "should return empty string")
+				return
+			}
+			if tt.wantExact != "" {
+				assert.Equal(t, tt.wantExact, result, "should return exact target")
+				return
+			}
+
+			parsed, err := url.Parse(result)
+			assert.NoError(t, err, "result should be a valid URL")
+			assert.Equal(t, tt.wantHost, parsed.Host, "host must match target")
+			assert.Equal(t, tt.wantPath, parsed.Path, "path must be properly constructed")
+			assert.Equal(t, tt.wantQuery, parsed.RawQuery, "query must be preserved")
+		})
+	}
+}
+
 // roundTripperFunc adapts a function to http.RoundTripper.
 type roundTripperFunc func(*http.Request) (*http.Response, error)
 
