@@ -4,6 +4,7 @@ import (
 	"context"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/fhir_dto"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -160,6 +161,69 @@ func TestResolveFHIRIdentity_ActiveRolePatient_MultiMatch(t *testing.T) {
 	assert.Contains(t, err.Error(), "multiple Patient resources")
 	assert.Empty(t, role)
 	assert.Empty(t, id)
+}
+
+func TestOwnsPatientQuery_OwnResourceAllowed(t *testing.T) {
+	mw := &Middlewares{
+		PatientFhirClient:      &mockPatientClient{},
+		PractitionerFhirClient: &mockPractitionerClient{},
+	}
+
+	// Patient accessing their own resource via direct path
+	u, _ := url.Parse("/Patient/pat-1")
+	got := ownsPatientQuery(context.Background(), "pat-1", u, "Patient", mw.PatientFhirClient, mw.PractitionerFhirClient)
+	assert.True(t, got, "patient should own their own resource via path ID match")
+}
+
+func TestOwnsPatientQuery_CrossPatientIDOR(t *testing.T) {
+	mw := &Middlewares{
+		PatientFhirClient:      &mockPatientClient{},
+		PractitionerFhirClient: &mockPractitionerClient{},
+	}
+
+	// Patient A must NOT access /Patient/pat-B directly by ID
+	// This is the IDOR guard: when the path targets a different Patient ID,
+	// we must NOT fall through to query-based checks.
+	u, _ := url.Parse("/Patient/pat-B")
+	got := ownsPatientQuery(context.Background(), "pat-A", u, "Patient", mw.PatientFhirClient, mw.PractitionerFhirClient)
+	assert.False(t, got, "patient must not access another patient's resource directly by ID")
+}
+
+func TestOwnsPatientQuery_IDORViaQueryParamFallthrough(t *testing.T) {
+	mw := &Middlewares{
+		PatientFhirClient:      &mockPatientClient{},
+		PractitionerFhirClient: &mockPractitionerClient{},
+	}
+
+	// IDOR attack: Patient A requests /Patient/pat-B?_id=pat-A
+	// The path targets pat-B (not the requester), but the _id query param
+	// matches fhirID in checkPatientQueryRefs. Currently this falls through
+	// and grants access — it must NOT.
+	u, _ := url.Parse("/Patient/pat-B?_id=pat-A")
+	got := ownsPatientQuery(context.Background(), "pat-A", u, "Patient", mw.PatientFhirClient, mw.PractitionerFhirClient)
+	assert.False(t, got, "patient must not access another patient's resource even with matching _id query param")
+}
+
+func TestOwnsPatientQuery_FHIRPrefixedOwnResourceAllowed(t *testing.T) {
+	mw := &Middlewares{
+		PatientFhirClient:      &mockPatientClient{},
+		PractitionerFhirClient: &mockPractitionerClient{},
+	}
+
+	u, _ := url.Parse("/fhir/Patient/pat-1")
+	got := ownsPatientQuery(context.Background(), "pat-1", u, "Patient", mw.PatientFhirClient, mw.PractitionerFhirClient)
+	assert.True(t, got, "patient should own their own resource via fhir-prefixed path")
+}
+
+func TestOwnsPatientQuery_FHIRPrefixedCrossPatientIDOR(t *testing.T) {
+	mw := &Middlewares{
+		PatientFhirClient:      &mockPatientClient{},
+		PractitionerFhirClient: &mockPractitionerClient{},
+	}
+
+	u, _ := url.Parse("/fhir/Patient/pat-B")
+	got := ownsPatientQuery(context.Background(), "pat-A", u, "Patient", mw.PatientFhirClient, mw.PractitionerFhirClient)
+	assert.False(t, got, "patient must not access another patient via fhir-prefixed path")
 }
 
 func TestResolveFHIRIdentity_ActiveRolePatient_NoPatientResource(t *testing.T) {

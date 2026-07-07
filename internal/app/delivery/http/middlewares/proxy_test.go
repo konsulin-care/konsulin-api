@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -140,6 +141,57 @@ func TestValidateProxyURLHost_SchemeMismatchStillPasses(t *testing.T) {
 	// because the proxy forwards to the same upstream regardless of scheme.
 	err := validateProxyURLHost("https://blaze:8080/fhir/Patient/123", "http://blaze:8080/fhir")
 	assert.NoError(t, err, "host is the same even if scheme differs")
+}
+
+func TestWriteBridgeResponse_StripsETagOnMutated(t *testing.T) {
+	logger := zap.NewNop()
+	mw := &Middlewares{Log: logger}
+
+	upstreamResp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			http.CanonicalHeaderKey("etag"):           {`W/"xyz123"`},
+			"Content-Type":                             {"application/fhir+json"},
+			"Cache-Control":                            {"max-age=60"},
+		},
+	}
+
+	rr := httptest.NewRecorder()
+	finalBody := []byte(`{"resourceType":"Patient","id":"pat-1"}`)
+
+	// Mutated=true: ETag should be stripped
+	mw.writeBridgeResponse(rr, upstreamResp, finalBody, nil, true)
+
+	assert.Equal(t, "application/fhir+json", rr.Header().Get("Content-Type"),
+		"non-ETag headers should be preserved")
+	assert.Equal(t, "max-age=60", rr.Header().Get("Cache-Control"),
+		"non-ETag headers should be preserved")
+	assert.Equal(t, "", rr.Header().Get("Etag"),
+		"ETag must be stripped when body was mutated to prevent cache poisoning")
+	assert.Equal(t, strconv.Itoa(len(finalBody)), rr.Header().Get("Content-Length"),
+		"Content-Length should be overridden with the final body length")
+}
+
+func TestWriteBridgeResponse_PreservesETagOnUnmutated(t *testing.T) {
+	logger := zap.NewNop()
+	mw := &Middlewares{Log: logger}
+
+	upstreamResp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			http.CanonicalHeaderKey("etag"):           {`W/"xyz123"`},
+			"Content-Type":                             {"application/fhir+json"},
+		},
+	}
+
+	rr := httptest.NewRecorder()
+	finalBody := []byte(`{"resourceType":"Patient","id":"pat-1"}`)
+
+	// Mutated=false: ETag should be preserved
+	mw.writeBridgeResponse(rr, upstreamResp, finalBody, nil, false)
+
+	assert.Equal(t, `W/"xyz123"`, rr.Header().Get("Etag"),
+		"ETag must be preserved when body was not mutated")
 }
 
 func TestBridge_ClientHasCheckRedirect(t *testing.T) {

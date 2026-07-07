@@ -127,14 +127,15 @@ func (u *usecase) verifyForwardedJWT(ctx context.Context, token string) error {
 	return nil
 }
 
-// evaluateFallbackAuth checks API key, superadmin, or any authenticated/anonymous user.
+// evaluateFallbackAuth checks API key, superadmin, or any authenticated uid.
+// Anonymous users (empty UID or "anonymous") are denied.
 func evaluateFallbackAuth(ctx context.Context) error {
 	info := extractAuthContextOutput(ctx)
 	if info.IsAPIKey || info.IsSuperadmin {
 		return nil
 	}
-	// Allow anonymous users or any authenticated uid
-	if info.UID == "" || strings.EqualFold(info.UID, "anonymous") {
+	// Allow any authenticated uid; deny anonymous users
+	if info.UID != "" && !strings.EqualFold(info.UID, "anonymous") {
 		return nil
 	}
 	return exceptions.BuildNewCustomError(nil, constvars.StatusUnauthorized, "Not authorized", "UNAUTHORIZED_WEBHOOK_CALLER")

@@ -676,6 +676,13 @@ func ownsPatientQuery(ctx context.Context, fhirID string, u *url.URL, resourceTy
 		if res == "Patient" && id == fhirID {
 			return true
 		}
+		// IDOR guard: if the path directly targets a Patient resource by ID
+		// and the ID does not match the requester, deny immediately.
+		// Do NOT fall through to query-parameter-based checks which are
+		// intended for search endpoints (e.g., /Observation?patient=...).
+		if res == "Patient" && id != "" {
+			return false
+		}
 	}
 
 	q := u.Query()

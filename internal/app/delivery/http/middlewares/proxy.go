@@ -292,9 +292,19 @@ func (m *Middlewares) runPostFHIRProxyHooks(r *http.Request, respBody, bodyBytes
 }
 
 // writeBridgeResponse writes the final response headers and body.
-func (m *Middlewares) writeBridgeResponse(w http.ResponseWriter, resp *http.Response, finalBody []byte, postHookErrMsgs []string) {
+// When mutated is true, the ETag header is stripped to prevent cache poisoning
+// — the response body differs from the upstream original, so the original ETag
+// is no longer valid.
+func (m *Middlewares) writeBridgeResponse(w http.ResponseWriter, resp *http.Response, finalBody []byte, postHookErrMsgs []string, mutated bool) {
 	for k, v := range resp.Header {
 		if strings.EqualFold(k, "Content-Length") {
+			continue
+		}
+		// Strip ETag when the body was mutated: the response differs from
+		// the upstream original, so the original ETag is no longer valid.
+		// Keeping it would cause downstream caches to serve the mutated body
+		// with a stale ETag (cache poisoning).
+		if mutated && strings.EqualFold(k, "ETag") {
 			continue
 		}
 		w.Header()[k] = v
@@ -387,7 +397,7 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 			finalBody = encoded
 		}
 
-		m.writeBridgeResponse(w, resp, finalBody, postHookErrMsgs)
+		m.writeBridgeResponse(w, resp, finalBody, postHookErrMsgs, mutated)
 	})
 }
 
