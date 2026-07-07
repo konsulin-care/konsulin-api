@@ -152,5 +152,3 @@ type PostFHIRProxyFHIRServerResponse struct {
 
 // PostFHIRProxyHook is called after a successful proxied FHIR request. Both params are structs for extensibility.
 type PostFHIRProxyHook func(PostFHIRProxyUserRequestDetail, PostFHIRProxyFHIRServerResponse) error
-
-

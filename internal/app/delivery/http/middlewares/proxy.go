@@ -360,8 +360,8 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 		panic(fmt.Sprintf("invalid FHIR target URL: %v", err))
 	}
 	client := &http.Client{
-		Timeout:   15 * time.Second,
-		Transport: &http.Transport{MaxIdleConnsPerHost: 100},
+		Timeout:       15 * time.Second,
+		Transport:     &http.Transport{MaxIdleConnsPerHost: 100},
 		CheckRedirect: allowedRedirectHost(parsedTarget.Host),
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1050,8 +1050,8 @@ func (m *Middlewares) TxProxy(target string) http.Handler {
 		panic(fmt.Sprintf("invalid TxProxy target URL: %v", err))
 	}
 	client := &http.Client{
-		Timeout:   15 * time.Second,
-		Transport: &http.Transport{MaxIdleConnsPerHost: 100},
+		Timeout:       15 * time.Second,
+		Transport:     &http.Transport{MaxIdleConnsPerHost: 100},
 		CheckRedirect: allowedRedirectHost(parsedTarget.Host),
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

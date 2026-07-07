@@ -184,9 +184,9 @@ func readIntCounter(ctx context.Context, redis contracts.RedisRepository, key st
 
 // counterState holds the current counter values and TTLs for rate limiting keys.
 type counterState struct {
-	MinuteKey, MinuteKeyUser, MonthKey, MonthKeyUser string
+	MinuteKey, MinuteKeyUser, MonthKey, MonthKeyUser                     string
 	CurrentMinute, CurrentMinuteUser, CurrentMonthly, CurrentMonthlyUser int
-	TTLMinute, TTLMonthly time.Duration
+	TTLMinute, TTLMonthly                                                time.Duration
 }
 
 // buildCounterState builds a counterState from the individual key and counter values.

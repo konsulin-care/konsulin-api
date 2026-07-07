@@ -150,9 +150,9 @@ func TestWriteBridgeResponse_StripsETagOnMutated(t *testing.T) {
 	upstreamResp := &http.Response{
 		StatusCode: http.StatusOK,
 		Header: http.Header{
-			http.CanonicalHeaderKey("etag"):           {`W/"xyz123"`},
-			"Content-Type":                             {"application/fhir+json"},
-			"Cache-Control":                            {"max-age=60"},
+			http.CanonicalHeaderKey("etag"): {`W/"xyz123"`},
+			"Content-Type":                  {"application/fhir+json"},
+			"Cache-Control":                 {"max-age=60"},
 		},
 	}
 
@@ -179,8 +179,8 @@ func TestWriteBridgeResponse_PreservesETagOnUnmutated(t *testing.T) {
 	upstreamResp := &http.Response{
 		StatusCode: http.StatusOK,
 		Header: http.Header{
-			http.CanonicalHeaderKey("etag"):           {`W/"xyz123"`},
-			"Content-Type":                             {"application/fhir+json"},
+			http.CanonicalHeaderKey("etag"): {`W/"xyz123"`},
+			"Content-Type":                  {"application/fhir+json"},
 		},
 	}
 

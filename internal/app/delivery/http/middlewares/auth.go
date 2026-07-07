@@ -317,6 +317,7 @@ func validateActorRefs(body []byte, practitionerID string) error {
 	}
 	return nil
 }
+
 // lookupPatient looks up a Patient FHIR resource by Supertoken UID.
 // Returns the Patient ID if found, or an empty string if not found.
 // Returns an error if the FHIR query fails or if multiple Patient resources match.
