@@ -422,190 +422,149 @@ func firstSeg(raw string) string {
 }
 func validateResourceOwnership(ctx context.Context, fhirID, role, resourceType string, resource []byte, practitionerRoleClient contracts.PractitionerRoleFhirClient, scheduleClient contracts.ScheduleFhirClient, questionnaireResponseClient contracts.QuestionnaireResponseFhirClient) bool {
 	if role == constvars.KonsulinRolePatient {
-		resourceStr := string(resource)
-
-		if resourceType == "Condition" {
-			subjectRef := gjson.Get(resourceStr, "subject.reference").String()
-			if strings.HasPrefix(subjectRef, "Patient/") {
-				patientID := strings.TrimPrefix(subjectRef, "Patient/")
-				return patientID == fhirID
-			}
-		}
-
-		if resourceType == "Appointment" {
-			participants := gjson.Get(resourceStr, "participant").Array()
-			for _, participant := range participants {
-				actorRef := participant.Get("actor.reference").String()
-				if strings.HasPrefix(actorRef, "Patient/") {
-					patientID := strings.TrimPrefix(actorRef, "Patient/")
-					if patientID == fhirID {
-						return true
-					}
-				}
-			}
-		}
-
-		if resourceType == "Slot" {
-			status := gjson.Get(resourceStr, "status").String()
-
-			if status == "busy" || status == "busy-unavailable" {
-				return true
-			}
-		}
-
-		if resourceType == constvars.ResourceQuestionnaireResponse {
-			questionnaireResponseID := gjson.Get(resourceStr, "id").String()
-
-			// will directly reject the request if the questionnaire response id is not found
-			if questionnaireResponseID == "" {
-				return false
-			}
-
-			questionnaireResponse, err := questionnaireResponseClient.FindQuestionnaireResponseByID(ctx, questionnaireResponseID)
-			if err != nil {
-				return false
-			}
-
-			authorRef := questionnaireResponse.Author.Reference
-			subjectRef := questionnaireResponse.Subject.Reference
-
-			if authorRef == "" && subjectRef == "" {
-				return true
-			}
-
-			sameOwner := true
-			if strings.HasPrefix(authorRef, "Patient/") {
-				authorID := strings.TrimPrefix(authorRef, "Patient/")
-				if authorID != fhirID {
-					sameOwner = false
-				}
-			}
-
-			if strings.HasPrefix(subjectRef, "Patient/") {
-				subjectID := strings.TrimPrefix(subjectRef, "Patient/")
-				if subjectID != fhirID {
-					sameOwner = false
-				}
-			}
-
-			if sameOwner {
-				return true
-			}
-		}
-
-		// this checks below is to allow patient to update their own patient resource
-		if resourceType == constvars.ResourcePatient {
-			patientID := gjson.Get(resourceStr, "id").String()
-			if patientID == fhirID {
-				return true
-			}
-		}
-
-		patientRefs := []string{
-			gjson.Get(resourceStr, "subject.reference").String(),
-			gjson.Get(resourceStr, "patient.reference").String(),
-			gjson.Get(resourceStr, "actor.reference").String(),
-		}
-
-		for _, ref := range patientRefs {
-			if strings.HasPrefix(ref, "Patient/") {
-				patientID := strings.TrimPrefix(ref, "Patient/")
-				if patientID == fhirID {
-					return true
-				}
-			}
-		}
+		return validatePatientResourceOwnership(ctx, fhirID, resourceType, resource, questionnaireResponseClient)
 	}
-
 	if role == constvars.KonsulinRolePractitioner {
-		resourceStr := string(resource)
-		if resourceType == "Invoice" {
-			participants := gjson.Get(resourceStr, "participant").Array()
-			for _, participant := range participants {
-				actorRef := participant.Get("actor.reference").String()
-				if strings.HasPrefix(actorRef, "PractitionerRole/") {
-					return true
-				}
-				if strings.HasPrefix(actorRef, "Practitioner/") {
-					practitionerID := strings.TrimPrefix(actorRef, "Practitioner/")
-					if practitionerID == fhirID {
-						return true
-					}
-				}
-			}
+		return validatePractitionerResourceOwnership(ctx, fhirID, resourceType, resource, practitionerRoleClient, scheduleClient)
+	}
+	return false
+}
+
+func validatePatientResourceOwnership(ctx context.Context, fhirID, resourceType string, resource []byte, questionnaireResponseClient contracts.QuestionnaireResponseFhirClient) bool {
+	resourceStr := string(resource)
+	if resourceType == "Condition" {
+		subjectRef := gjson.Get(resourceStr, "subject.reference").String()
+		if strings.HasPrefix(subjectRef, "Patient/") {
+			return strings.TrimPrefix(subjectRef, "Patient/") == fhirID
 		}
-
-		// this checks below is to allow practitioner to update their own practitioner resource
-		if resourceType == constvars.ResourcePractitioner {
-			practitionerID := gjson.Get(resourceStr, "id").String()
-			if practitionerID == fhirID {
-				return true
-			}
-		}
-
-		// schedule ownership check via first actor -> PractitionerRole -> Practitioner
-		if resourceType == constvars.ResourceSchedule {
-			scheduleID := gjson.Get(resourceStr, "id").String()
-			if scheduleID == "" {
-				return false
-			}
-
-			schedules, err := scheduleClient.Search(ctx, contracts.ScheduleSearchParams{ID: scheduleID})
-			if err != nil {
-				return false
-			}
-			if len(schedules) != 1 {
-				return false
-			}
-			sch := schedules[0]
-			if len(sch.Actor) < 1 {
-				return false
-			}
-
-			for _, actor := range sch.Actor {
-				actorRef := actor.Reference
-
-				if strings.HasPrefix(actorRef, "PractitionerRole/") {
-					roleID := strings.TrimPrefix(actorRef, "PractitionerRole/")
-					pr, err := practitionerRoleClient.FindPractitionerRoleByID(ctx, roleID)
-					if err != nil {
-						continue
-					}
-					pracRef := pr.Practitioner.Reference
-					if strings.HasPrefix(pracRef, "Practitioner/") {
-						pid := strings.TrimPrefix(pracRef, "Practitioner/")
-						if pid == fhirID {
-							return true
-						}
-					}
-				}
-
-				if strings.HasPrefix(actorRef, "Practitioner/") {
-					practitionerID := strings.TrimPrefix(actorRef, "Practitioner/")
-					if practitionerID == fhirID {
-						return true
-					}
-				}
-			}
-
-		}
-
-		practitionerRefs := []string{
-			gjson.Get(resourceStr, "practitioner.reference").String(),
-			gjson.Get(resourceStr, "actor.reference").String(),
-			gjson.Get(resourceStr, "performer.reference").String(),
-			gjson.Get(resourceStr, "author.reference").String(),
-		}
-		for _, ref := range practitionerRefs {
-			if strings.HasPrefix(ref, "Practitioner/") {
-				practitionerID := strings.TrimPrefix(ref, "Practitioner/")
-				if practitionerID == fhirID {
+	}
+	if resourceType == "Appointment" {
+		participants := gjson.Get(resourceStr, "participant").Array()
+		for _, participant := range participants {
+			actorRef := participant.Get("actor.reference").String()
+			if strings.HasPrefix(actorRef, "Patient/") {
+				if strings.TrimPrefix(actorRef, "Patient/") == fhirID {
 					return true
 				}
 			}
 		}
 	}
+	if resourceType == "Slot" {
+		status := gjson.Get(resourceStr, "status").String()
+		if status == "busy" || status == "busy-unavailable" {
+			return true
+		}
+	}
+	if resourceType == constvars.ResourceQuestionnaireResponse {
+		return validateQuestionnaireResponseOwner(ctx, fhirID, resourceStr, questionnaireResponseClient)
+	}
+	if resourceType == constvars.ResourcePatient {
+		return gjson.Get(resourceStr, "id").String() == fhirID
+	}
+	patientRefs := []string{
+		gjson.Get(resourceStr, "subject.reference").String(),
+		gjson.Get(resourceStr, "patient.reference").String(),
+		gjson.Get(resourceStr, "actor.reference").String(),
+	}
+	for _, ref := range patientRefs {
+		if strings.HasPrefix(ref, "Patient/") {
+			if strings.TrimPrefix(ref, "Patient/") == fhirID {
+				return true
+			}
+		}
+	}
+	return false
+}
 
+func validatePractitionerResourceOwnership(ctx context.Context, fhirID, resourceType string, resource []byte, practitionerRoleClient contracts.PractitionerRoleFhirClient, scheduleClient contracts.ScheduleFhirClient) bool {
+	resourceStr := string(resource)
+	if resourceType == "Invoice" {
+		participants := gjson.Get(resourceStr, "participant").Array()
+		for _, participant := range participants {
+			actorRef := participant.Get("actor.reference").String()
+			if strings.HasPrefix(actorRef, "PractitionerRole/") {
+				return true
+			}
+			if strings.HasPrefix(actorRef, "Practitioner/") {
+				if strings.TrimPrefix(actorRef, "Practitioner/") == fhirID {
+					return true
+				}
+			}
+		}
+	}
+	if resourceType == constvars.ResourcePractitioner {
+		return gjson.Get(resourceStr, "id").String() == fhirID
+	}
+	if resourceType == constvars.ResourceSchedule {
+		return validateScheduleOwnership(ctx, fhirID, resourceStr, practitionerRoleClient, scheduleClient)
+	}
+	practitionerRefs := []string{
+		gjson.Get(resourceStr, "practitioner.reference").String(),
+		gjson.Get(resourceStr, "actor.reference").String(),
+		gjson.Get(resourceStr, "performer.reference").String(),
+		gjson.Get(resourceStr, "author.reference").String(),
+	}
+	for _, ref := range practitionerRefs {
+		if strings.HasPrefix(ref, "Practitioner/") {
+			if strings.TrimPrefix(ref, "Practitioner/") == fhirID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func validateQuestionnaireResponseOwner(ctx context.Context, fhirID, resourceStr string, client contracts.QuestionnaireResponseFhirClient) bool {
+	id := gjson.Get(resourceStr, "id").String()
+	if id == "" {
+		return false
+	}
+	qr, err := client.FindQuestionnaireResponseByID(ctx, id)
+	if err != nil {
+		return false
+	}
+	authorRef := qr.Author.Reference
+	subjectRef := qr.Subject.Reference
+	if authorRef == "" && subjectRef == "" {
+		return true
+	}
+	sameOwner := true
+	if strings.HasPrefix(authorRef, "Patient/") && strings.TrimPrefix(authorRef, "Patient/") != fhirID {
+		sameOwner = false
+	}
+	if strings.HasPrefix(subjectRef, "Patient/") && strings.TrimPrefix(subjectRef, "Patient/") != fhirID {
+		sameOwner = false
+	}
+	return sameOwner
+}
+
+func validateScheduleOwnership(ctx context.Context, fhirID, resourceStr string, practitionerRoleClient contracts.PractitionerRoleFhirClient, scheduleClient contracts.ScheduleFhirClient) bool {
+	scheduleID := gjson.Get(resourceStr, "id").String()
+	if scheduleID == "" {
+		return false
+	}
+	schedules, err := scheduleClient.Search(ctx, contracts.ScheduleSearchParams{ID: scheduleID})
+	if err != nil || len(schedules) != 1 {
+		return false
+	}
+	sch := schedules[0]
+	for _, actor := range sch.Actor {
+		actorRef := actor.Reference
+		if strings.HasPrefix(actorRef, "PractitionerRole/") {
+			roleID := strings.TrimPrefix(actorRef, "PractitionerRole/")
+			pr, err := practitionerRoleClient.FindPractitionerRoleByID(ctx, roleID)
+			if err != nil {
+				continue
+			}
+			pracRef := pr.Practitioner.Reference
+			if strings.HasPrefix(pracRef, "Practitioner/") && strings.TrimPrefix(pracRef, "Practitioner/") == fhirID {
+				return true
+			}
+		}
+		if strings.HasPrefix(actorRef, "Practitioner/") && strings.TrimPrefix(actorRef, "Practitioner/") == fhirID {
+			return true
+		}
+	}
 	return false
 }
 
