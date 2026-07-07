@@ -893,48 +893,48 @@ func matchesOwnedRef(ref string, oc *ownershipContext) bool {
 	return false
 }
 
+// authTxProxyAccess checks RBAC and query params for TxProxy access.
+func (m *Middlewares) authTxProxyAccess(w http.ResponseWriter, r *http.Request) error {
+	roles, ok := r.Context().Value(keyRoles).([]string)
+	if !ok || len(roles) == 0 {
+		utils.BuildErrorResponse(m.Log, w, exceptions.ErrTokenMissing(nil))
+		return fmt.Errorf("no roles")
+	}
+	for _, role := range roles {
+		if ok, _ := m.Enforcer.Enforce(role, r.Method, r.URL.Path); ok {
+			return nil
+		}
+	}
+	utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(fmt.Errorf("forbidden: role not allowed to access terminology service")))
+	return fmt.Errorf("access denied")
+}
+
+// buildTxProxyURL builds the full URL for the terminology server proxy.
+func buildTxProxyURL(target string, r *http.Request, prefix, version string) string {
+	q := r.URL.Query()
+	hasFilter := strings.TrimSpace(q.Get("filter")) != ""
+	hasCount := strings.TrimSpace(q.Get("count")) != ""
+	if !hasFilter && !hasCount {
+		return ""
+	}
+	relativePath := strings.TrimPrefix(r.URL.Path, fmt.Sprintf("/%s/%s/tx", prefix, version))
+	fullURL := target + relativePath
+	if r.URL.RawQuery != "" {
+		fullURL += "?" + r.URL.RawQuery
+	}
+	return fullURL
+}
+
 func (m *Middlewares) TxProxy(target string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		roles, ok := r.Context().Value(keyRoles).([]string)
-		if !ok || len(roles) == 0 {
-			utils.BuildErrorResponse(m.Log, w, exceptions.ErrTokenMissing(nil))
+		if err := m.authTxProxyAccess(w, r); err != nil {
 			return
 		}
 
-		allowAccess := false
-		path := r.URL.Path
-		method := r.Method
-
-		for _, role := range roles {
-			if ok, _ := m.Enforcer.Enforce(role, method, path); ok {
-				allowAccess = true
-				break
-			}
-		}
-
-		if !allowAccess {
-			utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(fmt.Errorf("forbidden: role not allowed to access terminology service")))
-			return
-		}
-
-		// Require at least one of: filter, count query params. If none present, will return 202 without
-		// proxying the request to the terminology server.
-		// This behaviour is requested here: https://github.com/konsulin-care/konsulin-api/pull/291#issuecomment-3728978396
-		q := r.URL.Query()
-		hasFilter := strings.TrimSpace(q.Get("filter")) != ""
-		hasCount := strings.TrimSpace(q.Get("count")) != ""
-		if !hasFilter && !hasCount {
+		fullURL := buildTxProxyURL(target, r, m.InternalConfig.App.EndpointPrefix, m.InternalConfig.App.Version)
+		if fullURL == "" {
 			w.WriteHeader(http.StatusAccepted)
 			return
-		}
-
-		// Remove the /api/v1/tx prefix to get the relative path
-		// We expect the router mount to be at /api/v1/tx, so we trim that prefix
-		relativePath := strings.TrimPrefix(r.URL.Path, fmt.Sprintf("/%s/%s/tx", m.InternalConfig.App.EndpointPrefix, m.InternalConfig.App.Version))
-
-		fullURL := target + relativePath
-		if r.URL.RawQuery != "" {
-			fullURL += "?" + r.URL.RawQuery
 		}
 
 		bodyBytes, _ := r.Context().Value(constvars.CONTEXT_RAW_BODY).([]byte)
