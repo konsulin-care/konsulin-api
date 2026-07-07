@@ -8,6 +8,7 @@ This directory contains reference documents for AI agents working on this projec
 | [STANDARDS.md](STANDARDS.md) | Learn coding conventions, Clean Architecture rules, FHIR client patterns, error handling, testing approach |
 | [KNOWN-PITFALLS.md](KNOWN-PITFALLS.md) | Avoid common mistakes: double-slash FHIR URLs, legacy deps, rate limiting limits, config gotchas |
 | [STRUCTURE.md](STRUCTURE.md) | Navigate the repository: what each directory contains, which files to modify for a given task |
+| [DEEPSOURCE-FIX-PATTERNS.md](DEEPSOURCE-FIX-PATTERNS.md) | Resolve common DeepSource static analysis issues: unused params/receivers, log.Fatalf, complexity, dead code, test helpers |
 
 ## How to Use
 
