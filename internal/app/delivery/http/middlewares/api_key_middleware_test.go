@@ -129,22 +129,17 @@ func TestAPIKeyAuth_Optional(t *testing.T) {
 		InternalConfig: internalConfig,
 	}
 
-	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
-		apiKeyAuth, ok := r.Context().Value(ContextAPIKeyAuth).(bool)
-		if ok {
-			assert.False(t, apiKeyAuth, "ContextAPIKeyAuth should be false when no API key provided")
-		}
-
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success"))
-	})
-
 	t.Run("No API Key - Should Pass", func(t *testing.T) {
 		req := httptest.NewRequest("POST", "/api/v1/some-endpoint", nil)
 
+		handler := middlewares.APIKeyAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, ok := r.Context().Value(ContextAPIKeyAuth).(bool)
+			assert.False(t, ok, "ContextAPIKeyAuth should not be set when no API key provided")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("success"))
+		}))
+
 		rr := httptest.NewRecorder()
-		handler := middlewares.APIKeyAuth(testHandler)
 		handler.ServeHTTP(rr, req)
 
 		assert.Equal(t, http.StatusOK, rr.Code, "should return 200 OK when no API key provided (optional middleware)")
@@ -155,8 +150,15 @@ func TestAPIKeyAuth_Optional(t *testing.T) {
 		req := httptest.NewRequest("POST", "/api/v1/some-endpoint", nil)
 		req.Header.Set(HeaderAPIKey, testAPIKey)
 
+		handler := middlewares.APIKeyAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			apiKeyAuth, ok := r.Context().Value(ContextAPIKeyAuth).(bool)
+			assert.True(t, ok, "ContextAPIKeyAuth should be set")
+			assert.True(t, apiKeyAuth, "ContextAPIKeyAuth should be true for valid API key")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("success"))
+		}))
+
 		rr := httptest.NewRecorder()
-		handler := middlewares.APIKeyAuth(testHandler)
 		handler.ServeHTTP(rr, req)
 
 		assert.Equal(t, http.StatusOK, rr.Code, "should return 200 OK for valid API key")
@@ -167,8 +169,11 @@ func TestAPIKeyAuth_Optional(t *testing.T) {
 		req := httptest.NewRequest("POST", "/api/v1/some-endpoint", nil)
 		req.Header.Set(HeaderAPIKey, "invalid-api-key")
 
+		handler := middlewares.APIKeyAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			t.Error("handler should not be called for invalid API key")
+		}))
+
 		rr := httptest.NewRecorder()
-		handler := middlewares.APIKeyAuth(testHandler)
 		handler.ServeHTTP(rr, req)
 
 		assert.Equal(t, http.StatusUnauthorized, rr.Code, "should return 401 Unauthorized for invalid API key")
