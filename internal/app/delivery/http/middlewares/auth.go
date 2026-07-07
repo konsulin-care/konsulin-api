@@ -632,175 +632,152 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 	}
 
 	if role == constvars.KonsulinRolePatient {
-
-		if utils.IsPublicResource(resourceType) {
-			return true
-		}
-
-		if utils.RequiresPatientOwnership(resourceType) {
-
-			parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
-			if len(parts) >= 2 {
-				var res, id string
-
-				if strings.EqualFold(parts[0], "fhir") {
-					if len(parts) >= 3 {
-						res, id = parts[1], parts[2]
-					}
-				} else {
-					res, id = parts[0], parts[1]
-				}
-
-				if res == "Patient" && id == fhirID {
-					return true
-				}
-			}
-
-			q := u.Query()
-
-			if p := q.Get("patient"); p != "" {
-				id := strings.TrimPrefix(p, "Patient/")
-				return id == fhirID
-			}
-
-			if s := q.Get("subject"); s != "" {
-				id := strings.TrimPrefix(s, "Patient/")
-				return id == fhirID
-			}
-
-			if a := q.Get("actor"); a != "" {
-				id := strings.TrimPrefix(a, "Patient/")
-				return id == fhirID
-			}
-
-			if qr := q.Get("questionnaire"); qr != "" {
-				return true
-			}
-
-			if resourceType == constvars.ResourcePatient {
-				if val := q.Get("_id"); val != "" {
-					return val == fhirID
-				}
-			}
-
-			if identifier := q.Get("identifier"); identifier != "" {
-
-				patientID, err := resolveIdentifierToPatientID(ctx, identifier, patientClient)
-				if err != nil {
-
-					return false
-				}
-
-				if patientID == fhirID {
-					return true
-				}
-
-				// Fallback: if requester has Practitioner role, allow when practitioner's email matches patient's
-				roles, _ := ctx.Value(keyRoles).([]string)
-				isPractitioner := false
-				for _, r := range roles {
-					if strings.EqualFold(r, constvars.KonsulinRolePractitioner) {
-						isPractitioner = true
-						break
-					}
-				}
-				if !isPractitioner {
-					return false
-				}
-
-				// Fetch Practitioner and Patient resources and compare emails (exact match)
-				practitioner, err := practitionerClient.FindPractitionerByID(ctx, fhirID)
-				if err != nil || practitioner == nil {
-					return false
-				}
-				patient, err := patientClient.FindPatientByID(ctx, patientID)
-				if err != nil || patient == nil {
-					return false
-				}
-
-				practEmails := practitioner.GetEmailAddresses()
-				patEmails := patient.GetEmailAddresses()
-				if len(practEmails) == 0 || len(patEmails) == 0 {
-					return false
-				}
-				for _, pe := range practEmails {
-					for _, qe := range patEmails {
-						if pe == qe {
-							return true
-						}
-					}
-				}
-				return false
-			}
-
-			// add support email based query
-			if email := q.Get("email"); email != "" {
-				patients, err := patientClient.FindPatientByEmail(ctx, email)
-				if err != nil {
-					return false
-				}
-
-				// the check below will be turned of for now
-				// to temporarily allow multiple patients found
-				// // guard against no patients found or multiple patients found
-				// if len(patients) != 1 {
-				// 	return false
-				// }
-
-				// If any patient resolved by email matches current fhirID, allow
-				for _, p := range patients {
-					if p.ID == fhirID {
-						return true
-					}
-				}
-
-				// Require Practitioner role for email intersection fallback
-				roles, _ := ctx.Value(keyRoles).([]string)
-				hasPractRole := false
-				for _, r := range roles {
-					if strings.EqualFold(r, constvars.KonsulinRolePractitioner) {
-						hasPractRole = true
-						break
-					}
-				}
-				if !hasPractRole {
-					return false
-				}
-
-				// Verify practitioner's emails intersect with requested email
-				practitioner, err := practitionerClient.FindPractitionerByID(ctx, fhirID)
-				if err != nil || practitioner == nil {
-					return false
-				}
-				practEmails := practitioner.GetEmailAddresses()
-				if len(practEmails) == 0 {
-					return false
-				}
-				for _, pe := range practEmails {
-					if pe == email {
-						return true
-					}
-				}
-				return false
-			}
-
-			return false
-		}
-
-		return false
+		return ownsPatientQuery(ctx, fhirID, u, resourceType, patientClient, practitionerClient)
 	}
 
 	if role == constvars.KonsulinRolePractitioner {
+		return ownsPractitionerQuery(ctx, fhirID, u, resourceType, patientClient, practitionerClient)
+	}
 
-		if utils.IsPublicResource(resourceType) {
-			q := u.Query()
-			hasOwnershipParams := false
+	return false
+}
 
-			if q.Get("practitioner") != "" || q.Get("actor") != "" {
-				hasOwnershipParams = true
+func ownsPatientQuery(ctx context.Context, fhirID string, u *url.URL, resourceType string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient) bool {
+	if utils.IsPublicResource(resourceType) {
+		return true
+	}
+
+	if !utils.RequiresPatientOwnership(resourceType) {
+		return false
+	}
+
+	parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
+	if len(parts) >= 2 {
+		var res, id string
+		if strings.EqualFold(parts[0], "fhir") {
+			if len(parts) >= 3 {
+				res, id = parts[1], parts[2]
 			}
+		} else {
+			res, id = parts[0], parts[1]
+		}
+		if res == "Patient" && id == fhirID {
+			return true
+		}
+	}
 
-			for key := range q {
+	q := u.Query()
+
+	if p := q.Get("patient"); p != "" {
+		return strings.TrimPrefix(p, "Patient/") == fhirID
+	}
+	if s := q.Get("subject"); s != "" {
+		return strings.TrimPrefix(s, "Patient/") == fhirID
+	}
+	if a := q.Get("actor"); a != "" {
+		return strings.TrimPrefix(a, "Patient/") == fhirID
+	}
+	if qr := q.Get("questionnaire"); qr != "" {
+		return true
+	}
+	if resourceType == constvars.ResourcePatient {
+		if val := q.Get("_id"); val != "" {
+			return val == fhirID
+		}
+	}
+
+	if identifier := q.Get("identifier"); identifier != "" {
+		patientID, err := resolveIdentifierToPatientID(ctx, identifier, patientClient)
+		if err != nil {
+			return false
+		}
+		if patientID == fhirID {
+			return true
+		}
+		roles, _ := ctx.Value(keyRoles).([]string)
+		isPractitioner := false
+		for _, r := range roles {
+			if strings.EqualFold(r, constvars.KonsulinRolePractitioner) {
+				isPractitioner = true
+				break
+			}
+		}
+		if !isPractitioner {
+			return false
+		}
+		practitioner, err := practitionerClient.FindPractitionerByID(ctx, fhirID)
+		if err != nil || practitioner == nil {
+			return false
+		}
+		patient, err := patientClient.FindPatientByID(ctx, patientID)
+		if err != nil || patient == nil {
+			return false
+		}
+		practEmails := practitioner.GetEmailAddresses()
+		patEmails := patient.GetEmailAddresses()
+		if len(practEmails) == 0 || len(patEmails) == 0 {
+			return false
+		}
+		for _, pe := range practEmails {
+			for _, qe := range patEmails {
+				if pe == qe {
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	if email := q.Get("email"); email != "" {
+		patients, err := patientClient.FindPatientByEmail(ctx, email)
+		if err != nil {
+			return false
+		}
+		for _, p := range patients {
+			if p.ID == fhirID {
+				return true
+			}
+		}
+		roles, _ := ctx.Value(keyRoles).([]string)
+		hasPractRole := false
+		for _, r := range roles {
+			if strings.EqualFold(r, constvars.KonsulinRolePractitioner) {
+				hasPractRole = true
+				break
+			}
+		}
+		if !hasPractRole {
+			return false
+		}
+		practitioner, err := practitionerClient.FindPractitionerByID(ctx, fhirID)
+		if err != nil || practitioner == nil {
+			return false
+		}
+		practEmails := practitioner.GetEmailAddresses()
+		if len(practEmails) == 0 {
+			return false
+		}
+		for _, pe := range practEmails {
+			if pe == email {
+				return true
+			}
+		}
+		return false
+	}
+
+	return false
+}
+
+func ownsPractitionerQuery(ctx context.Context, fhirID string, u *url.URL, resourceType string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient) bool {
+	if utils.IsPublicResource(resourceType) {
+		q := u.Query()
+		hasOwnershipParams := false
+
+		if q.Get("practitioner") != "" || q.Get("actor") != "" {
+			hasOwnershipParams = true
+		}
+
+		for key := range q {
 				if strings.HasPrefix(key, "_has") && strings.Contains(key, "practitioner") {
 					hasOwnershipParams = true
 					break
@@ -982,9 +959,6 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 
 		return false
 	}
-
-	return false
-}
 
 func isBundle(r *http.Request) bool {
 	if r.Method != http.MethodPost && r.Method != http.MethodPut && r.Method != http.MethodPatch {
