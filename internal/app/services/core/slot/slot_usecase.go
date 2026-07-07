@@ -468,6 +468,32 @@ type bundleMutation struct {
 }
 
 // postUnavailabilityBundle builds and posts the FHIR transaction bundle for unavailability changes.
+// collectPostBundleResult queries created slots and collects practitioner role IDs after posting the bundle.
+func (s *SlotUsecase) collectPostBundleResult(
+	ctx context.Context,
+	out *contracts.SetUnavailableOutcome,
+	mutation *bundleMutation,
+	input contracts.SetUnavailabilityForMultiplePractitionerRolesInput,
+) {
+	for _, c := range mutation.Creations {
+		got, gerr := s.slots.FindSlotsByScheduleWithQuery(ctx, c.scheduleID, contracts.SlotSearchParams{
+			Start:  "ge" + c.start.Format(time.RFC3339),
+			End:    "le" + c.end.Format(time.RFC3339),
+			Status: input.SlotStatus,
+		})
+		if gerr == nil && len(got) > 0 {
+			out.CreatedSlots = append(out.CreatedSlots, contracts.CreatedSlotItem{ID: got[0].ID, Status: string(input.SlotStatus)})
+		} else {
+			out.CreatedSlots = append(out.CreatedSlots, contracts.CreatedSlotItem{ID: "", Status: string(input.SlotStatus)})
+		}
+	}
+	for _, rb := range mutation.UpdatedRoles {
+		out.UpdatedPractitionerIDs = append(out.UpdatedPractitionerIDs, rb.ID)
+	}
+	out.Created = len(mutation.Creations) > 0
+}
+
+// postUnavailabilityBundle builds and posts the FHIR transaction bundle for unavailability changes.
 func (s *SlotUsecase) postUnavailabilityBundle(
 	ctx context.Context,
 	out *contracts.SetUnavailableOutcome,
@@ -500,22 +526,7 @@ func (s *SlotUsecase) postUnavailabilityBundle(
 		return out, exceptions.BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, "failed to post transaction bundle")
 	}
 
-	for _, c := range mutation.Creations {
-		got, gerr := s.slots.FindSlotsByScheduleWithQuery(ctx, c.scheduleID, contracts.SlotSearchParams{
-			Start:  "ge" + c.start.Format(time.RFC3339),
-			End:    "le" + c.end.Format(time.RFC3339),
-			Status: input.SlotStatus,
-		})
-		if gerr == nil && len(got) > 0 {
-			out.CreatedSlots = append(out.CreatedSlots, contracts.CreatedSlotItem{ID: got[0].ID, Status: string(input.SlotStatus)})
-		} else {
-			out.CreatedSlots = append(out.CreatedSlots, contracts.CreatedSlotItem{ID: "", Status: string(input.SlotStatus)})
-		}
-	}
-	for _, rb := range mutation.UpdatedRoles {
-		out.UpdatedPractitionerIDs = append(out.UpdatedPractitionerIDs, rb.ID)
-	}
-	out.Created = len(mutation.Creations) > 0
+	s.collectPostBundleResult(ctx, out, mutation, input)
 	return out, nil
 }
 
