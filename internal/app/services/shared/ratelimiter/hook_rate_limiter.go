@@ -97,7 +97,8 @@ func (l *HookRateLimiter) Evaluate(ctx context.Context, in *EvaluateInput) (*Eva
 		return &EvaluateOutput{Allowed: false, RetryAfterSecs: int(ttlMinute.Seconds()) + 1, LimitedByMonthly: false}, nil
 	}
 
-	incrementCounters(ctx, l.redis, minuteKey, minuteKeyUser, monthKey, monthKeyUser, ttlMinute, ttlMonthly, currentMinute, currentMinuteUser, currentMonthly, currentMonthlyUser)
+	cs := buildCounterState(minuteKey, minuteKeyUser, monthKey, monthKeyUser, ttlMinute, ttlMonthly, currentMinute, currentMinuteUser, currentMonthly, currentMonthlyUser)
+	incrementCounters(ctx, l.redis, cs)
 
 	return &EvaluateOutput{Allowed: true}, nil
 }
@@ -181,33 +182,51 @@ func readIntCounter(ctx context.Context, redis contracts.RedisRepository, key st
 	return val, nil
 }
 
+// counterState holds the current counter values and TTLs for rate limiting keys.
+type counterState struct {
+	MinuteKey, MinuteKeyUser, MonthKey, MonthKeyUser string
+	CurrentMinute, CurrentMinuteUser, CurrentMonthly, CurrentMonthlyUser int
+	TTLMinute, TTLMonthly time.Duration
+}
+
+// buildCounterState builds a counterState from the individual key and counter values.
+func buildCounterState(minuteKey, minuteKeyUser, monthKey, monthKeyUser string, ttlMinute, ttlMonthly time.Duration, currentMinute, currentMinuteUser, currentMonthly, currentMonthlyUser int) counterState {
+	return counterState{
+		MinuteKey: minuteKey, MinuteKeyUser: minuteKeyUser,
+		MonthKey: monthKey, MonthKeyUser: monthKeyUser,
+		CurrentMinute: currentMinute, CurrentMinuteUser: currentMinuteUser,
+		CurrentMonthly: currentMonthly, CurrentMonthlyUser: currentMonthlyUser,
+		TTLMinute: ttlMinute, TTLMonthly: ttlMonthly,
+	}
+}
+
 // incrementCounters increments service-level and user-level counters with TTL.
-func incrementCounters(ctx context.Context, redis contracts.RedisRepository, minuteKey, minuteKeyUser, monthKey, monthKeyUser string, ttlMinute, ttlMonthly time.Duration, currentMinute, currentMinuteUser, currentMonthly, currentMonthlyUser int) {
-	if currentMinute == 0 {
-		_ = redis.Set(ctx, minuteKey, 1, ttlMinute+time.Second)
+func incrementCounters(ctx context.Context, redis contracts.RedisRepository, cs counterState) {
+	if cs.CurrentMinute == 0 {
+		_ = redis.Set(ctx, cs.MinuteKey, 1, cs.TTLMinute+time.Second)
 	} else {
-		_ = redis.Increment(ctx, minuteKey)
+		_ = redis.Increment(ctx, cs.MinuteKey)
 	}
 
-	if currentMonthly == 0 {
-		_ = redis.Set(ctx, monthKey, 1, ttlMonthly+time.Minute)
+	if cs.CurrentMonthly == 0 {
+		_ = redis.Set(ctx, cs.MonthKey, 1, cs.TTLMonthly+time.Minute)
 	} else {
-		_ = redis.Increment(ctx, monthKey)
+		_ = redis.Increment(ctx, cs.MonthKey)
 	}
 
-	if minuteKeyUser != "" {
-		if currentMinuteUser == 0 {
-			_ = redis.Set(ctx, minuteKeyUser, 1, ttlMinute+time.Second)
+	if cs.MinuteKeyUser != "" {
+		if cs.CurrentMinuteUser == 0 {
+			_ = redis.Set(ctx, cs.MinuteKeyUser, 1, cs.TTLMinute+time.Second)
 		} else {
-			_ = redis.Increment(ctx, minuteKeyUser)
+			_ = redis.Increment(ctx, cs.MinuteKeyUser)
 		}
 	}
 
-	if monthKeyUser != "" {
-		if currentMonthlyUser == 0 {
-			_ = redis.Set(ctx, monthKeyUser, 1, ttlMonthly+time.Minute)
+	if cs.MonthKeyUser != "" {
+		if cs.CurrentMonthlyUser == 0 {
+			_ = redis.Set(ctx, cs.MonthKeyUser, 1, cs.TTLMonthly+time.Minute)
 		} else {
-			_ = redis.Increment(ctx, monthKeyUser)
+			_ = redis.Increment(ctx, cs.MonthKeyUser)
 		}
 	}
 }
