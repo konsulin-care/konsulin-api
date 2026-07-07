@@ -1111,7 +1111,7 @@ func (m *Middlewares) doTxProxyRequest(w http.ResponseWriter, r *http.Request, f
 		utils.BuildErrorResponse(m.Log, w, exceptions.ErrSendHTTPRequest(err))
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	for k, v := range resp.Header {
 		if strings.HasPrefix(k, "Access-Control-") || k == "Content-Length" || k == "Connection" {

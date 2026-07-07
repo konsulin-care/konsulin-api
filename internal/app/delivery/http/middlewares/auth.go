@@ -233,13 +233,13 @@ func (m *Middlewares) validatePostRequestBody(ctx context.Context, body []byte, 
 }
 
 func (m *Middlewares) validatePatientOwnershipInBody(body []byte, patientID string) error {
-	if err := validateBodySubjectRef(body, patientID, "Patient"); err != nil {
+	if err := validateBodySubjectRef(body, patientID, constvars.ResourcePatient); err != nil {
 		return err
 	}
-	if err := validateBodyArrayRefs(body, "performer", patientID, "Patient"); err != nil {
+	if err := validateBodyArrayRefs(body, "performer", patientID, constvars.ResourcePatient); err != nil {
 		return err
 	}
-	return validateBodyArrayRefs(body, "actor", patientID, "Patient")
+	return validateBodyArrayRefs(body, "actor", patientID, constvars.ResourcePatient)
 }
 
 // validateBodySubjectRef checks that the subject.reference matches the given prefix and ID.
@@ -666,7 +666,7 @@ func ownsPatientQuery(ctx context.Context, fhirID string, u *url.URL, resourceTy
 	// IDOR guard on direct Patient/<id> paths.
 	// If path targets a different Patient ID, deny immediately without
 	// falling through to query-parameter-based checks.
-	if res, id := extractPathResourceID(u.Path); res == "Patient" {
+	if res, id := extractPathResourceID(u.Path); res == constvars.ResourcePatient {
 		return id == fhirID
 	}
 
