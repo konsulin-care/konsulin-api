@@ -655,6 +655,23 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 	return false
 }
 
+// extractPathResourceID parses a URL path to extract resource type and ID.
+// Handles both /fhir/{resource}/{id} and /{resource}/{id} patterns.
+// Returns empty strings for paths with insufficient segments.
+func extractPathResourceID(path string) (resource, id string) {
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	if len(parts) >= 2 {
+		if strings.EqualFold(parts[0], "fhir") {
+			if len(parts) >= 3 {
+				return parts[1], parts[2]
+			}
+			return "", ""
+		}
+		return parts[0], parts[1]
+	}
+	return "", ""
+}
+
 func ownsPatientQuery(ctx context.Context, fhirID string, u *url.URL, resourceType string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient) bool {
 	if utils.IsPublicResource(resourceType) {
 		return true
@@ -664,26 +681,11 @@ func ownsPatientQuery(ctx context.Context, fhirID string, u *url.URL, resourceTy
 		return false
 	}
 
-	parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
-	if len(parts) >= 2 {
-		var res, id string
-		if strings.EqualFold(parts[0], "fhir") {
-			if len(parts) >= 3 {
-				res, id = parts[1], parts[2]
-			}
-		} else {
-			res, id = parts[0], parts[1]
-		}
-		if res == "Patient" && id == fhirID {
-			return true
-		}
-		// IDOR guard: if the path directly targets a Patient resource by ID
-		// and the ID does not match the requester, deny immediately.
-		// Do NOT fall through to query-parameter-based checks which are
-		// intended for search endpoints (e.g., /Observation?patient=...).
-		if res == "Patient" && id != "" {
-			return false
-		}
+	// IDOR guard on direct Patient/<id> paths.
+	// If path targets a different Patient ID, deny immediately without
+	// falling through to query-parameter-based checks.
+	if res, id := extractPathResourceID(u.Path); res == "Patient" {
+		return id == fhirID
 	}
 
 	q := u.Query()

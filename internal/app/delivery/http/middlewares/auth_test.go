@@ -247,3 +247,81 @@ func TestResolveFHIRIdentity_ActiveRolePatient_NoPatientResource(t *testing.T) {
 	assert.Equal(t, constvars.KonsulinRolePractitioner, role)
 	assert.Equal(t, "prac-1", id)
 }
+
+func TestExtractPathResourceID(t *testing.T) {
+	tests := []struct {
+		name          string
+		path          string
+		wantResource  string
+		wantID        string
+	}{
+		{
+			name:         "/Patient/pat-1",
+			path:         "/Patient/pat-1",
+			wantResource: "Patient",
+			wantID:       "pat-1",
+		},
+		{
+			name:         "/fhir/Patient/pat-1",
+			path:         "/fhir/Patient/pat-1",
+			wantResource: "Patient",
+			wantID:       "pat-1",
+		},
+		{
+			name:         "/fhir/Observation/obs-1",
+			path:         "/fhir/Observation/obs-1",
+			wantResource: "Observation",
+			wantID:       "obs-1",
+		},
+		{
+			name:         "/Practitioner/prac-1",
+			path:         "/Practitioner/prac-1",
+			wantResource: "Practitioner",
+			wantID:       "prac-1",
+		},
+		{
+			name:         "empty path",
+			path:         "",
+			wantResource: "",
+			wantID:       "",
+		},
+		{
+			name:         "single segment",
+			path:         "/Patient",
+			wantResource: "",
+			wantID:       "",
+		},
+		{
+			name:         "/fhir only",
+			path:         "/fhir",
+			wantResource: "",
+			wantID:       "",
+		},
+		{
+			name:         "/fhir/Patient (no ID) falls through",
+			path:         "/fhir/Patient",
+			wantResource: "",
+			wantID:       "",
+		},
+		{
+			name:         "case insensitive fhir",
+			path:         "/FHIR/Patient/pat-1",
+			wantResource: "Patient",
+			wantID:       "pat-1",
+		},
+		{
+			name:         "/Organization/org-1",
+			path:         "/Organization/org-1",
+			wantResource: "Organization",
+			wantID:       "org-1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res, id := extractPathResourceID(tt.path)
+			assert.Equal(t, tt.wantResource, res)
+			assert.Equal(t, tt.wantID, id)
+		})
+	}
+}
