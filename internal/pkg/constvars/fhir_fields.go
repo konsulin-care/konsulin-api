@@ -28,6 +28,11 @@ const (
 	FhirBundleFieldType = "type"
 )
 
+// FHIR gjson path constants used when extracting fields from FHIR JSON bodies.
+const (
+	FhirGJSONPathSubjectRef = "subject.reference"
+)
+
 // FHIR address and telecom use constants.
 const (
 	FhirAddressUseHome   = "home"

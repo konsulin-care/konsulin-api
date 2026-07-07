@@ -107,6 +107,7 @@ const (
 	FHIRRefPrefixPractitionerRole  = "PractitionerRole/"
 	FHIRRefPrefixHealthcareService = "HealthcareService/"
 	FHIRRefPrefixPractitioner      = "Practitioner/"
+	FHIRRefPrefixSchedule          = "Schedule/"
 )
 
 const (
