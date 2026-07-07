@@ -97,7 +97,13 @@ func (l *HookRateLimiter) Evaluate(ctx context.Context, in *EvaluateInput) (*Eva
 		return &EvaluateOutput{Allowed: false, RetryAfterSecs: int(ttlMinute.Seconds()) + 1, LimitedByMonthly: false}, nil
 	}
 
-	cs := buildCounterState(minuteKey, minuteKeyUser, monthKey, monthKeyUser, ttlMinute, ttlMonthly, currentMinute, currentMinuteUser, currentMonthly, currentMonthlyUser)
+	cs := counterState{
+		MinuteKey: minuteKey, MinuteKeyUser: minuteKeyUser,
+		MonthKey: monthKey, MonthKeyUser: monthKeyUser,
+		CurrentMinute: currentMinute, CurrentMinuteUser: currentMinuteUser,
+		CurrentMonthly: currentMonthly, CurrentMonthlyUser: currentMonthlyUser,
+		TTLMinute: ttlMinute, TTLMonthly: ttlMonthly,
+	}
 	incrementCounters(ctx, l.redis, cs)
 
 	return &EvaluateOutput{Allowed: true}, nil
@@ -189,16 +195,7 @@ type counterState struct {
 	TTLMinute, TTLMonthly                                                time.Duration
 }
 
-// buildCounterState builds a counterState from the individual key and counter values.
-func buildCounterState(minuteKey, minuteKeyUser, monthKey, monthKeyUser string, ttlMinute, ttlMonthly time.Duration, currentMinute, currentMinuteUser, currentMonthly, currentMonthlyUser int) counterState {
-	return counterState{
-		MinuteKey: minuteKey, MinuteKeyUser: minuteKeyUser,
-		MonthKey: monthKey, MonthKeyUser: monthKeyUser,
-		CurrentMinute: currentMinute, CurrentMinuteUser: currentMinuteUser,
-		CurrentMonthly: currentMonthly, CurrentMonthlyUser: currentMonthlyUser,
-		TTLMinute: ttlMinute, TTLMonthly: ttlMonthly,
-	}
-}
+
 
 // incrementCounters increments service-level and user-level counters with TTL.
 func incrementCounters(ctx context.Context, redis contracts.RedisRepository, cs counterState) {
