@@ -133,204 +133,184 @@ func encodeBodyFromFiltering(body []byte, enc bodyEncoding) ([]byte, error) {
 	}
 }
 
+// doFHIRProxyRequest builds the FHIR proxy URL, creates the HTTP request, and executes it.
+func (m *Middlewares) doFHIRProxyRequest(r *http.Request, target string, client *http.Client) (resp *http.Response, respBody []byte, bodyBytes []byte, err error) {
+	path := strings.TrimPrefix(r.URL.Path, "/fhir/")
+	if path == "/fhir" {
+		path = ""
+	}
+
+	fullURL := target
+	if path != "" {
+		if !strings.HasSuffix(target, "/") && !strings.HasPrefix(path, "/") {
+			fullURL += "/"
+		}
+		fullURL += path
+	}
+	if r.URL.RawQuery != "" {
+		fullURL += "?" + r.URL.RawQuery
+	}
+
+	bodyBytes, _ = r.Context().Value(constvars.CONTEXT_RAW_BODY).([]byte)
+	if bodyBytes == nil {
+		bodyBytes = []byte{}
+	}
+
+	var req *http.Request
+	req, err = http.NewRequestWithContext(r.Context(), r.Method, fullURL, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, nil, nil, exceptions.ErrCreateHTTPRequest(err)
+	}
+	req.Header = r.Header.Clone()
+	if r.Method == "POST" || r.Method == "PUT" || r.Method == "PATCH" {
+		req.Header.Set("Content-Type", "application/fhir+json")
+	}
+	req.Header.Set("Accept", "application/fhir+json")
+
+	resp, err = client.Do(req)
+	if err != nil {
+		return nil, nil, bodyBytes, exceptions.ErrSendHTTPRequest(err)
+	}
+
+	respBody, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		resp.Body.Close()
+		return nil, nil, bodyBytes, exceptions.ErrReadBody(readErr)
+	}
+	resp.Body.Close()
+	resp.Body = io.NopCloser(bytes.NewReader(respBody))
+
+	return resp, respBody, bodyBytes, nil
+}
+
+// filterFHIRResponse applies RBAC and ownership filtering to the FHIR response body.
+func (m *Middlewares) filterFHIRResponse(ctx context.Context, resp *http.Response, respBody []byte) ([]byte, bodyEncoding, bool, error) {
+	roles, _ := ctx.Value(keyRoles).([]string)
+	fhirRole, _ := ctx.Value(keyFHIRRole).(string)
+	fhirID, _ := ctx.Value(keyFHIRID).(string)
+
+	decoded, enc, derr := decodeBodyForFiltering(respBody, resp.Header.Get("Content-Encoding"))
+	if derr != nil {
+		m.Log.Warn("failed to decode response body for filtering; failing closed", zap.Error(derr))
+		return nil, "", false, exceptions.ErrServerProcess(derr)
+	}
+
+	bodyAfterFilters := decoded
+	mutated := false
+
+	filteringRole := determineFilteringRole(roles)
+	if filteringRole == constvars.KonsulinRoleSuperadmin {
+		b, _, err := m.filterResponseResourceAgainstRBAC(bodyAfterFilters, roles)
+		if err != nil {
+			m.Log.Warn("RBAC response filtering failed; failing closed", zap.Error(err))
+			return nil, "", false, exceptions.ErrServerProcess(err)
+		}
+		bodyAfterFilters = b
+		mutated = true
+	}
+
+	if rMethod := resp.Request.Method; rMethod == http.MethodGet && fhirID != "" {
+		if bundle, isBundle, _ := decodeBundle(bodyAfterFilters); isBundle {
+			removed := m.applyOwnershipFilterToBundle(ctx, bundle, roles, fhirRole, fhirID)
+			if removed > 0 {
+				if bundle.Total != nil {
+					v := len(bundle.Entry)
+					bundle.Total = &v
+				}
+				bodyAfterFilters, _ = encodeBundle(bundle)
+				mutated = true
+			}
+		} else {
+			filteredBody, allowed, ferr := m.filterSingleResourceByOwnership(ctx, bodyAfterFilters, roles, fhirRole, fhirID)
+			if ferr != nil {
+				m.Log.Info(fmt.Sprintf("single-resource ownership filtering failed for {%s/%s}; failing closed", fhirRole, fhirID), zap.Error(ferr))
+				return nil, "", false, exceptions.ErrServerProcess(ferr)
+			}
+			if !allowed {
+				return nil, "", false, exceptions.ErrAuthInvalidRole(fmt.Errorf("forbidden: ownership cannot be proven"))
+			}
+			if filteredBody != nil {
+				bodyAfterFilters = filteredBody
+				mutated = true
+			}
+		}
+	}
+
+	return bodyAfterFilters, enc, mutated, nil
+}
+
+// runPostFHIRProxyHooks executes all registered post-proxy hooks and returns error messages.
+func (m *Middlewares) runPostFHIRProxyHooks(r *http.Request, respBody, bodyBytes []byte) []string {
+	var msgs []string
+	for _, hook := range m.PostFHIRProxyHooks {
+		reqDetail := PostFHIRProxyUserRequestDetail{
+			Context: r.Context(),
+			Method:  r.Method,
+			Path:    r.URL.Path,
+			Body:    bodyBytes,
+		}
+		respDetail := PostFHIRProxyFHIRServerResponse{
+			StatusCode: http.StatusOK,
+			Body:       respBody,
+		}
+		if err := hook(reqDetail, respDetail); err != nil {
+			m.Log.Warn("PostFHIRProxyHook error", zap.Error(err))
+			msgs = append(msgs, err.Error())
+		}
+	}
+	return msgs
+}
+
+// writeBridgeResponse writes the final response headers and body.
+func (m *Middlewares) writeBridgeResponse(w http.ResponseWriter, resp *http.Response, finalBody []byte, postHookErrMsgs []string) {
+	for k, v := range resp.Header {
+		if strings.EqualFold(k, "Content-Length") {
+			continue
+		}
+		w.Header()[k] = v
+	}
+	if len(postHookErrMsgs) > 0 {
+		joined := strings.Join(postHookErrMsgs, "; ")
+		if len(joined) > maxPostFHIRHookErrorHeaderLen {
+			joined = joined[:maxPostFHIRHookErrorHeaderLen-3] + "..."
+		}
+		w.Header().Set(headerPostFHIRHookError, joined)
+	}
+	w.Header().Set("Content-Length", strconv.Itoa(len(finalBody)))
+	w.WriteHeader(resp.StatusCode)
+	if _, err := w.Write(finalBody); err != nil {
+		m.Log.Warn("failed writing response body", zap.Error(err))
+	}
+}
+
 func (m *Middlewares) Bridge(target string) http.Handler {
 	client := &http.Client{
 		Timeout:   15 * time.Second,
 		Transport: &http.Transport{MaxIdleConnsPerHost: 100},
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path := strings.TrimPrefix(r.URL.Path, "/fhir/")
-
-		if path == "/fhir" {
-			path = ""
-		}
-
-		fullURL := target
-		if path != "" {
-			if !strings.HasSuffix(target, "/") && !strings.HasPrefix(path, "/") {
-				fullURL += "/"
-			}
-			fullURL += path
-		}
-		if r.URL.RawQuery != "" {
-			fullURL += "?" + r.URL.RawQuery
-		}
-
-		bodyBytes, _ := r.Context().Value(constvars.CONTEXT_RAW_BODY).([]byte)
-		if bodyBytes == nil {
-			bodyBytes = []byte{}
-		}
-
-		req, err := http.NewRequestWithContext(r.Context(), r.Method, fullURL, bytes.NewReader(bodyBytes))
+		resp, respBody, bodyBytes, err := m.doFHIRProxyRequest(r, target, client)
 		if err != nil {
-			utils.BuildErrorResponse(m.Log, w, exceptions.ErrCreateHTTPRequest(err))
-			return
-		}
-		req.Header = r.Header.Clone()
-
-		if r.Method == "POST" || r.Method == "PUT" || r.Method == "PATCH" {
-			req.Header.Set("Content-Type", "application/fhir+json")
-		}
-		req.Header.Set("Accept", "application/fhir+json")
-
-		resp, err := client.Do(req)
-		if err != nil {
-			utils.BuildErrorResponse(m.Log, w, exceptions.ErrSendHTTPRequest(err))
+			utils.BuildErrorResponse(m.Log, w, err)
 			return
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode >= http.StatusBadRequest {
-			body, readErr := io.ReadAll(resp.Body)
-			if readErr != nil {
-				utils.BuildErrorResponse(m.Log, w, exceptions.ErrReadBody(readErr))
-				return
-			}
-
-			fhirErr := exceptions.BuildNewCustomError(fmt.Errorf("%s", string(body)), resp.StatusCode, string(body), constvars.ErrDevServerProcess)
+			fhirErr := exceptions.BuildNewCustomError(fmt.Errorf("%s", string(respBody)), resp.StatusCode, string(respBody), constvars.ErrDevServerProcess)
 			utils.BuildErrorResponse(m.Log, w, fhirErr)
 			return
 		}
 
-		respBody, readErr := io.ReadAll(resp.Body)
-		if readErr != nil {
-			utils.BuildErrorResponse(m.Log, w, exceptions.ErrReadBody(readErr))
+		postHookErrMsgs := m.runPostFHIRProxyHooks(r, respBody, bodyBytes)
+
+		bodyAfterOwnership, encForFilters, mutated, ferr := m.filterFHIRResponse(r.Context(), resp, respBody)
+		if ferr != nil {
+			utils.BuildErrorResponse(m.Log, w, ferr)
 			return
 		}
 
-		// Post-FHIR-proxy hooks: run synchronously after successful response, before filtering.
-		// Collect all hook error messages so we can expose them in a single response header (capped).
-		var postHookErrMsgs []string
-		for _, hook := range m.PostFHIRProxyHooks {
-			reqDetail := PostFHIRProxyUserRequestDetail{
-				Context: r.Context(),
-				Method:  r.Method,
-				Path:    r.URL.Path,
-				Body:    bodyBytes,
-			}
-			respDetail := PostFHIRProxyFHIRServerResponse{
-				StatusCode: resp.StatusCode,
-				Body:       respBody,
-			}
-			if err := hook(reqDetail, respDetail); err != nil {
-				m.Log.Warn("PostFHIRProxyHook error", zap.Error(err))
-				postHookErrMsgs = append(postHookErrMsgs, err.Error())
-			}
-		}
-
-		roles, _ := r.Context().Value(keyRoles).([]string)
-		fhirRole, _ := r.Context().Value(keyFHIRRole).(string)
-		fhirID, _ := r.Context().Value(keyFHIRID).(string)
-
-		originalBody := respBody
-		bodyForFilters := respBody
-		encForFilters := bodyEncodingIdentity
-
-		filteringRole := determineFilteringRole(roles)
-		needsRBAC := filteringRole != ""
-		needsOwnership := r.Method == http.MethodGet && fhirID != ""
-
-		if needsRBAC || needsOwnership {
-			decoded, enc, derr := decodeBodyForFiltering(respBody, resp.Header.Get("Content-Encoding"))
-			if derr != nil {
-				m.Log.Warn("failed to decode response body for filtering; failing closed", zap.Error(derr))
-				utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerProcess(derr))
-				return
-			}
-			bodyForFilters = decoded
-			encForFilters = enc
-		}
-
-		bodyAfterRBAC := bodyForFilters
-		filteredRBAC := false
-		removedRBAC := 0
-
-		if needsRBAC {
-			switch filteringRole {
-			case constvars.KonsulinRoleSuperadmin:
-				b, removed, err := m.filterResponseResourceAgainstRBAC(bodyAfterRBAC, roles)
-				if err != nil {
-					m.Log.Warn("RBAC response filtering failed; failing closed", zap.Error(err))
-					utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerProcess(err))
-					return
-				}
-
-				bodyAfterRBAC = b
-				removedRBAC = removed
-				if removed > 0 {
-					filteredRBAC = true
-				}
-			default:
-				// other roles: no RBAC response filtering
-			}
-		}
-
-		// Ownership-based filtering
-		bodyAfterOwnership := bodyAfterRBAC
-		filteredOwnership := false
-		removedOwnership := 0
-
-		if needsOwnership {
-			if bundle, isBundle, _ := decodeBundle(bodyAfterRBAC); isBundle {
-				removedOwnership = m.applyOwnershipFilterToBundle(r.Context(), bundle, roles, fhirRole, fhirID)
-				if removedOwnership > 0 {
-					filteredOwnership = true
-
-					if bundle.Total != nil {
-						v := len(bundle.Entry)
-						bundle.Total = &v
-					}
-
-					fb, eerr := encodeBundle(bundle)
-					if eerr != nil {
-						m.Log.Warn("encodeBundle after ownership filtering failed; failing closed", zap.Error(eerr))
-						utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerProcess(eerr))
-						return
-					}
-
-					bodyAfterOwnership = fb
-				}
-			} else {
-				filteredBody, allowed, ferr := m.filterSingleResourceByOwnership(r.Context(), bodyAfterRBAC, roles, fhirRole, fhirID)
-				if ferr != nil {
-					m.Log.Info(fmt.Sprintf("single-resource ownership filtering failed for {%s/%s}; failing closed", fhirRole, fhirID), zap.Error(ferr))
-					utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerProcess(ferr))
-					return
-				}
-
-				if !allowed {
-					// Deny access when ownership cannot be proven.
-					utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(fmt.Errorf("forbidden: ownership cannot be proven")))
-					return
-				}
-
-				if filteredBody != nil {
-					bodyAfterOwnership = filteredBody
-				}
-			}
-		}
-
-		if filteredRBAC && removedRBAC > 0 {
-			m.Log.Info("RBAC filtered response entries",
-				zap.Int("removed", removedRBAC),
-				zap.String("method", r.Method),
-				zap.String("url", r.URL.RequestURI()),
-				zap.Strings("roles", roles),
-			)
-		}
-		if filteredOwnership && removedOwnership > 0 {
-			m.Log.Info("Ownership filtered response entries",
-				zap.Int("removed", removedOwnership),
-				zap.String("method", r.Method),
-				zap.String("url", r.URL.RequestURI()),
-				zap.String("fhirRole", fhirRole),
-				zap.String("fhirID", fhirID),
-			)
-		}
-
-		mutated := filteredRBAC || filteredOwnership
-
-		finalBody := originalBody
+		finalBody := respBody
 		if mutated {
 			encoded, eerr := encodeBodyFromFiltering(bodyAfterOwnership, encForFilters)
 			if eerr != nil {
@@ -341,32 +321,7 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 			finalBody = encoded
 		}
 
-		for k, v := range resp.Header {
-
-			if strings.EqualFold(k, "Content-Length") {
-				continue
-			}
-			w.Header()[k] = v
-		}
-
-		if mutated {
-			w.Header().Del("ETag")
-		}
-
-		// Value is all error messages joined with "; ", capped to maxPostFHIRHookErrorHeaderLen.
-		if len(postHookErrMsgs) > 0 {
-			joined := strings.Join(postHookErrMsgs, "; ")
-			if len(joined) > maxPostFHIRHookErrorHeaderLen {
-				joined = joined[:maxPostFHIRHookErrorHeaderLen-3] + "..."
-			}
-			w.Header().Set(headerPostFHIRHookError, joined)
-		}
-
-		w.Header().Set("Content-Length", strconv.Itoa(len(finalBody)))
-		w.WriteHeader(resp.StatusCode)
-		if _, err := w.Write(finalBody); err != nil {
-			m.Log.Warn("failed writing response body", zap.Error(err))
-		}
+		m.writeBridgeResponse(w, resp, finalBody, postHookErrMsgs)
 	})
 }
 
