@@ -543,7 +543,7 @@ func validatePractitionerInvoiceResource(resourceStr, fhirID string) bool {
 		if strings.HasPrefix(actorRef, "PractitionerRole/") {
 			return true
 		}
-		if strings.HasPrefix(actorRef, "Practitioner/") && strings.TrimPrefix(actorRef, "Practitioner/") == fhirID {
+		if strings.HasPrefix(actorRef, constvars.FHIRRefPrefixPractitioner) && strings.TrimPrefix(actorRef, constvars.FHIRRefPrefixPractitioner) == fhirID {
 			return true
 		}
 	}
@@ -557,7 +557,7 @@ func checkPractitionerRefs(resourceStr, fhirID string) bool {
 		gjson.Get(resourceStr, "performer.reference").String(),
 		gjson.Get(resourceStr, "author.reference").String(),
 	} {
-		if strings.HasPrefix(ref, "Practitioner/") && strings.TrimPrefix(ref, "Practitioner/") == fhirID {
+		if strings.HasPrefix(ref, constvars.FHIRRefPrefixPractitioner) && strings.TrimPrefix(ref, constvars.FHIRRefPrefixPractitioner) == fhirID {
 			return true
 		}
 	}
@@ -825,11 +825,11 @@ func checkPerResourceTypeOwnership(fhirID string, u *url.URL, resourceType strin
 	q := u.Query()
 	if resourceType == constvars.ResourcePractitionerRole {
 		practitioner := q.Get("practitioner")
-		return practitioner != "" && strings.TrimPrefix(practitioner, "Practitioner/") == fhirID
+		return practitioner != "" && strings.TrimPrefix(practitioner, constvars.FHIRRefPrefixPractitioner) == fhirID
 	}
 	if resourceType == constvars.ResourceSchedule {
 		actor := q.Get("actor")
-		return actor != "" && strings.TrimPrefix(actor, "Practitioner/") == fhirID
+		return actor != "" && strings.TrimPrefix(actor, constvars.FHIRRefPrefixPractitioner) == fhirID
 	}
 	if resourceType == constvars.ResourceSlot {
 		if q.Get("schedule.actor:Practitioner") != "" || q.Get("schedule.actor") != "" || q.Get("practitioner") != "" {
@@ -838,18 +838,18 @@ func checkPerResourceTypeOwnership(fhirID string, u *url.URL, resourceType strin
 	}
 	if resourceType == constvars.ResourceQuestionnaireResponse {
 		author := q.Get("author")
-		return author != "" && strings.TrimPrefix(author, "Practitioner/") == fhirID
+		return author != "" && strings.TrimPrefix(author, constvars.FHIRRefPrefixPractitioner) == fhirID
 	}
 	if resourceType == "Appointment" {
 		q := u.Query()
 
 		if p := q.Get("practitioner"); p != "" {
-			id := strings.TrimPrefix(p, "Practitioner/")
+			id := strings.TrimPrefix(p, constvars.FHIRRefPrefixPractitioner)
 			return id == fhirID
 		}
 
 		if a := q.Get("actor"); a != "" {
-			id := strings.TrimPrefix(a, "Practitioner/")
+			id := strings.TrimPrefix(a, constvars.FHIRRefPrefixPractitioner)
 			return id == fhirID
 		}
 
@@ -884,10 +884,10 @@ func checkPractitionerPublicResourceQuery(fhirID string, u *url.URL) bool {
 }
 
 func checkPractitionerQueryParams(fhirID string, q url.Values) bool {
-	if p := q.Get("practitioner"); p != "" && strings.TrimPrefix(p, "Practitioner/") == fhirID {
+	if p := q.Get("practitioner"); p != "" && strings.TrimPrefix(p, constvars.FHIRRefPrefixPractitioner) == fhirID {
 		return true
 	}
-	if a := q.Get("actor"); a != "" && strings.TrimPrefix(a, "Practitioner/") == fhirID {
+	if a := q.Get("actor"); a != "" && strings.TrimPrefix(a, constvars.FHIRRefPrefixPractitioner) == fhirID {
 		return true
 	}
 	return q.Get("patient") != "" || strings.HasPrefix(q.Get("subject"), constvars.FHIRRefPrefixPatient)
@@ -957,13 +957,13 @@ func checkPractitionerIdentifierOwnership(ctx context.Context, q url.Values, _ s
 }
 
 func checkPractitionerQueryOwnership(q url.Values, resourceType, fhirID string) bool {
-	if p := q.Get("practitioner"); p != "" && strings.TrimPrefix(p, "Practitioner/") == fhirID {
+	if p := q.Get("practitioner"); p != "" && strings.TrimPrefix(p, constvars.FHIRRefPrefixPractitioner) == fhirID {
 		return true
 	}
 	if resourceType == constvars.ResourcePractitioner && q.Get("_id") == fhirID {
 		return true
 	}
-	if a := q.Get("actor"); a != "" && strings.TrimPrefix(a, "Practitioner/") == fhirID {
+	if a := q.Get("actor"); a != "" && strings.TrimPrefix(a, constvars.FHIRRefPrefixPractitioner) == fhirID {
 		return true
 	}
 	if q.Get("patient") != "" || strings.HasPrefix(q.Get("subject"), constvars.FHIRRefPrefixPatient) {
@@ -973,7 +973,7 @@ func checkPractitionerQueryOwnership(q url.Values, resourceType, fhirID string) 
 		if strings.HasPrefix(participant, "PractitionerRole/") {
 			return true
 		}
-		if strings.HasPrefix(participant, "Practitioner/") && strings.TrimPrefix(participant, "Practitioner/") == fhirID {
+		if strings.HasPrefix(participant, constvars.FHIRRefPrefixPractitioner) && strings.TrimPrefix(participant, constvars.FHIRRefPrefixPractitioner) == fhirID {
 			return true
 		}
 	}
