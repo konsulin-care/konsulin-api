@@ -35,6 +35,36 @@ func newEnforcer(logger *zap.Logger) *casbin.Enforcer {
 	return enforcer
 }
 
+// handlePolicyEvent processes a single fsnotify event.
+func handlePolicyEvent(event fsnotify.Event, enforcer *casbin.Enforcer, logger *zap.Logger) {
+	if event.Op&fsnotify.Write != fsnotify.Write {
+		return
+	}
+	if err := enforcer.LoadPolicy(); err != nil {
+		logger.Error("failed to reload RBAC policy", zap.Error(err))
+	} else {
+		logger.Info("RBAC policy reloaded", zap.String("file", event.Name))
+	}
+}
+
+// watchPolicyEvents processes fsnotify events in a loop until the watcher is closed.
+func watchPolicyEvents(watcher *fsnotify.Watcher, enforcer *casbin.Enforcer, logger *zap.Logger) {
+	for {
+		select {
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return
+			}
+			handlePolicyEvent(event, enforcer, logger)
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				return
+			}
+			logger.Error("policy watcher error", zap.Error(err))
+		}
+	}
+}
+
 // startPolicyWatcher monitors the RBAC policy CSV file for changes and reloads automatically.
 func startPolicyWatcher(enforcer *casbin.Enforcer, logger *zap.Logger) {
 	watcher, err := fsnotify.NewWatcher()
@@ -42,28 +72,7 @@ func startPolicyWatcher(enforcer *casbin.Enforcer, logger *zap.Logger) {
 		logger.Fatal("failed to create policy watcher", zap.Error(err))
 	}
 
-	go func() {
-		for {
-			select {
-			case event, ok := <-watcher.Events:
-				if !ok {
-					return
-				}
-				if event.Op&fsnotify.Write == fsnotify.Write {
-					if err := enforcer.LoadPolicy(); err != nil {
-						logger.Error("failed to reload RBAC policy", zap.Error(err))
-					} else {
-						logger.Info("RBAC policy reloaded", zap.String("file", event.Name))
-					}
-				}
-			case err, ok := <-watcher.Errors:
-				if !ok {
-					return
-				}
-				logger.Error("policy watcher error", zap.Error(err))
-			}
-		}
-	}()
+	go watchPolicyEvents(watcher, enforcer, logger)
 
 	if err := watcher.Add("resources/rbac_policy.csv"); err != nil {
 		logger.Error("failed to watch policy file", zap.Error(err))
