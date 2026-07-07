@@ -150,7 +150,7 @@ func sanitizeProxyPath(path string) (string, error) {
 	return path, nil
 }
 
-func (m *Middlewares) doFHIRProxyRequest(r *http.Request, target string, client *http.Client) (resp *http.Response, respBody []byte, bodyBytes []byte, err error) {
+func doFHIRProxyRequest(r *http.Request, target string, client *http.Client) (resp *http.Response, respBody []byte, bodyBytes []byte, err error) {
 	path, err := sanitizeProxyPath(strings.TrimPrefix(r.URL.Path, "/fhir/"))
 	if err != nil {
 		return nil, nil, nil, exceptions.ErrCreateHTTPRequest(err)
@@ -355,7 +355,7 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 		CheckRedirect: allowedRedirectHost(parsedTarget.Host),
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp, respBody, bodyBytes, err := m.doFHIRProxyRequest(r, target, client)
+		resp, respBody, bodyBytes, err := doFHIRProxyRequest(r, target, client)
 		if err != nil {
 			utils.BuildErrorResponse(m.Log, w, err)
 			return
@@ -788,7 +788,7 @@ func (m *Middlewares) applyOwnershipFilterToBundle(
 }
 
 // evaluateBundleOwnership determines direct ownership for each bundle entry and collects allowed refs.
-func (m *Middlewares) evaluateBundleOwnership(ctx context.Context, bundle *Bundle, oc *ownershipContext) ([]bundleEntryInfo, map[string]struct{}) {
+func (m *Middlewares) evaluateBundleOwnership(_ context.Context, bundle *Bundle, oc *ownershipContext) ([]bundleEntryInfo, map[string]struct{}) {
 	infos := make([]bundleEntryInfo, len(bundle.Entry))
 	allowedRefs := make(map[string]struct{})
 

@@ -151,7 +151,7 @@ func extractAuthContextOutput(ctx context.Context) *ExtractAuthContextOutput {
 }
 
 // logger returns the usecase logger or a no-op if nil.
-func (u *usecase) logger(ctx context.Context) *zap.Logger {
+func (u *usecase) logger(_ context.Context) *zap.Logger {
 	if u.log != nil {
 		return u.log
 	}

@@ -58,12 +58,12 @@ func (uc *authUsecase) InitializeSupertoken() error {
 	supertokenRecipeList := []supertokens.Recipe{
 		passwordless.Init(uc.buildPasswordlessConfig()),
 		userroles.Init(nil),
-		session.Init(uc.buildSessionConfig(&cookieSameSite, &cookieSecure)),
+		session.Init(buildSessionConfig(&cookieSameSite, &cookieSecure)),
 		dashboard.Init(uc.buildDashboardConfig()),
 	}
 
 	err := supertokens.Init(supertokens.TypeInput{
-		OnSuperTokensAPIError: func(err error, req *http.Request, res http.ResponseWriter) {
+		OnSuperTokensAPIError: func(err error, _ *http.Request, _ http.ResponseWriter) {
 			log.Println(err.Error())
 		},
 		Supertokens: supertokenConnectionInfo,
@@ -102,7 +102,7 @@ func (uc *authUsecase) buildPasswordlessConfig() plessmodels.TypeInput {
 		FlowType:      "MAGIC_LINK",
 		ContactMethodEmailOrPhone: plessmodels.ContactMethodEmailOrPhoneConfig{
 			Enabled: true,
-			ValidateEmailAddress: func(email interface{}, tenantId string) *string {
+			ValidateEmailAddress: func(email interface{}, _ string) *string {
 				emailStr, ok := email.(string)
 				if !ok {
 					msg := "invalid email format"
@@ -117,7 +117,7 @@ func (uc *authUsecase) buildPasswordlessConfig() plessmodels.TypeInput {
 
 				return nil
 			},
-			ValidatePhoneNumber: func(phoneNumber interface{}, tenantId string) *string {
+			ValidatePhoneNumber: func(phoneNumber interface{}, _ string) *string {
 				phoneStr, ok := phoneNumber.(string)
 				if !ok {
 					msg := "invalid phone format"
@@ -416,7 +416,7 @@ func buildAccessTokenPayload(userID, tenantId string, payload map[string]interfa
 }
 
 // buildSessionConfig constructs the session recipe configuration.
-func (uc *authUsecase) buildSessionConfig(cookieSameSite *string, cookieSecure *bool) *sessmodels.TypeInput {
+func buildSessionConfig(cookieSameSite *string, cookieSecure *bool) *sessmodels.TypeInput {
 	return &sessmodels.TypeInput{
 		Override: &sessmodels.OverrideStruct{
 			Functions: func(originalImplementation sessmodels.RecipeInterface) sessmodels.RecipeInterface {
@@ -476,7 +476,7 @@ func (uc *authUsecase) sendSMSViaWebhook(input smsdelivery.PasswordlessLoginType
 func (uc *authUsecase) buildSMSDeliveryConfig() *smsdelivery.TypeInput {
 	return &smsdelivery.TypeInput{
 		Override: func(originalImplementation smsdelivery.SmsDeliveryInterface) smsdelivery.SmsDeliveryInterface {
-			(*originalImplementation.SendSms) = func(input smsdelivery.SmsType, userContext supertokens.UserContext) error {
+			(*originalImplementation.SendSms) = func(input smsdelivery.SmsType, _ supertokens.UserContext) error {
 				if input.PasswordlessLogin == nil {
 					return errors.New("passwordless sms delivery: missing PasswordlessLogin payload")
 				}

@@ -300,7 +300,7 @@ func (s *SlotUsecase) processSingleRoleWindow(
 		return nil, exceptions.BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, "failed to find slots for conflict detection")
 	}
 
-	deletableIDs, isIdempotent, err := s.detectRoleWindowConflicts(slots, pr, winStart, winEnd, input.SlotStatus, unavailableReason, state)
+	deletableIDs, isIdempotent, err := detectRoleWindowConflicts(slots, pr, winStart, winEnd, input.SlotStatus, unavailableReason, state)
 	if err != nil {
 		res := &singleRoleResult{}
 		for _, c := range slots {
@@ -569,7 +569,7 @@ func isSlotDeletable(status fhir_dto.SlotStatus) bool {
 	return status == fhir_dto.SlotStatusFree || status == fhir_dto.SlotStatusBusyTentative
 }
 
-func (s *SlotUsecase) detectRoleWindowConflicts(
+func detectRoleWindowConflicts(
 	slots []fhir_dto.Slot,
 	pr fhir_dto.PractitionerRole,
 	winStart, winEnd time.Time,

@@ -243,7 +243,7 @@ func logAndCreateLinkError(log *zap.Logger, msg, requestID string, err error, st
 }
 
 // assignMagicLinkRoles assigns SuperTokens roles to a user during magic link creation.
-func assignMagicLinkRoles(ctx context.Context, uc *authUsecase, requestID, userID string, roles []string, start time.Time) error {
+func assignMagicLinkRoles(_ context.Context, uc *authUsecase, requestID, userID string, roles []string, start time.Time) error {
 	for _, role := range roles {
 		response, err := userroles.AddRoleToUser(uc.InternalConfig.Supertoken.KonsulinTenantID, userID, role, nil)
 		if err != nil {

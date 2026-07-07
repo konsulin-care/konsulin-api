@@ -797,7 +797,7 @@ func checkPatientEmailOwnership(ctx context.Context, q url.Values, fhirID string
 	return false
 }
 
-func ownsPractitionerQuery(ctx context.Context, fhirID string, u *url.URL, resourceType string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient) bool {
+func ownsPractitionerQuery(ctx context.Context, fhirID string, u *url.URL, resourceType string, _ contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient) bool {
 	if utils.IsPublicResource(resourceType) {
 		return checkPractitionerPublicResourceQuery(fhirID, u)
 	}
@@ -929,7 +929,7 @@ func checkPractitionerPathOwnership(fhirID string, u *url.URL) bool {
 	return res == "Practitioner" && id == fhirID
 }
 
-func checkPractitionerIdentifierOwnership(ctx context.Context, q url.Values, fhirID string) bool {
+func checkPractitionerIdentifierOwnership(ctx context.Context, q url.Values, _ string) bool {
 	ids, ok := q["identifier"]
 	if !ok {
 		return false
