@@ -185,6 +185,16 @@ func classifyDayCoverageFromSlots(slots []fhir_dto.Slot, expected []interval) (d
 	return coverageAllFreeNonAuto, nonAutoIDs
 }
 
+// hasSystemGeneratedTag returns true if any tag in the slice has the system-generated code.
+func hasSystemGeneratedTag(tags []fhir_dto.Coding) bool {
+	for _, t := range tags {
+		if t.Code == SlotTagSystemGenerated {
+			return true
+		}
+	}
+	return false
+}
+
 // categorizeSlots classifies slots by free/not-free and auto/non-auto status.
 func categorizeSlots(slots []fhir_dto.Slot) (allFree, allAuto bool, nonAutoIDs, autoIDs []string) {
 	allFree = true
@@ -193,13 +203,7 @@ func categorizeSlots(slots []fhir_dto.Slot) (allFree, allAuto bool, nonAutoIDs, 
 		if s.Status != fhir_dto.SlotStatusFree {
 			allFree = false
 		}
-		auto := false
-		for _, t := range s.Meta.Tag {
-			if t.Code == SlotTagSystemGenerated {
-				auto = true
-				break
-			}
-		}
+		auto := hasSystemGeneratedTag(s.Meta.Tag)
 		if auto {
 			if s.ID != "" {
 				autoIDs = append(autoIDs, s.ID)
@@ -488,7 +492,7 @@ func buildFHIRSlots(scheduleID string, intervals []interval, status fhir_dto.Slo
 	for _, iv := range intervals {
 		out = append(out, fhir_dto.Slot{
 			ResourceType: constvars.ResourceSlot,
-			Schedule:     fhir_dto.Reference{Reference: "Schedule/" + scheduleID, Type: "Schedule"},
+			Schedule:     fhir_dto.Reference{Reference: constvars.FHIRRefPrefixSchedule + scheduleID, Type: "Schedule"},
 			Status:       status,
 			Start:        iv.Start,
 			End:          iv.End,
@@ -521,7 +525,7 @@ func buildCreateSlotsTransactionBundle(scheduleID string, slots []fhir_dto.Slot)
 			},
 			constvars.FhirFieldResource: map[string]any{
 				constvars.FhirFieldResourceType: constvars.ResourceSlot,
-				"schedule":                      map[string]any{constvars.FhirFieldReference: "Schedule/" + scheduleID},
+				"schedule":                      map[string]any{constvars.FhirFieldReference: constvars.FHIRRefPrefixSchedule + scheduleID},
 				constvars.FhirFieldStatus:       string(s.Status),
 				constvars.FhirFieldStart:        startISO,
 				constvars.FhirFieldEnd:          s.End.Format(time.RFC3339),
@@ -574,7 +578,7 @@ func buildOverrideSlotsTransactionBundle(scheduleID string, deleteIDs []string, 
 			},
 			"resource": map[string]any{
 				"resourceType": "Slot",
-				"schedule":     map[string]any{"reference": "Schedule/" + scheduleID},
+				"schedule":     map[string]any{"reference": constvars.FHIRRefPrefixSchedule + scheduleID},
 				"status":       string(s.Status),
 				"start":        startISO,
 				"end":          s.End.Format(time.RFC3339),
@@ -696,7 +700,7 @@ func buildBusyUnavailableOverlaps(appointedStart, appointedEnd time.Time, baseWi
 		}
 		slots = append(slots, fhir_dto.Slot{
 			ResourceType: "Slot",
-			Schedule:     fhir_dto.Reference{Reference: "Schedule/" + scheduleID, Type: "Schedule"},
+			Schedule:     fhir_dto.Reference{Reference: constvars.FHIRRefPrefixSchedule + scheduleID, Type: "Schedule"},
 			Status:       fhir_dto.SlotStatusBusyUnavailable,
 			Start:        ov.Start,
 			End:          ov.End,
