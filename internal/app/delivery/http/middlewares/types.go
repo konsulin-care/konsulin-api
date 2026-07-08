@@ -13,17 +13,8 @@ import (
 	"go.uber.org/zap"
 )
 
-func NewMiddlewares(
-	logger *zap.Logger,
-	sessionService contracts.SessionService,
-	authUsecase contracts.AuthUsecase,
-	internalConfig *config.InternalConfig,
-	practitionerFhirClient contracts.PractitionerFhirClient,
-	patientFhirClient contracts.PatientFhirClient,
-	practitionerRoleFhirClient contracts.PractitionerRoleFhirClient,
-	scheduleFhirClient contracts.ScheduleFhirClient,
-	questionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient,
-) *Middlewares {
+// newEnforcer creates a Casbin enforcer with RBAC model and custom pathMatch function.
+func newEnforcer(logger *zap.Logger) *casbin.Enforcer {
 	enforcer, err := casbin.NewEnforcer("resources/rbac_model.conf", "resources/rbac_policy.csv")
 	if err != nil {
 		logger.Fatal("failed to load RBAC policies", zap.Error(err))
@@ -41,42 +32,74 @@ func NewMiddlewares(
 		return utils.PathMatch(requestPath, policyPath), nil
 	})
 
+	return enforcer
+}
+
+// handlePolicyEvent processes a single fsnotify event.
+func handlePolicyEvent(event fsnotify.Event, enforcer *casbin.Enforcer, logger *zap.Logger) {
+	if event.Op&fsnotify.Write != fsnotify.Write {
+		return
+	}
+	if err := enforcer.LoadPolicy(); err != nil {
+		logger.Error("failed to reload RBAC policy", zap.Error(err))
+	} else {
+		logger.Info("RBAC policy reloaded", zap.String("file", event.Name))
+	}
+}
+
+// watchPolicyEvents processes fsnotify events in a loop until the watcher is closed.
+func watchPolicyEvents(watcher *fsnotify.Watcher, enforcer *casbin.Enforcer, logger *zap.Logger) {
+	for {
+		select {
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return
+			}
+			handlePolicyEvent(event, enforcer, logger)
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				return
+			}
+			logger.Error("policy watcher error", zap.Error(err))
+		}
+	}
+}
+
+// startPolicyWatcher monitors the RBAC policy CSV file for changes and reloads automatically.
+func startPolicyWatcher(enforcer *casbin.Enforcer, logger *zap.Logger) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		logger.Fatal("failed to create policy watcher", zap.Error(err))
 	}
-	policyFile := "resources/rbac_policy.csv"
-	go func() {
-		for {
-			select {
-			case event, ok := <-watcher.Events:
-				if !ok {
-					return
-				}
-				if event.Op&fsnotify.Write == fsnotify.Write {
-					if err := enforcer.LoadPolicy(); err != nil {
-						logger.Error("failed to reload RBAC policy", zap.Error(err))
-					} else {
-						logger.Info("RBAC policy reloaded", zap.String("file", event.Name))
-					}
-				}
-			case err, ok := <-watcher.Errors:
-				if !ok {
-					return
-				}
-				logger.Error("policy watcher error", zap.Error(err))
-			}
-		}
-	}()
-	if err := watcher.Add(policyFile); err != nil {
+
+	go watchPolicyEvents(watcher, enforcer, logger)
+
+	if err := watcher.Add("resources/rbac_policy.csv"); err != nil {
 		logger.Error("failed to watch policy file", zap.Error(err))
 	}
+}
 
-	httpClient := &http.Client{
+// newHTTPClient creates an HTTP client with sensible defaults.
+func newHTTPClient() *http.Client {
+	return &http.Client{
 		Timeout:   15 * time.Second,
 		Transport: &http.Transport{MaxIdleConnsPerHost: 100},
 	}
+}
 
+func NewMiddlewares(
+	logger *zap.Logger,
+	sessionService contracts.SessionService,
+	authUsecase contracts.AuthUsecase,
+	internalConfig *config.InternalConfig,
+	practitionerFhirClient contracts.PractitionerFhirClient,
+	patientFhirClient contracts.PatientFhirClient,
+	practitionerRoleFhirClient contracts.PractitionerRoleFhirClient,
+	scheduleFhirClient contracts.ScheduleFhirClient,
+	questionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient,
+) *Middlewares {
+	enforcer := newEnforcer(logger)
+	startPolicyWatcher(enforcer, logger)
 	return &Middlewares{
 		Log:                             logger,
 		SessionService:                  sessionService,
@@ -88,7 +111,7 @@ func NewMiddlewares(
 		ScheduleFhirClient:              scheduleFhirClient,
 		QuestionnaireResponseFhirClient: questionnaireResponseFhirClient,
 		Enforcer:                        enforcer,
-		HTTPClient:                      httpClient,
+		HTTPClient:                      newHTTPClient(),
 	}
 }
 
@@ -129,10 +152,3 @@ type PostFHIRProxyFHIRServerResponse struct {
 
 // PostFHIRProxyHook is called after a successful proxied FHIR request. Both params are structs for extensibility.
 type PostFHIRProxyHook func(PostFHIRProxyUserRequestDetail, PostFHIRProxyFHIRServerResponse) error
-
-type User struct {
-	ID    string
-	Roles []string
-}
-
-const UserContextKey ContextKey = "user_context"

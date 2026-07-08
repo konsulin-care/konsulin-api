@@ -125,39 +125,39 @@ func (uc *Usecase) RegisterPractitionerRoleAndSchedule(ctx context.Context, in c
 
 	entries := []map[string]any{
 		{
-			"resource": map[string]any{
-				"resourceType": constvars.ResourcePractitionerRole,
-				"id":           practitionerRoleID,
-				"active":       false,
-				"practitioner": map[string]any{"reference": "Practitioner/" + practitioner.ID},
-				"organization": map[string]any{"reference": "Organization/" + in.OrganizationID},
-				"period":       map[string]any{"start": now},
+			constvars.FhirFieldResource: map[string]any{
+				constvars.FhirFieldResourceType: constvars.ResourcePractitionerRole,
+				"id":                            practitionerRoleID,
+				"active":                        false,
+				"practitioner":                  map[string]any{constvars.FhirFieldReference: "Practitioner/" + practitioner.ID},
+				"organization":                  map[string]any{constvars.FhirFieldReference: "Organization/" + in.OrganizationID},
+				"period":                        map[string]any{constvars.FhirFieldStart: now},
 			},
-			"request": map[string]any{
-				"method": http.MethodPut,
-				"url":    fmt.Sprintf("%s/%s", constvars.ResourcePractitionerRole, practitionerRoleID),
+			constvars.FhirFieldRequest: map[string]any{
+				constvars.FhirFieldMethod: http.MethodPut,
+				constvars.FhirFieldURL:    fmt.Sprintf("%s/%s", constvars.ResourcePractitionerRole, practitionerRoleID),
 			},
 		},
 		{
-			"resource": map[string]any{
-				"resourceType": constvars.ResourceSchedule,
-				"id":           scheduleID,
+			constvars.FhirFieldResource: map[string]any{
+				constvars.FhirFieldResourceType: constvars.ResourceSchedule,
+				"id":                            scheduleID,
 				"actor": []map[string]any{
-					{"reference": "Practitioner/" + practitioner.ID},
-					{"reference": "PractitionerRole/" + practitionerRoleID},
+					{constvars.FhirFieldReference: "Practitioner/" + practitioner.ID},
+					{constvars.FhirFieldReference: "PractitionerRole/" + practitionerRoleID},
 				},
 			},
-			"request": map[string]any{
-				"method": http.MethodPut,
-				"url":    fmt.Sprintf("%s/%s", constvars.ResourceSchedule, scheduleID),
+			constvars.FhirFieldRequest: map[string]any{
+				constvars.FhirFieldMethod: http.MethodPut,
+				constvars.FhirFieldURL:    fmt.Sprintf("%s/%s", constvars.ResourceSchedule, scheduleID),
 			},
 		},
 	}
 
 	bundle := map[string]any{
-		"resourceType": "Bundle",
-		"type":         "transaction",
-		"entry":        entries,
+		constvars.FhirFieldResourceType: constvars.ResourceBundle,
+		constvars.FhirBundleFieldType:   constvars.FhirBundleTypeTransaction,
+		constvars.FhirFieldEntry:        entries,
 	}
 
 	_, err = uc.bundleClient.PostTransactionBundle(ctx, bundle)

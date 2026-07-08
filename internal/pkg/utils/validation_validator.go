@@ -12,13 +12,13 @@ var validate *validator.Validate
 
 func init() {
 	validate = validator.New()
-	validate.RegisterValidation("username", validateUsername)
-	validate.RegisterValidation("password", validatePassword)
-	validate.RegisterValidation("user_type", validateUserType)
-	validate.RegisterValidation("phone_number", validatePhoneNumber)
-	validate.RegisterValidation("not_past_date", validateNotPastDate)
-	validate.RegisterValidation("not_past_time", validateNotPastTime)
-	validate.RegisterValidation("not_future_date", validateNotFutureDate)
+	_ = validate.RegisterValidation("username", validateUsername)
+	_ = validate.RegisterValidation("password", validatePassword)
+	_ = validate.RegisterValidation("user_type", validateUserType)
+	_ = validate.RegisterValidation("phone_number", validatePhoneNumber)
+	_ = validate.RegisterValidation("not_past_date", validateNotPastDate)
+	_ = validate.RegisterValidation("not_past_time", validateNotPastTime)
+	_ = validate.RegisterValidation("not_future_date", validateNotFutureDate)
 }
 
 func ValidateStruct(s interface{}) error {

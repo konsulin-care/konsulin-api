@@ -8,6 +8,7 @@ import (
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/utils"
 	"net/http"
 	"net/url"
@@ -81,9 +82,51 @@ func (m *Middlewares) Authenticate(next http.Handler) http.Handler {
 	})
 }
 
+// handleAuthPostBody reads and validates the POST request body, restoring it for downstream use.
+func (m *Middlewares) handleAuthPostBody(ctxIface context.Context, r *http.Request, fhirRole, fhirID string) error {
+	body, _ := io.ReadAll(r.Body)
+	_ = r.Body.Close()
+
+	if err := m.validatePostRequestBody(ctxIface, body, fhirRole, fhirID); err != nil {
+		return err
+	}
+
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	return nil
+}
+
+// handleAuthBundle scans the bundle request body for authorization and returns whether it was a bundle.
+func (m *Middlewares) handleAuthBundle(ctxIface context.Context, r *http.Request, roles []string) (bool, error) {
+	if !isBundle(r) {
+		return false, nil
+	}
+	body, _ := io.ReadAll(r.Body)
+	_ = r.Body.Close()
+
+	if err := scanBundle(ctxIface, m.Enforcer, body, roles, ctxIface.Value(keyFHIRID).(string), m.PatientFhirClient, m.PractitionerFhirClient, m.PractitionerRoleFhirClient, m.ScheduleFhirClient, m.QuestionnaireResponseFhirClient); err != nil {
+		return true, err
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	return true, nil
+}
+
+// handleAuthSingleResource validates a single FHIR resource request.
+func (m *Middlewares) handleAuthSingleResource(ctxIface context.Context, r *http.Request, roles []string) error {
+	fullURL := r.URL.RequestURI()
+
+	var resourceBody []byte
+	if r.Method == constvars.MethodPut || r.Method == constvars.MethodPost {
+		body, _ := io.ReadAll(r.Body)
+		_ = r.Body.Close()
+		resourceBody = body
+		r.Body = io.NopCloser(bytes.NewReader(body))
+	}
+
+	return checkSingle(ctxIface, m.Enforcer, r.Method, fullURL, roles, ctxIface.Value(keyFHIRID).(string), m.PatientFhirClient, m.PractitionerFhirClient, m.PractitionerRoleFhirClient, m.ScheduleFhirClient, m.QuestionnaireResponseFhirClient, resourceBody)
+}
+
 func (m *Middlewares) Auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var err error
 		ctxIface := r.Context()
 		roles, _ := ctxIface.Value(keyRoles).([]string)
 		uid, _ := ctxIface.Value(keyUID).(string)
@@ -97,45 +140,24 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 
 		ctxIface = context.WithValue(ctxIface, keyFHIRRole, fhirRole)
 		ctxIface = context.WithValue(ctxIface, keyFHIRID, fhirID)
-
 		r = r.WithContext(ctxIface)
 
-		if r.Method == "POST" {
-			body, _ := io.ReadAll(r.Body)
-			r.Body.Close()
-
-			if err := m.validatePostRequestBody(ctxIface, body, fhirRole, fhirID); err != nil {
+		if r.Method == constvars.MethodPost {
+			if err := m.handleAuthPostBody(ctxIface, r, fhirRole, fhirID); err != nil {
 				utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
 				return
 			}
-
-			r.Body = io.NopCloser(bytes.NewReader(body))
 		}
 
-		if isBundle(r) {
-			body, _ := io.ReadAll(r.Body)
-			r.Body.Close()
-
-			if err := scanBundle(ctxIface, m.Enforcer, body, roles, ctxIface.Value(keyFHIRID).(string), m.PatientFhirClient, m.PractitionerFhirClient, m.PractitionerRoleFhirClient, m.ScheduleFhirClient, m.QuestionnaireResponseFhirClient); err != nil {
-				utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
-				return
-			}
-			r.Body = io.NopCloser(bytes.NewReader(body))
+		if isBundle, err := m.handleAuthBundle(ctxIface, r, roles); err != nil {
+			utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
+			return
+		} else if isBundle {
 			next.ServeHTTP(w, r)
 			return
 		}
 
-		fullURL := r.URL.RequestURI()
-
-		var resourceBody []byte
-		if r.Method == "PUT" || r.Method == "POST" {
-			body, _ := io.ReadAll(r.Body)
-			r.Body.Close()
-			resourceBody = body
-			r.Body = io.NopCloser(bytes.NewReader(body))
-		}
-
-		if err := checkSingle(ctxIface, m.Enforcer, r.Method, fullURL, roles, ctxIface.Value(keyFHIRID).(string), m.PatientFhirClient, m.PractitionerFhirClient, m.PractitionerRoleFhirClient, m.ScheduleFhirClient, m.QuestionnaireResponseFhirClient, resourceBody); err != nil {
+		if err := m.handleAuthSingleResource(ctxIface, r, roles); err != nil {
 			utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
 			return
 		}
@@ -211,68 +233,71 @@ func (m *Middlewares) validatePostRequestBody(ctx context.Context, body []byte, 
 }
 
 func (m *Middlewares) validatePatientOwnershipInBody(body []byte, patientID string) error {
-	if subject := gjson.GetBytes(body, "subject.reference").String(); subject != "" {
-		if !strings.HasPrefix(subject, "Patient/") {
-			return fmt.Errorf("invalid subject reference format: %s", subject)
-		}
-		subjectID := strings.TrimPrefix(subject, "Patient/")
-		if subjectID != patientID {
-			return fmt.Errorf("patient %s is trying to create resource for different patient %s", patientID, subjectID)
-		}
+	if err := validateBodySubjectRef(body, patientID, constvars.ResourcePatient); err != nil {
+		return err
 	}
+	if err := validateBodyArrayRefs(body, "performer", patientID, constvars.ResourcePatient); err != nil {
+		return err
+	}
+	return validateBodyArrayRefs(body, "actor", patientID, constvars.ResourcePatient)
+}
 
-	performers := gjson.GetBytes(body, "performer").Array()
-	for _, performer := range performers {
-		if ref := performer.Get("reference").String(); ref != "" {
-			if strings.HasPrefix(ref, "Patient/") {
-				performerID := strings.TrimPrefix(ref, "Patient/")
-				if performerID != patientID {
-					return fmt.Errorf("patient %s is trying to create resource with different patient performer %s", patientID, performerID)
-				}
+// validateBodySubjectRef checks that the subject.reference matches the given prefix and ID.
+func validateBodySubjectRef(body []byte, id, prefix string) error {
+	subject := gjson.GetBytes(body, constvars.FhirGJSONPathSubjectRef).String()
+	if subject == "" {
+		return nil
+	}
+	if !strings.HasPrefix(subject, prefix+"/") {
+		return fmt.Errorf("invalid subject reference format: %s", subject)
+	}
+	subjectID := strings.TrimPrefix(subject, prefix+"/")
+	if subjectID != id {
+		return fmt.Errorf("%s %s is trying to create resource for different %s %s", prefix, id, prefix, subjectID)
+	}
+	return nil
+}
+
+// validateBodyArrayRefs checks that all references in a JSON array field match the given prefix and ID.
+func validateBodyArrayRefs(body []byte, field, id, prefix string) error {
+	for _, item := range gjson.GetBytes(body, field).Array() {
+		ref := item.Get("reference").String()
+		if ref == "" {
+			continue
+		}
+		if strings.HasPrefix(ref, prefix+"/") {
+			itemID := strings.TrimPrefix(ref, prefix+"/")
+			if itemID != id {
+				return fmt.Errorf("%s %s is trying to create resource with different %s %s", prefix, id, prefix, itemID)
 			}
 		}
 	}
-
-	actors := gjson.GetBytes(body, "actor").Array()
-	for _, actor := range actors {
-		if ref := actor.Get("reference").String(); ref != "" {
-			if strings.HasPrefix(ref, "Patient/") {
-				actorID := strings.TrimPrefix(ref, "Patient/")
-				if actorID != patientID {
-					return fmt.Errorf("patient %s is trying to create resource with different patient actor %s", patientID, actorID)
-				}
-			}
-		}
-	}
-
 	return nil
 }
 
 func (m *Middlewares) validatePractitionerOwnershipInBody(body []byte, practitionerID string) error {
-	performers := gjson.GetBytes(body, "performer").Array()
-	for _, performer := range performers {
-		if ref := performer.Get("reference").String(); ref != "" {
-			if strings.HasPrefix(ref, "Practitioner/") {
-				performerID := strings.TrimPrefix(ref, "Practitioner/")
-				if performerID != practitionerID {
-					return fmt.Errorf("practitioner %s is trying to create resource with different practitioner performer %s", practitionerID, performerID)
-				}
-			}
+	if err := validatePractitionerRefs(body, "performer", practitionerID); err != nil {
+		return err
+	}
+	return validatePractitionerRefs(body, "actor", practitionerID)
+}
+
+// validatePractitionerRefs checks that all references in the given field
+// match the practitioner's FHIR ID.
+func validatePractitionerRefs(body []byte, field, practitionerID string) error {
+	for _, item := range gjson.GetBytes(body, field).Array() {
+		ref := item.Get("reference").String()
+		if ref == "" {
+			continue
+		}
+		if !strings.HasPrefix(ref, constvars.FHIRRefPrefixPractitioner) {
+			continue
+		}
+		id := strings.TrimPrefix(ref, constvars.FHIRRefPrefixPractitioner)
+		if id != practitionerID {
+			return fmt.Errorf("practitioner %s is trying to create resource with different practitioner %s %s", practitionerID, field, id)
 		}
 	}
-
-	actors := gjson.GetBytes(body, "actor").Array()
-	for _, actor := range actors {
-		if ref := actor.Get("reference").String(); ref != "" {
-			if strings.HasPrefix(ref, "Practitioner/") {
-				actorID := strings.TrimPrefix(ref, "Practitioner/")
-				if actorID != practitionerID {
-					return fmt.Errorf("practitioner %s is trying to create resource with different practitioner actor %s", practitionerID, actorID)
-				}
-			}
-		}
-	}
-
 	return nil
 }
 
@@ -422,191 +447,161 @@ func firstSeg(raw string) string {
 }
 func validateResourceOwnership(ctx context.Context, fhirID, role, resourceType string, resource []byte, practitionerRoleClient contracts.PractitionerRoleFhirClient, scheduleClient contracts.ScheduleFhirClient, questionnaireResponseClient contracts.QuestionnaireResponseFhirClient) bool {
 	if role == constvars.KonsulinRolePatient {
-		resourceStr := string(resource)
-
-		if resourceType == "Condition" {
-			subjectRef := gjson.Get(resourceStr, "subject.reference").String()
-			if strings.HasPrefix(subjectRef, "Patient/") {
-				patientID := strings.TrimPrefix(subjectRef, "Patient/")
-				return patientID == fhirID
-			}
-		}
-
-		if resourceType == "Appointment" {
-			participants := gjson.Get(resourceStr, "participant").Array()
-			for _, participant := range participants {
-				actorRef := participant.Get("actor.reference").String()
-				if strings.HasPrefix(actorRef, "Patient/") {
-					patientID := strings.TrimPrefix(actorRef, "Patient/")
-					if patientID == fhirID {
-						return true
-					}
-				}
-			}
-		}
-
-		if resourceType == "Slot" {
-			status := gjson.Get(resourceStr, "status").String()
-
-			if status == "busy" || status == "busy-unavailable" {
-				return true
-			}
-		}
-
-		if resourceType == constvars.ResourceQuestionnaireResponse {
-			questionnaireResponseID := gjson.Get(resourceStr, "id").String()
-
-			// will directly reject the request if the questionnaire response id is not found
-			if questionnaireResponseID == "" {
-				return false
-			}
-
-			questionnaireResponse, err := questionnaireResponseClient.FindQuestionnaireResponseByID(ctx, questionnaireResponseID)
-			if err != nil {
-				return false
-			}
-
-			authorRef := questionnaireResponse.Author.Reference
-			subjectRef := questionnaireResponse.Subject.Reference
-
-			if authorRef == "" && subjectRef == "" {
-				return true
-			}
-
-			sameOwner := true
-			if strings.HasPrefix(authorRef, "Patient/") {
-				authorID := strings.TrimPrefix(authorRef, "Patient/")
-				if authorID != fhirID {
-					sameOwner = false
-				}
-			}
-
-			if strings.HasPrefix(subjectRef, "Patient/") {
-				subjectID := strings.TrimPrefix(subjectRef, "Patient/")
-				if subjectID != fhirID {
-					sameOwner = false
-				}
-			}
-
-			if sameOwner {
-				return true
-			}
-		}
-
-		// this checks below is to allow patient to update their own patient resource
-		if resourceType == constvars.ResourcePatient {
-			patientID := gjson.Get(resourceStr, "id").String()
-			if patientID == fhirID {
-				return true
-			}
-		}
-
-		patientRefs := []string{
-			gjson.Get(resourceStr, "subject.reference").String(),
-			gjson.Get(resourceStr, "patient.reference").String(),
-			gjson.Get(resourceStr, "actor.reference").String(),
-		}
-
-		for _, ref := range patientRefs {
-			if strings.HasPrefix(ref, "Patient/") {
-				patientID := strings.TrimPrefix(ref, "Patient/")
-				if patientID == fhirID {
-					return true
-				}
-			}
-		}
+		return validatePatientResourceOwnership(ctx, fhirID, resourceType, resource, questionnaireResponseClient)
 	}
-
 	if role == constvars.KonsulinRolePractitioner {
-		resourceStr := string(resource)
-		if resourceType == "Invoice" {
-			participants := gjson.Get(resourceStr, "participant").Array()
-			for _, participant := range participants {
-				actorRef := participant.Get("actor.reference").String()
-				if strings.HasPrefix(actorRef, "PractitionerRole/") {
-					return true
-				}
-				if strings.HasPrefix(actorRef, "Practitioner/") {
-					practitionerID := strings.TrimPrefix(actorRef, "Practitioner/")
-					if practitionerID == fhirID {
-						return true
-					}
-				}
-			}
-		}
+		return validatePractitionerResourceOwnership(ctx, fhirID, resourceType, resource, practitionerRoleClient, scheduleClient)
+	}
+	return false
+}
 
-		// this checks below is to allow practitioner to update their own practitioner resource
-		if resourceType == constvars.ResourcePractitioner {
-			practitionerID := gjson.Get(resourceStr, "id").String()
-			if practitionerID == fhirID {
+func validatePatientResourceOwnership(ctx context.Context, fhirID, resourceType string, resource []byte, questionnaireResponseClient contracts.QuestionnaireResponseFhirClient) bool {
+	resourceStr := string(resource)
+	switch resourceType {
+	case "Condition":
+		return validatePatientConditionResource(resourceStr, fhirID)
+	case "Appointment":
+		return validatePatientAppointmentResource(resourceStr, fhirID)
+	case "Slot":
+		return validatePatientSlotResource(resourceStr)
+	case constvars.ResourceQuestionnaireResponse:
+		return validateQuestionnaireResponseOwner(ctx, fhirID, resourceStr, questionnaireResponseClient)
+	case constvars.ResourcePatient:
+		return gjson.Get(resourceStr, "id").String() == fhirID
+	default:
+		return checkPatientRefs(resourceStr, fhirID)
+	}
+}
+
+func validatePatientConditionResource(resourceStr, fhirID string) bool {
+	subjectRef := gjson.Get(resourceStr, constvars.FhirGJSONPathSubjectRef).String()
+	return strings.HasPrefix(subjectRef, constvars.FHIRRefPrefixPatient) && strings.TrimPrefix(subjectRef, constvars.FHIRRefPrefixPatient) == fhirID
+}
+
+func validatePatientAppointmentResource(resourceStr, fhirID string) bool {
+	for _, participant := range gjson.Get(resourceStr, "participant").Array() {
+		actorRef := participant.Get("actor.reference").String()
+		if strings.HasPrefix(actorRef, constvars.FHIRRefPrefixPatient) && strings.TrimPrefix(actorRef, constvars.FHIRRefPrefixPatient) == fhirID {
+			return true
+		}
+	}
+	return false
+}
+
+func validatePatientSlotResource(resourceStr string) bool {
+	status := gjson.Get(resourceStr, "status").String()
+	return status == "busy" || status == "busy-unavailable"
+}
+
+func checkPatientRefs(resourceStr, fhirID string) bool {
+	for _, ref := range []string{
+		gjson.Get(resourceStr, constvars.FhirGJSONPathSubjectRef).String(),
+		gjson.Get(resourceStr, "patient.reference").String(),
+		gjson.Get(resourceStr, "actor.reference").String(),
+	} {
+		if strings.HasPrefix(ref, constvars.FHIRRefPrefixPatient) && strings.TrimPrefix(ref, constvars.FHIRRefPrefixPatient) == fhirID {
+			return true
+		}
+	}
+	return false
+}
+
+func validatePractitionerResourceOwnership(ctx context.Context, fhirID, resourceType string, resource []byte, practitionerRoleClient contracts.PractitionerRoleFhirClient, scheduleClient contracts.ScheduleFhirClient) bool {
+	resourceStr := string(resource)
+	switch resourceType {
+	case "Invoice":
+		return validatePractitionerInvoiceResource(resourceStr, fhirID)
+	case constvars.ResourcePractitioner:
+		return gjson.Get(resourceStr, "id").String() == fhirID
+	case constvars.ResourceSchedule:
+		return validateScheduleOwnership(ctx, fhirID, resourceStr, practitionerRoleClient, scheduleClient)
+	default:
+		return checkPractitionerRefs(resourceStr, fhirID)
+	}
+}
+
+func validatePractitionerInvoiceResource(resourceStr, fhirID string) bool {
+	for _, participant := range gjson.Get(resourceStr, "participant").Array() {
+		actorRef := participant.Get("actor.reference").String()
+		if strings.HasPrefix(actorRef, "PractitionerRole/") {
+			return true
+		}
+		if strings.HasPrefix(actorRef, constvars.FHIRRefPrefixPractitioner) && strings.TrimPrefix(actorRef, constvars.FHIRRefPrefixPractitioner) == fhirID {
+			return true
+		}
+	}
+	return false
+}
+
+func checkPractitionerRefs(resourceStr, fhirID string) bool {
+	for _, ref := range []string{
+		gjson.Get(resourceStr, "practitioner.reference").String(),
+		gjson.Get(resourceStr, "actor.reference").String(),
+		gjson.Get(resourceStr, "performer.reference").String(),
+		gjson.Get(resourceStr, "author.reference").String(),
+	} {
+		if strings.HasPrefix(ref, constvars.FHIRRefPrefixPractitioner) && strings.TrimPrefix(ref, constvars.FHIRRefPrefixPractitioner) == fhirID {
+			return true
+		}
+	}
+	return false
+}
+
+func validateQuestionnaireResponseOwner(ctx context.Context, fhirID, resourceStr string, client contracts.QuestionnaireResponseFhirClient) bool {
+	id := gjson.Get(resourceStr, "id").String()
+	if id == "" {
+		return false
+	}
+	qr, err := client.FindQuestionnaireResponseByID(ctx, id)
+	if err != nil {
+		return false
+	}
+	authorRef := qr.Author.Reference
+	subjectRef := qr.Subject.Reference
+	if authorRef == "" && subjectRef == "" {
+		return true
+	}
+	if strings.HasPrefix(authorRef, constvars.FHIRRefPrefixPatient) && strings.TrimPrefix(authorRef, constvars.FHIRRefPrefixPatient) != fhirID {
+		return false
+	}
+	if strings.HasPrefix(subjectRef, constvars.FHIRRefPrefixPatient) && strings.TrimPrefix(subjectRef, constvars.FHIRRefPrefixPatient) != fhirID {
+		return false
+	}
+	return true
+}
+
+// scheduleActorOwnedByPractitioner checks if any actor in the schedule references the practitioner.
+func scheduleActorOwnedByPractitioner(ctx context.Context, actors []fhir_dto.Reference, fhirID string, practitionerRoleClient contracts.PractitionerRoleFhirClient) bool {
+	for _, actor := range actors {
+		actorRef := actor.Reference
+		if strings.HasPrefix(actorRef, "PractitionerRole/") {
+			roleID := strings.TrimPrefix(actorRef, "PractitionerRole/")
+			pr, err := practitionerRoleClient.FindPractitionerRoleByID(ctx, roleID)
+			if err != nil {
+				continue
+			}
+			pracRef := pr.Practitioner.Reference
+			if strings.HasPrefix(pracRef, constvars.FHIRRefPrefixPractitioner) && strings.TrimPrefix(pracRef, constvars.FHIRRefPrefixPractitioner) == fhirID {
 				return true
 			}
 		}
-
-		// schedule ownership check via first actor -> PractitionerRole -> Practitioner
-		if resourceType == constvars.ResourceSchedule {
-			scheduleID := gjson.Get(resourceStr, "id").String()
-			if scheduleID == "" {
-				return false
-			}
-
-			schedules, err := scheduleClient.Search(ctx, contracts.ScheduleSearchParams{ID: scheduleID})
-			if err != nil {
-				return false
-			}
-			if len(schedules) != 1 {
-				return false
-			}
-			sch := schedules[0]
-			if len(sch.Actor) < 1 {
-				return false
-			}
-
-			for _, actor := range sch.Actor {
-				actorRef := actor.Reference
-
-				if strings.HasPrefix(actorRef, "PractitionerRole/") {
-					roleID := strings.TrimPrefix(actorRef, "PractitionerRole/")
-					pr, err := practitionerRoleClient.FindPractitionerRoleByID(ctx, roleID)
-					if err != nil {
-						continue
-					}
-					pracRef := pr.Practitioner.Reference
-					if strings.HasPrefix(pracRef, "Practitioner/") {
-						pid := strings.TrimPrefix(pracRef, "Practitioner/")
-						if pid == fhirID {
-							return true
-						}
-					}
-				}
-
-				if strings.HasPrefix(actorRef, "Practitioner/") {
-					practitionerID := strings.TrimPrefix(actorRef, "Practitioner/")
-					if practitionerID == fhirID {
-						return true
-					}
-				}
-			}
-
-		}
-
-		practitionerRefs := []string{
-			gjson.Get(resourceStr, "practitioner.reference").String(),
-			gjson.Get(resourceStr, "actor.reference").String(),
-			gjson.Get(resourceStr, "performer.reference").String(),
-			gjson.Get(resourceStr, "author.reference").String(),
-		}
-		for _, ref := range practitionerRefs {
-			if strings.HasPrefix(ref, "Practitioner/") {
-				practitionerID := strings.TrimPrefix(ref, "Practitioner/")
-				if practitionerID == fhirID {
-					return true
-				}
-			}
+		if strings.HasPrefix(actorRef, constvars.FHIRRefPrefixPractitioner) && strings.TrimPrefix(actorRef, constvars.FHIRRefPrefixPractitioner) == fhirID {
+			return true
 		}
 	}
-
 	return false
+}
+
+func validateScheduleOwnership(ctx context.Context, fhirID, resourceStr string, practitionerRoleClient contracts.PractitionerRoleFhirClient, scheduleClient contracts.ScheduleFhirClient) bool {
+	scheduleID := gjson.Get(resourceStr, "id").String()
+	if scheduleID == "" {
+		return false
+	}
+	schedules, err := scheduleClient.Search(ctx, contracts.ScheduleSearchParams{ID: scheduleID})
+	if err != nil || len(schedules) != 1 {
+		return false
+	}
+	return scheduleActorOwnedByPractitioner(ctx, schedules[0].Actor, fhirID, practitionerRoleClient)
 }
 
 func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient, practitionerRoleClient contracts.PractitionerRoleFhirClient, scheduleClient contracts.ScheduleFhirClient, questionnaireResponseClient contracts.QuestionnaireResponseFhirClient, resource []byte) bool {
@@ -623,367 +618,375 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 		return true
 	}
 
-	if method == "POST" {
+	if method == constvars.MethodPost {
 		return true
 	}
 
-	if method == "PUT" && len(resource) > 0 {
+	if method == constvars.MethodPut && len(resource) > 0 {
 		return validateResourceOwnership(ctx, fhirID, role, resourceType, resource, practitionerRoleClient, scheduleClient, questionnaireResponseClient)
 	}
 
 	if role == constvars.KonsulinRolePatient {
-
-		if utils.IsPublicResource(resourceType) {
-			return true
-		}
-
-		if utils.RequiresPatientOwnership(resourceType) {
-
-			parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
-			if len(parts) >= 2 {
-				var res, id string
-
-				if strings.EqualFold(parts[0], "fhir") {
-					if len(parts) >= 3 {
-						res, id = parts[1], parts[2]
-					}
-				} else {
-					res, id = parts[0], parts[1]
-				}
-
-				if res == "Patient" && id == fhirID {
-					return true
-				}
-			}
-
-			q := u.Query()
-
-			if p := q.Get("patient"); p != "" {
-				id := strings.TrimPrefix(p, "Patient/")
-				return id == fhirID
-			}
-
-			if s := q.Get("subject"); s != "" {
-				id := strings.TrimPrefix(s, "Patient/")
-				return id == fhirID
-			}
-
-			if a := q.Get("actor"); a != "" {
-				id := strings.TrimPrefix(a, "Patient/")
-				return id == fhirID
-			}
-
-			if qr := q.Get("questionnaire"); qr != "" {
-				return true
-			}
-
-			if resourceType == constvars.ResourcePatient {
-				if val := q.Get("_id"); val != "" {
-					return val == fhirID
-				}
-			}
-
-			if identifier := q.Get("identifier"); identifier != "" {
-
-				patientID, err := resolveIdentifierToPatientID(ctx, identifier, patientClient)
-				if err != nil {
-
-					return false
-				}
-
-				if patientID == fhirID {
-					return true
-				}
-
-				// Fallback: if requester has Practitioner role, allow when practitioner's email matches patient's
-				roles, _ := ctx.Value(keyRoles).([]string)
-				isPractitioner := false
-				for _, r := range roles {
-					if strings.EqualFold(r, constvars.KonsulinRolePractitioner) {
-						isPractitioner = true
-						break
-					}
-				}
-				if !isPractitioner {
-					return false
-				}
-
-				// Fetch Practitioner and Patient resources and compare emails (exact match)
-				practitioner, err := practitionerClient.FindPractitionerByID(ctx, fhirID)
-				if err != nil || practitioner == nil {
-					return false
-				}
-				patient, err := patientClient.FindPatientByID(ctx, patientID)
-				if err != nil || patient == nil {
-					return false
-				}
-
-				practEmails := practitioner.GetEmailAddresses()
-				patEmails := patient.GetEmailAddresses()
-				if len(practEmails) == 0 || len(patEmails) == 0 {
-					return false
-				}
-				for _, pe := range practEmails {
-					for _, qe := range patEmails {
-						if pe == qe {
-							return true
-						}
-					}
-				}
-				return false
-			}
-
-			// add support email based query
-			if email := q.Get("email"); email != "" {
-				patients, err := patientClient.FindPatientByEmail(ctx, email)
-				if err != nil {
-					return false
-				}
-
-				// the check below will be turned of for now
-				// to temporarily allow multiple patients found
-				// // guard against no patients found or multiple patients found
-				// if len(patients) != 1 {
-				// 	return false
-				// }
-
-				// If any patient resolved by email matches current fhirID, allow
-				for _, p := range patients {
-					if p.ID == fhirID {
-						return true
-					}
-				}
-
-				// Require Practitioner role for email intersection fallback
-				roles, _ := ctx.Value(keyRoles).([]string)
-				hasPractRole := false
-				for _, r := range roles {
-					if strings.EqualFold(r, constvars.KonsulinRolePractitioner) {
-						hasPractRole = true
-						break
-					}
-				}
-				if !hasPractRole {
-					return false
-				}
-
-				// Verify practitioner's emails intersect with requested email
-				practitioner, err := practitionerClient.FindPractitionerByID(ctx, fhirID)
-				if err != nil || practitioner == nil {
-					return false
-				}
-				practEmails := practitioner.GetEmailAddresses()
-				if len(practEmails) == 0 {
-					return false
-				}
-				for _, pe := range practEmails {
-					if pe == email {
-						return true
-					}
-				}
-				return false
-			}
-
-			return false
-		}
-
-		return false
+		return ownsPatientQuery(ctx, fhirID, u, resourceType, patientClient, practitionerClient)
 	}
 
 	if role == constvars.KonsulinRolePractitioner {
+		return ownsPractitionerQuery(ctx, fhirID, u, resourceType, patientClient, practitionerClient)
+	}
 
-		if utils.IsPublicResource(resourceType) {
-			q := u.Query()
-			hasOwnershipParams := false
+	return false
+}
 
-			if q.Get("practitioner") != "" || q.Get("actor") != "" {
-				hasOwnershipParams = true
+// extractPathResourceID parses a URL path to extract resource type and ID.
+// Handles both /fhir/{resource}/{id} and /{resource}/{id} patterns.
+// Returns empty strings for paths with insufficient segments.
+func extractPathResourceID(path string) (resource, id string) {
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	if len(parts) >= 2 {
+		if strings.EqualFold(parts[0], "fhir") {
+			if len(parts) >= 3 {
+				return parts[1], parts[2]
 			}
+			return "", ""
+		}
+		return parts[0], parts[1]
+	}
+	return "", ""
+}
 
-			for key := range q {
-				if strings.HasPrefix(key, "_has") && strings.Contains(key, "practitioner") {
-					hasOwnershipParams = true
-					break
-				}
-			}
+func ownsPatientQuery(ctx context.Context, fhirID string, u *url.URL, resourceType string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient) bool {
+	if utils.IsPublicResource(resourceType) {
+		return true
+	}
 
-			if !hasOwnershipParams {
+	if !utils.RequiresPatientOwnership(resourceType) {
+		return false
+	}
+
+	// IDOR guard on direct Patient/<id> paths.
+	// If path targets a different Patient ID, deny immediately without
+	// falling through to query-parameter-based checks.
+	if res, id := extractPathResourceID(u.Path); res == constvars.ResourcePatient {
+		return id == fhirID
+	}
+
+	q := u.Query()
+
+	if checkPatientQueryRefs(q, resourceType, fhirID) {
+		return true
+	}
+
+	if checkPatientIdentifierOwnership(ctx, q, fhirID, patientClient, practitionerClient) {
+		return true
+	}
+	if checkPatientEmailOwnership(ctx, q, fhirID, patientClient, practitionerClient) {
+		return true
+	}
+
+	return false
+}
+
+// checkPatientQueryRefs checks common patient query parameters for ownership.
+func checkPatientQueryRefs(q url.Values, resourceType, fhirID string) bool {
+	for _, param := range []string{"patient", "subject", "actor"} {
+		if val := q.Get(param); val != "" && strings.TrimPrefix(val, constvars.FHIRRefPrefixPatient) == fhirID {
+			return true
+		}
+	}
+	// questionnaire is always allowed for patients
+	if q.Get("questionnaire") != "" {
+		return true
+	}
+	if resourceType == constvars.ResourcePatient {
+		if val := q.Get("_id"); val != "" && val == fhirID {
+			return true
+		}
+	}
+	return false
+}
+
+func checkPatientIdentifierOwnership(ctx context.Context, q url.Values, fhirID string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient) bool {
+	identifier := q.Get("identifier")
+	if identifier == "" {
+		return false
+	}
+	patientID, err := resolveIdentifierToPatientID(ctx, identifier, patientClient)
+	if err != nil {
+		return false
+	}
+	if patientID == fhirID {
+		return true
+	}
+	roles, _ := ctx.Value(keyRoles).([]string)
+	if !hasRole(roles, constvars.KonsulinRolePractitioner) {
+		return false
+	}
+	return matchSharedEmail(ctx, practitionerClient, patientClient, fhirID, patientID)
+}
+
+// hasRole returns true if roles contains the target role (case-insensitive).
+func hasRole(roles []string, target string) bool {
+	for _, r := range roles {
+		if strings.EqualFold(r, target) {
+			return true
+		}
+	}
+	return false
+}
+
+// matchSharedEmail returns true if any email address is shared between practitioner and patient.
+func matchSharedEmail(ctx context.Context, practitionerClient contracts.PractitionerFhirClient, patientClient contracts.PatientFhirClient, fhirID, patientID string) bool {
+	practitioner, err := practitionerClient.FindPractitionerByID(ctx, fhirID)
+	if err != nil || practitioner == nil {
+		return false
+	}
+	patient, err := patientClient.FindPatientByID(ctx, patientID)
+	if err != nil || patient == nil {
+		return false
+	}
+	practEmails := practitioner.GetEmailAddresses()
+	patEmails := patient.GetEmailAddresses()
+	if len(practEmails) == 0 || len(patEmails) == 0 {
+		return false
+	}
+	for _, pe := range practEmails {
+		for _, qe := range patEmails {
+			if pe == qe {
 				return true
 			}
+		}
+	}
+	return false
+}
 
-			parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
-			if len(parts) >= 2 {
-				var res, id string
-				if strings.EqualFold(parts[0], "fhir") {
-					if len(parts) >= 3 {
-						res, id = parts[1], parts[2]
-					}
-				} else {
-					res, id = parts[0], parts[1]
-				}
+func checkPatientEmailOwnership(ctx context.Context, q url.Values, fhirID string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient) bool {
+	email := q.Get("email")
+	if email == "" {
+		return false
+	}
+	patients, err := patientClient.FindPatientByEmail(ctx, email)
+	if err != nil {
+		return false
+	}
+	for _, p := range patients {
+		if p.ID == fhirID {
+			return true
+		}
+	}
+	roles, _ := ctx.Value(keyRoles).([]string)
+	if !hasRole(roles, constvars.KonsulinRolePractitioner) {
+		return false
+	}
+	practitioner, err := practitionerClient.FindPractitionerByID(ctx, fhirID)
+	if err != nil || practitioner == nil {
+		return false
+	}
+	for _, pe := range practitioner.GetEmailAddresses() {
+		if pe == email {
+			return true
+		}
+	}
+	return false
+}
 
-				if res == "Practitioner" && id == fhirID {
-					return true
-				}
-			}
+func ownsPractitionerQuery(ctx context.Context, fhirID string, u *url.URL, resourceType string, _ contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient) bool {
+	if utils.IsPublicResource(resourceType) {
+		return checkPractitionerPublicResourceQuery(fhirID, u)
+	}
 
-			if p := q.Get("practitioner"); p != "" {
-				id := strings.TrimPrefix(p, "Practitioner/")
-				return id == fhirID
-			}
+	if utils.RequiresPractitionerOwnership(resourceType) {
+		return checkPractitionerOwnershipParams(ctx, fhirID, u, resourceType, practitionerClient)
+	}
 
-			if a := q.Get("actor"); a != "" {
-				id := strings.TrimPrefix(a, "Practitioner/")
-				return id == fhirID
-			}
+	if checkPerResourceTypeOwnership(fhirID, u, resourceType) {
+		return true
+	}
 
-			if patient := q.Get("patient"); patient != "" {
-				return true
-			}
+	return false
+}
 
-			if subject := q.Get("subject"); subject != "" {
-				if strings.HasPrefix(subject, "Patient/") {
-					return true
-				}
-			}
+func checkPerResourceTypeOwnership(fhirID string, u *url.URL, resourceType string) bool {
+	q := u.Query()
+	if resourceType == constvars.ResourcePractitionerRole {
+		practitioner := q.Get("practitioner")
+		return practitioner != "" && strings.TrimPrefix(practitioner, constvars.FHIRRefPrefixPractitioner) == fhirID
+	}
+	if resourceType == constvars.ResourceSchedule {
+		actor := q.Get("actor")
+		return actor != "" && strings.TrimPrefix(actor, constvars.FHIRRefPrefixPractitioner) == fhirID
+	}
+	if resourceType == constvars.ResourceSlot {
+		if q.Get("schedule.actor:Practitioner") != "" || q.Get("schedule.actor") != "" || q.Get("practitioner") != "" {
+			return true
+		}
+	}
+	if resourceType == constvars.ResourceQuestionnaireResponse {
+		author := q.Get("author")
+		return author != "" && strings.TrimPrefix(author, constvars.FHIRRefPrefixPractitioner) == fhirID
+	}
+	if resourceType == "Appointment" {
+		q := u.Query()
 
-			for key, values := range q {
-				if strings.HasPrefix(key, "_has") && strings.Contains(key, "practitioner") {
-					for _, value := range values {
-						if value == fhirID {
-							return true
-						}
-					}
-				}
-			}
-
-			return false
+		if p := q.Get("practitioner"); p != "" {
+			id := strings.TrimPrefix(p, constvars.FHIRRefPrefixPractitioner)
+			return id == fhirID
 		}
 
-		if utils.RequiresPractitionerOwnership(resourceType) {
-
-			parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
-			if len(parts) >= 2 {
-				var res, id string
-				if strings.EqualFold(parts[0], "fhir") {
-					if len(parts) >= 3 {
-						res, id = parts[1], parts[2]
-					}
-				} else {
-					res, id = parts[0], parts[1]
-				}
-
-				if res == "Practitioner" && id == fhirID {
-					return true
-				}
-			}
-
-			q := u.Query()
-
-			// support identifier-based lookup for own Practitioner record using SuperTokens UID
-			if ids, ok := q["identifier"]; ok {
-				uidCtx, _ := ctx.Value(keyUID).(string)
-				for _, idv := range ids {
-					parts := strings.SplitN(idv, "|", 2)
-					if len(parts) == 2 {
-						sys, val := parts[0], parts[1]
-						if sys == constvars.FhirSupertokenSystemIdentifier && val == uidCtx {
-							return true
-						}
-					} else {
-						// optionally allow raw UID without system prefix
-						if idv == uidCtx {
-							return true
-						}
-					}
-				}
-			}
-
-			if p := q.Get("practitioner"); p != "" {
-				id := strings.TrimPrefix(p, "Practitioner/")
-				return id == fhirID
-			}
-
-			if resourceType == constvars.ResourcePractitioner {
-				if val := q.Get("_id"); val != "" {
-					return val == fhirID
-				}
-			}
-
-			if a := q.Get("actor"); a != "" {
-				id := strings.TrimPrefix(a, "Practitioner/")
-				return id == fhirID
-			}
-
-			if patient := q.Get("patient"); patient != "" {
-				return true
-			}
-
-			if subject := q.Get("subject"); subject != "" {
-				if strings.HasPrefix(subject, "Patient/") {
-					return true
-				}
-			}
-
-			if participant := q.Get("participant"); participant != "" {
-				if strings.HasPrefix(participant, "PractitionerRole/") {
-					return true
-				}
-				if strings.HasPrefix(participant, "Practitioner/") {
-					id := strings.TrimPrefix(participant, "Practitioner/")
-					return id == fhirID
-				}
-			}
-
-			for key, values := range q {
-				if strings.HasPrefix(key, "_has") && strings.Contains(key, "practitioner") {
-					for _, value := range values {
-						if value == fhirID {
-							return true
-						}
-					}
-				}
-			}
-
-			// add support email based query
-			if email := q.Get("email"); email != "" {
-				practitioners, err := practitionerClient.FindPractitionerByEmail(ctx, email)
-
-				if err != nil {
-					return false
-				}
-
-				// guard against multiple practitioners found
-				// or no practitioners found at all
-				if len(practitioners) != 1 {
-					return false
-				}
-
-				return practitioners[0].ID == fhirID
-			}
-			return false
-		}
-
-		if resourceType == "Appointment" {
-			q := u.Query()
-
-			if p := q.Get("practitioner"); p != "" {
-				id := strings.TrimPrefix(p, "Practitioner/")
-				return id == fhirID
-			}
-
-			if a := q.Get("actor"); a != "" {
-				id := strings.TrimPrefix(a, "Practitioner/")
-				return id == fhirID
-			}
-
-			return false
+		if a := q.Get("actor"); a != "" {
+			id := strings.TrimPrefix(a, constvars.FHIRRefPrefixPractitioner)
+			return id == fhirID
 		}
 
 		return false
 	}
 
 	return false
+}
+
+func checkPractitionerPublicResourceQuery(fhirID string, u *url.URL) bool {
+	q := u.Query()
+	hasOwnershipParams := q.Get("practitioner") != "" || q.Get("actor") != ""
+	if !hasOwnershipParams {
+		for key := range q {
+			if strings.HasPrefix(key, "_has") && strings.Contains(key, "practitioner") {
+				hasOwnershipParams = true
+				break
+			}
+		}
+	}
+	if !hasOwnershipParams {
+		return true
+	}
+
+	if checkPractitionerPathOwnership(fhirID, u) {
+		return true
+	}
+	if checkPractitionerQueryParams(fhirID, q) {
+		return true
+	}
+	return checkPractitionerHasQuery(fhirID, q)
+}
+
+func checkPractitionerQueryParams(fhirID string, q url.Values) bool {
+	if p := q.Get("practitioner"); p != "" && strings.TrimPrefix(p, constvars.FHIRRefPrefixPractitioner) == fhirID {
+		return true
+	}
+	if a := q.Get("actor"); a != "" && strings.TrimPrefix(a, constvars.FHIRRefPrefixPractitioner) == fhirID {
+		return true
+	}
+	return q.Get("patient") != "" || strings.HasPrefix(q.Get("subject"), constvars.FHIRRefPrefixPatient)
+}
+
+func checkPractitionerHasQuery(fhirID string, q url.Values) bool {
+	for key, values := range q {
+		if strings.HasPrefix(key, "_has") && strings.Contains(key, "practitioner") {
+			for _, value := range values {
+				if value == fhirID {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func checkPractitionerOwnershipParams(ctx context.Context, fhirID string, u *url.URL, resourceType string, practitionerClient contracts.PractitionerFhirClient) bool {
+	if checkPractitionerPathOwnership(fhirID, u) {
+		return true
+	}
+	q := u.Query()
+	if checkPractitionerIdentifierOwnership(ctx, q, fhirID) {
+		return true
+	}
+	if checkPractitionerQueryOwnership(q, resourceType, fhirID) {
+		return true
+	}
+	if checkPractitionerHasQueryOwnership(q, fhirID) {
+		return true
+	}
+	return checkPractitionerEmailOwnership(ctx, q, fhirID, practitionerClient)
+}
+
+func checkPractitionerPathOwnership(fhirID string, u *url.URL) bool {
+	parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
+	if len(parts) < 2 {
+		return false
+	}
+	var res, id string
+	if strings.EqualFold(parts[0], "fhir") && len(parts) >= 3 {
+		res, id = parts[1], parts[2]
+	} else {
+		res, id = parts[0], parts[1]
+	}
+	return res == "Practitioner" && id == fhirID
+}
+
+func checkPractitionerIdentifierOwnership(ctx context.Context, q url.Values, _ string) bool {
+	ids, ok := q["identifier"]
+	if !ok {
+		return false
+	}
+	uidCtx, _ := ctx.Value(keyUID).(string)
+	for _, idv := range ids {
+		parts := strings.SplitN(idv, "|", 2)
+		if len(parts) == 2 {
+			if parts[0] == constvars.FhirSupertokenSystemIdentifier && parts[1] == uidCtx {
+				return true
+			}
+		} else if idv == uidCtx {
+			return true
+		}
+	}
+	return false
+}
+
+func checkPractitionerQueryOwnership(q url.Values, resourceType, fhirID string) bool {
+	if p := q.Get("practitioner"); p != "" && strings.TrimPrefix(p, constvars.FHIRRefPrefixPractitioner) == fhirID {
+		return true
+	}
+	if resourceType == constvars.ResourcePractitioner && q.Get("_id") == fhirID {
+		return true
+	}
+	if a := q.Get("actor"); a != "" && strings.TrimPrefix(a, constvars.FHIRRefPrefixPractitioner) == fhirID {
+		return true
+	}
+	if q.Get("patient") != "" || strings.HasPrefix(q.Get("subject"), constvars.FHIRRefPrefixPatient) {
+		return true
+	}
+	if participant := q.Get("participant"); participant != "" {
+		if strings.HasPrefix(participant, "PractitionerRole/") {
+			return true
+		}
+		if strings.HasPrefix(participant, constvars.FHIRRefPrefixPractitioner) && strings.TrimPrefix(participant, constvars.FHIRRefPrefixPractitioner) == fhirID {
+			return true
+		}
+	}
+	return false
+}
+
+func checkPractitionerHasQueryOwnership(q url.Values, fhirID string) bool {
+	for key, values := range q {
+		if strings.HasPrefix(key, "_has") && strings.Contains(key, "practitioner") {
+			for _, value := range values {
+				if value == fhirID {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func checkPractitionerEmailOwnership(ctx context.Context, q url.Values, fhirID string, practitionerClient contracts.PractitionerFhirClient) bool {
+	email := q.Get("email")
+	if email == "" {
+		return false
+	}
+	practitioners, err := practitionerClient.FindPractitionerByEmail(ctx, email)
+	if err != nil || len(practitioners) != 1 {
+		return false
+	}
+	return practitioners[0].ID == fhirID
 }
 
 func isBundle(r *http.Request) bool {

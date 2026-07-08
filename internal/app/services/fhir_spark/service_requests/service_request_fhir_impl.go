@@ -301,7 +301,7 @@ func (c *serviceRequestFhirClient) ensureGroupExists(ctx context.Context, groupI
 		)
 		return exceptions.ErrSendHTTPRequest(err)
 	}
-	defer getResp.Body.Close()
+	defer func() { _ = getResp.Body.Close() }()
 
 	if getResp.StatusCode == constvars.StatusOK {
 		return nil
@@ -333,7 +333,7 @@ func (c *serviceRequestFhirClient) ensureGroupExists(ctx context.Context, groupI
 	if err != nil {
 		return exceptions.ErrSendHTTPRequest(err)
 	}
-	defer putResp.Body.Close()
+	defer func() { _ = putResp.Body.Close() }()
 
 	if putResp.StatusCode != constvars.StatusOK && putResp.StatusCode != constvars.StatusCreated {
 		return exceptions.ErrCreateFHIRResource(nil, constvars.ResourceGroup)

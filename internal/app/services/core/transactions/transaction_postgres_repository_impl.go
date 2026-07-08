@@ -49,7 +49,7 @@ func (repo *transactionPostgresRepository) FindAll(ctx context.Context) ([]model
 		)
 		return nil, exceptions.ErrPostgresDBFindData(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var transactions []models.Transaction
 	for rows.Next() {

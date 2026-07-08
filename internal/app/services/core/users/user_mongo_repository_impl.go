@@ -96,7 +96,7 @@ func (r *userMongoRepository) FindByID(ctx context.Context, userID string) (*mod
 	if err != nil {
 		return nil, exceptions.ErrMongoDBNotObjectID(err)
 	}
-	err = r.Collection.FindOne(ctx, bson.M{"_id": objectID}).Decode(&user)
+	err = r.Collection.FindOne(ctx, bson.M{constvars.MongoFieldID: objectID}).Decode(&user)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, nil

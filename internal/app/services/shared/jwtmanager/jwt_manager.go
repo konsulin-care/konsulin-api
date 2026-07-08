@@ -150,54 +150,61 @@ func (j *JWTManager) VerifyToken(ctx context.Context, in *VerifyTokenInput) (*Ve
 		return &VerifyTokenOutput{Valid: false}, fmt.Errorf("token is required")
 	}
 
-	keyFunc := func(t *jwt.Token) (interface{}, error) {
-		// enforce expected alg
-		if t.Method.Alg() != j.alg {
-			return nil, fmt.Errorf("unexpected signing method: %s", t.Header["alg"])
-		}
-		switch j.alg {
-		case algES256:
-			if j.ecPriv == nil {
-				return nil, errors.New("ec private key not loaded")
-			}
-			pub := j.ecPriv.Public().(*ecdsa.PublicKey)
-			return pub, nil
-		case algRS256:
-			if j.rsaPriv == nil {
-				return nil, errors.New("rsa private key not loaded")
-			}
-			pub := j.rsaPriv.Public().(*rsa.PublicKey)
-			return pub, nil
-		default:
-			return nil, fmt.Errorf("unsupported algorithm: %s", j.alg)
-		}
-	}
-
-	parsed, err := jwt.Parse(in.Token, keyFunc)
+	parsed, err := jwt.Parse(in.Token, j.keyFunc)
 	if err != nil {
 		return &VerifyTokenOutput{Valid: false}, nil
 	}
 
-	// Extract header
-	header := make(map[string]interface{}, len(parsed.Header))
-	for k, v := range parsed.Header {
-		header[k] = v
-	}
+	header := extractHeader(parsed)
+	claims := extractClaims(parsed)
 
-	// Extract claims
-	claims := make(map[string]interface{})
-	if c, ok := parsed.Claims.(jwt.MapClaims); ok {
-		for k, v := range c {
-			claims[k] = v
-		}
-	}
-
-	// Ensure expiry/nbf are valid
 	if !parsed.Valid {
 		return &VerifyTokenOutput{Valid: false, Header: header, Claims: claims}, nil
 	}
 
 	return &VerifyTokenOutput{Valid: true, Header: header, Claims: claims}, nil
+}
+
+// keyFunc returns the public key for JWT verification based on configured algorithm.
+func (j *JWTManager) keyFunc(t *jwt.Token) (interface{}, error) {
+	if t.Method.Alg() != j.alg {
+		return nil, fmt.Errorf("unexpected signing method: %s", t.Header["alg"])
+	}
+	switch j.alg {
+	case algES256:
+		if j.ecPriv == nil {
+			return nil, errors.New("ec private key not loaded")
+		}
+		return j.ecPriv.Public().(*ecdsa.PublicKey), nil
+	case algRS256:
+		if j.rsaPriv == nil {
+			return nil, errors.New("rsa private key not loaded")
+		}
+		return j.rsaPriv.Public().(*rsa.PublicKey), nil
+	default:
+		return nil, fmt.Errorf("unsupported algorithm: %s", j.alg)
+	}
+}
+
+// extractHeader copies JWT header fields to a plain map.
+func extractHeader(parsed *jwt.Token) map[string]interface{} {
+	header := make(map[string]interface{}, len(parsed.Header))
+	for k, v := range parsed.Header {
+		header[k] = v
+	}
+	return header
+}
+
+// extractClaims copies JWT claims to a plain map.
+func extractClaims(parsed *jwt.Token) map[string]interface{} {
+	if c, ok := parsed.Claims.(jwt.MapClaims); ok {
+		claims := make(map[string]interface{}, len(c))
+		for k, v := range c {
+			claims[k] = v
+		}
+		return claims
+	}
+	return nil
 }
 
 func parseECPrivateKey(block *pem.Block) (*ecdsa.PrivateKey, error) {

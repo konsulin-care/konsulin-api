@@ -167,7 +167,7 @@ func CalculateAge(birthDate string) int {
 func GetEducationFromExtensions(extensions []fhir_dto.Extension) []string {
 	var educations []string
 	for _, ext := range extensions {
-		if ext.Url == "http://example.org/fhir/StructureDefinition/education" {
+		if ext.Url == constvars.FhirEducationExtensionURL {
 			educations = append(educations, ext.ValueString)
 		}
 	}
@@ -176,7 +176,7 @@ func GetEducationFromExtensions(extensions []fhir_dto.Extension) []string {
 
 func GetHomeAddress(addresses []fhir_dto.Address) string {
 	for _, address := range addresses {
-		if address.Use == "home" {
+		if address.Use == constvars.FhirAddressUseHome {
 			return strings.Join(address.Line, ", ")
 		}
 	}
@@ -185,7 +185,7 @@ func GetHomeAddress(addresses []fhir_dto.Address) string {
 
 func GetWorkAddress(addresses []fhir_dto.Address) string {
 	for _, address := range addresses {
-		if address.Use == "work" {
+		if address.Use == constvars.FhirAddressUseWork {
 			return strings.Join(address.Line, ", ")
 		}
 	}
@@ -236,7 +236,7 @@ func GetEmailAndWhatsapp(telecoms []fhir_dto.ContactPoint) (string, string) {
 		switch {
 		case telecom.System == "email":
 			email = telecom.Value
-		case telecom.System == "phone" && telecom.Use == "mobile":
+		case telecom.System == "phone" && telecom.Use == constvars.FhirTelecomUseMobile:
 			whatsAppNumber = telecom.Value
 		}
 	}
@@ -460,9 +460,10 @@ func MapObservationToJournalResponse(observation *fhir_dto.Observation) (*respon
 	var title string
 	var journalBody []string
 	for _, component := range observation.Component {
-		if component.Code.Text == constvars.FhirObservationJournalTitle {
+		switch component.Code.Text {
+		case constvars.FhirObservationJournalTitle:
 			title = component.ValueString
-		} else if component.Code.Text == constvars.FhirObservationJournalBody {
+		case constvars.FhirObservationJournalBody:
 			journalBody = append(journalBody, component.ValueString)
 		}
 	}

@@ -9,6 +9,6 @@ var Version = "develop"
 var Tag = "0.0.1-rc"
 
 func main() {
-	fmt.Println(fmt.Sprintf("Version: %s", Version))
-	fmt.Println(fmt.Sprintf("Tag: %s", Tag))
+	fmt.Printf("Version: %s\n", Version)
+	fmt.Printf("Tag: %s\n", Tag)
 }

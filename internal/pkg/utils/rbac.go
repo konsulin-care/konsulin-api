@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"konsulin-service/internal/pkg/constvars"
 	"net/url"
 	"strings"
 )
@@ -83,30 +84,30 @@ func RequiresPatientOwnership(resourceType string) bool {
 
 func RequiresPractitionerOwnership(resourceType string) bool {
 	practitionerSpecificResources := map[string]bool{
-		"Practitioner":                true,
-		"Schedule":                    true,
-		"Encounter":                   true,
-		"Observation":                 true,
-		"DiagnosticReport":            true,
-		"Procedure":                   true,
-		"MedicationRequest":           true,
-		"CarePlan":                    true,
-		"DocumentReference":           true,
-		"Communication":               true,
-		"CommunicationRequest":        true,
-		"Task":                        true,
-		"Consent":                     true,
-		"Contract":                    true,
-		"CoverageEligibilityRequest":  true,
-		"CoverageEligibilityResponse": true,
-		"Claim":                       true,
-		"ClaimResponse":               true,
-		"ExplanationOfBenefit":        true,
-		"PaymentNotice":               true,
-		"PaymentReconciliation":       true,
-		"Account":                     true,
-		"ChargeItem":                  true,
-		"Invoice":                     true,
+		string(constvars.ResourcePractitioner): true,
+		"Schedule":                             true,
+		"Encounter":                            true,
+		"Observation":                          true,
+		"DiagnosticReport":                     true,
+		"Procedure":                            true,
+		"MedicationRequest":                    true,
+		"CarePlan":                             true,
+		"DocumentReference":                    true,
+		"Communication":                        true,
+		"CommunicationRequest":                 true,
+		"Task":                                 true,
+		"Consent":                              true,
+		"Contract":                             true,
+		"CoverageEligibilityRequest":           true,
+		"CoverageEligibilityResponse":          true,
+		"Claim":                                true,
+		"ClaimResponse":                        true,
+		"ExplanationOfBenefit":                 true,
+		"PaymentNotice":                        true,
+		"PaymentReconciliation":                true,
+		"Account":                              true,
+		"ChargeItem":                           true,
+		"Invoice":                              true,
 	}
 
 	return practitionerSpecificResources[resourceType]

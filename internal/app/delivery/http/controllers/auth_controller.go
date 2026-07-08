@@ -212,7 +212,7 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 	if len(request.Roles) > 0 {
 		// Validate each role individually
 		for _, role := range request.Roles {
-			if role != "Patient" && role != "Practitioner" && role != "Clinic Admin" && role != "Researcher" {
+			if role != constvars.KonsulinRolePatient && role != constvars.KonsulinRolePractitioner && role != constvars.KonsulinRoleClinicAdmin && role != constvars.KonsulinRoleResearcher {
 				ctrl.Log.Error("Invalid role provided",
 					zap.String(constvars.LoggingRequestIDKey, requestID),
 					zap.String(constvars.LoggingEmailKey, request.Email),
@@ -374,10 +374,7 @@ func (ctrl *AuthController) ClaimAnonymousResources(w http.ResponseWriter, r *ht
 
 	// Secure flag defaults to true for security. Only disable for local development
 	// where HTTPS may not be available. In production/staging, cookies must be secure.
-	secure := true
-	if strings.EqualFold(ctrl.InternalConfig.App.Env, "local") {
-		secure = false
-	}
+	secure := !strings.EqualFold(ctrl.InternalConfig.App.Env, constvars.EnvLocal)
 	http.SetCookie(w, &http.Cookie{
 		Name:     constvars.AnonymousSessionCookieName,
 		Value:    "",

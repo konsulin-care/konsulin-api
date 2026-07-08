@@ -9,7 +9,7 @@ import (
 
 func BuildForgotPasswordEmailPayload(fromEmail, toEmail, resetLink, userFullName, expiryTime string) *requests.EmailPayload {
 	to := []string{toEmail}
-	var htmlCode string = fmt.Sprintf(constvars.EmailSendHTMLForgotPasswordBodyFormatWithUserFullname, userFullName, resetLink, expiryTime)
+	htmlCode := fmt.Sprintf(constvars.EmailSendHTMLForgotPasswordBodyFormatWithUserFullname, userFullName, resetLink, expiryTime)
 	if userFullName == "" {
 		htmlCode = fmt.Sprintf(constvars.EmailSendHTMLForgotPasswordBodyFormat, resetLink, expiryTime)
 	}
