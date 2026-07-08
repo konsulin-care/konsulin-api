@@ -5,13 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/fhir_http_client"
-	"net/http"
 	"net/url"
 	"strings"
 	"sync"
@@ -50,56 +48,14 @@ func (c *slotFhirClient) FindSlotByScheduleID(ctx context.Context, scheduleID st
 		zap.String(constvars.LoggingScheduleIDKey, scheduleID),
 	)
 
-	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet,
-		fmt.Sprintf("%s/schedule=Schedule/%s", c.BaseUrl, scheduleID),
-		nil,
-	)
+	respBody, err := c.client.Do(ctx, constvars.MethodGet,
+		fmt.Sprintf("%s/schedule=Schedule/%s", c.BaseUrl, scheduleID), nil)
 	if err != nil {
-		c.Log.Error("slotFhirClient.FindSlotByScheduleID error creating HTTP request",
+		c.Log.Error("slotFhirClient.FindSlotByScheduleID FHIR error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
-		return nil, exceptions.ErrCreateHTTPRequest(err)
-	}
-	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		c.Log.Error("slotFhirClient.FindSlotByScheduleID error sending HTTP request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrSendHTTPRequest(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != constvars.StatusOK {
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			c.Log.Error("slotFhirClient.FindSlotByScheduleID error reading response body",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
-		}
-		var outcome fhir_dto.OperationOutcome
-		err = json.Unmarshal(bodyBytes, &outcome)
-		if err != nil {
-			c.Log.Error("slotFhirClient.FindSlotByScheduleID error unmarshaling outcome",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
-		}
-		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
-			c.Log.Error("slotFhirClient.FindSlotByScheduleID FHIR error",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(fhirErrorIssue),
-			)
-			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourceSlot)
-		}
+		return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
 	}
 
 	var result struct {
@@ -110,8 +66,7 @@ func (c *slotFhirClient) FindSlotByScheduleID(ctx context.Context, scheduleID st
 			Resource fhir_dto.Slot `json:"resource"`
 		} `json:"entry"`
 	}
-	err = json.NewDecoder(resp.Body).Decode(&result)
-	if err != nil {
+	if err := json.Unmarshal(respBody, &result); err != nil {
 		c.Log.Error("slotFhirClient.FindSlotByScheduleID error decoding response",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
@@ -138,63 +93,18 @@ func (c *slotFhirClient) FindSlotByID(ctx context.Context, slotID string) (*fhir
 		zap.String("slotId", slotID),
 	)
 
-	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet,
-		fmt.Sprintf("%s/%s", c.BaseUrl, slotID),
-		nil,
-	)
+	respBody, err := c.client.Do(ctx, constvars.MethodGet,
+		fmt.Sprintf("%s/%s", c.BaseUrl, slotID), nil)
 	if err != nil {
-		c.Log.Error("slotFhirClient.FindSlotByID error creating HTTP request",
+		c.Log.Error("slotFhirClient.FindSlotByID FHIR error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
-		return nil, exceptions.ErrCreateHTTPRequest(err)
-	}
-	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		c.Log.Error("slotFhirClient.FindSlotByID error sending HTTP request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrSendHTTPRequest(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != constvars.StatusOK {
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			c.Log.Error("slotFhirClient.FindSlotByID error reading response body",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
-		}
-
-		var outcome fhir_dto.OperationOutcome
-		err = json.Unmarshal(bodyBytes, &outcome)
-		if err != nil {
-			c.Log.Error("slotFhirClient.FindSlotByID error unmarshaling outcome",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
-		}
-
-		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
-			c.Log.Error("slotFhirClient.FindSlotByID FHIR error",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(fhirErrorIssue),
-			)
-			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourceSlot)
-		}
+		return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
 	}
 
 	var slot fhir_dto.Slot
-	err = json.NewDecoder(resp.Body).Decode(&slot)
-	if err != nil {
+	if err := json.Unmarshal(respBody, &slot); err != nil {
 		c.Log.Error("slotFhirClient.FindSlotByID error decoding response",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
@@ -217,56 +127,14 @@ func (c *slotFhirClient) FindSlotByScheduleIDAndStatus(ctx context.Context, sche
 		zap.String(constvars.LoggingScheduleStatusKey, status),
 	)
 
-	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet,
-		fmt.Sprintf("%s?schedule=Schedule/%s&status=%s", c.BaseUrl, scheduleID, status),
-		nil,
-	)
+	respBody, err := c.client.Do(ctx, constvars.MethodGet,
+		fmt.Sprintf("%s?schedule=Schedule/%s&status=%s", c.BaseUrl, scheduleID, status), nil)
 	if err != nil {
-		c.Log.Error("slotFhirClient.FindSlotByScheduleIDAndStatus error creating HTTP request",
+		c.Log.Error("slotFhirClient.FindSlotByScheduleIDAndStatus FHIR error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
-		return nil, exceptions.ErrCreateHTTPRequest(err)
-	}
-	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		c.Log.Error("slotFhirClient.FindSlotByScheduleIDAndStatus error sending HTTP request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrSendHTTPRequest(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != constvars.StatusOK {
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			c.Log.Error("slotFhirClient.FindSlotByScheduleIDAndStatus error reading response body",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
-		}
-		var outcome fhir_dto.OperationOutcome
-		err = json.Unmarshal(bodyBytes, &outcome)
-		if err != nil {
-			c.Log.Error("slotFhirClient.FindSlotByScheduleIDAndStatus error unmarshaling outcome",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
-		}
-		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
-			c.Log.Error("slotFhirClient.FindSlotByScheduleIDAndStatus FHIR error",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(fhirErrorIssue),
-			)
-			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourceSlot)
-		}
+		return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
 	}
 
 	var result struct {
@@ -277,8 +145,7 @@ func (c *slotFhirClient) FindSlotByScheduleIDAndStatus(ctx context.Context, sche
 			Resource fhir_dto.Slot `json:"resource"`
 		} `json:"entry"`
 	}
-	err = json.NewDecoder(resp.Body).Decode(&result)
-	if err != nil {
+	if err := json.Unmarshal(respBody, &result); err != nil {
 		c.Log.Error("slotFhirClient.FindSlotByScheduleIDAndStatus error decoding response",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
@@ -313,58 +180,17 @@ func (c *slotFhirClient) CreateSlot(ctx context.Context, request *fhir_dto.Slot)
 		return nil, exceptions.ErrCannotMarshalJSON(err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, constvars.MethodPost, c.BaseUrl, bytes.NewBuffer(requestJSON))
+	respBody, err := c.client.Do(ctx, constvars.MethodPost, c.BaseUrl, bytes.NewBuffer(requestJSON))
 	if err != nil {
-		c.Log.Error("slotFhirClient.CreateSlot error creating HTTP request",
+		c.Log.Error("slotFhirClient.CreateSlot FHIR error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
-		return nil, exceptions.ErrCreateHTTPRequest(err)
-	}
-	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		c.Log.Error("slotFhirClient.CreateSlot error sending HTTP request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrSendHTTPRequest(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != constvars.StatusCreated {
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			c.Log.Error("slotFhirClient.CreateSlot error reading response body",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
-		}
-		var outcome fhir_dto.OperationOutcome
-		err = json.Unmarshal(bodyBytes, &outcome)
-		if err != nil {
-			c.Log.Error("slotFhirClient.CreateSlot error unmarshaling outcome",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
-		}
-		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
-			c.Log.Error("slotFhirClient.CreateSlot FHIR error",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(fhirErrorIssue),
-			)
-			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourceSlot)
-		}
+		return nil, exceptions.ErrCreateFHIRResource(err, constvars.ResourceSlot)
 	}
 
-	slotFhir := new(fhir_dto.Slot)
-	err = json.NewDecoder(resp.Body).Decode(&slotFhir)
-	if err != nil {
+	var slotFhir fhir_dto.Slot
+	if err := json.Unmarshal(respBody, &slotFhir); err != nil {
 		c.Log.Error("slotFhirClient.CreateSlot error decoding response",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
@@ -376,7 +202,7 @@ func (c *slotFhirClient) CreateSlot(ctx context.Context, request *fhir_dto.Slot)
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String(constvars.LoggingSlotsIDKey, slotFhir.ID),
 	)
-	return slotFhir, nil
+	return &slotFhir, nil
 }
 
 func (c *slotFhirClient) UpdateSlot(ctx context.Context, id string, slot *fhir_dto.Slot) (*fhir_dto.Slot, error) {
@@ -395,38 +221,19 @@ func (c *slotFhirClient) UpdateSlot(ctx context.Context, id string, slot *fhir_d
 		return nil, exceptions.ErrCannotMarshalJSON(err)
 	}
 
-	url := c.BaseUrl + "/" + id
-	req, err := http.NewRequestWithContext(ctx, constvars.MethodPut, url, bytes.NewBuffer(requestJSON))
+	respBody, err := c.client.Do(ctx, constvars.MethodPut,
+		fmt.Sprintf("%s/%s", c.BaseUrl, id),
+		bytes.NewBuffer(requestJSON))
 	if err != nil {
-		c.Log.Error("slotFhirClient.UpdateSlot error creating HTTP request",
+		c.Log.Error("slotFhirClient.UpdateSlot FHIR error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
-		return nil, exceptions.ErrCreateHTTPRequest(err)
-	}
-	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		c.Log.Error("slotFhirClient.UpdateSlot error sending HTTP request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrSendHTTPRequest(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != constvars.StatusOK && resp.StatusCode != constvars.StatusCreated {
-		c.Log.Error("slotFhirClient.UpdateSlot received error status",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Int("status_code", resp.StatusCode),
-		)
-		return nil, exceptions.ErrUpdateFHIRResource(nil, constvars.ResourceSlot)
+		return nil, exceptions.ErrUpdateFHIRResource(err, constvars.ResourceSlot)
 	}
 
-	out := new(fhir_dto.Slot)
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	var out fhir_dto.Slot
+	if err := json.Unmarshal(respBody, &out); err != nil {
 		c.Log.Error("slotFhirClient.UpdateSlot error decoding response",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
@@ -438,7 +245,7 @@ func (c *slotFhirClient) UpdateSlot(ctx context.Context, id string, slot *fhir_d
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String("slot_id", out.ID),
 	)
-	return out, nil
+	return &out, nil
 }
 
 func (c *slotFhirClient) FindSlotByScheduleAndTimeRange(ctx context.Context, scheduleID string, startTime, endTime time.Time) ([]fhir_dto.Slot, error) {
@@ -462,53 +269,13 @@ func (c *slotFhirClient) FindSlotByScheduleAndTimeRange(ctx context.Context, sch
 		zap.String("url", queryURL),
 	)
 
-	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, queryURL, nil)
+	respBody, err := c.client.Do(ctx, constvars.MethodGet, queryURL, nil)
 	if err != nil {
-		c.Log.Error("slotFhirClient.FindSlotByScheduleAndTimeRange error creating HTTP request",
+		c.Log.Error("slotFhirClient.FindSlotByScheduleAndTimeRange FHIR error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
-		return nil, exceptions.ErrCreateHTTPRequest(err)
-	}
-	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		c.Log.Error("slotFhirClient.FindSlotByScheduleAndTimeRange error sending HTTP request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrSendHTTPRequest(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != constvars.StatusOK {
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			c.Log.Error("slotFhirClient.FindSlotByScheduleAndTimeRange error reading response body",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
-		}
-		var outcome fhir_dto.OperationOutcome
-		err = json.Unmarshal(bodyBytes, &outcome)
-		if err != nil {
-			c.Log.Error("slotFhirClient.FindSlotByScheduleAndTimeRange error unmarshaling outcome",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
-		}
-		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
-			c.Log.Error("slotFhirClient.FindSlotByScheduleAndTimeRange FHIR error",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(fhirErrorIssue),
-			)
-			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourceSlot)
-		}
+		return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
 	}
 
 	var result struct {
@@ -519,8 +286,7 @@ func (c *slotFhirClient) FindSlotByScheduleAndTimeRange(ctx context.Context, sch
 			Resource fhir_dto.Slot `json:"resource"`
 		} `json:"entry"`
 	}
-	err = json.NewDecoder(resp.Body).Decode(&result)
-	if err != nil {
+	if err := json.Unmarshal(respBody, &result); err != nil {
 		c.Log.Error("slotFhirClient.FindSlotByScheduleAndTimeRange error decoding response",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
@@ -540,11 +306,11 @@ func (c *slotFhirClient) FindSlotByScheduleAndTimeRange(ctx context.Context, sch
 	return slots, nil
 }
 
-// decodeSlotBundle decodes a single FHIR Slot searchset bundle page from r and returns
+// decodeSlotBundle decodes a single FHIR Slot searchset bundle page from data and returns
 // the slot entries and the "next" link URL if present. Uses fhir_dto.FHIRBundle (with Link).
-func decodeSlotBundle(r io.Reader) ([]fhir_dto.Slot, string, error) {
+func decodeSlotBundle(data []byte) ([]fhir_dto.Slot, string, error) {
 	var result fhir_dto.FHIRBundle
-	if err := json.NewDecoder(r).Decode(&result); err != nil {
+	if err := json.Unmarshal(data, &result); err != nil {
 		return nil, "", err
 	}
 	out := make([]fhir_dto.Slot, 0, len(result.Entry))
@@ -578,61 +344,20 @@ func (c *slotFhirClient) FindSlotsByScheduleWithQuery(ctx context.Context, sched
 	base := fmt.Sprintf("%s?schedule=Schedule/%s", c.BaseUrl, url.QueryEscape(scheduleID))
 	queryURL := base + params.ToQueryString()
 
-	client := &http.Client{}
 	var out []fhir_dto.Slot
 	nextURL := queryURL
 
 	for {
-		req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, nextURL, http.NoBody)
+		respBody, err := c.client.Do(ctx, constvars.MethodGet, nextURL, nil)
 		if err != nil {
-			c.Log.Error("slotFhirClient.FindSlotsByScheduleWithQuery error creating HTTP request",
+			c.Log.Error("slotFhirClient.FindSlotsByScheduleWithQuery FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(err),
 			)
-			return nil, exceptions.ErrCreateHTTPRequest(err)
-		}
-		req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
-
-		resp, err := client.Do(req)
-		if err != nil {
-			c.Log.Error("slotFhirClient.FindSlotsByScheduleWithQuery error sending HTTP request",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrSendHTTPRequest(err)
+			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSlot)
 		}
 
-		if resp.StatusCode != constvars.StatusOK {
-			bodyBytes, rerr := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			if rerr != nil {
-				c.Log.Error("slotFhirClient.FindSlotsByScheduleWithQuery error reading response body",
-					zap.String(constvars.LoggingRequestIDKey, requestID),
-					zap.Error(rerr),
-				)
-				return nil, exceptions.ErrGetFHIRResource(rerr, constvars.ResourceSlot)
-			}
-			var outcome fhir_dto.OperationOutcome
-			if uerr := json.Unmarshal(bodyBytes, &outcome); uerr != nil {
-				c.Log.Error("slotFhirClient.FindSlotsByScheduleWithQuery error unmarshaling outcome",
-					zap.String(constvars.LoggingRequestIDKey, requestID),
-					zap.Error(uerr),
-				)
-				return nil, exceptions.ErrGetFHIRResource(uerr, constvars.ResourceSlot)
-			}
-			if len(outcome.Issue) > 0 {
-				fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
-				c.Log.Error("slotFhirClient.FindSlotsByScheduleWithQuery FHIR error",
-					zap.String(constvars.LoggingRequestIDKey, requestID),
-					zap.Error(fhirErrorIssue),
-				)
-				return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourceSlot)
-			}
-			return nil, exceptions.ErrGetFHIRResource(fmt.Errorf("unexpected status %d from FHIR server", resp.StatusCode), constvars.ResourceSlot)
-		}
-
-		pageSlots, next, decErr := decodeSlotBundle(resp.Body)
-		resp.Body.Close()
+		pageSlots, next, decErr := decodeSlotBundle(respBody)
 		if decErr != nil {
 			c.Log.Error("slotFhirClient.FindSlotsByScheduleWithQuery error decoding response",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -670,61 +395,22 @@ func (c *slotFhirClient) PostTransactionBundle(ctx context.Context, bundle map[s
 		return nil, exceptions.ErrCannotMarshalJSON(err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, constvars.MethodPost, base, bytes.NewBuffer(body))
+	respBody, err := c.client.Do(ctx, constvars.MethodPost, base, bytes.NewBuffer(body))
 	if err != nil {
-		c.Log.Error("slotFhirClient.PostTransactionBundle error creating HTTP request",
+		c.Log.Error("slotFhirClient.PostTransactionBundle FHIR error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
-		return nil, exceptions.ErrCreateHTTPRequest(err)
-	}
-	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		c.Log.Error("slotFhirClient.PostTransactionBundle error sending HTTP request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrSendHTTPRequest(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != constvars.StatusOK && resp.StatusCode != constvars.StatusCreated {
-		bodyBytes, rerr := io.ReadAll(resp.Body)
-		if rerr != nil {
-			c.Log.Error("slotFhirClient.PostTransactionBundle error reading response body",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(rerr),
-			)
-			return nil, exceptions.ErrCreateFHIRResource(rerr, constvars.ResourceSlot)
-		}
-		var outcome fhir_dto.OperationOutcome
-		if uerr := json.Unmarshal(bodyBytes, &outcome); uerr != nil {
-			c.Log.Error("slotFhirClient.PostTransactionBundle error unmarshaling outcome",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(uerr),
-			)
-			return nil, exceptions.ErrCreateFHIRResource(uerr, constvars.ResourceSlot)
-		}
-		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
-			c.Log.Error("slotFhirClient.PostTransactionBundle FHIR error",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(fhirErrorIssue),
-			)
-			return nil, exceptions.ErrCreateFHIRResource(fhirErrorIssue, constvars.ResourceSlot)
-		}
+		return nil, exceptions.ErrCreateFHIRResource(err, constvars.ResourceSlot)
 	}
 
 	var result fhir_dto.FHIRBundle
-	if derr := json.NewDecoder(resp.Body).Decode(&result); derr != nil {
+	if err := json.Unmarshal(respBody, &result); err != nil {
 		c.Log.Error("slotFhirClient.PostTransactionBundle error decoding response",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(derr),
+			zap.Error(err),
 		)
-		return nil, exceptions.ErrDecodeResponse(derr, constvars.ResourceSlot)
+		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourceSlot)
 	}
 
 	c.Log.Info("slotFhirClient.PostTransactionBundle succeeded",
