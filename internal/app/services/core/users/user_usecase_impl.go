@@ -777,6 +777,7 @@ func (uc *userUsecase) createNewPerson(ctx context.Context, email, phone, superT
 	return uc.PersonFhirClient.Create(ctx, newPersonInput)
 }
 
+//nolint:dupl
 func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email string, phone string, superTokenUserID string) (*fhir_dto.Practitioner, error) {
 	practitioners, err := uc.lookupPractitioner(ctx, email, phone, superTokenUserID)
 	if err != nil {
@@ -788,6 +789,7 @@ func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email 
 	return uc.createNewPractitioner(ctx, email, phone, superTokenUserID)
 }
 
+//nolint:dupl
 func (uc *userUsecase) createPatientIfNotExists(ctx context.Context, email string, phone string, superTokenUserID string) (*fhir_dto.Patient, error) {
 	patients, err := uc.lookupPatient(ctx, email, phone, superTokenUserID)
 	if err != nil {
@@ -799,6 +801,7 @@ func (uc *userUsecase) createPatientIfNotExists(ctx context.Context, email strin
 	return uc.createNewPatient(ctx, email, phone, superTokenUserID)
 }
 
+//nolint:dupl
 func (uc *userUsecase) createPersonIfNotExists(ctx context.Context, email string, phone string, superTokenUserID string) (*fhir_dto.Person, error) {
 	persons, err := uc.lookupPerson(ctx, email, phone, superTokenUserID)
 	if err != nil {
