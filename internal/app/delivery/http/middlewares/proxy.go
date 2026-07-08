@@ -180,6 +180,10 @@ func doFHIRProxyRequest(r *http.Request, target string, client *http.Client) (re
 	}
 
 	var req *http.Request
+	// #nosec — SSRF-safe: fullURL host is validated by validateProxyURLHost
+	// on lines 172-175 and URL is constructed via url.URL.JoinPath which makes
+	// the host immutable. allowedRedirectHost (CheckRedirect) adds transport-level
+	// protection. See sanitizeProxyPath, validateProxyURLHost, allowedRedirectHost.
 	req, err = http.NewRequestWithContext(r.Context(), r.Method, fullURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, nil, nil, exceptions.ErrCreateHTTPRequest(err)
@@ -1091,6 +1095,10 @@ func (m *Middlewares) doTxProxyRequest(w http.ResponseWriter, r *http.Request, f
 	proxyCtx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 	defer cancel()
 
+	// #nosec — SSRF-safe: fullURL host is validated by validateProxyURLHost
+	// (called in TxProxy before doTxProxyRequest) and URL is constructed via
+	// buildTxProxyURL using url.URL.JoinPath which makes the host immutable.
+	// allowedRedirectHost (CheckRedirect) adds transport-level protection.
 	req, err := http.NewRequestWithContext(proxyCtx, r.Method, fullURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		utils.BuildErrorResponse(m.Log, w, exceptions.ErrCreateHTTPRequest(err))
