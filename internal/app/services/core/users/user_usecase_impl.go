@@ -484,6 +484,7 @@ func (uc *userUsecase) callChatwootWithFallback(ctx context.Context, email, phon
 // ensurePractitionerIdentifiers updates the practitioner's identifiers with the
 // supertoken user ID and Chatwoot contact ID if they differ from what's stored.
 // Returns the (possibly updated) practitioner.
+//
 //nolint:dupl
 func (uc *userUsecase) ensurePractitionerIdentifiers(ctx context.Context, practitioner *fhir_dto.Practitioner, email, phone, superTokenUserID string) (*fhir_dto.Practitioner, error) {
 	userChatwootContact, chatwootCallErr := uc.callChatwootWithFallback(ctx, email, phone, practitioner.FullName())
@@ -581,6 +582,7 @@ func (uc *userUsecase) lookupPerson(ctx context.Context, email, phone, superToke
 
 // ensurePatientIdentifiers updates the patient's identifiers with the
 // supertoken user ID and Chatwoot contact ID if they differ from what's stored.
+//
 //nolint:dupl
 func (uc *userUsecase) ensurePatientIdentifiers(ctx context.Context, patient *fhir_dto.Patient, email, phone, superTokenUserID string) (*fhir_dto.Patient, error) {
 	userChatwootContact, chatwootCallErr := uc.callChatwootWithFallback(ctx, email, phone, patient.FullName())
@@ -631,6 +633,7 @@ func (uc *userUsecase) ensurePatientIdentifiers(ctx context.Context, patient *fh
 
 // ensurePersonIdentifiers updates the person's identifiers with the
 // supertoken user ID and Chatwoot contact ID if they differ from what's stored.
+//
 //nolint:dupl
 func (uc *userUsecase) ensurePersonIdentifiers(ctx context.Context, person *fhir_dto.Person, email, phone, superTokenUserID string) (*fhir_dto.Person, error) {
 	userChatwootContact, chatwootCallErr := uc.callChatwootWithFallback(ctx, email, phone, person.FullName())
@@ -680,6 +683,7 @@ func (uc *userUsecase) ensurePersonIdentifiers(ctx context.Context, person *fhir
 }
 
 // createNewPractitioner creates a new Practitioner FHIR resource.
+//
 //nolint:dupl
 func (uc *userUsecase) createNewPractitioner(ctx context.Context, email, phone, superTokenUserID string) (*fhir_dto.Practitioner, error) {
 	if superTokenUserID == "" {
@@ -710,6 +714,7 @@ func (uc *userUsecase) createNewPractitioner(ctx context.Context, email, phone, 
 }
 
 // createNewPatient creates a new Patient FHIR resource.
+//
 //nolint:dupl
 func (uc *userUsecase) createNewPatient(ctx context.Context, email, phone, superTokenUserID string) (*fhir_dto.Patient, error) {
 	userChatwootContact, chatwootErr := uc.callChatwootWithFallback(ctx, email, phone, "")
@@ -741,6 +746,7 @@ func (uc *userUsecase) createNewPatient(ctx context.Context, email, phone, super
 }
 
 // createNewPerson creates a new Person FHIR resource.
+//
 //nolint:dupl
 func (uc *userUsecase) createNewPerson(ctx context.Context, email, phone, superTokenUserID string) (*fhir_dto.Person, error) {
 	userChatwootContact, chatwootErr := uc.callChatwootWithFallback(ctx, email, phone, "")

@@ -51,7 +51,9 @@ func CreateResource[T any](ctx context.Context, log *zap.Logger, client *FHIRHTT
 	}
 
 	// Extract the ID from the response for logging (all FHIR DTOs have an "id" field)
-	var idExtract struct{ ID string `json:"id"` }
+	var idExtract struct {
+		ID string `json:"id"`
+	}
 	_ = json.Unmarshal(respBody, &idExtract)
 	if idExtract.ID != "" {
 		log.Info("crud.CreateResource succeeded",
