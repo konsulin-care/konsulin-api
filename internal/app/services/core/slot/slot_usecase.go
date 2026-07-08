@@ -278,7 +278,6 @@ type singleRoleResult struct {
 
 // processSingleRoleWindowInput groups parameters for processSingleRoleWindow
 type processSingleRoleWindowInput struct {
-	ctx               context.Context
 	pr                fhir_dto.PractitionerRole
 	winStart, winEnd  time.Time
 	resolved          *resolvedWindows
@@ -289,7 +288,6 @@ type processSingleRoleWindowInput struct {
 
 // processDayAdjustmentInput groups parameters for processDayAdjustment.
 type processDayAdjustmentInput struct {
-	ctx                context.Context
 	td                 dayLockTarget
 	winStart, winEnd   time.Time
 	slotStatus         fhir_dto.SlotStatus
@@ -305,7 +303,7 @@ type processDayAdjustmentOutput struct {
 
 // processSingleRoleWindow processes conflict detection, idempotency, day adjustment, and NA update for one role.
 // Returns nil when the role is idempotent (nothing to change).
-func (s *SlotUsecase) processSingleRoleWindow(in processSingleRoleWindowInput) (*singleRoleResult, error) {
+func (s *SlotUsecase) processSingleRoleWindow(ctx context.Context, in processSingleRoleWindowInput) (*singleRoleResult, error) {
 	scheduleID := in.resolved.schedulesByRole[in.pr.ID]
 
 	params := contracts.SlotSearchParams{
@@ -313,7 +311,7 @@ func (s *SlotUsecase) processSingleRoleWindow(in processSingleRoleWindowInput) (
 		End:    "ge" + in.winStart.Format(time.RFC3339),
 		Status: "",
 	}
-	slots, err := s.slots.FindSlotsByScheduleWithQuery(in.ctx, scheduleID, params)
+	slots, err := s.slots.FindSlotsByScheduleWithQuery(ctx, scheduleID, params)
 	if err != nil {
 		s.logger.With(zap.Error(err)).Error("failed to find slots for conflict detection")
 		return nil, exceptions.BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, "failed to find slots for conflict detection")
@@ -364,8 +362,8 @@ func (s *SlotUsecase) processSingleRoleWindow(in processSingleRoleWindowInput) (
 
 	roleLoc, _ := in.pr.GetPreferredTimezone()
 	for _, td := range s.dayTargetsForWindow(scheduleID, roleLoc, in.winStart, in.winEnd) {
-		adjOut, err := s.processDayAdjustment(processDayAdjustmentInput{
-			ctx: in.ctx, td: td,
+		adjOut, err := s.processDayAdjustment(ctx, processDayAdjustmentInput{
+			td: td,
 			winStart: in.winStart, winEnd: in.winEnd,
 			slotStatus: in.input.SlotStatus,
 			plan: plan, cfg: cfg,
@@ -399,8 +397,8 @@ func (s *SlotUsecase) processRoleWindows(
 		winStart := resolved.startByRole[pr.ID]
 		winEnd := resolved.endByRole[pr.ID]
 
-		sr, err := s.processSingleRoleWindow(processSingleRoleWindowInput{
-			ctx: ctx, pr: pr,
+		sr, err := s.processSingleRoleWindow(ctx, processSingleRoleWindowInput{
+			pr: pr,
 			winStart: winStart, winEnd: winEnd,
 			resolved: resolved,
 			input: input,
@@ -565,7 +563,7 @@ func (s *SlotUsecase) postUnavailabilityBundle(
 }
 
 // processDayAdjustment adjusts free slots for a single day, returning deletions and creations.
-func (s *SlotUsecase) processDayAdjustment(in processDayAdjustmentInput) (*processDayAdjustmentOutput, error) {
+func (s *SlotUsecase) processDayAdjustment(ctx context.Context, in processDayAdjustmentInput) (*processDayAdjustmentOutput, error) {
 	day := in.td.Day
 	loc := in.td.Location
 	scheduleID := in.td.ScheduleID
@@ -580,7 +578,7 @@ func (s *SlotUsecase) processDayAdjustment(in processDayAdjustmentInput) (*proce
 		End:    "gt" + dayStart.Format(time.RFC3339),
 		Status: "",
 	}
-	daySlots, qErr := s.slots.FindSlotsByScheduleWithQuery(in.ctx, scheduleID, params)
+	daySlots, qErr := s.slots.FindSlotsByScheduleWithQuery(ctx, scheduleID, params)
 	if qErr != nil {
 		s.logger.With(zap.Error(qErr)).Error("failed to fetch day slots for adjustment")
 		return nil, exceptions.BuildNewCustomError(qErr, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, "failed to fetch day slots for adjustment")

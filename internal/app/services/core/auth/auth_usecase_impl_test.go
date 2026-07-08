@@ -48,8 +48,7 @@ func (m *MockUserUsecase) DeleteUserBySession(ctx context.Context, sessionData s
 }
 
 func (m *MockUserUsecase) DeactivateUserBySession(ctx context.Context, sessionData string) error {
-	args := m.Called(ctx, sessionData)
-	return args.Error(0)
+	return m.DeleteUserBySession(ctx, sessionData)
 }
 
 func (m *MockUserUsecase) InitializeNewUserFHIRResources(ctx context.Context, input *contracts.InitializeNewUserFHIRResourcesInput) (*contracts.InitializeNewUserFHIRResourcesOutput, error) {
@@ -79,16 +78,16 @@ func TestInitializeMagicLinkFHIR_LogsError(t *testing.T) {
 	start := time.Now()
 
 	// Act
-	_, err := initializeMagicLinkFHIR(
-		context.Background(),
-		uc,
-		"req-abc-123",
-		"st-user-1",
-		[]string{"patient"},
-		"test@example.com",
-		"",
-		start,
-	)
+	_, err := initializeMagicLinkFHIR(initializeMagicLinkFHIRInput{
+		Ctx: context.Background(),
+		Uc: uc,
+		RequestID: "req-abc-123",
+		SuperTokenUserID: "st-user-1",
+		Roles: []string{"patient"},
+		Email: "test@example.com",
+		Phone: "",
+		Start: start,
+	})
 
 	// Assert: error is propagated
 	require.Error(t, err)
@@ -132,16 +131,16 @@ func TestInitializeMagicLinkFHIR_Success(t *testing.T) {
 	start := time.Now()
 
 	// Act
-	output, err := initializeMagicLinkFHIR(
-		context.Background(),
-		uc,
-		"req-abc-456",
-		"st-user-2",
-		[]string{"patient", "practitioner"},
-		"doctor@example.com",
-		"",
-		start,
-	)
+	output, err := initializeMagicLinkFHIR(initializeMagicLinkFHIRInput{
+		Ctx: context.Background(),
+		Uc: uc,
+		RequestID: "req-abc-456",
+		SuperTokenUserID: "st-user-2",
+		Roles: []string{"patient", "practitioner"},
+		Email: "doctor@example.com",
+		Phone: "",
+		Start: start,
+	})
 
 	// Assert: no error, output returned
 	require.NoError(t, err)
@@ -171,16 +170,16 @@ func TestInitializeMagicLinkFHIR_PhoneUser(t *testing.T) {
 	start := time.Now()
 
 	// Act
-	_, err := initializeMagicLinkFHIR(
-		context.Background(),
-		uc,
-		"req-phone-789",
-		"st-user-3",
-		[]string{"practitioner"},
-		"",
-		"6281234567890",
-		start,
-	)
+	_, err := initializeMagicLinkFHIR(initializeMagicLinkFHIRInput{
+		Ctx: context.Background(),
+		Uc: uc,
+		RequestID: "req-phone-789",
+		SuperTokenUserID: "st-user-3",
+		Roles: []string{"practitioner"},
+		Email: "",
+		Phone: "6281234567890",
+		Start: start,
+	})
 
 	// Assert
 	require.Error(t, err)

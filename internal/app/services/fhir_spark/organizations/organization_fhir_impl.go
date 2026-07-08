@@ -5,12 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
-	"net/http"
+	"konsulin-service/internal/pkg/fhir_http_client"
 	"sync"
 
 	"go.uber.org/zap"
@@ -24,6 +23,7 @@ var (
 type organizationFhirClient struct {
 	BaseUrl string
 	Log     *zap.Logger
+	client  *fhir_http_client.FHIRHTTPClient
 }
 
 func NewOrganizationFhirClient(baseUrl string, logger *zap.Logger) contracts.OrganizationFhirClient {
@@ -31,6 +31,7 @@ func NewOrganizationFhirClient(baseUrl string, logger *zap.Logger) contracts.Org
 		client := &organizationFhirClient{
 			BaseUrl: baseUrl + constvars.ResourceOrganization,
 			Log:     logger,
+			client:  fhir_http_client.New(logger),
 		}
 		organizationFhirClientInstance = client
 	})
@@ -58,55 +59,13 @@ func (c *organizationFhirClient) FindAll(ctx context.Context, nameFilter, fetchT
 		zap.String(constvars.LoggingFhirUrlKey, url),
 	)
 
-	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, url, nil)
+	respBody, err := c.client.Do(ctx, constvars.MethodGet, url, nil)
 	if err != nil {
-		c.Log.Error("organizationFhirClient.FindAll error creating HTTP request",
+		c.Log.Error("organizationFhirClient.FindAll FHIR error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
-		return nil, 0, exceptions.ErrCreateHTTPRequest(err)
-	}
-	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		c.Log.Error("organizationFhirClient.FindAll error sending HTTP request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, 0, exceptions.ErrSendHTTPRequest(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != constvars.StatusOK {
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			c.Log.Error("organizationFhirClient.FindAll error reading response body",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, 0, exceptions.ErrGetFHIRResource(err, constvars.ResourceOrganization)
-		}
-
-		var outcome fhir_dto.OperationOutcome
-		err = json.Unmarshal(bodyBytes, &outcome)
-		if err != nil {
-			c.Log.Error("organizationFhirClient.FindAll error unmarshaling outcome",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, 0, exceptions.ErrGetFHIRResource(err, constvars.ResourceOrganization)
-		}
-
-		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
-			c.Log.Error("organizationFhirClient.FindAll FHIR error",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(fhirErrorIssue),
-			)
-			return nil, 0, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourceOrganization)
-		}
+		return nil, 0, exceptions.ErrGetFHIRResource(err, constvars.ResourceOrganization)
 	}
 
 	var result struct {
@@ -116,8 +75,7 @@ func (c *organizationFhirClient) FindAll(ctx context.Context, nameFilter, fetchT
 			Resource fhir_dto.Organization `json:"resource"`
 		} `json:"entry"`
 	}
-	err = json.NewDecoder(resp.Body).Decode(&result)
-	if err != nil {
+	if err := json.Unmarshal(respBody, &result); err != nil {
 		c.Log.Error("organizationFhirClient.FindAll error decoding response",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
@@ -144,60 +102,17 @@ func (c *organizationFhirClient) FindOrganizationByID(ctx context.Context, organ
 		zap.String(constvars.LoggingOrganizationIDKey, organizationID),
 	)
 
-	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, fmt.Sprintf("%s/%s", c.BaseUrl, organizationID), nil)
+	respBody, err := c.client.Do(ctx, constvars.MethodGet, fmt.Sprintf("%s/%s", c.BaseUrl, organizationID), nil)
 	if err != nil {
-		c.Log.Error("organizationFhirClient.FindOrganizationByID error creating HTTP request",
+		c.Log.Error("organizationFhirClient.FindOrganizationByID FHIR error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
-		return nil, exceptions.ErrCreateHTTPRequest(err)
-	}
-	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		c.Log.Error("organizationFhirClient.FindOrganizationByID error sending HTTP request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrSendHTTPRequest(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != constvars.StatusOK {
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			c.Log.Error("organizationFhirClient.FindOrganizationByID error reading response body",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceOrganization)
-		}
-
-		var outcome fhir_dto.OperationOutcome
-		err = json.Unmarshal(bodyBytes, &outcome)
-		if err != nil {
-			c.Log.Error("organizationFhirClient.FindOrganizationByID error unmarshaling outcome",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceOrganization)
-		}
-
-		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
-			c.Log.Error("organizationFhirClient.FindOrganizationByID FHIR error",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(fhirErrorIssue),
-			)
-			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourceOrganization)
-		}
+		return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceOrganization)
 	}
 
-	organizationFhir := new(fhir_dto.Organization)
-	err = json.NewDecoder(resp.Body).Decode(&organizationFhir)
-	if err != nil {
+	var organization fhir_dto.Organization
+	if err := json.Unmarshal(respBody, &organization); err != nil {
 		c.Log.Error("organizationFhirClient.FindOrganizationByID error decoding response",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
@@ -207,9 +122,9 @@ func (c *organizationFhirClient) FindOrganizationByID(ctx context.Context, organ
 
 	c.Log.Info("organizationFhirClient.FindOrganizationByID succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingOrganizationIDKey, organizationFhir.ID),
+		zap.String(constvars.LoggingOrganizationIDKey, organization.ID),
 	)
-	return organizationFhir, nil
+	return &organization, nil
 }
 
 func (c *organizationFhirClient) Update(ctx context.Context, organization fhir_dto.Organization) (*fhir_dto.Organization, error) {
@@ -229,66 +144,17 @@ func (c *organizationFhirClient) Update(ctx context.Context, organization fhir_d
 	}
 
 	url := fmt.Sprintf("%s/%s", c.BaseUrl, organization.ID)
-	req, err := http.NewRequestWithContext(ctx, constvars.MethodPut, url, bytes.NewBuffer(bodyBytes))
+	respBody, err := c.client.Do(ctx, constvars.MethodPut, url, bytes.NewBuffer(bodyBytes))
 	if err != nil {
-		c.Log.Error("organizationFhirClient.Update error creating HTTP request",
+		c.Log.Error("organizationFhirClient.Update FHIR error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
-		return nil, exceptions.ErrCreateHTTPRequest(err)
-	}
-	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		c.Log.Error("organizationFhirClient.Update error sending HTTP request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrSendHTTPRequest(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != constvars.StatusOK && resp.StatusCode != constvars.StatusCreated {
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			c.Log.Error("organizationFhirClient.Update error reading response body",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceOrganization)
-		}
-
-		var outcome fhir_dto.OperationOutcome
-		err = json.Unmarshal(bodyBytes, &outcome)
-		if err != nil {
-			c.Log.Error("organizationFhirClient.Update error unmarshaling outcome",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceOrganization)
-		}
-
-		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
-			c.Log.Error("organizationFhirClient.Update FHIR error",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(fhirErrorIssue),
-			)
-			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourceOrganization)
-		}
-
-		c.Log.Error("organizationFhirClient.Update unknown error",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Int("status_code", resp.StatusCode),
-		)
-		return nil, fmt.Errorf("unknown error with status code: %d", resp.StatusCode)
+		return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceOrganization)
 	}
 
-	organizationFhir := new(fhir_dto.Organization)
-	err = json.NewDecoder(resp.Body).Decode(&organizationFhir)
-	if err != nil {
+	var org fhir_dto.Organization
+	if err := json.Unmarshal(respBody, &org); err != nil {
 		c.Log.Error("organizationFhirClient.Update error decoding response",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
@@ -298,7 +164,7 @@ func (c *organizationFhirClient) Update(ctx context.Context, organization fhir_d
 
 	c.Log.Info("organizationFhirClient.Update succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingOrganizationIDKey, organizationFhir.ID),
+		zap.String(constvars.LoggingOrganizationIDKey, org.ID),
 	)
-	return organizationFhir, nil
+	return &org, nil
 }

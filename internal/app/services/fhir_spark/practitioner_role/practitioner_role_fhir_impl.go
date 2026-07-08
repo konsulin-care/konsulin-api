@@ -11,6 +11,7 @@ import (
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
+	"konsulin-service/internal/pkg/fhir_http_client"
 	"net/http"
 	"net/url"
 	"sync"
@@ -27,6 +28,7 @@ type practitionerRoleFhirClient struct {
 	BaseFhirUrl string
 	BaseUrl     string
 	Log         *zap.Logger
+	client      *fhir_http_client.FHIRHTTPClient
 }
 
 func NewPractitionerRoleFhirClient(baseUrl string, logger *zap.Logger) contracts.PractitionerRoleFhirClient {
@@ -34,6 +36,7 @@ func NewPractitionerRoleFhirClient(baseUrl string, logger *zap.Logger) contracts
 		client := &practitionerRoleFhirClient{
 			BaseUrl: baseUrl + constvars.ResourcePractitionerRole,
 			Log:     logger,
+			client:  fhir_http_client.New(logger),
 		}
 		practitionerRoleFhirClientInstance = client
 	})

@@ -5,12 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
-	"net/http"
+	"konsulin-service/internal/pkg/fhir_http_client"
 	"sync"
 
 	"go.uber.org/zap"
@@ -24,6 +23,7 @@ var (
 type observationFhirClient struct {
 	BaseUrl string
 	Log     *zap.Logger
+	client  *fhir_http_client.FHIRHTTPClient
 }
 
 func NewObservationFhirClient(baseUrl string, logger *zap.Logger) contracts.ObservationFhirClient {
@@ -31,6 +31,7 @@ func NewObservationFhirClient(baseUrl string, logger *zap.Logger) contracts.Obse
 		client := &observationFhirClient{
 			BaseUrl: baseUrl + constvars.ResourceObservation,
 			Log:     logger,
+			client:  fhir_http_client.New(logger),
 		}
 		observationFhirClientInstance = client
 	})
@@ -52,60 +53,17 @@ func (c *observationFhirClient) CreateObservation(ctx context.Context, request *
 		return nil, exceptions.ErrCannotMarshalJSON(err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, constvars.MethodPost, c.BaseUrl, bytes.NewBuffer(requestJSON))
+	respBody, err := c.client.Do(ctx, constvars.MethodPost, c.BaseUrl, bytes.NewBuffer(requestJSON))
 	if err != nil {
-		c.Log.Error("observationFhirClient.CreateObservation error creating HTTP request",
+		c.Log.Error("observationFhirClient.CreateObservation FHIR error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
-		return nil, exceptions.ErrCreateHTTPRequest(err)
-	}
-	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		c.Log.Error("observationFhirClient.CreateObservation error sending HTTP request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrSendHTTPRequest(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != constvars.StatusCreated {
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			c.Log.Error("observationFhirClient.CreateObservation error reading response body",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrCreateFHIRResource(err, constvars.ResourceObservation)
-		}
-
-		var outcome fhir_dto.OperationOutcome
-		err = json.Unmarshal(bodyBytes, &outcome)
-		if err != nil {
-			c.Log.Error("observationFhirClient.CreateObservation error unmarshaling outcome",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrCreateFHIRResource(err, constvars.ResourceObservation)
-		}
-
-		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
-			c.Log.Error("observationFhirClient.CreateObservation FHIR error",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(fhirErrorIssue),
-			)
-			return nil, exceptions.ErrCreateFHIRResource(fhirErrorIssue, constvars.ResourceObservation)
-		}
+		return nil, exceptions.ErrCreateFHIRResource(err, constvars.ResourceObservation)
 	}
 
-	observationFhir := new(fhir_dto.Observation)
-	err = json.NewDecoder(resp.Body).Decode(&observationFhir)
-	if err != nil {
+	var observation fhir_dto.Observation
+	if err := json.Unmarshal(respBody, &observation); err != nil {
 		c.Log.Error("observationFhirClient.CreateObservation error decoding response",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
@@ -115,9 +73,9 @@ func (c *observationFhirClient) CreateObservation(ctx context.Context, request *
 
 	c.Log.Info("observationFhirClient.CreateObservation succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingObservationIDKey, observationFhir.ID),
+		zap.String(constvars.LoggingObservationIDKey, observation.ID),
 	)
-	return observationFhir, nil
+	return &observation, nil
 }
 
 func (c *observationFhirClient) FindObservationByID(ctx context.Context, observationID string) (*fhir_dto.Observation, error) {
@@ -127,60 +85,17 @@ func (c *observationFhirClient) FindObservationByID(ctx context.Context, observa
 		zap.String(constvars.LoggingObservationIDKey, observationID),
 	)
 
-	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, fmt.Sprintf("%s/%s", c.BaseUrl, observationID), nil)
+	respBody, err := c.client.Do(ctx, constvars.MethodGet, fmt.Sprintf("%s/%s", c.BaseUrl, observationID), nil)
 	if err != nil {
-		c.Log.Error("observationFhirClient.FindObservationByID error creating HTTP request",
+		c.Log.Error("observationFhirClient.FindObservationByID FHIR error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
-		return nil, exceptions.ErrCreateHTTPRequest(err)
-	}
-	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		c.Log.Error("observationFhirClient.FindObservationByID error sending HTTP request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrSendHTTPRequest(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != constvars.StatusOK {
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			c.Log.Error("observationFhirClient.FindObservationByID error reading response body",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceObservation)
-		}
-
-		var outcome fhir_dto.OperationOutcome
-		err = json.Unmarshal(bodyBytes, &outcome)
-		if err != nil {
-			c.Log.Error("observationFhirClient.FindObservationByID error unmarshaling outcome",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceObservation)
-		}
-
-		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
-			c.Log.Error("observationFhirClient.FindObservationByID FHIR error",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(fhirErrorIssue),
-			)
-			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourceObservation)
-		}
+		return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceObservation)
 	}
 
-	observationFhir := new(fhir_dto.Observation)
-	err = json.NewDecoder(resp.Body).Decode(&observationFhir)
-	if err != nil {
+	var observation fhir_dto.Observation
+	if err := json.Unmarshal(respBody, &observation); err != nil {
 		c.Log.Error("observationFhirClient.FindObservationByID error decoding response",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
@@ -190,9 +105,9 @@ func (c *observationFhirClient) FindObservationByID(ctx context.Context, observa
 
 	c.Log.Info("observationFhirClient.FindObservationByID succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingObservationIDKey, observationFhir.ID),
+		zap.String(constvars.LoggingObservationIDKey, observation.ID),
 	)
-	return observationFhir, nil
+	return &observation, nil
 }
 
 func (c *observationFhirClient) DeleteObservationByID(ctx context.Context, observationID string) error {
@@ -202,55 +117,13 @@ func (c *observationFhirClient) DeleteObservationByID(ctx context.Context, obser
 		zap.String(constvars.LoggingObservationIDKey, observationID),
 	)
 
-	req, err := http.NewRequestWithContext(ctx, constvars.MethodDelete, fmt.Sprintf("%s/%s", c.BaseUrl, observationID), nil)
+	_, err := c.client.Do(ctx, constvars.MethodDelete, fmt.Sprintf("%s/%s", c.BaseUrl, observationID), nil)
 	if err != nil {
-		c.Log.Error("observationFhirClient.DeleteObservationByID error creating HTTP request",
+		c.Log.Error("observationFhirClient.DeleteObservationByID FHIR error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
-		return exceptions.ErrCreateHTTPRequest(err)
-	}
-	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		c.Log.Error("observationFhirClient.DeleteObservationByID error sending HTTP request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return exceptions.ErrSendHTTPRequest(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != constvars.StatusNoContent {
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			c.Log.Error("observationFhirClient.DeleteObservationByID error reading response body",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return exceptions.ErrGetFHIRResource(err, constvars.ResourceObservation)
-		}
-
-		var outcome fhir_dto.OperationOutcome
-		err = json.Unmarshal(bodyBytes, &outcome)
-		if err != nil {
-			c.Log.Error("observationFhirClient.DeleteObservationByID error unmarshaling outcome",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return exceptions.ErrGetFHIRResource(err, constvars.ResourceObservation)
-		}
-
-		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
-			c.Log.Error("observationFhirClient.DeleteObservationByID FHIR error",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(fhirErrorIssue),
-			)
-			return exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourceObservation)
-		}
+		return exceptions.ErrGetFHIRResource(err, constvars.ResourceObservation)
 	}
 
 	c.Log.Info("observationFhirClient.DeleteObservationByID succeeded",
@@ -275,60 +148,17 @@ func (c *observationFhirClient) UpdateObservation(ctx context.Context, request *
 		return nil, exceptions.ErrCannotMarshalJSON(err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, constvars.MethodPut, fmt.Sprintf("%s/%s", c.BaseUrl, request.ID), bytes.NewBuffer(requestJSON))
+	respBody, err := c.client.Do(ctx, constvars.MethodPut, fmt.Sprintf("%s/%s", c.BaseUrl, request.ID), bytes.NewBuffer(requestJSON))
 	if err != nil {
-		c.Log.Error("observationFhirClient.UpdateObservation error creating HTTP request",
+		c.Log.Error("observationFhirClient.UpdateObservation FHIR error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
-		return nil, exceptions.ErrCreateHTTPRequest(err)
-	}
-	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		c.Log.Error("observationFhirClient.UpdateObservation error sending HTTP request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrSendHTTPRequest(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			c.Log.Error("observationFhirClient.UpdateObservation error reading response body",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrUpdateFHIRResource(err, constvars.ResourceObservation)
-		}
-
-		var outcome fhir_dto.OperationOutcome
-		err = json.Unmarshal(bodyBytes, &outcome)
-		if err != nil {
-			c.Log.Error("observationFhirClient.UpdateObservation error unmarshaling outcome",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrUpdateFHIRResource(err, constvars.ResourceObservation)
-		}
-
-		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
-			c.Log.Error("observationFhirClient.UpdateObservation FHIR error",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(fhirErrorIssue),
-			)
-			return nil, exceptions.ErrUpdateFHIRResource(fhirErrorIssue, constvars.ResourceObservation)
-		}
+		return nil, exceptions.ErrUpdateFHIRResource(err, constvars.ResourceObservation)
 	}
 
-	observationFhir := new(fhir_dto.Observation)
-	err = json.NewDecoder(resp.Body).Decode(&observationFhir)
-	if err != nil {
+	var observation fhir_dto.Observation
+	if err := json.Unmarshal(respBody, &observation); err != nil {
 		c.Log.Error("observationFhirClient.UpdateObservation error decoding response",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
@@ -338,9 +168,9 @@ func (c *observationFhirClient) UpdateObservation(ctx context.Context, request *
 
 	c.Log.Info("observationFhirClient.UpdateObservation succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingObservationIDKey, observationFhir.ID),
+		zap.String(constvars.LoggingObservationIDKey, observation.ID),
 	)
-	return observationFhir, nil
+	return &observation, nil
 }
 
 func (c *observationFhirClient) PatchObservation(ctx context.Context, request *fhir_dto.Observation) (*fhir_dto.Observation, error) {
@@ -358,60 +188,17 @@ func (c *observationFhirClient) PatchObservation(ctx context.Context, request *f
 		return nil, exceptions.ErrCannotMarshalJSON(err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, constvars.MethodPatch, fmt.Sprintf("%s/%s", c.BaseUrl, request.ID), bytes.NewBuffer(requestJSON))
+	respBody, err := c.client.Do(ctx, constvars.MethodPatch, fmt.Sprintf("%s/%s", c.BaseUrl, request.ID), bytes.NewBuffer(requestJSON))
 	if err != nil {
-		c.Log.Error("observationFhirClient.PatchObservation error creating HTTP request",
+		c.Log.Error("observationFhirClient.PatchObservation FHIR error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
-		return nil, exceptions.ErrCreateHTTPRequest(err)
-	}
-	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		c.Log.Error("observationFhirClient.PatchObservation error sending HTTP request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrSendHTTPRequest(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			c.Log.Error("observationFhirClient.PatchObservation error reading response body",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrUpdateFHIRResource(err, constvars.ResourceObservation)
-		}
-
-		var outcome fhir_dto.OperationOutcome
-		err = json.Unmarshal(bodyBytes, &outcome)
-		if err != nil {
-			c.Log.Error("observationFhirClient.PatchObservation error unmarshaling outcome",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrUpdateFHIRResource(err, constvars.ResourceObservation)
-		}
-
-		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
-			c.Log.Error("observationFhirClient.PatchObservation FHIR error",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(fhirErrorIssue),
-			)
-			return nil, exceptions.ErrUpdateFHIRResource(fhirErrorIssue, constvars.ResourceObservation)
-		}
+		return nil, exceptions.ErrUpdateFHIRResource(err, constvars.ResourceObservation)
 	}
 
-	observationFhir := new(fhir_dto.Observation)
-	err = json.NewDecoder(resp.Body).Decode(&observationFhir)
-	if err != nil {
+	var observation fhir_dto.Observation
+	if err := json.Unmarshal(respBody, &observation); err != nil {
 		c.Log.Error("observationFhirClient.PatchObservation error decoding response",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
@@ -421,7 +208,7 @@ func (c *observationFhirClient) PatchObservation(ctx context.Context, request *f
 
 	c.Log.Info("observationFhirClient.PatchObservation succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingObservationIDKey, observationFhir.ID),
+		zap.String(constvars.LoggingObservationIDKey, observation.ID),
 	)
-	return observationFhir, nil
+	return &observation, nil
 }

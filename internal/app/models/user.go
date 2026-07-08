@@ -100,7 +100,10 @@ func (u *User) IsDeactivated() bool {
 	return u.DeletedAt != nil
 }
 
-func (u *User) ConvertToPatientFhirDeactivationRequest() *fhir_dto.Patient {
+// buildDeactivationFields returns the common FHIR fields shared by Patient and
+// Practitioner deactivation requests: extensions, name, telecom, gender,
+// birth date, and address.
+func (u *User) buildDeactivationFields() ([]fhir_dto.Extension, []fhir_dto.HumanName, []fhir_dto.ContactPoint, string, string, []fhir_dto.Address) {
 	var extensions []fhir_dto.Extension
 	for _, education := range u.Educations {
 		extensions = append(extensions, fhir_dto.Extension{
@@ -109,81 +112,69 @@ func (u *User) ConvertToPatientFhirDeactivationRequest() *fhir_dto.Patient {
 		})
 	}
 
+	name := []fhir_dto.HumanName{
+		{
+			Use:    "official",
+			Family: u.Fullname,
+			Given:  []string{u.Fullname},
+		},
+	}
+
+	telecom := []fhir_dto.ContactPoint{
+		{
+			System: fhir_dto.ContactPointSystemEmail,
+			Value:  u.Email,
+			Use:    constvars.FhirAddressUseHome,
+		},
+		{
+			System: fhir_dto.ContactPointSystemPhone,
+			Value:  u.WhatsAppNumber,
+			Use:    constvars.FhirTelecomUseMobile,
+		},
+	}
+
+	gender := u.Gender
+	birthDate := u.BirthDate
+
+	address := []fhir_dto.Address{
+		{
+			Use:  constvars.FhirAddressUseHome,
+			Line: strings.Split(u.Address, ", "),
+		},
+	}
+
+	return extensions, name, telecom, gender, birthDate, address
+}
+
+func (u *User) ConvertToPatientFhirDeactivationRequest() *fhir_dto.Patient {
+	extensions, name, telecom, gender, birthDate, address := u.buildDeactivationFields()
 	return &fhir_dto.Patient{
 		ResourceType: constvars.ResourcePatient,
 		ID:           u.PatientID,
 		Active:       false,
-		Name: []fhir_dto.HumanName{
-			{
-				Use:    "official",
-				Family: u.Fullname,
-				Given:  []string{u.Fullname},
-			},
-		},
-		Telecom: []fhir_dto.ContactPoint{
-			{
-				System: fhir_dto.ContactPointSystemEmail,
-				Value:  u.Email,
-				Use:    constvars.FhirAddressUseHome,
-			},
-			{
-				System: fhir_dto.ContactPointSystemPhone,
-				Value:  u.WhatsAppNumber,
-				Use:    constvars.FhirTelecomUseMobile,
-			},
-		},
-		Gender:    u.Gender,
-		BirthDate: u.BirthDate,
-		Address: []fhir_dto.Address{
-			{
-				Use:  constvars.FhirAddressUseHome,
-				Line: strings.Split(u.Address, ", "),
-			},
-		},
-		Extension: extensions,
+		Name:         name,
+		Telecom:      telecom,
+		Gender:       gender,
+		BirthDate:    birthDate,
+		Address:      address,
+		Extension:    extensions,
 	}
 }
 
-func (u *User) ConvertToPractitionerFhirDeactivationRequest() *fhir_dto.Practitioner {
-	var extensions []fhir_dto.Extension
-	for _, education := range u.Educations {
-		extensions = append(extensions, fhir_dto.Extension{
-			Url:         constvars.FhirEducationExtensionURL,
-			ValueString: education,
-		})
-	}
+// ConvertToPractitionerFhirDeactivationRequest builds a Practitioner deactivation request.
 
-	return &fhir_dto.Practitioner{
-		ResourceType: constvars.ResourcePatient,
+func (u *User) ConvertToPractitionerFhirDeactivationRequest() *fhir_dto.Practitioner {
+	extensions, name, telecom, gender, birthDate, address := u.buildDeactivationFields()
+	p := &fhir_dto.Practitioner{
+		ResourceType: constvars.ResourcePractitioner,
 		ID:           u.PractitionerID,
 		Active:       false,
-		Name: []fhir_dto.HumanName{
-			{
-				Use:    "official",
-				Family: u.Fullname,
-				Given:  []string{u.Fullname},
-			},
-		},
-		Telecom: []fhir_dto.ContactPoint{
-			{
-				System: fhir_dto.ContactPointSystemEmail,
-				Value:  u.Email,
-				Use:    constvars.FhirAddressUseHome,
-			},
-			{
-				System: fhir_dto.ContactPointSystemPhone,
-				Value:  u.WhatsAppNumber,
-				Use:    constvars.FhirTelecomUseMobile,
-			},
-		},
-		Gender:    u.Gender,
-		BirthDate: u.BirthDate,
-		Address: []fhir_dto.Address{
-			{
-				Use:  constvars.FhirAddressUseHome,
-				Line: strings.Split(u.Address, ", "),
-			},
-		},
-		Extension: extensions,
+		Name:         name,
+		Telecom:      telecom,
+		Gender:       gender,
+		BirthDate:    birthDate,
+		Address:      address,
+		Extension:    extensions,
 	}
+	return p
 }

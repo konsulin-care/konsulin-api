@@ -157,7 +157,16 @@ func (uc *authUsecase) handlePhoneMagicLink(ctx context.Context, request *reques
 		return err
 	}
 
-	if _, err := initializeMagicLinkFHIR(ctx, uc, requestID, plessResponse.User.ID, request.Roles, request.Email, phoneDigits, start); err != nil {
+	if _, err := initializeMagicLinkFHIR(initializeMagicLinkFHIRInput{
+		Ctx: ctx,
+		Uc: uc,
+		RequestID: requestID,
+		SuperTokenUserID: plessResponse.User.ID,
+		Roles: request.Roles,
+		Email: request.Email,
+		Phone: phoneDigits,
+		Start: start,
+	}); err != nil {
 		return err
 	}
 
@@ -202,7 +211,16 @@ func (uc *authUsecase) handleEmailMagicLink(ctx context.Context, request *reques
 		return err
 	}
 
-	initializeResources, err := initializeMagicLinkFHIR(ctx, uc, requestID, plessResponse.User.ID, request.Roles, request.Email, "", start)
+	initializeResources, err := initializeMagicLinkFHIR(initializeMagicLinkFHIRInput{
+		Ctx: ctx,
+		Uc: uc,
+		RequestID: requestID,
+		SuperTokenUserID: plessResponse.User.ID,
+		Roles: request.Roles,
+		Email: request.Email,
+		Phone: "",
+		Start: start,
+	})
 	if err != nil {
 		return err
 	}
@@ -257,22 +275,34 @@ func assignMagicLinkRoles(_ context.Context, uc *authUsecase, requestID, userID 
 	return nil
 }
 
+// initializeMagicLinkFHIRInput groups parameters for initializeMagicLinkFHIR.
+type initializeMagicLinkFHIRInput struct {
+	Ctx             context.Context
+	Uc              *authUsecase
+	RequestID       string
+	SuperTokenUserID string
+	Roles           []string
+	Email           string
+	Phone           string
+	Start           time.Time
+}
+
 // initializeMagicLinkFHIR creates FHIR resources during magic link creation.
-func initializeMagicLinkFHIR(ctx context.Context, uc *authUsecase, requestID string, superTokenUserID string, roles []string, email, phone string, start time.Time) (*contracts.InitializeNewUserFHIRResourcesOutput, error) {
+func initializeMagicLinkFHIR(in initializeMagicLinkFHIRInput) (*contracts.InitializeNewUserFHIRResourcesOutput, error) {
 	input := &contracts.InitializeNewUserFHIRResourcesInput{
-		Email:            email,
-		Phone:            phone,
-		SuperTokenUserID: superTokenUserID,
+		Email:            in.Email,
+		Phone:            in.Phone,
+		SuperTokenUserID: in.SuperTokenUserID,
 	}
-	input.ToogleByRoles(roles)
-	initCtx, cancel := context.WithDeadline(ctx, time.Now().Add(10*time.Second))
+	input.ToogleByRoles(in.Roles)
+	initCtx, cancel := context.WithDeadline(in.Ctx, time.Now().Add(10*time.Second))
 	defer cancel()
-	res, err := uc.UserUsecase.InitializeNewUserFHIRResources(initCtx, input)
+	res, err := in.Uc.UserUsecase.InitializeNewUserFHIRResources(initCtx, input)
 	if err != nil {
-		uc.Log.Error("Failed to initialize FHIR resources during magic link creation",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
+		in.Uc.Log.Error("Failed to initialize FHIR resources during magic link creation",
+			zap.String(constvars.LoggingRequestIDKey, in.RequestID),
 			zap.String(constvars.LoggingErrorTypeKey, "FHIR initialization"),
-			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
+			zap.Duration(constvars.LoggingDurationKey, time.Since(in.Start)),
 			zap.Error(err),
 		)
 		return nil, err

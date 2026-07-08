@@ -10,6 +10,7 @@ import (
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
+	"konsulin-service/internal/pkg/fhir_http_client"
 	"net/http"
 	"net/url"
 	"strings"
@@ -27,6 +28,7 @@ var (
 type slotFhirClient struct {
 	BaseUrl string
 	Log     *zap.Logger
+	client  *fhir_http_client.FHIRHTTPClient
 }
 
 func NewSlotFhirClient(baseUrl string, logger *zap.Logger) contracts.SlotFhirClient {
@@ -34,6 +36,7 @@ func NewSlotFhirClient(baseUrl string, logger *zap.Logger) contracts.SlotFhirCli
 		client := &slotFhirClient{
 			BaseUrl: baseUrl + constvars.ResourceSlot,
 			Log:     logger,
+			client:  fhir_http_client.New(logger),
 		}
 		slotFhirClientInstance = client
 	})

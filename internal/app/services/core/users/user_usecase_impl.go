@@ -575,21 +575,7 @@ func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email 
 
 	chatwootID := strconv.Itoa(userChatwootContact.ChatwootID)
 
-	telecom := []fhir_dto.ContactPoint{}
-	if strings.TrimSpace(email) != "" {
-		telecom = append(telecom, fhir_dto.ContactPoint{
-			System: fhir_dto.ContactPointSystemEmail,
-			Value:  email,
-			Use:    constvars.FhirAddressUseWork,
-		})
-	}
-	if strings.TrimSpace(phone) != "" {
-		telecom = append(telecom, fhir_dto.ContactPoint{
-			System: fhir_dto.ContactPointSystemPhone,
-			Value:  phone,
-			Use:    constvars.FhirAddressUseWork,
-		})
-	}
+	telecom := buildContactPoints(email, phone)
 
 	newPractitionerInput := &fhir_dto.Practitioner{
 		ResourceType: constvars.ResourcePractitioner,
@@ -764,21 +750,7 @@ func (uc *userUsecase) createPatientIfNotExists(ctx context.Context, email strin
 	}
 	chatwootID := strconv.Itoa(userChatwootContact.ChatwootID)
 
-	telecom := []fhir_dto.ContactPoint{}
-	if strings.TrimSpace(email) != "" {
-		telecom = append(telecom, fhir_dto.ContactPoint{
-			System: fhir_dto.ContactPointSystemEmail,
-			Value:  email,
-			Use:    constvars.FhirAddressUseWork,
-		})
-	}
-	if strings.TrimSpace(phone) != "" {
-		telecom = append(telecom, fhir_dto.ContactPoint{
-			System: fhir_dto.ContactPointSystemPhone,
-			Value:  phone,
-			Use:    constvars.FhirAddressUseWork,
-		})
-	}
+	telecom := buildContactPoints(email, phone)
 
 	newPatientInput := &fhir_dto.Patient{
 		ResourceType: constvars.ResourcePatient,
@@ -908,21 +880,7 @@ func (uc *userUsecase) createPersonIfNotExists(ctx context.Context, email string
 
 	chatwootID := strconv.Itoa(userChatwootContact.ChatwootID)
 
-	telecom := []fhir_dto.ContactPoint{}
-	if strings.TrimSpace(email) != "" {
-		telecom = append(telecom, fhir_dto.ContactPoint{
-			System: fhir_dto.ContactPointSystemEmail,
-			Value:  email,
-			Use:    constvars.FhirAddressUseWork,
-		})
-	}
-	if strings.TrimSpace(phone) != "" {
-		telecom = append(telecom, fhir_dto.ContactPoint{
-			System: fhir_dto.ContactPointSystemPhone,
-			Value:  phone,
-			Use:    constvars.FhirAddressUseWork,
-		})
-	}
+	telecom := buildContactPoints(email, phone)
 
 	newPersonInput := &fhir_dto.Person{
 		ResourceType: constvars.ResourcePerson,
@@ -1250,4 +1208,25 @@ func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, in
 	}
 
 	return output, nil
+}
+
+// buildContactPoints builds a slice of FHIR ContactPoint from email and phone.
+// Non-empty values are included; empty values are skipped.
+func buildContactPoints(email, phone string) []fhir_dto.ContactPoint {
+	var telecom []fhir_dto.ContactPoint
+	if strings.TrimSpace(email) != "" {
+		telecom = append(telecom, fhir_dto.ContactPoint{
+			System: fhir_dto.ContactPointSystemEmail,
+			Value:  email,
+			Use:    constvars.FhirAddressUseWork,
+		})
+	}
+	if strings.TrimSpace(phone) != "" {
+		telecom = append(telecom, fhir_dto.ContactPoint{
+			System: fhir_dto.ContactPointSystemPhone,
+			Value:  phone,
+			Use:    constvars.FhirAddressUseWork,
+		})
+	}
+	return telecom
 }

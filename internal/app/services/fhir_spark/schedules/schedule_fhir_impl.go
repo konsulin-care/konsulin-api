@@ -5,12 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
-	"net/http"
+	"konsulin-service/internal/pkg/fhir_http_client"
 	"net/url"
 	"sync"
 
@@ -25,6 +24,7 @@ var (
 type scheduleFhirClient struct {
 	BaseUrl string
 	Log     *zap.Logger
+	client  *fhir_http_client.FHIRHTTPClient
 }
 
 func NewScheduleFhirClient(baseUrl string, logger *zap.Logger) contracts.ScheduleFhirClient {
@@ -32,6 +32,7 @@ func NewScheduleFhirClient(baseUrl string, logger *zap.Logger) contracts.Schedul
 		client := &scheduleFhirClient{
 			BaseUrl: baseUrl + constvars.ResourceSchedule,
 			Log:     logger,
+			client:  fhir_http_client.New(logger),
 		}
 		scheduleFhirClientInstance = client
 	})
@@ -53,60 +54,17 @@ func (c *scheduleFhirClient) CreateSchedule(ctx context.Context, request *fhir_d
 		return nil, exceptions.ErrCannotMarshalJSON(err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, constvars.MethodPost, c.BaseUrl, bytes.NewBuffer(requestJSON))
+	respBody, err := c.client.Do(ctx, constvars.MethodPost, c.BaseUrl, bytes.NewBuffer(requestJSON))
 	if err != nil {
-		c.Log.Error("scheduleFhirClient.CreateSchedule error creating HTTP request",
+		c.Log.Error("scheduleFhirClient.CreateSchedule FHIR error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
-		return nil, exceptions.ErrCreateHTTPRequest(err)
-	}
-	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		c.Log.Error("scheduleFhirClient.CreateSchedule error sending HTTP request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrSendHTTPRequest(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != constvars.StatusCreated {
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			c.Log.Error("scheduleFhirClient.CreateSchedule error reading response body",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrCreateFHIRResource(err, constvars.ResourceSchedule)
-		}
-
-		var outcome fhir_dto.OperationOutcome
-		err = json.Unmarshal(bodyBytes, &outcome)
-		if err != nil {
-			c.Log.Error("scheduleFhirClient.CreateSchedule error unmarshaling outcome",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrCreateFHIRResource(err, constvars.ResourceSchedule)
-		}
-
-		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
-			c.Log.Error("scheduleFhirClient.CreateSchedule FHIR error",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(fhirErrorIssue),
-			)
-			return nil, exceptions.ErrCreateFHIRResource(fhirErrorIssue, constvars.ResourceSchedule)
-		}
+		return nil, exceptions.ErrCreateFHIRResource(err, constvars.ResourceSchedule)
 	}
 
-	scheduleFhir := new(fhir_dto.Schedule)
-	err = json.NewDecoder(resp.Body).Decode(&scheduleFhir)
-	if err != nil {
+	var schedule fhir_dto.Schedule
+	if err := json.Unmarshal(respBody, &schedule); err != nil {
 		c.Log.Error("scheduleFhirClient.CreateSchedule error decoding response",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
@@ -116,9 +74,9 @@ func (c *scheduleFhirClient) CreateSchedule(ctx context.Context, request *fhir_d
 
 	c.Log.Info("scheduleFhirClient.CreateSchedule succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingScheduleIDKey, scheduleFhir.ID),
+		zap.String(constvars.LoggingScheduleIDKey, schedule.ID),
 	)
-	return scheduleFhir, nil
+	return &schedule, nil
 }
 
 func (c *scheduleFhirClient) FindScheduleByPractitionerID(ctx context.Context, practitionerID string) ([]fhir_dto.Schedule, error) {
@@ -128,59 +86,18 @@ func (c *scheduleFhirClient) FindScheduleByPractitionerID(ctx context.Context, p
 		zap.String(constvars.LoggingPractitionerIDKey, practitionerID),
 	)
 
-	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet,
+	respBody, err := c.client.Do(ctx, constvars.MethodGet,
 		fmt.Sprintf("%s?actor=Practitioner/%s", c.BaseUrl, practitionerID), nil)
 	if err != nil {
-		c.Log.Error("scheduleFhirClient.FindScheduleByPractitionerID error creating HTTP request",
+		c.Log.Error("scheduleFhirClient.FindScheduleByPractitionerID FHIR error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
-		return nil, exceptions.ErrCreateHTTPRequest(err)
-	}
-	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		c.Log.Error("scheduleFhirClient.FindScheduleByPractitionerID error sending HTTP request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrSendHTTPRequest(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != constvars.StatusOK {
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			c.Log.Error("scheduleFhirClient.FindScheduleByPractitionerID error reading response body",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSchedule)
-		}
-		var outcome fhir_dto.OperationOutcome
-		err = json.Unmarshal(bodyBytes, &outcome)
-		if err != nil {
-			c.Log.Error("scheduleFhirClient.FindScheduleByPractitionerID error unmarshaling outcome",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSchedule)
-		}
-		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
-			c.Log.Error("scheduleFhirClient.FindScheduleByPractitionerID FHIR error",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(fhirErrorIssue),
-			)
-			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourceSchedule)
-		}
+		return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSchedule)
 	}
 
 	var result fhir_dto.FHIRBundle
-	err = json.NewDecoder(resp.Body).Decode(&result)
-	if err != nil {
+	if err := json.Unmarshal(respBody, &result); err != nil {
 		c.Log.Error("scheduleFhirClient.FindScheduleByPractitionerID error decoding response",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
@@ -188,12 +105,10 @@ func (c *scheduleFhirClient) FindScheduleByPractitionerID(ctx context.Context, p
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourceSchedule)
 	}
 
-	// Note: Ensure to preallocate slice with zero length if you're appending below.
 	schedulesFhir := make([]fhir_dto.Schedule, 0, len(result.Entry))
 	for _, entry := range result.Entry {
 		var schedule fhir_dto.Schedule
-		err := json.Unmarshal(entry.Resource, &schedule)
-		if err != nil {
+		if err := json.Unmarshal(entry.Resource, &schedule); err != nil {
 			c.Log.Error("scheduleFhirClient.FindScheduleByPractitionerID error unmarshaling schedule resource",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(err),
@@ -217,54 +132,14 @@ func (c *scheduleFhirClient) FindScheduleByPractitionerRoleID(ctx context.Contex
 		zap.String(constvars.LoggingPractitionerRoleIDKey, practitionerRoleID),
 	)
 
-	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet,
+	respBody, err := c.client.Do(ctx, constvars.MethodGet,
 		fmt.Sprintf("%s?actor=PractitionerRole/%s", c.BaseUrl, practitionerRoleID), nil)
 	if err != nil {
-		c.Log.Error("scheduleFhirClient.FindScheduleByPractitionerRoleID error creating HTTP request",
+		c.Log.Error("scheduleFhirClient.FindScheduleByPractitionerRoleID FHIR error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
-		return nil, exceptions.ErrCreateHTTPRequest(err)
-	}
-	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		c.Log.Error("scheduleFhirClient.FindScheduleByPractitionerRoleID error sending HTTP request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrSendHTTPRequest(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != constvars.StatusOK {
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			c.Log.Error("scheduleFhirClient.FindScheduleByPractitionerRoleID error reading response body",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSchedule)
-		}
-		var outcome fhir_dto.OperationOutcome
-		err = json.Unmarshal(bodyBytes, &outcome)
-		if err != nil {
-			c.Log.Error("scheduleFhirClient.FindScheduleByPractitionerRoleID error unmarshaling outcome",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSchedule)
-		}
-		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
-			c.Log.Error("scheduleFhirClient.FindScheduleByPractitionerRoleID FHIR error",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(fhirErrorIssue),
-			)
-			return nil, exceptions.ErrGetFHIRResource(fhirErrorIssue, constvars.ResourceSchedule)
-		}
+		return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSchedule)
 	}
 
 	var result struct {
@@ -275,8 +150,7 @@ func (c *scheduleFhirClient) FindScheduleByPractitionerRoleID(ctx context.Contex
 			Resource fhir_dto.Schedule `json:"resource"`
 		} `json:"entry"`
 	}
-	err = json.NewDecoder(resp.Body).Decode(&result)
-	if err != nil {
+	if err := json.Unmarshal(respBody, &result); err != nil {
 		c.Log.Error("scheduleFhirClient.FindScheduleByPractitionerRoleID error decoding response",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
@@ -303,7 +177,6 @@ func (c *scheduleFhirClient) Search(ctx context.Context, params contracts.Schedu
 	)
 
 	q := params.ToQueryParam()
-	// ensure proper encoding, even though ToQueryParam returns url.Values
 	if q == nil {
 		q = url.Values{}
 	}
@@ -312,31 +185,17 @@ func (c *scheduleFhirClient) Search(ctx context.Context, params contracts.Schedu
 		urlStr += "?" + enc
 	}
 
-	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, urlStr, nil)
+	respBody, err := c.client.Do(ctx, constvars.MethodGet, urlStr, nil)
 	if err != nil {
-		return nil, exceptions.ErrCreateHTTPRequest(err)
-	}
-	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, exceptions.ErrSendHTTPRequest(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != constvars.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		var outcome fhir_dto.OperationOutcome
-		_ = json.Unmarshal(bodyBytes, &outcome)
-		if len(outcome.Issue) > 0 {
-			return nil, exceptions.ErrGetFHIRResource(fmt.Errorf("%s", outcome.Issue[0].Diagnostics), constvars.ResourceSchedule)
-		}
-		return nil, exceptions.ErrGetFHIRResource(fmt.Errorf("status %d", resp.StatusCode), constvars.ResourceSchedule)
+		c.Log.Error("scheduleFhirClient.Search FHIR error",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrGetFHIRResource(err, constvars.ResourceSchedule)
 	}
 
 	var bundle fhir_dto.FHIRBundle
-	if err := json.NewDecoder(resp.Body).Decode(&bundle); err != nil {
+	if err := json.Unmarshal(respBody, &bundle); err != nil {
 		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourceSchedule)
 	}
 
