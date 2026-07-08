@@ -103,47 +103,60 @@ func GetResource[T any](ctx context.Context, log *zap.Logger, client *FHIRHTTPCl
 	return &result, nil
 }
 
+// WriteResourceInput bundles all parameters for WriteResource into a single struct
+// to avoid exceeding the function parameter limit.
+type WriteResourceInput[T any] struct {
+	Ctx          context.Context
+	Log          *zap.Logger
+	Client       *FHIRHTTPClient
+	Method       string
+	BaseUrl      string
+	ID           string
+	Resource     *T
+	ResourceName string
+	IDLogKey     string
+}
+
 // WriteResource marshals resource, sends it to {baseUrl}/{id} via the specified HTTP method
 // (typically constvars.MethodPut or constvars.MethodPatch), unmarshals the response, and returns the result.
-func WriteResource[T any](ctx context.Context, log *zap.Logger, client *FHIRHTTPClient,
-	method, baseUrl, id string, resource *T, resourceName, idLogKey string) (*T, error) {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	log.Info("crud.WriteResource called",
+func WriteResource[T any](input WriteResourceInput[T]) (*T, error) {
+	requestID, _ := input.Ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	input.Log.Info("crud.WriteResource called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String("resource", resourceName),
-		zap.String(idLogKey, id),
+		zap.String("resource", input.ResourceName),
+		zap.String(input.IDLogKey, input.ID),
 	)
 
-	reqJSON, err := json.Marshal(resource)
+	reqJSON, err := json.Marshal(input.Resource)
 	if err != nil {
-		log.Error("crud.WriteResource error marshaling JSON",
+		input.Log.Error("crud.WriteResource error marshaling JSON",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
 		return nil, exceptions.ErrCannotMarshalJSON(err)
 	}
 
-	respBody, err := client.Do(ctx, method, fmt.Sprintf("%s/%s", baseUrl, id), bytes.NewBuffer(reqJSON))
+	respBody, err := input.Client.Do(input.Ctx, input.Method, fmt.Sprintf("%s/%s", input.BaseUrl, input.ID), bytes.NewBuffer(reqJSON))
 	if err != nil {
-		log.Error("crud.WriteResource FHIR error",
+		input.Log.Error("crud.WriteResource FHIR error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
-		return nil, exceptions.ErrUpdateFHIRResource(err, resourceName)
+		return nil, exceptions.ErrUpdateFHIRResource(err, input.ResourceName)
 	}
 
 	var result T
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		log.Error("crud.WriteResource error decoding response",
+		input.Log.Error("crud.WriteResource error decoding response",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
-		return nil, exceptions.ErrDecodeResponse(err, resourceName)
+		return nil, exceptions.ErrDecodeResponse(err, input.ResourceName)
 	}
 
-	log.Info("crud.WriteResource succeeded",
+	input.Log.Info("crud.WriteResource succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(idLogKey, id),
+		zap.String(input.IDLogKey, input.ID),
 	)
 	return &result, nil
 }

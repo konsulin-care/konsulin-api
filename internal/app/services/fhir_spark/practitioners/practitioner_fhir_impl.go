@@ -44,8 +44,11 @@ func (c *practitionerFhirClient) FindPractitionerByID(ctx context.Context, pract
 }
 
 func (c *practitionerFhirClient) UpdatePractitioner(ctx context.Context, request *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
-	return fhir_http_client.WriteResource(ctx, c.Log, c.Client, constvars.MethodPut, c.BaseUrl, request.ID, request,
-		constvars.ResourcePractitioner, constvars.LoggingPractitionerIDKey)
+	return fhir_http_client.WriteResource(fhir_http_client.WriteResourceInput[fhir_dto.Practitioner]{
+		Ctx: ctx, Log: c.Log, Client: c.Client, Method: constvars.MethodPut,
+		BaseUrl: c.BaseUrl, ID: request.ID, Resource: request,
+		ResourceName: constvars.ResourcePractitioner, IDLogKey: constvars.LoggingPractitionerIDKey,
+	})
 }
 
 func (c *practitionerFhirClient) FindPractitionerByIdentifier(ctx context.Context, system, value string) ([]fhir_dto.Practitioner, error) {
@@ -68,6 +71,9 @@ func (c *practitionerFhirClient) FindPractitionerByPhone(ctx context.Context, ph
 }
 
 func (c *practitionerFhirClient) PatchPractitioner(ctx context.Context, request *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
-	return fhir_http_client.WriteResource(ctx, c.Log, c.Client, constvars.MethodPatch, c.BaseUrl, request.ID, request,
-		constvars.ResourcePractitioner, constvars.LoggingPractitionerIDKey)
+	return fhir_http_client.WriteResource(fhir_http_client.WriteResourceInput[fhir_dto.Practitioner]{
+		Ctx: ctx, Log: c.Log, Client: c.Client, Method: constvars.MethodPatch,
+		BaseUrl: c.BaseUrl, ID: request.ID, Resource: request,
+		ResourceName: constvars.ResourcePractitioner, IDLogKey: constvars.LoggingPractitionerIDKey,
+	})
 }

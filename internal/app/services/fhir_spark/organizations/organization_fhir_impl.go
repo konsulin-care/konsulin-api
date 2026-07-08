@@ -96,6 +96,9 @@ func (c *organizationFhirClient) FindOrganizationByID(ctx context.Context, organ
 }
 
 func (c *organizationFhirClient) Update(ctx context.Context, organization fhir_dto.Organization) (*fhir_dto.Organization, error) {
-	return fhir_http_client.WriteResource(ctx, c.Log, c.Client, constvars.MethodPut, c.BaseUrl, organization.ID, &organization,
-		constvars.ResourceOrganization, constvars.LoggingOrganizationIDKey)
+	return fhir_http_client.WriteResource(fhir_http_client.WriteResourceInput[fhir_dto.Organization]{
+		Ctx: ctx, Log: c.Log, Client: c.Client, Method: constvars.MethodPut,
+		BaseUrl: c.BaseUrl, ID: organization.ID, Resource: &organization,
+		ResourceName: constvars.ResourceOrganization, IDLogKey: constvars.LoggingOrganizationIDKey,
+	})
 }

@@ -39,8 +39,11 @@ func (c *personFhirClient) Create(ctx context.Context, person *fhir_dto.Person) 
 }
 
 func (c *personFhirClient) Update(ctx context.Context, person *fhir_dto.Person) (*fhir_dto.Person, error) {
-	return fhir_http_client.WriteResource(ctx, c.Log, c.Client, constvars.MethodPut, c.BaseUrl, person.ID, person,
-		constvars.ResourcePerson, "person_id")
+	return fhir_http_client.WriteResource(fhir_http_client.WriteResourceInput[fhir_dto.Person]{
+		Ctx: ctx, Log: c.Log, Client: c.Client, Method: constvars.MethodPut,
+		BaseUrl: c.BaseUrl, ID: person.ID, Resource: person,
+		ResourceName: constvars.ResourcePerson, IDLogKey: "person_id",
+	})
 }
 
 func (c *personFhirClient) Search(ctx context.Context, params contracts.PersonSearchInput) ([]fhir_dto.Person, error) {

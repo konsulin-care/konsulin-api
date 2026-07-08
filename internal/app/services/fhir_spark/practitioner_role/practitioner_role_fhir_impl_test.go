@@ -22,7 +22,7 @@ import (
 )
 
 // sharedFHIRServer returns an httptest.Server that mocks a FHIR PractitionerRole endpoint.
-// Routes are ordered: combined queries first, then single-param queries, then path-based lookups.
+// Each route handler is extracted into a separate function to keep cognitive complexity low.
 func sharedFHIRServer() *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/fhir+json")
@@ -30,140 +30,30 @@ func sharedFHIRServer() *httptest.Server {
 		pract := r.URL.Query().Get("practitioner")
 		org := r.URL.Query().Get("organization")
 		hasActive := strings.Contains(r.URL.RawQuery, "active")
+		isIDPath := strings.Count(r.URL.Path, "/") == 2
 
 		switch {
-		// Practitioner + Organization combined query (most specific first)
 		case r.Method == http.MethodGet && pract != "" && org != "":
-			bundle := fhir_dto.FHIRBundle{
-				ResourceType: "Bundle",
-				Type:         "searchset",
-				Total:        1,
-				Entry: []fhir_dto.Entry{
-					{Resource: mustMarshal(fhir_dto.PractitionerRole{
-						ResourceType: "PractitionerRole",
-						ID:           "role-combo",
-					})},
-				},
-			}
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(bundle)
-
-		// Search by practitioner
+			writeRoleComboSearchResult(w)
 		case r.Method == http.MethodGet && pract != "":
-			if pract == "Practitioner/prac-456" {
-				bundle := fhir_dto.FHIRBundle{
-					ResourceType: "Bundle",
-					Type:         "searchset",
-					Total:        1,
-					Entry: []fhir_dto.Entry{
-						{Resource: mustMarshal(fhir_dto.PractitionerRole{
-							ResourceType: "PractitionerRole",
-							ID:           "role-789",
-							Practitioner: fhir_dto.Reference{Reference: "Practitioner/prac-456"},
-						})},
-					},
-				}
-				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(bundle)
-				return
-			}
-			writeOperationOutcome(w, http.StatusNotFound, "no roles found for practitioner")
-
-		// Search by organization
+			handleRoleByPractitioner(w, r, pract)
 		case r.Method == http.MethodGet && org != "":
-			if org == "Organization/org-111" {
-				bundle := fhir_dto.FHIRBundle{
-					ResourceType: "Bundle",
-					Type:         "searchset",
-					Total:        2,
-					Entry: []fhir_dto.Entry{
-						{Resource: mustMarshal(fhir_dto.PractitionerRole{
-							ResourceType: "PractitionerRole",
-							ID:           "role-aaa",
-							Organization: fhir_dto.Reference{Reference: "Organization/org-111"},
-						})},
-						{Resource: mustMarshal(fhir_dto.PractitionerRole{
-							ResourceType: "PractitionerRole",
-							ID:           "role-bbb",
-							Organization: fhir_dto.Reference{Reference: "Organization/org-111"},
-						})},
-					},
-				}
-				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(bundle)
-				return
-			}
-			writeOperationOutcome(w, http.StatusNotFound, "no roles found for organization")
-
-		// Search by active status & _elements
+			handleRoleByOrganization(w, r, org)
 		case r.Method == http.MethodGet && hasActive:
-			bundle := fhir_dto.FHIRBundle{
-				ResourceType: "Bundle",
-				Type:         "searchset",
-				Total:        1,
-				Entry: []fhir_dto.Entry{
-					{Resource: mustMarshal(fhir_dto.PractitionerRole{
-						ResourceType: "PractitionerRole",
-						ID:           "role-active-1",
-						Active:       true,
-					})},
-				},
-			}
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(bundle)
-
-		// FindPractitionerRoleByID: GET /PractitionerRole/{id}
-		case r.Method == http.MethodGet && strings.Count(r.URL.Path, "/") == 2:
-			id := strings.TrimPrefix(r.URL.Path, "/PractitionerRole/")
-			if id == "role-123" {
-				resp := fhir_dto.PractitionerRole{
-					ResourceType: "PractitionerRole",
-					ID:           "role-123",
-					Active:       true,
-				}
-				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(resp)
-				return
-			}
-			writeOperationOutcome(w, http.StatusNotFound, "PractitionerRole/"+id+" not found")
-
-		// CreatePractitionerRole: POST /PractitionerRole
+			writeRoleActiveSearchResult(w)
+		case r.Method == http.MethodGet && isIDPath:
+			handleRoleGetByID(w, r)
 		case r.Method == http.MethodPost && r.URL.Path == "/PractitionerRole":
-			var req fhir_dto.PractitionerRole
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				writeOperationOutcome(w, http.StatusBadRequest, "invalid JSON")
-				return
-			}
-			req.ID = "role-new-1"
-			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(req)
-
-		// UpdatePractitionerRole: PUT /PractitionerRole/{id}
-		case r.Method == http.MethodPut:
-			var req fhir_dto.PractitionerRole
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				writeOperationOutcome(w, http.StatusBadRequest, "invalid JSON")
-				return
-			}
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(req)
-
-		// DeletePractitionerRoleByID: DELETE /PractitionerRole/{id}
-		case r.Method == http.MethodDelete:
-			id := strings.TrimPrefix(r.URL.Path, "/PractitionerRole/")
-			if id == "role-123" || id == "role-to-delete" {
-				w.WriteHeader(http.StatusNoContent)
-				return
-			}
-			writeOperationOutcome(w, http.StatusNotFound, "PractitionerRole/"+id+" not found")
-
-		// CreatePractitionerRoles (transaction bundle): POST /
+			handleRoleCreate(w, r)
+		case r.Method == http.MethodPut && isIDPath:
+			handleRoleUpdate(w, r)
+		case r.Method == http.MethodDelete && isIDPath:
+			handleRoleDelete(w, r)
 		case r.Method == http.MethodPost && r.URL.Path == "/":
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]string{"resourceType": "Bundle", "id": "transaction-1"})
-
+			writeRoleTransactionResult(w)
 		default:
-			writeOperationOutcome(w, http.StatusNotFound, fmt.Sprintf("unexpected request: %s %s", r.Method, r.URL.String()))
+			writeOperationOutcome(w, http.StatusNotFound,
+				fmt.Sprintf("unexpected request: %s %s", r.Method, r.URL.String()))
 		}
 	}))
 }
@@ -184,6 +74,145 @@ func mustMarshal(v any) json.RawMessage {
 		panic(err)
 	}
 	return data
+}
+
+// writeRoleComboSearchResult writes the practitioner + organization combined search response.
+func writeRoleComboSearchResult(w http.ResponseWriter) {
+	bundle := fhir_dto.FHIRBundle{
+		ResourceType: "Bundle",
+		Type:         "searchset",
+		Total:        1,
+		Entry: []fhir_dto.Entry{
+			{Resource: mustMarshal(fhir_dto.PractitionerRole{
+				ResourceType: "PractitionerRole",
+				ID:           "role-combo",
+			})},
+		},
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(bundle)
+}
+
+// handleRoleByPractitioner handles GET with ?practitioner={ref}.
+func handleRoleByPractitioner(w http.ResponseWriter, r *http.Request, pract string) {
+	if pract == "Practitioner/prac-456" {
+		bundle := fhir_dto.FHIRBundle{
+			ResourceType: "Bundle",
+			Type:         "searchset",
+			Total:        1,
+			Entry: []fhir_dto.Entry{
+				{Resource: mustMarshal(fhir_dto.PractitionerRole{
+					ResourceType: "PractitionerRole",
+					ID:           "role-789",
+					Practitioner: fhir_dto.Reference{Reference: "Practitioner/prac-456"},
+				})},
+			},
+		}
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(bundle)
+		return
+	}
+	writeOperationOutcome(w, http.StatusNotFound, "no roles found for practitioner")
+}
+
+// handleRoleByOrganization handles GET with ?organization={ref}.
+func handleRoleByOrganization(w http.ResponseWriter, r *http.Request, org string) {
+	if org == "Organization/org-111" {
+		bundle := fhir_dto.FHIRBundle{
+			ResourceType: "Bundle",
+			Type:         "searchset",
+			Total:        2,
+			Entry: []fhir_dto.Entry{
+				{Resource: mustMarshal(fhir_dto.PractitionerRole{
+					ResourceType: "PractitionerRole",
+					ID:           "role-aaa",
+					Organization: fhir_dto.Reference{Reference: "Organization/org-111"},
+				})},
+				{Resource: mustMarshal(fhir_dto.PractitionerRole{
+					ResourceType: "PractitionerRole",
+					ID:           "role-bbb",
+					Organization: fhir_dto.Reference{Reference: "Organization/org-111"},
+				})},
+			},
+		}
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(bundle)
+		return
+	}
+	writeOperationOutcome(w, http.StatusNotFound, "no roles found for organization")
+}
+
+// writeRoleActiveSearchResult writes the search response for ?active&_elements.
+func writeRoleActiveSearchResult(w http.ResponseWriter) {
+	bundle := fhir_dto.FHIRBundle{
+		ResourceType: "Bundle",
+		Type:         "searchset",
+		Total:        1,
+		Entry: []fhir_dto.Entry{
+			{Resource: mustMarshal(fhir_dto.PractitionerRole{
+				ResourceType: "PractitionerRole",
+				ID:           "role-active-1",
+				Active:       true,
+			})},
+		},
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(bundle)
+}
+
+// handleRoleGetByID handles GET /PractitionerRole/{id}.
+func handleRoleGetByID(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/PractitionerRole/")
+	if id == "role-123" {
+		resp := fhir_dto.PractitionerRole{
+			ResourceType: "PractitionerRole",
+			ID:           "role-123",
+			Active:       true,
+		}
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+	writeOperationOutcome(w, http.StatusNotFound, "PractitionerRole/"+id+" not found")
+}
+
+// handleRoleCreate handles POST /PractitionerRole.
+func handleRoleCreate(w http.ResponseWriter, r *http.Request) {
+	var req fhir_dto.PractitionerRole
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeOperationOutcome(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	req.ID = "role-new-1"
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(req)
+}
+
+// handleRoleUpdate handles PUT /PractitionerRole/{id}.
+func handleRoleUpdate(w http.ResponseWriter, r *http.Request) {
+	var req fhir_dto.PractitionerRole
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeOperationOutcome(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(req)
+}
+
+// handleRoleDelete handles DELETE /PractitionerRole/{id}.
+func handleRoleDelete(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/PractitionerRole/")
+	if id == "role-123" || id == "role-to-delete" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	writeOperationOutcome(w, http.StatusNotFound, "PractitionerRole/"+id+" not found")
+}
+
+// writeRoleTransactionResult writes the transaction bundle POST / response.
+func writeRoleTransactionResult(w http.ResponseWriter) {
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"resourceType": "Bundle", "id": "transaction-1"})
 }
 
 // newTestClient creates a fresh practitionerRoleFhirClient for testing, bypassing

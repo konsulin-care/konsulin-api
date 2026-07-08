@@ -47,11 +47,17 @@ func (c *observationFhirClient) DeleteObservationByID(ctx context.Context, obser
 }
 
 func (c *observationFhirClient) UpdateObservation(ctx context.Context, request *fhir_dto.Observation) (*fhir_dto.Observation, error) {
-	return fhir_http_client.WriteResource(ctx, c.Log, c.Client, constvars.MethodPut, c.BaseUrl, request.ID, request,
-		constvars.ResourceObservation, constvars.LoggingObservationIDKey)
+	return fhir_http_client.WriteResource(fhir_http_client.WriteResourceInput[fhir_dto.Observation]{
+		Ctx: ctx, Log: c.Log, Client: c.Client, Method: constvars.MethodPut,
+		BaseUrl: c.BaseUrl, ID: request.ID, Resource: request,
+		ResourceName: constvars.ResourceObservation, IDLogKey: constvars.LoggingObservationIDKey,
+	})
 }
 
 func (c *observationFhirClient) PatchObservation(ctx context.Context, request *fhir_dto.Observation) (*fhir_dto.Observation, error) {
-	return fhir_http_client.WriteResource(ctx, c.Log, c.Client, constvars.MethodPatch, c.BaseUrl, request.ID, request,
-		constvars.ResourceObservation, constvars.LoggingObservationIDKey)
+	return fhir_http_client.WriteResource(fhir_http_client.WriteResourceInput[fhir_dto.Observation]{
+		Ctx: ctx, Log: c.Log, Client: c.Client, Method: constvars.MethodPatch,
+		BaseUrl: c.BaseUrl, ID: request.ID, Resource: request,
+		ResourceName: constvars.ResourceObservation, IDLogKey: constvars.LoggingObservationIDKey,
+	})
 }

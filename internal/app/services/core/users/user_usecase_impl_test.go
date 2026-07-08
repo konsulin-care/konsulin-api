@@ -15,6 +15,28 @@ import (
 )
 
 // ---------------------------------------------------------------------------
+// Generic mock helpers
+// ---------------------------------------------------------------------------
+
+// mockResult collapses (*T, error) mock methods to a one-liner.
+func mockResult[T any](args mock.Arguments) (*T, error) {
+	var out *T
+	if v := args.Get(0); v != nil {
+		out = v.(*T)
+	}
+	return out, args.Error(1)
+}
+
+// mockSliceResult collapses ([]T, error) mock methods to a one-liner.
+func mockSliceResult[T any](args mock.Arguments) ([]T, error) {
+	var out []T
+	if v := args.Get(0); v != nil {
+		out = v.([]T)
+	}
+	return out, args.Error(1)
+}
+
+// ---------------------------------------------------------------------------
 // Mock types
 // ---------------------------------------------------------------------------
 
@@ -23,66 +45,31 @@ type MockPractitionerFhirClient struct {
 }
 
 func (m *MockPractitionerFhirClient) CreatePractitioner(ctx context.Context, req *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
-	args := m.Called(ctx, req)
-	var out *fhir_dto.Practitioner
-	if v := args.Get(0); v != nil {
-		out = v.(*fhir_dto.Practitioner)
-	}
-	return out, args.Error(1)
+	return mockResult[fhir_dto.Practitioner](m.Called(ctx, req))
 }
 
 func (m *MockPractitionerFhirClient) UpdatePractitioner(ctx context.Context, req *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
-	args := m.Called(ctx, req)
-	var out *fhir_dto.Practitioner
-	if v := args.Get(0); v != nil {
-		out = v.(*fhir_dto.Practitioner)
-	}
-	return out, args.Error(1)
+	return mockResult[fhir_dto.Practitioner](m.Called(ctx, req))
 }
 
 func (m *MockPractitionerFhirClient) PatchPractitioner(ctx context.Context, req *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
-	args := m.Called(ctx, req)
-	var out *fhir_dto.Practitioner
-	if v := args.Get(0); v != nil {
-		out = v.(*fhir_dto.Practitioner)
-	}
-	return out, args.Error(1)
+	return mockResult[fhir_dto.Practitioner](m.Called(ctx, req))
 }
 
 func (m *MockPractitionerFhirClient) FindPractitionerByID(ctx context.Context, id string) (*fhir_dto.Practitioner, error) {
-	args := m.Called(ctx, id)
-	var out *fhir_dto.Practitioner
-	if v := args.Get(0); v != nil {
-		out = v.(*fhir_dto.Practitioner)
-	}
-	return out, args.Error(1)
+	return mockResult[fhir_dto.Practitioner](m.Called(ctx, id))
 }
 
 func (m *MockPractitionerFhirClient) FindPractitionerByIdentifier(ctx context.Context, system, value string) ([]fhir_dto.Practitioner, error) {
-	args := m.Called(ctx, system, value)
-	var out []fhir_dto.Practitioner
-	if v := args.Get(0); v != nil {
-		out = v.([]fhir_dto.Practitioner)
-	}
-	return out, args.Error(1)
+	return mockSliceResult[fhir_dto.Practitioner](m.Called(ctx, system, value))
 }
 
 func (m *MockPractitionerFhirClient) FindPractitionerByEmail(ctx context.Context, email string) ([]fhir_dto.Practitioner, error) {
-	args := m.Called(ctx, email)
-	var out []fhir_dto.Practitioner
-	if v := args.Get(0); v != nil {
-		out = v.([]fhir_dto.Practitioner)
-	}
-	return out, args.Error(1)
+	return mockSliceResult[fhir_dto.Practitioner](m.Called(ctx, email))
 }
 
 func (m *MockPractitionerFhirClient) FindPractitionerByPhone(ctx context.Context, phone string) ([]fhir_dto.Practitioner, error) {
-	args := m.Called(ctx, phone)
-	var out []fhir_dto.Practitioner
-	if v := args.Get(0); v != nil {
-		out = v.([]fhir_dto.Practitioner)
-	}
-	return out, args.Error(1)
+	return mockSliceResult[fhir_dto.Practitioner](m.Called(ctx, phone))
 }
 
 type MockPatientFhirClient struct {
@@ -90,66 +77,31 @@ type MockPatientFhirClient struct {
 }
 
 func (m *MockPatientFhirClient) CreatePatient(ctx context.Context, req *fhir_dto.Patient) (*fhir_dto.Patient, error) {
-	args := m.Called(ctx, req)
-	var out *fhir_dto.Patient
-	if v := args.Get(0); v != nil {
-		out = v.(*fhir_dto.Patient)
-	}
-	return out, args.Error(1)
+	return mockResult[fhir_dto.Patient](m.Called(ctx, req))
 }
 
 func (m *MockPatientFhirClient) UpdatePatient(ctx context.Context, req *fhir_dto.Patient) (*fhir_dto.Patient, error) {
-	args := m.Called(ctx, req)
-	var out *fhir_dto.Patient
-	if v := args.Get(0); v != nil {
-		out = v.(*fhir_dto.Patient)
-	}
-	return out, args.Error(1)
+	return mockResult[fhir_dto.Patient](m.Called(ctx, req))
 }
 
 func (m *MockPatientFhirClient) PatchPatient(ctx context.Context, req *fhir_dto.Patient) (*fhir_dto.Patient, error) {
-	args := m.Called(ctx, req)
-	var out *fhir_dto.Patient
-	if v := args.Get(0); v != nil {
-		out = v.(*fhir_dto.Patient)
-	}
-	return out, args.Error(1)
+	return mockResult[fhir_dto.Patient](m.Called(ctx, req))
 }
 
 func (m *MockPatientFhirClient) FindPatientByID(ctx context.Context, id string) (*fhir_dto.Patient, error) {
-	args := m.Called(ctx, id)
-	var out *fhir_dto.Patient
-	if v := args.Get(0); v != nil {
-		out = v.(*fhir_dto.Patient)
-	}
-	return out, args.Error(1)
+	return mockResult[fhir_dto.Patient](m.Called(ctx, id))
 }
 
 func (m *MockPatientFhirClient) FindPatientByIdentifier(ctx context.Context, identifier string) ([]fhir_dto.Patient, error) {
-	args := m.Called(ctx, identifier)
-	var out []fhir_dto.Patient
-	if v := args.Get(0); v != nil {
-		out = v.([]fhir_dto.Patient)
-	}
-	return out, args.Error(1)
+	return mockSliceResult[fhir_dto.Patient](m.Called(ctx, identifier))
 }
 
 func (m *MockPatientFhirClient) FindPatientByEmail(ctx context.Context, email string) ([]fhir_dto.Patient, error) {
-	args := m.Called(ctx, email)
-	var out []fhir_dto.Patient
-	if v := args.Get(0); v != nil {
-		out = v.([]fhir_dto.Patient)
-	}
-	return out, args.Error(1)
+	return mockSliceResult[fhir_dto.Patient](m.Called(ctx, email))
 }
 
 func (m *MockPatientFhirClient) FindPatientByPhone(ctx context.Context, phone string) ([]fhir_dto.Patient, error) {
-	args := m.Called(ctx, phone)
-	var out []fhir_dto.Patient
-	if v := args.Get(0); v != nil {
-		out = v.([]fhir_dto.Patient)
-	}
-	return out, args.Error(1)
+	return mockSliceResult[fhir_dto.Patient](m.Called(ctx, phone))
 }
 
 type MockPersonFhirClient struct {
@@ -157,48 +109,23 @@ type MockPersonFhirClient struct {
 }
 
 func (m *MockPersonFhirClient) FindPersonByEmail(ctx context.Context, email string) ([]fhir_dto.Person, error) {
-	args := m.Called(ctx, email)
-	var out []fhir_dto.Person
-	if v := args.Get(0); v != nil {
-		out = v.([]fhir_dto.Person)
-	}
-	return out, args.Error(1)
+	return mockSliceResult[fhir_dto.Person](m.Called(ctx, email))
 }
 
 func (m *MockPersonFhirClient) FindPersonByPhone(ctx context.Context, phone string) ([]fhir_dto.Person, error) {
-	args := m.Called(ctx, phone)
-	var out []fhir_dto.Person
-	if v := args.Get(0); v != nil {
-		out = v.([]fhir_dto.Person)
-	}
-	return out, args.Error(1)
+	return mockSliceResult[fhir_dto.Person](m.Called(ctx, phone))
 }
 
 func (m *MockPersonFhirClient) Create(ctx context.Context, person *fhir_dto.Person) (*fhir_dto.Person, error) {
-	args := m.Called(ctx, person)
-	var out *fhir_dto.Person
-	if v := args.Get(0); v != nil {
-		out = v.(*fhir_dto.Person)
-	}
-	return out, args.Error(1)
+	return mockResult[fhir_dto.Person](m.Called(ctx, person))
 }
 
 func (m *MockPersonFhirClient) Search(ctx context.Context, params contracts.PersonSearchInput) ([]fhir_dto.Person, error) {
-	args := m.Called(ctx, params)
-	var out []fhir_dto.Person
-	if v := args.Get(0); v != nil {
-		out = v.([]fhir_dto.Person)
-	}
-	return out, args.Error(1)
+	return mockSliceResult[fhir_dto.Person](m.Called(ctx, params))
 }
 
 func (m *MockPersonFhirClient) Update(ctx context.Context, person *fhir_dto.Person) (*fhir_dto.Person, error) {
-	args := m.Called(ctx, person)
-	var out *fhir_dto.Person
-	if v := args.Get(0); v != nil {
-		out = v.(*fhir_dto.Person)
-	}
-	return out, args.Error(1)
+	return mockResult[fhir_dto.Person](m.Called(ctx, person))
 }
 
 // ---------------------------------------------------------------------------

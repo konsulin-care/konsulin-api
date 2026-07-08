@@ -135,8 +135,11 @@ func (c *practitionerRoleFhirClient) CreatePractitionerRole(ctx context.Context,
 }
 
 func (c *practitionerRoleFhirClient) UpdatePractitionerRole(ctx context.Context, request *fhir_dto.PractitionerRole) (*fhir_dto.PractitionerRole, error) {
-	return fhir_http_client.WriteResource(ctx, c.Log, c.Client, constvars.MethodPut, c.BaseUrl, request.ID, request,
-		constvars.ResourcePractitionerRole, constvars.LoggingPractitionerRoleIDKey)
+	return fhir_http_client.WriteResource(fhir_http_client.WriteResourceInput[fhir_dto.PractitionerRole]{
+		Ctx: ctx, Log: c.Log, Client: c.Client, Method: constvars.MethodPut,
+		BaseUrl: c.BaseUrl, ID: request.ID, Resource: request,
+		ResourceName: constvars.ResourcePractitionerRole, IDLogKey: constvars.LoggingPractitionerRoleIDKey,
+	})
 }
 
 func (c *practitionerRoleFhirClient) FindPractitionerRoleByID(ctx context.Context, practitionerRoleID string) (*fhir_dto.PractitionerRole, error) {

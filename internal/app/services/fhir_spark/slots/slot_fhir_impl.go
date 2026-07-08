@@ -99,8 +99,11 @@ func (c *slotFhirClient) CreateSlot(ctx context.Context, request *fhir_dto.Slot)
 }
 
 func (c *slotFhirClient) UpdateSlot(ctx context.Context, id string, slot *fhir_dto.Slot) (*fhir_dto.Slot, error) {
-	return fhir_http_client.WriteResource(ctx, c.Log, c.Client, constvars.MethodPut, c.BaseUrl, id, slot,
-		constvars.ResourceSlot, constvars.LoggingSlotsIDKey)
+	return fhir_http_client.WriteResource(fhir_http_client.WriteResourceInput[fhir_dto.Slot]{
+		Ctx: ctx, Log: c.Log, Client: c.Client, Method: constvars.MethodPut,
+		BaseUrl: c.BaseUrl, ID: id, Resource: slot,
+		ResourceName: constvars.ResourceSlot, IDLogKey: constvars.LoggingSlotsIDKey,
+	})
 }
 
 func (c *slotFhirClient) FindSlotByScheduleAndTimeRange(ctx context.Context, scheduleID string, startTime, endTime time.Time) ([]fhir_dto.Slot, error) {

@@ -50,13 +50,19 @@ func (c *patientFhirClient) FindPatientByIdentifier(ctx context.Context, identif
 }
 
 func (c *patientFhirClient) UpdatePatient(ctx context.Context, request *fhir_dto.Patient) (*fhir_dto.Patient, error) {
-	return fhir_http_client.WriteResource(ctx, c.Log, c.Client, constvars.MethodPut, c.BaseUrl, request.ID, request,
-		constvars.ResourcePatient, constvars.LoggingPatientIDKey)
+	return fhir_http_client.WriteResource(fhir_http_client.WriteResourceInput[fhir_dto.Patient]{
+		Ctx: ctx, Log: c.Log, Client: c.Client, Method: constvars.MethodPut,
+		BaseUrl: c.BaseUrl, ID: request.ID, Resource: request,
+		ResourceName: constvars.ResourcePatient, IDLogKey: constvars.LoggingPatientIDKey,
+	})
 }
 
 func (c *patientFhirClient) PatchPatient(ctx context.Context, request *fhir_dto.Patient) (*fhir_dto.Patient, error) {
-	return fhir_http_client.WriteResource(ctx, c.Log, c.Client, constvars.MethodPatch, c.BaseUrl, request.ID, request,
-		constvars.ResourcePatient, constvars.LoggingPatientIDKey)
+	return fhir_http_client.WriteResource(fhir_http_client.WriteResourceInput[fhir_dto.Patient]{
+		Ctx: ctx, Log: c.Log, Client: c.Client, Method: constvars.MethodPatch,
+		BaseUrl: c.BaseUrl, ID: request.ID, Resource: request,
+		ResourceName: constvars.ResourcePatient, IDLogKey: constvars.LoggingPatientIDKey,
+	})
 }
 
 func (c *patientFhirClient) FindPatientByEmail(ctx context.Context, email string) ([]fhir_dto.Patient, error) {
