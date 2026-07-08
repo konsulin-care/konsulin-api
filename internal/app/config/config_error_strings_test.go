@@ -38,8 +38,8 @@ func TestValidateNonDevConfig_errorStringsAreLowercase(t *testing.T) {
 		{
 			name: "production missing payment gateway creds",
 			cfg: &InternalConfig{
-				App:  App{Env: "production"},
-				JWT:  AppJWT{Secret: "set"},
+				App:     App{Env: "production"},
+				JWT:     AppJWT{Secret: "set"},
 				Webhook: AppWebhook{JWTHookKey: "set"},
 				// PaymentGateway.Username and ApiKey are zero value -> triggers error
 			},
@@ -86,7 +86,7 @@ func TestValidateNonDevDriverConfig_errorStringsAreLowercase(t *testing.T) {
 	}{
 		{
 			name: "production missing REDIS_PASSWORD",
-			cfg: &DriverConfig{
+			cfg:  &DriverConfig{
 				// Redis.Password is zero value -> "" triggers error
 			},
 			env: "production",

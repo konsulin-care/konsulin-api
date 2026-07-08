@@ -288,11 +288,11 @@ type processSingleRoleWindowInput struct {
 
 // processDayAdjustmentInput groups parameters for processDayAdjustment.
 type processDayAdjustmentInput struct {
-	td                 dayLockTarget
-	winStart, winEnd   time.Time
-	slotStatus         fhir_dto.SlotStatus
-	plan               weeklyPlan
-	cfg                ScheduleConfig
+	td               dayLockTarget
+	winStart, winEnd time.Time
+	slotStatus       fhir_dto.SlotStatus
+	plan             weeklyPlan
+	cfg              ScheduleConfig
 }
 
 // processDayAdjustmentOutput holds the result of processDayAdjustment.
@@ -363,10 +363,10 @@ func (s *SlotUsecase) processSingleRoleWindow(ctx context.Context, in processSin
 	roleLoc, _ := in.pr.GetPreferredTimezone()
 	for _, td := range s.dayTargetsForWindow(scheduleID, roleLoc, in.winStart, in.winEnd) {
 		adjOut, err := s.processDayAdjustment(ctx, processDayAdjustmentInput{
-			td: td,
+			td:       td,
 			winStart: in.winStart, winEnd: in.winEnd,
 			slotStatus: in.input.SlotStatus,
-			plan: plan, cfg: cfg,
+			plan:       plan, cfg: cfg,
 		})
 		if err != nil {
 			return res, err
@@ -398,12 +398,12 @@ func (s *SlotUsecase) processRoleWindows(
 		winEnd := resolved.endByRole[pr.ID]
 
 		sr, err := s.processSingleRoleWindow(ctx, processSingleRoleWindowInput{
-			pr: pr,
+			pr:       pr,
 			winStart: winStart, winEnd: winEnd,
-			resolved: resolved,
-			input: input,
+			resolved:          resolved,
+			input:             input,
 			unavailableReason: unavailableReason,
-			state: state,
+			state:             state,
 		})
 		if err != nil {
 			return out, err

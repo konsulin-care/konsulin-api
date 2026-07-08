@@ -250,10 +250,10 @@ func TestResolveFHIRIdentity_ActiveRolePatient_NoPatientResource(t *testing.T) {
 
 func TestExtractPathResourceID(t *testing.T) {
 	tests := []struct {
-		name          string
-		path          string
-		wantResource  string
-		wantID        string
+		name         string
+		path         string
+		wantResource string
+		wantID       string
 	}{
 		{
 			name:         "/Patient/pat-1",

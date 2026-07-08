@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/pkg/dto/responses"
-	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/dto/requests"
+	"konsulin-service/internal/pkg/dto/responses"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -79,14 +79,14 @@ func TestInitializeMagicLinkFHIR_LogsError(t *testing.T) {
 
 	// Act
 	_, err := initializeMagicLinkFHIR(initializeMagicLinkFHIRInput{
-		Ctx: context.Background(),
-		Uc: uc,
-		RequestID: "req-abc-123",
+		Ctx:              context.Background(),
+		Uc:               uc,
+		RequestID:        "req-abc-123",
 		SuperTokenUserID: "st-user-1",
-		Roles: []string{"patient"},
-		Email: "test@example.com",
-		Phone: "",
-		Start: start,
+		Roles:            []string{"patient"},
+		Email:            "test@example.com",
+		Phone:            "",
+		Start:            start,
 	})
 
 	// Assert: error is propagated
@@ -132,14 +132,14 @@ func TestInitializeMagicLinkFHIR_Success(t *testing.T) {
 
 	// Act
 	output, err := initializeMagicLinkFHIR(initializeMagicLinkFHIRInput{
-		Ctx: context.Background(),
-		Uc: uc,
-		RequestID: "req-abc-456",
+		Ctx:              context.Background(),
+		Uc:               uc,
+		RequestID:        "req-abc-456",
 		SuperTokenUserID: "st-user-2",
-		Roles: []string{"patient", "practitioner"},
-		Email: "doctor@example.com",
-		Phone: "",
-		Start: start,
+		Roles:            []string{"patient", "practitioner"},
+		Email:            "doctor@example.com",
+		Phone:            "",
+		Start:            start,
 	})
 
 	// Assert: no error, output returned
@@ -171,14 +171,14 @@ func TestInitializeMagicLinkFHIR_PhoneUser(t *testing.T) {
 
 	// Act
 	_, err := initializeMagicLinkFHIR(initializeMagicLinkFHIRInput{
-		Ctx: context.Background(),
-		Uc: uc,
-		RequestID: "req-phone-789",
+		Ctx:              context.Background(),
+		Uc:               uc,
+		RequestID:        "req-phone-789",
 		SuperTokenUserID: "st-user-3",
-		Roles: []string{"practitioner"},
-		Email: "",
-		Phone: "6281234567890",
-		Start: start,
+		Roles:            []string{"practitioner"},
+		Email:            "",
+		Phone:            "6281234567890",
+		Start:            start,
 	})
 
 	// Assert

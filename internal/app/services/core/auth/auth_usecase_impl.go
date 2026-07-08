@@ -158,14 +158,14 @@ func (uc *authUsecase) handlePhoneMagicLink(ctx context.Context, request *reques
 	}
 
 	if _, err := initializeMagicLinkFHIR(initializeMagicLinkFHIRInput{
-		Ctx: ctx,
-		Uc: uc,
-		RequestID: requestID,
+		Ctx:              ctx,
+		Uc:               uc,
+		RequestID:        requestID,
 		SuperTokenUserID: plessResponse.User.ID,
-		Roles: request.Roles,
-		Email: request.Email,
-		Phone: phoneDigits,
-		Start: start,
+		Roles:            request.Roles,
+		Email:            request.Email,
+		Phone:            phoneDigits,
+		Start:            start,
 	}); err != nil {
 		return err
 	}
@@ -212,14 +212,14 @@ func (uc *authUsecase) handleEmailMagicLink(ctx context.Context, request *reques
 	}
 
 	initializeResources, err := initializeMagicLinkFHIR(initializeMagicLinkFHIRInput{
-		Ctx: ctx,
-		Uc: uc,
-		RequestID: requestID,
+		Ctx:              ctx,
+		Uc:               uc,
+		RequestID:        requestID,
 		SuperTokenUserID: plessResponse.User.ID,
-		Roles: request.Roles,
-		Email: request.Email,
-		Phone: "",
-		Start: start,
+		Roles:            request.Roles,
+		Email:            request.Email,
+		Phone:            "",
+		Start:            start,
 	})
 	if err != nil {
 		return err
@@ -277,14 +277,14 @@ func assignMagicLinkRoles(_ context.Context, uc *authUsecase, requestID, userID 
 
 // initializeMagicLinkFHIRInput groups parameters for initializeMagicLinkFHIR.
 type initializeMagicLinkFHIRInput struct {
-	Ctx             context.Context
-	Uc              *authUsecase
-	RequestID       string
+	Ctx              context.Context
+	Uc               *authUsecase
+	RequestID        string
 	SuperTokenUserID string
-	Roles           []string
-	Email           string
-	Phone           string
-	Start           time.Time
+	Roles            []string
+	Email            string
+	Phone            string
+	Start            time.Time
 }
 
 // initializeMagicLinkFHIR creates FHIR resources during magic link creation.

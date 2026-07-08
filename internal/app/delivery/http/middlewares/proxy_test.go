@@ -246,10 +246,10 @@ func TestDoFHIRProxyRequest_SSRFPathInjection(t *testing.T) {
 			wantErr:     false,
 		},
 		{
-			name:        "path traversal blocked",
-			path:        "/fhir/../../etc/passwd",
-			target:      "https://fhir.example.com",
-			wantErr:     true,
+			name:    "path traversal blocked",
+			path:    "/fhir/../../etc/passwd",
+			target:  "https://fhir.example.com",
+			wantErr: true,
 		},
 		{
 			name:        "SSRF host mismatch is rejected",

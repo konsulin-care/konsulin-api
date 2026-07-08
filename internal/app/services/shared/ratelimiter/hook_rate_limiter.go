@@ -174,8 +174,6 @@ type counterState struct {
 	TTLMinute, TTLMonthly                                                time.Duration
 }
 
-
-
 // incrementCounters increments service-level and user-level counters with TTL.
 func incrementCounters(ctx context.Context, redis contracts.RedisRepository, cs counterState) {
 	if cs.CurrentMinute == 0 {
