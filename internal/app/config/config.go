@@ -248,19 +248,19 @@ func validateNonDevConfig(cfg *InternalConfig) error {
 		return nil
 	}
 	if cfg.JWT.Secret == "" {
-		return fmt.Errorf("APP_JWT_SECRET is required in %s environment", cfg.App.Env)
+		return fmt.Errorf("env var APP_JWT_SECRET is required in %s environment", cfg.App.Env)
 	}
 	if cfg.Webhook.JWTHookKey == "" {
-		return fmt.Errorf("JWT_HOOK_KEY is required in %s environment", cfg.App.Env)
+		return fmt.Errorf("env var JWT_HOOK_KEY is required in %s environment", cfg.App.Env)
 	}
 	if cfg.PaymentGateway.Username == "" || cfg.PaymentGateway.ApiKey == "" {
 		return fmt.Errorf("payment gateway credentials (APP_PAYMENT_GATEWAY_USERNAME, APP_PAYMENT_GATEWAY_API_KEY) are required in %s environment", cfg.App.Env)
 	}
 	if cfg.Xendit.APIKey == "" {
-		return fmt.Errorf("APP_XENDIT_API_KEY is required in %s environment", cfg.App.Env)
+		return fmt.Errorf("env var APP_XENDIT_API_KEY is required in %s environment", cfg.App.Env)
 	}
 	if cfg.PaymentGateway.BaseUrl == "" {
-		return fmt.Errorf("APP_PAYMENT_GATEWAY_BASE_URL is required in %s environment", cfg.App.Env)
+		return fmt.Errorf("env var APP_PAYMENT_GATEWAY_BASE_URL is required in %s environment", cfg.App.Env)
 	}
 	return nil
 }
@@ -301,13 +301,13 @@ func validateNonDevDriverConfig(cfg *DriverConfig, env string) error {
 		return nil
 	}
 	if cfg.Redis.Password == "" {
-		return fmt.Errorf("REDIS_PASSWORD is required in %s environment", env)
+		return fmt.Errorf("env var REDIS_PASSWORD is required in %s environment", env)
 	}
 	if cfg.RabbitMQ.Username == "" || cfg.RabbitMQ.Password == "" {
-		return fmt.Errorf("RabbitMQ credentials (RABBITMQ_USERNAME, RABBITMQ_PASSWORD) are required in %s environment", env)
+		return fmt.Errorf("env vars RABBITMQ_USERNAME and RABBITMQ_PASSWORD are required in %s environment", env)
 	}
 	if cfg.Supertoken.APIKey == "" {
-		return fmt.Errorf("Supertoken API key is required in %s environment", env)
+		return fmt.Errorf("env var SUPERTOKEN_API_KEY is required in %s environment", env)
 	}
 	return nil
 }
