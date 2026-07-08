@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"konsulin-service/internal/app/contracts"
+	"konsulin-service/internal/app/services/fhir_spark/base"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/fhir_http_client"
 	"net/url"
+	"strings"
 	"sync"
 
 	"go.uber.org/zap"
@@ -23,20 +25,16 @@ var (
 )
 
 type practitionerRoleFhirClient struct {
-	BaseFhirUrl string
-	BaseUrl     string
-	Log         *zap.Logger
-	client      *fhir_http_client.FHIRHTTPClient
+	*base.ResourceClient
+	// BaseFhirUrl is removed; use strings.TrimSuffix(c.BaseUrl, constvars.ResourcePractitionerRole)
+	// to derive the base FHIR server URL when needed.
 }
 
 func NewPractitionerRoleFhirClient(baseUrl string, logger *zap.Logger) contracts.PractitionerRoleFhirClient {
 	oncePractitionerRoleFhirClient.Do(func() {
-		client := &practitionerRoleFhirClient{
-			BaseUrl: baseUrl + constvars.ResourcePractitionerRole,
-			Log:     logger,
-			client:  fhir_http_client.New(logger),
+		practitionerRoleFhirClientInstance = &practitionerRoleFhirClient{
+			ResourceClient: base.New(baseUrl, constvars.ResourcePractitionerRole, logger),
 		}
-		practitionerRoleFhirClientInstance = client
 	})
 	return practitionerRoleFhirClientInstance
 }
@@ -48,18 +46,18 @@ func (c *practitionerRoleFhirClient) Search(ctx context.Context, params contract
 			urlStr += "?" + enc
 		}
 	}
-	return fhir_http_client.SearchResources[fhir_dto.PractitionerRole](ctx, c.Log, c.client, urlStr,
+	return fhir_http_client.SearchResources[fhir_dto.PractitionerRole](ctx, c.Log, c.Client, urlStr,
 		constvars.ResourcePractitionerRole)
 }
 
 func (c *practitionerRoleFhirClient) DeletePractitionerRoleByID(ctx context.Context, practitionerRoleID string) error {
-	return fhir_http_client.DeleteResource(ctx, c.Log, c.client, c.BaseUrl, practitionerRoleID,
+	return fhir_http_client.DeleteResource(ctx, c.Log, c.Client, c.BaseUrl, practitionerRoleID,
 		constvars.ResourcePractitionerRole)
 }
 
 func (c *practitionerRoleFhirClient) FindPractitionerRoleByOrganizationID(ctx context.Context, organizationID string) ([]fhir_dto.PractitionerRole, error) {
 	url := fmt.Sprintf("%s/?organization=Organization/%s", c.BaseUrl, organizationID)
-	return fhir_http_client.SearchResources[fhir_dto.PractitionerRole](ctx, c.Log, c.client, url,
+	return fhir_http_client.SearchResources[fhir_dto.PractitionerRole](ctx, c.Log, c.Client, url,
 		constvars.ResourcePractitionerRole)
 }
 
@@ -73,13 +71,13 @@ func (c *practitionerRoleFhirClient) FindPractitionerRoleByCustomRequest(ctx con
 		params.Add("practitioner.name:contains", request.PractitionerName)
 	}
 	url := fmt.Sprintf("%s?%s", c.BaseUrl, params.Encode())
-	return fhir_http_client.SearchResources[fhir_dto.PractitionerRole](ctx, c.Log, c.client, url,
+	return fhir_http_client.SearchResources[fhir_dto.PractitionerRole](ctx, c.Log, c.Client, url,
 		constvars.ResourcePractitionerRole)
 }
 
 func (c *practitionerRoleFhirClient) FindPractitionerRoleByPractitionerID(ctx context.Context, practitionerID string) ([]fhir_dto.PractitionerRole, error) {
 	url := fmt.Sprintf("%s?practitioner=Practitioner/%s", c.BaseUrl, practitionerID)
-	return fhir_http_client.SearchResources[fhir_dto.PractitionerRole](ctx, c.Log, c.client, url,
+	return fhir_http_client.SearchResources[fhir_dto.PractitionerRole](ctx, c.Log, c.Client, url,
 		constvars.ResourcePractitionerRole)
 }
 
@@ -88,14 +86,14 @@ func (c *practitionerRoleFhirClient) FindPractitionerRoleByPractitionerIDAndName
 	if request.OrganizationName != "" {
 		url += fmt.Sprintf("&organization.name:contains=%s", request.OrganizationName)
 	}
-	return fhir_http_client.SearchResources[fhir_dto.PractitionerRole](ctx, c.Log, c.client, url,
+	return fhir_http_client.SearchResources[fhir_dto.PractitionerRole](ctx, c.Log, c.Client, url,
 		constvars.ResourcePractitionerRole)
 }
 
 func (c *practitionerRoleFhirClient) FindPractitionerRoleByPractitionerIDAndOrganizationID(ctx context.Context, practitionerID, organizationID string) ([]fhir_dto.PractitionerRole, error) {
 	url := fmt.Sprintf("%s?practitioner=Practitioner/%s&organization=Organization/%s",
 		c.BaseUrl, practitionerID, organizationID)
-	return fhir_http_client.SearchResources[fhir_dto.PractitionerRole](ctx, c.Log, c.client, url,
+	return fhir_http_client.SearchResources[fhir_dto.PractitionerRole](ctx, c.Log, c.Client, url,
 		constvars.ResourcePractitionerRole)
 }
 
@@ -114,7 +112,9 @@ func (c *practitionerRoleFhirClient) CreatePractitionerRoles(ctx context.Context
 		return exceptions.ErrCannotMarshalJSON(err)
 	}
 
-	_, err = c.client.Do(ctx, constvars.MethodPost, c.BaseFhirUrl, bytes.NewBuffer(requestJSON))
+	// Post to the base FHIR server URL (not the resource-specific endpoint)
+	baseURL := strings.TrimSuffix(c.BaseUrl, constvars.ResourcePractitionerRole)
+	_, err = c.Client.Do(ctx, constvars.MethodPost, baseURL, bytes.NewBuffer(requestJSON))
 	if err != nil {
 		c.Log.Error("practitionerRoleFhirClient.CreatePractitionerRoles FHIR error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -130,16 +130,16 @@ func (c *practitionerRoleFhirClient) CreatePractitionerRoles(ctx context.Context
 }
 
 func (c *practitionerRoleFhirClient) CreatePractitionerRole(ctx context.Context, request *fhir_dto.PractitionerRole) (*fhir_dto.PractitionerRole, error) {
-	return fhir_http_client.CreateResource(ctx, c.Log, c.client, c.BaseUrl, request,
+	return fhir_http_client.CreateResource(ctx, c.Log, c.Client, c.BaseUrl, request,
 		constvars.ResourcePractitionerRole, constvars.LoggingPractitionerRoleIDKey)
 }
 
 func (c *practitionerRoleFhirClient) UpdatePractitionerRole(ctx context.Context, request *fhir_dto.PractitionerRole) (*fhir_dto.PractitionerRole, error) {
-	return fhir_http_client.WriteResource(ctx, c.Log, c.client, constvars.MethodPut, c.BaseUrl, request.ID, request,
+	return fhir_http_client.WriteResource(ctx, c.Log, c.Client, constvars.MethodPut, c.BaseUrl, request.ID, request,
 		constvars.ResourcePractitionerRole, constvars.LoggingPractitionerRoleIDKey)
 }
 
 func (c *practitionerRoleFhirClient) FindPractitionerRoleByID(ctx context.Context, practitionerRoleID string) (*fhir_dto.PractitionerRole, error) {
-	return fhir_http_client.GetResource[fhir_dto.PractitionerRole](ctx, c.Log, c.client, c.BaseUrl, practitionerRoleID,
+	return fhir_http_client.GetResource[fhir_dto.PractitionerRole](ctx, c.Log, c.Client, c.BaseUrl, practitionerRoleID,
 		constvars.ResourcePractitionerRole, constvars.LoggingPractitionerRoleIDKey)
 }

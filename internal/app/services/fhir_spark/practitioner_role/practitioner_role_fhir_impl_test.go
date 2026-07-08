@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"konsulin-service/internal/app/contracts"
+	"konsulin-service/internal/app/services/fhir_spark/base"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/fhir_dto"
@@ -187,15 +188,16 @@ func mustMarshal(v any) json.RawMessage {
 
 // newTestClient creates a fresh practitionerRoleFhirClient for testing, bypassing
 // the singleton pattern to allow each test to use its own httptest server.
-func newTestClient(serverURL string, logger *zap.Logger) *practitionerRoleFhirClient {
-	base := serverURL
-	if base[len(base)-1] != '/' {
-		base += "/"
+func newTestClient(srvURL string, logger *zap.Logger) *practitionerRoleFhirClient {
+	if srvURL[len(srvURL)-1] != '/' {
+		srvURL += "/"
 	}
 	return &practitionerRoleFhirClient{
-		BaseUrl: base + constvars.ResourcePractitionerRole,
-		Log:     logger,
-		client:  fhir_http_client.New(logger),
+		ResourceClient: &base.ResourceClient{
+			BaseUrl: srvURL + constvars.ResourcePractitionerRole,
+			Log:     logger,
+			Client:  fhir_http_client.New(logger),
+		},
 	}
 }
 

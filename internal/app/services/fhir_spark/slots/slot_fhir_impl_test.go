@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"konsulin-service/internal/app/contracts"
+	"konsulin-service/internal/app/services/fhir_spark/base"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/fhir_http_client"
@@ -193,15 +194,16 @@ func mustMarshalSlot(v any) json.RawMessage {
 }
 
 // newTestSlotClient creates a fresh slotFhirClient for testing.
-func newTestSlotClient(serverURL string, logger *zap.Logger) *slotFhirClient {
-	base := serverURL
-	if base[len(base)-1] != '/' {
-		base += "/"
+func newTestSlotClient(srvURL string, logger *zap.Logger) *slotFhirClient {
+	if srvURL[len(srvURL)-1] != '/' {
+		srvURL += "/"
 	}
 	return &slotFhirClient{
-		BaseUrl: base + constvars.ResourceSlot,
-		Log:     logger,
-		client:  fhir_http_client.New(logger),
+		ResourceClient: &base.ResourceClient{
+			BaseUrl: srvURL + constvars.ResourceSlot,
+			Log:     logger,
+			Client:  fhir_http_client.New(logger),
+		},
 	}
 }
 
