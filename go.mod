@@ -6,7 +6,7 @@ require (
 	github.com/andybalholm/brotli v1.2.2
 	github.com/casbin/casbin/v2 v2.135.0
 	github.com/fsnotify/fsnotify v1.10.1
-	github.com/go-chi/chi/v5 v5.3.0
+	github.com/go-chi/chi/v5 v5.3.1
 	github.com/go-chi/cors v1.2.2
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.12.3
@@ -20,7 +20,7 @@ require (
 	github.com/xendit/xendit-go/v7 v7.0.0
 	go.uber.org/zap v1.28.0
 	golang.org/x/crypto v0.53.0
-	golang.org/x/sync v0.21.0
+	golang.org/x/sync v0.22.0
 )
 
 require (
@@ -75,12 +75,12 @@ require (
 )
 
 require (
-	github.com/go-chi/httprate v0.15.0
+	github.com/go-chi/httprate v0.16.0
 	github.com/go-playground/validator/v10 v10.30.3
 	github.com/goccy/go-json v0.10.6
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/google/uuid v1.6.0
-	github.com/klauspost/compress v1.18.6
+	github.com/klauspost/compress v1.19.0
 	github.com/redis/go-redis/v9 v9.21.0
 	go.mongodb.org/mongo-driver v1.17.9
 	golang.org/x/sys v0.46.0 // indirect
