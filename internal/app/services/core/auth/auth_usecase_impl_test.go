@@ -19,6 +19,46 @@ import (
 	"go.uber.org/zap/zaptest/observer"
 )
 
+func TestLogErrorAndReturn(t *testing.T) {
+	// Arrange: capture log output
+	core, observedLogs := observer.New(zapcore.InfoLevel)
+	logger := zap.New(core)
+	expectedErr := errors.New("something went wrong")
+
+	// Act
+	err := logErrorAndReturn(logger, "req-123", "test error message", expectedErr)
+
+	// Assert: returns the same error
+	assert.Equal(t, expectedErr, err)
+
+	// Assert: logs exactly one error entry with request ID
+	logs := observedLogs.TakeAll()
+	require.Len(t, logs, 1)
+	entry := logs[0]
+	assert.Equal(t, zapcore.ErrorLevel, entry.Level)
+	assert.Equal(t, "test error message", entry.Message)
+	ctxMap := entry.ContextMap()
+	assert.Equal(t, "req-123", ctxMap[constvars.LoggingRequestIDKey])
+	assert.Equal(t, expectedErr.Error(), ctxMap["error"])
+}
+
+func TestLogErrorAndReturn_NilError(t *testing.T) {
+	// Arrange: capture log output
+	core, observedLogs := observer.New(zapcore.InfoLevel)
+	logger := zap.New(core)
+
+	// Act
+	err := logErrorAndReturn(logger, "req-456", "nil error test", nil)
+
+	// Assert: returns nil
+	assert.NoError(t, err)
+
+	// Assert: still logs the message
+	logs := observedLogs.TakeAll()
+	require.Len(t, logs, 1)
+	assert.Equal(t, "nil error test", logs[0].Message)
+}
+
 // MockUserUsecase implements contracts.UserUsecase for testing.
 type MockUserUsecase struct {
 	mock.Mock
@@ -78,8 +118,7 @@ func TestInitializeMagicLinkFHIR_LogsError(t *testing.T) {
 	start := time.Now()
 
 	// Act
-	_, err := initializeMagicLinkFHIR(initializeMagicLinkFHIRInput{
-		Ctx:              context.Background(),
+	_, err := initializeMagicLinkFHIR(context.Background(), initializeMagicLinkFHIRInput{
 		Uc:               uc,
 		RequestID:        "req-abc-123",
 		SuperTokenUserID: "st-user-1",
@@ -131,8 +170,7 @@ func TestInitializeMagicLinkFHIR_Success(t *testing.T) {
 	start := time.Now()
 
 	// Act
-	output, err := initializeMagicLinkFHIR(initializeMagicLinkFHIRInput{
-		Ctx:              context.Background(),
+	output, err := initializeMagicLinkFHIR(context.Background(), initializeMagicLinkFHIRInput{
 		Uc:               uc,
 		RequestID:        "req-abc-456",
 		SuperTokenUserID: "st-user-2",
@@ -170,8 +208,7 @@ func TestInitializeMagicLinkFHIR_PhoneUser(t *testing.T) {
 	start := time.Now()
 
 	// Act
-	_, err := initializeMagicLinkFHIR(initializeMagicLinkFHIRInput{
-		Ctx:              context.Background(),
+	_, err := initializeMagicLinkFHIR(context.Background(), initializeMagicLinkFHIRInput{
 		Uc:               uc,
 		RequestID:        "req-phone-789",
 		SuperTokenUserID: "st-user-3",

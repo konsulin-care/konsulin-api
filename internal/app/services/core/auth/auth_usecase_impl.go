@@ -97,20 +97,12 @@ func (uc *authUsecase) LogoutUser(ctx context.Context, sessionData string) error
 
 	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
 	if err != nil {
-		uc.Log.Error("authUsecase.LogoutUser error parsing session data",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return err
+		return logErrorAndReturn(uc.Log, requestID, "authUsecase.LogoutUser error parsing session data", err)
 	}
 
 	err = uc.RedisRepository.Delete(ctx, session.SessionID)
 	if err != nil {
-		uc.Log.Error("authUsecase.LogoutUser error deleting session from Redis",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return err
+		return logErrorAndReturn(uc.Log, requestID, "authUsecase.LogoutUser error deleting session from Redis", err)
 	}
 
 	uc.Log.Info("authUsecase.LogoutUser succeeded",
@@ -157,8 +149,7 @@ func (uc *authUsecase) handlePhoneMagicLink(ctx context.Context, request *reques
 		return err
 	}
 
-	if _, err := initializeMagicLinkFHIR(initializeMagicLinkFHIRInput{
-		Ctx:              ctx,
+	if _, err := initializeMagicLinkFHIR(ctx, initializeMagicLinkFHIRInput{
 		Uc:               uc,
 		RequestID:        requestID,
 		SuperTokenUserID: plessResponse.User.ID,
@@ -211,8 +202,7 @@ func (uc *authUsecase) handleEmailMagicLink(ctx context.Context, request *reques
 		return err
 	}
 
-	initializeResources, err := initializeMagicLinkFHIR(initializeMagicLinkFHIRInput{
-		Ctx:              ctx,
+	initializeResources, err := initializeMagicLinkFHIR(ctx, initializeMagicLinkFHIRInput{
 		Uc:               uc,
 		RequestID:        requestID,
 		SuperTokenUserID: plessResponse.User.ID,
@@ -260,6 +250,15 @@ func logAndCreateLinkError(log *zap.Logger, msg, requestID string, err error, st
 	return err
 }
 
+// logErrorAndReturn logs a standard error with request ID and returns the error.
+func logErrorAndReturn(log *zap.Logger, requestID, msg string, err error) error {
+	log.Error(msg,
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.Error(err),
+	)
+	return err
+}
+
 // assignMagicLinkRoles assigns SuperTokens roles to a user during magic link creation.
 func assignMagicLinkRoles(_ context.Context, uc *authUsecase, requestID, userID string, roles []string, start time.Time) error {
 	for _, role := range roles {
@@ -277,7 +276,6 @@ func assignMagicLinkRoles(_ context.Context, uc *authUsecase, requestID, userID 
 
 // initializeMagicLinkFHIRInput groups parameters for initializeMagicLinkFHIR.
 type initializeMagicLinkFHIRInput struct {
-	Ctx              context.Context
 	Uc               *authUsecase
 	RequestID        string
 	SuperTokenUserID string
@@ -288,14 +286,14 @@ type initializeMagicLinkFHIRInput struct {
 }
 
 // initializeMagicLinkFHIR creates FHIR resources during magic link creation.
-func initializeMagicLinkFHIR(in initializeMagicLinkFHIRInput) (*contracts.InitializeNewUserFHIRResourcesOutput, error) {
+func initializeMagicLinkFHIR(ctx context.Context, in initializeMagicLinkFHIRInput) (*contracts.InitializeNewUserFHIRResourcesOutput, error) {
 	input := &contracts.InitializeNewUserFHIRResourcesInput{
 		Email:            in.Email,
 		Phone:            in.Phone,
 		SuperTokenUserID: in.SuperTokenUserID,
 	}
 	input.ToogleByRoles(in.Roles)
-	initCtx, cancel := context.WithDeadline(in.Ctx, time.Now().Add(10*time.Second))
+	initCtx, cancel := context.WithDeadline(ctx, time.Now().Add(10*time.Second))
 	defer cancel()
 	res, err := in.Uc.UserUsecase.InitializeNewUserFHIRResources(initCtx, input)
 	if err != nil {
@@ -371,11 +369,7 @@ func (uc *authUsecase) CreateAnonymousSession(ctx context.Context, existingToken
 
 	token, err := uc.createAnonymousSessionToken(guestID)
 	if err != nil {
-		uc.Log.Error("authUsecase.CreateAnonymousSession failed to create token",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, logErrorAndReturn(uc.Log, requestID, "authUsecase.CreateAnonymousSession failed to create token", err)
 	}
 
 	uc.Log.Info("authUsecase.CreateAnonymousSession succeeded",
@@ -415,20 +409,12 @@ func (uc *authUsecase) ClaimAnonymousResources(ctx context.Context, supertokensU
 
 	ownerRef, err := uc.resolveOwnerReferenceBySupertokensID(ctx, supertokensUserID, roles)
 	if err != nil {
-		uc.Log.Error("authUsecase.ClaimAnonymousResources error resolving owner reference",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, logErrorAndReturn(uc.Log, requestID, "authUsecase.ClaimAnonymousResources error resolving owner reference", err)
 	}
 
 	responses, err := uc.QuestionnaireResponseFhirClient.FindQuestionnaireResponsesByIdentifier(ctx, constvars.AnonymousSessionIdentifierSystem, guestID)
 	if err != nil {
-		uc.Log.Error("authUsecase.ClaimAnonymousResources error fetching questionnaire responses",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, logErrorAndReturn(uc.Log, requestID, "authUsecase.ClaimAnonymousResources error fetching questionnaire responses", err)
 	}
 
 	entries, refs := buildClaimEntries(responses, ownerRef, guestID)
@@ -444,11 +430,7 @@ func (uc *authUsecase) ClaimAnonymousResources(ctx context.Context, supertokensU
 	}
 
 	if _, err := uc.BundleFhirClient.PostTransactionBundle(ctx, bundle); err != nil {
-		uc.Log.Error("authUsecase.ClaimAnonymousResources error posting transaction bundle",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, err
+		return nil, logErrorAndReturn(uc.Log, requestID, "authUsecase.ClaimAnonymousResources error posting transaction bundle", err)
 	}
 
 	sort.Strings(refs)
