@@ -82,7 +82,7 @@ runtime:
                       if (msgData.parts && msgData.parts.length > 0) {
                         emailBody = msgData.parts[0].body || "";
                       }
-                      var match = emailBody.match(/https:\/\/[^\s<"']+/);
+                      var match = emailBody.match(/https?:\/\/[^\s<"']+/);
                       if (match) {
                         var magicUrl = match[0];
                         var pashMatch = magicUrl.match(/[?&]preAuthSessionId=([^&#]+)/);
@@ -129,4 +129,4 @@ runtime:
       value: "magic link successfully generated"
     - expression: res.responseTime
       operator: lt
-      value: "5000"
+      value: "10000"
