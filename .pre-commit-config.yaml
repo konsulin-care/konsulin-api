@@ -14,3 +14,28 @@ repos:
       - id: check-yaml
       - id: end-of-file-fixer
       - id: trailing-whitespace
+
+  - repo: local
+    hooks:
+      # Pre-commit: run tests only on packages with staged .go files
+      - id: go-test
+        name: go test (changed packages)
+        entry: bash -c 'go test -race -v $(printf "./%s\n" "$@" | sed "s|/[^/]*$||" | sort -u)' -
+        language: system
+        types: [go]
+
+      # Pre-commit: ensure go.mod/go.sum are tidy
+      - id: go-mod-tidy
+        name: go mod tidy
+        entry: bash -c 'go mod tidy && git diff --exit-code go.mod go.sum'
+        language: system
+        pass_filenames: false
+        types: [go]
+
+      # Pre-push: run full test suite
+      - id: go-test-all
+        name: go test (all packages)
+        entry: go test -race -v ./...
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

@@ -8,6 +8,7 @@ linters:
     - govet
     - staticcheck
     - errcheck
+    - gofumpt
   settings:
     gocognit:
       min-complexity: 20
