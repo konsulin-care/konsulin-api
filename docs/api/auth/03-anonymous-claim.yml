@@ -51,6 +51,10 @@ examples:
         type: json
         data: ""
 runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        console.log("03-anonymous-claim: sessionToken=" + (bru.getVar("sessionToken") || "UNDEFINED") + " (first 20: " + (bru.getVar("sessionToken") || "").substring(0,20) + ")");
   assertions:
     - expression: res.status
       operator: eq

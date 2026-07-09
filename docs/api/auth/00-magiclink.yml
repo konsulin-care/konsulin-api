@@ -60,7 +60,7 @@ runtime:
 
         function fetchAndParse(retry) {
           if (retry >= maxRetries) {
-            console.log("Mailinator: max retries reached");
+            console.log("Mailinator: max retries reached, giving up");
             bru.cb();
             return;
           }
@@ -71,32 +71,44 @@ runtime:
               method: "GET",
               success: function(data) {
                 var messages = data.messages;
+                console.log("Mailinator: inbox has " + (messages ? messages.length : 0) + " messages");
                 if (messages && messages.length > 0) {
                   var latestMsg = messages[0];
+                  console.log("Mailinator: fetching message " + latestMsg.id);
                   var msgUrl = "https://api.mailinator.com/api/v2/domains/public/messages/" + encodeURIComponent(latestMsg.id);
                   $.ajax({
                     url: msgUrl,
                     method: "GET",
                     success: function(msg) {
+                      console.log("Mailinator: response keys=" + Object.keys(msg).join(","));
                       var emailBody = "";
                       var parts = (msg.data && msg.data.parts) || msg.parts;
                       if (parts && parts.length > 0) {
                         emailBody = parts[0].body || "";
                       }
+                      console.log("Mailinator: emailBody length=" + emailBody.length + ", first 200=" + emailBody.substring(0,200).replace(/\n/g, "\\n"));
                       var match = emailBody.match(/https?:\/\/[^\s<"']+/);
                       if (match) {
                         var magicUrl = match[0];
+                        console.log("Mailinator: magicUrl found: " + magicUrl);
                         var pashMatch = magicUrl.match(/[?&]preAuthSessionId=([^&#]+)/);
                         var lcMatch = magicUrl.match(/#([^#]+)$/);
+                        console.log("Mailinator: pashMatch=" + (pashMatch ? pashMatch[1] : "null") + ", lcMatch=" + (lcMatch ? lcMatch[1] : "null"));
                         if (pashMatch && lcMatch) {
-                          bru.setVar("preAuthSessionId", decodeURIComponent(pashMatch[1]));
-                          bru.setVar("linkCode", decodeURIComponent(lcMatch[1]));
-                          console.log("Mailinator: magic link extracted, preAuthSessionId=" + pashMatch[1]);
+                          var decodedPash = decodeURIComponent(pashMatch[1]);
+                          var decodedLc = decodeURIComponent(lcMatch[1]);
+                          console.log("Mailinator: decoded preAuthSessionId=" + decodedPash + ", decoded linkCode=" + decodedLc);
+                          bru.setVar("preAuthSessionId", decodedPash);
+                          bru.setVar("linkCode", decodedLc);
+                          console.log("Mailinator: bru.vars set - preAuthSessionId=" + bru.getVar("preAuthSessionId"));
+                          console.log("Mailinator: calling bru.cb(), extraction complete");
                           bru.cb();
                           return;
                         }
+                      } else {
+                        console.log("Mailinator: no URL match in emailBody");
                       }
-                      console.log("Mailinator: magic link not found in email body, retrying...");
+                      console.log("Mailinator: magic link not found, retrying...");
                       fetchAndParse(retry + 1);
                     },
                     error: function(err) {

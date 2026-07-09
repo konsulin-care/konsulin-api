@@ -57,4 +57,5 @@ runtime:
   scripts:
     - type: after-response
       code: |-
+        console.log("06-logout: sessionToken=" + (bru.getVar("sessionToken") || "UNDEFINED") + " (first 20: " + (bru.getVar("sessionToken") || "").substring(0,20) + ")");
         console.log("Logout response status: " + res.status);
