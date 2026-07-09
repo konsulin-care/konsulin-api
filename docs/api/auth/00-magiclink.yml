@@ -60,44 +60,58 @@ runtime:
 
         function fetchAndParse(retry) {
           if (retry >= maxRetries) {
+            bru.setVar("debug_status", "max_retries");
             console.log("Mailinator: max retries reached, giving up");
             bru.cb();
             return;
           }
 
           setTimeout(function() {
+            bru.setVar("debug_timer_fired", String(retry));
             $.ajax({
               url: "https://api.mailinator.com/api/v2/domains/public/inboxes/konsulin",
               method: "GET",
               success: function(data) {
                 var messages = data.messages;
+                bru.setVar("debug_inbox_msgs", String(messages ? messages.length : 0));
                 console.log("Mailinator: inbox has " + (messages ? messages.length : 0) + " messages");
                 if (messages && messages.length > 0) {
                   var latestMsg = messages[0];
+                  bru.setVar("debug_msg_id", latestMsg.id);
                   console.log("Mailinator: fetching message " + latestMsg.id);
                   var msgUrl = "https://api.mailinator.com/api/v2/domains/public/messages/" + encodeURIComponent(latestMsg.id);
                   $.ajax({
                     url: msgUrl,
                     method: "GET",
                     success: function(msg) {
-                      console.log("Mailinator: response keys=" + Object.keys(msg).join(","));
+                      var msgKeys = Object.keys(msg);
+                      bru.setVar("debug_msg_keys", msgKeys.join(","));
+                      console.log("Mailinator: response keys=" + msgKeys.join(","));
                       var emailBody = "";
-                      var parts = (msg.data && msg.data.parts) || msg.parts;
+                      var fromData = msg.data && msg.data.parts;
+                      var parts = fromData || msg.parts;
+                      bru.setVar("debug_parts_source", fromData ? "data.parts" : (msg.parts ? "msg.parts" : "none"));
                       if (parts && parts.length > 0) {
                         emailBody = parts[0].body || "";
                       }
+                      bru.setVar("debug_body_length", String(emailBody.length));
+                      bru.setVar("debug_body_preview", emailBody.substring(0, 300));
                       console.log("Mailinator: emailBody length=" + emailBody.length + ", first 200=" + emailBody.substring(0,200).replace(/\n/g, "\\n"));
                       var match = emailBody.match(/https?:\/\/[^\s<"']+/);
                       if (match) {
                         var magicUrl = match[0];
+                        bru.setVar("debug_magic_url", magicUrl);
                         console.log("Mailinator: magicUrl found: " + magicUrl);
                         var pashMatch = magicUrl.match(/[?&]preAuthSessionId=([^&#]+)/);
                         var lcMatch = magicUrl.match(/#([^#]+)$/);
+                        bru.setVar("debug_pash_raw", pashMatch ? pashMatch[1] : "null");
+                        bru.setVar("debug_lc_raw", lcMatch ? lcMatch[1] : "null");
                         console.log("Mailinator: pashMatch=" + (pashMatch ? pashMatch[1] : "null") + ", lcMatch=" + (lcMatch ? lcMatch[1] : "null"));
                         if (pashMatch && lcMatch) {
                           var decodedPash = decodeURIComponent(pashMatch[1]);
                           var decodedLc = decodeURIComponent(lcMatch[1]);
                           console.log("Mailinator: decoded preAuthSessionId=" + decodedPash + ", decoded linkCode=" + decodedLc);
+                          bru.setVar("debug_status", "success");
                           bru.setVar("preAuthSessionId", decodedPash);
                           bru.setVar("linkCode", decodedLc);
                           console.log("Mailinator: bru.vars set - preAuthSessionId=" + bru.getVar("preAuthSessionId"));
@@ -106,22 +120,27 @@ runtime:
                           return;
                         }
                       } else {
+                        bru.setVar("debug_status", "no_url_match");
                         console.log("Mailinator: no URL match in emailBody");
                       }
+                      bru.setVar("debug_status", "no_match_retry_" + retry);
                       console.log("Mailinator: magic link not found, retrying...");
                       fetchAndParse(retry + 1);
                     },
                     error: function(err) {
+                      bru.setVar("debug_msg_error", String(retry));
                       console.log("Mailinator: fetch message failed, retrying...");
                       fetchAndParse(retry + 1);
                     }
                   });
                 } else {
+                  bru.setVar("debug_status", "no_msgs_retry_" + retry);
                   console.log("Mailinator: no messages found, retrying...");
                   fetchAndParse(retry + 1);
                 }
               },
               error: function(err) {
+                bru.setVar("debug_inbox_error", String(retry));
                 console.log("Mailinator: fetch inbox failed, retrying...");
                 fetchAndParse(retry + 1);
               }
