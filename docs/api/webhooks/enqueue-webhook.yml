@@ -4,7 +4,7 @@ info:
   type: http
 http:
   method: POST
-  url: "{{BASE_URL}}/api/v1/hook/{service}"
+  url: "{{process.env.BASE_URL}}/api/v1/hook/{service}"
   headers:
     - name: content-type
       value: application/json
@@ -42,7 +42,7 @@ examples:
   - name: Success
     request:
       method: POST
-      url: "{{BASE_URL}}/api/v1/hook/notification-service"
+      url: "{{process.env.BASE_URL}}/api/v1/hook/notification-service"
       headers:
         - name: content-type
           value: application/json
@@ -59,7 +59,7 @@ examples:
   - name: Wrong content type
     request:
       method: POST
-      url: "{{BASE_URL}}/api/v1/hook/notification-service"
+      url: "{{process.env.BASE_URL}}/api/v1/hook/notification-service"
       headers:
         - name: content-type
           value: text/plain

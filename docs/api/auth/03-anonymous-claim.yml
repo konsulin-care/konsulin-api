@@ -4,7 +4,7 @@ info:
   type: http
 http:
   method: PATCH
-  url: "{{BASE_URL}}/api/v1/auth/anonymous/claim"
+  url: "{{process.env.BASE_URL}}/api/v1/auth/anonymous/claim"
   headers:
     - name: content-type
       value: application/json
@@ -25,7 +25,7 @@ examples:
   - name: Success
     request:
       method: PATCH
-      url: "{{BASE_URL}}/api/v1/auth/anonymous/claim"
+      url: "{{process.env.BASE_URL}}/api/v1/auth/anonymous/claim"
       headers:
         - name: content-type
           value: application/json
@@ -39,7 +39,7 @@ examples:
   - name: No anonymous cookie
     request:
       method: PATCH
-      url: "{{BASE_URL}}/api/v1/auth/anonymous/claim"
+      url: "{{process.env.BASE_URL}}/api/v1/auth/anonymous/claim"
       headers:
         - name: content-type
           value: application/json

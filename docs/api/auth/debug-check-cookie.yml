@@ -4,7 +4,7 @@ info:
   type: http
 http:
   method: GET
-  url: "{{BASE_URL}}/fhir/metadata"
+  url: "{{process.env.BASE_URL}}/fhir/metadata"
   headers:
     - name: content-type
       value: application/fhir+json
@@ -12,7 +12,7 @@ runtime:
   scripts:
     - type: pre-request
       code: |-
-        var baseUrl = bru.getVar("BASE_URL") || "http://localhost:3200";
+        var baseUrl = bru.getVar("process.env.BASE_URL") || "http://localhost:3200";
         var jar = bru.cookies.jar();
         console.log("Checking cookies at: " + baseUrl);
         if (jar) {

@@ -4,7 +4,7 @@ info:
   type: http
 http:
   method: GET
-  url: "{{BASE_URL}}/api/v1/service-request/test-id/result"
+  url: "{{process.env.BASE_URL}}/api/v1/service-request/test-id/result"
   headers:
     - name: content-type
       value: application/json
@@ -24,7 +24,7 @@ examples:
   - name: Success
     request:
       method: GET
-      url: "{{BASE_URL}}/api/v1/service-request/sr_abc123/result"
+      url: "{{process.env.BASE_URL}}/api/v1/service-request/sr_abc123/result"
       headers:
         - name: content-type
           value: application/json
@@ -36,7 +36,7 @@ examples:
   - name: Missing id
     request:
       method: GET
-      url: "{{BASE_URL}}/api/v1/service-request//result"
+      url: "{{process.env.BASE_URL}}/api/v1/service-request//result"
       headers:
         - name: content-type
           value: application/json
@@ -48,7 +48,7 @@ examples:
   - name: Not found
     request:
       method: GET
-      url: "{{BASE_URL}}/api/v1/service-request/unknown/result"
+      url: "{{process.env.BASE_URL}}/api/v1/service-request/unknown/result"
       headers:
         - name: content-type
           value: application/json

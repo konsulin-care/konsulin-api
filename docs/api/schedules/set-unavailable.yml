@@ -4,7 +4,7 @@ info:
   type: http
 http:
   method: POST
-  url: "{{BASE_URL}}/api/v1/schedule/unavailable"
+  url: "{{process.env.BASE_URL}}/api/v1/schedule/unavailable"
   headers:
     - name: content-type
       value: application/json
@@ -42,7 +42,7 @@ examples:
   - name: All-day unavailable
     request:
       method: POST
-      url: "{{BASE_URL}}/api/v1/schedule/unavailable"
+      url: "{{process.env.BASE_URL}}/api/v1/schedule/unavailable"
       headers:
         - name: content-type
           value: application/json
@@ -59,7 +59,7 @@ examples:
   - name: Time-range unavailable
     request:
       method: POST
-      url: "{{BASE_URL}}/api/v1/schedule/unavailable"
+      url: "{{process.env.BASE_URL}}/api/v1/schedule/unavailable"
       headers:
         - name: content-type
           value: application/json
@@ -76,7 +76,7 @@ examples:
   - name: Conflict
     request:
       method: POST
-      url: "{{BASE_URL}}/api/v1/schedule/unavailable"
+      url: "{{process.env.BASE_URL}}/api/v1/schedule/unavailable"
       headers:
         - name: content-type
           value: application/json
@@ -93,7 +93,7 @@ examples:
   - name: Unauthorized
     request:
       method: POST
-      url: "{{BASE_URL}}/api/v1/schedule/unavailable"
+      url: "{{process.env.BASE_URL}}/api/v1/schedule/unavailable"
       headers:
         - name: content-type
           value: application/json

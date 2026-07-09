@@ -4,7 +4,7 @@ info:
   type: http
 http:
   method: POST
-  url: "{{BASE_URL}}/api/v1/organizations/{organizationId}/roles"
+  url: "{{process.env.BASE_URL}}/api/v1/organizations/{organizationId}/roles"
   headers:
     - name: content-type
       value: application/json
@@ -33,7 +33,7 @@ examples:
   - name: Success
     request:
       method: POST
-      url: "{{BASE_URL}}/api/v1/organizations/Organization/org-123/roles"
+      url: "{{process.env.BASE_URL}}/api/v1/organizations/Organization/org-123/roles"
       headers:
         - name: content-type
           value: application/json
@@ -50,7 +50,7 @@ examples:
   - name: Missing email
     request:
       method: POST
-      url: "{{BASE_URL}}/api/v1/organizations/Organization/org-123/roles"
+      url: "{{process.env.BASE_URL}}/api/v1/organizations/Organization/org-123/roles"
       headers:
         - name: content-type
           value: application/json
@@ -67,7 +67,7 @@ examples:
   - name: Missing organizationId
     request:
       method: POST
-      url: "{{BASE_URL}}/api/v1/organizations//roles"
+      url: "{{process.env.BASE_URL}}/api/v1/organizations//roles"
       headers:
         - name: content-type
           value: application/json

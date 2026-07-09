@@ -4,7 +4,7 @@ info:
   type: http
 http:
   method: GET
-  url: "{{BASE_URL}}/api/v1/auth/logout"
+  url: "{{process.env.BASE_URL}}/api/v1/auth/logout"
   headers:
     - name: content-type
       value: application/json

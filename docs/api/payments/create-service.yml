@@ -4,7 +4,7 @@ info:
   type: http
 http:
   method: POST
-  url: "{{BASE_URL}}/api/v1/pay/service"
+  url: "{{process.env.BASE_URL}}/api/v1/pay/service"
   headers:
     - name: content-type
       value: application/json
@@ -39,7 +39,7 @@ examples:
   - name: Success
     request:
       method: POST
-      url: "{{BASE_URL}}/api/v1/pay/service"
+      url: "{{process.env.BASE_URL}}/api/v1/pay/service"
       headers:
         - name: content-type
           value: application/json
@@ -56,7 +56,7 @@ examples:
   - name: Unauthorized
     request:
       method: POST
-      url: "{{BASE_URL}}/api/v1/pay/service"
+      url: "{{process.env.BASE_URL}}/api/v1/pay/service"
       headers:
         - name: content-type
           value: application/json

@@ -4,7 +4,7 @@ info:
   type: http
 http:
   method: POST
-  url: "{{BASE_URL}}/api/v1/auth/signinup/code/consume"
+  url: "{{process.env.BASE_URL}}/api/v1/auth/signinup/code/consume"
   headers:
     - name: content-type
       value: application/json
@@ -22,7 +22,7 @@ runtime:
     - type: after-response
       code: |-
         console.log("after-response start...");
-        var baseUrl = bru.getVar("BASE_URL") || "http://localhost:3200";
+        var baseUrl = bru.getVar("process.env.BASE_URL") || "http://localhost:3200";
         console.log("Checking cookies for: " + baseUrl);
 
         var jar = bru.cookies.jar();

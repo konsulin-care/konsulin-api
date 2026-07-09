@@ -4,7 +4,7 @@ info:
   type: http
 http:
   method: POST
-  url: "{{BASE_URL}}/api/v1/hook/synchronous/{service}"
+  url: "{{process.env.BASE_URL}}/api/v1/hook/synchronous/{service}"
   headers:
     - name: content-type
       value: application/json
@@ -38,7 +38,7 @@ examples:
   - name: Success
     request:
       method: POST
-      url: "{{BASE_URL}}/api/v1/hook/synchronous/my-service"
+      url: "{{process.env.BASE_URL}}/api/v1/hook/synchronous/my-service"
       headers:
         - name: content-type
           value: application/json
@@ -55,7 +55,7 @@ examples:
   - name: Invalid service name
     request:
       method: POST
-      url: "{{BASE_URL}}/api/v1/hook/synchronous/"
+      url: "{{process.env.BASE_URL}}/api/v1/hook/synchronous/"
       headers:
         - name: content-type
           value: application/json
