@@ -1,5 +1,5 @@
 info:
-  name: 00 - Send Magic Link
+  name: Send Magic Link
   description: Sends a passwordless magic link to konsulin@mailinator.com with all roles
   type: http
 http:
@@ -77,10 +77,11 @@ runtime:
                   $.ajax({
                     url: msgUrl,
                     method: "GET",
-                    success: function(msgData) {
+                    success: function(msg) {
                       var emailBody = "";
-                      if (msgData.parts && msgData.parts.length > 0) {
-                        emailBody = msgData.parts[0].body || "";
+                      var parts = (msg.data && msg.data.parts) || msg.parts;
+                      if (parts && parts.length > 0) {
+                        emailBody = parts[0].body || "";
                       }
                       var match = emailBody.match(/https?:\/\/[^\s<"']+/);
                       if (match) {

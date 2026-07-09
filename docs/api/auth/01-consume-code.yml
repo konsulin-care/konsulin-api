@@ -1,5 +1,5 @@
 info:
-  name: 01 - Consume Code
+  name: Consume Code
   description: Consumes the magic link code to create a SuperTokens session
   type: http
 http:
@@ -53,13 +53,13 @@ runtime:
   scripts:
     - type: after-response
       code: |-
-        var stToken = res.headers["st-access-token"];
+        var stToken = res.getHeader("Front-Token");
         if (!stToken) {
-          stToken = res.headers["St-Access-Token"];
+          stToken = res.headers["st-access-token"];
         }
         if (stToken) {
           bru.setVar("sessionToken", stToken);
-          console.log("Session token saved from St-Access-Token header");
+          console.log("Session token saved from header");
         } else {
           console.log("Warning: St-Access-Token header not found in response");
         }
