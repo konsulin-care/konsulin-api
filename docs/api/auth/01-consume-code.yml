@@ -54,22 +54,17 @@ runtime:
     - type: pre-request
       code: |-
         console.log("=== DEBUG DUMP ===");
-        console.log("debug_timer_fired=" + bru.getVar("debug_timer_fired"));
+        console.log("debug_attempt=" + bru.getVar("debug_attempt"));
         console.log("debug_inbox_msgs=" + bru.getVar("debug_inbox_msgs"));
         console.log("debug_msg_id=" + bru.getVar("debug_msg_id"));
-        console.log("debug_msg_keys=" + bru.getVar("debug_msg_keys"));
-        console.log("debug_parts_source=" + bru.getVar("debug_parts_source"));
-        console.log("debug_body_length=" + bru.getVar("debug_body_length"));
-        console.log("debug_body_preview=" + new String(bru.getVar("debug_body_preview")).substring(0,200));
+        console.log("debug_links_count=" + bru.getVar("debug_links_count"));
         console.log("debug_magic_url=" + bru.getVar("debug_magic_url"));
         console.log("debug_pash_raw=" + bru.getVar("debug_pash_raw"));
         console.log("debug_lc_raw=" + bru.getVar("debug_lc_raw"));
         console.log("debug_status=" + bru.getVar("debug_status"));
-        console.log("debug_inbox_error=" + bru.getVar("debug_inbox_error"));
-        console.log("debug_msg_error=" + bru.getVar("debug_msg_error"));
         console.log("preAuthSessionId=" + bru.getVar("preAuthSessionId"));
         console.log("linkCode=" + bru.getVar("linkCode"));
-        console.log("=== END DEBUG DUMP ===");
+        console.log("=== END DEBUG DUMP ===
     - type: after-response
       code: |-
         console.log("ConsumeCode: status=" + res.status + ", headers=" + JSON.stringify(res.headers));
