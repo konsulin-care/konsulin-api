@@ -1,0 +1,20 @@
+info:
+  name: Debug Request Headers
+  description: Echo back what we send (using a service that echoes)
+  type: http
+http:
+  method: GET
+  url: "{{BASE_URL}}/fhir/metadata"
+  headers:
+    - name: accept
+      value: application/fhir+json
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        console.log("Status: " + res.status);
+        console.log("--- res.headerList ---");
+        res.headerList.each(function(h, i) {
+          console.log("  [" + i + "] " + h.key + ": " + h.value);
+        });
+  assertions: []

@@ -1,0 +1,77 @@
+info:
+  name: 05 - Set Active Role
+  description: Sets the active role in the current SuperTokens session
+  type: http
+http:
+  method: POST
+  url: "{{BASE_URL}}/api/v1/auth/active-role"
+  headers:
+    - name: content-type
+      value: application/json
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  body:
+    type: json
+    data: |-
+      {
+        "role": "Patient"
+      }
+docs: |
+  Sets the active role in the SuperTokens session's access token payload. Requires a valid SuperTokens session via `Authorization: Bearer {{sessionToken}}`.
+
+  ### Request Fields
+  - `role`: (required) the role to activate. Must be assigned to the user.
+
+  ### Responses
+  - **200 OK**: Active role set. Body: `{ "success": true, "message": "active role set" }`.
+  - **400 Bad Request**: Missing/invalid role, role not assigned, or could not verify roles. Body: `{ "success": false, "message": "...", "status_code": 400 }`.
+  - **500 Internal Server Error**: Session not found or access token merge failed. Body: `{ "success": false, "message": "...", "status_code": 500 }`.
+examples:
+  - name: Success
+    request:
+      method: POST
+      url: "{{BASE_URL}}/api/v1/auth/active-role"
+      headers:
+        - name: content-type
+          value: application/json
+        - name: Authorization
+          value: Bearer {{sessionToken}}
+      body:
+        type: json
+        data: '{"role":"Patient"}'
+    response:
+      status: 200
+      body:
+        type: json
+        data: '{"success":true,"message":"active role set"}'
+  - name: Role not assigned
+    request:
+      method: POST
+      url: "{{BASE_URL}}/api/v1/auth/active-role"
+      headers:
+        - name: content-type
+          value: application/json
+        - name: Authorization
+          value: Bearer {{sessionToken}}
+      body:
+        type: json
+        data: '{"role":"Researcher"}'
+    response:
+      status: 400
+      body:
+        type: json
+        data: '{"success":false,"message":"role Researcher is not assigned to user","status_code":400}'
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.success
+      operator: eq
+      value: "true"
+    - expression: res.body.message
+      operator: eq
+      value: "active role set"
+    - expression: res.responseTime
+      operator: lt
+      value: "5000"

@@ -1,0 +1,35 @@
+info:
+  name: Debug Session2
+  description: Extracts session from cookie jar
+  type: http
+http:
+  method: POST
+  url: "{{BASE_URL}}/api/v1/auth/active-role"
+  headers:
+    - name: content-type
+      value: application/json
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  body:
+    type: json
+    data: |-
+      {
+        "role": "Patient"
+      }
+runtime:
+  scripts:
+    - type: pre-request
+      code: |-
+        console.log("=== PRE-REQUEST ===");
+        if (bru.cookies) {
+          var jar = bru.cookies.jar();
+          console.log("jar available: " + (jar ? "yes" : "no"));
+          console.log("sessionToken var: " + (bru.getVar("sessionToken") ? "YES" : "NO"));
+        }
+    - type: after-response
+      code: |-
+        console.log("Status: " + res.status);
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"

@@ -1,0 +1,70 @@
+info:
+  name: Enqueue Webhook
+  description: Enqueues an asynchronous webhook request for processing
+  type: http
+http:
+  method: POST
+  url: "{{BASE_URL}}/api/v1/hook/{service}"
+  headers:
+    - name: content-type
+      value: application/json
+    - name: Authorization
+      value: Bearer {{authToken}}
+  body:
+    type: json
+    data: |-
+      {
+        "action": "send_notification",
+        "payload": {
+          "userId": "user-123",
+          "template": "welcome"
+        }
+      }
+docs: |
+  Enqueues an asynchronous webhook request for the service identified by `{service}`. The request is validated, rate-limited, and added to a RabbitMQ queue for background processing.
+
+  ### Path Parameters
+  - `service`: (required) service name. Alphanumeric and hyphens only, max 256 chars.
+
+  ### Headers
+  - `Content-Type`: must be `application/json`.
+  - `Authorization`: optional bearer token forwarded to the upstream service.
+  - `X-Forwarded-From-Payment-Service`: optional trusted JWT from payment service.
+
+  ### Responses
+  - **202 Accepted**: Webhook enqueued successfully. Body: `{ "success": true, "message": "success", "data": { "asyncServiceResultId": "..." } }`.
+  - **400 Bad Request**: Invalid service name. Body: `{ "success": false, "message": "Invalid service name", "status_code": 400 }`.
+  - **405 Method Not Allowed**: Non-POST request. Body: `{ "success": false, "message": "Only POST is allowed", "status_code": 405 }`.
+  - **415 Unsupported Media Type**: Content-Type is not `application/json`. Body: `{ "success": false, "message": "Content-Type must be application/json", "status_code": 415 }`.
+  - **429 Too Many Requests**: Rate limit exceeded. Body: `{ "success": false, "message": "Too many requests", "status_code": 429 }`.
+  - **500 Internal Server Error**: Enqueue failure. Body: `{ "success": false, "message": "...", "status_code": 500 }`.
+examples:
+  - name: Success
+    request:
+      method: POST
+      url: "{{BASE_URL}}/api/v1/hook/notification-service"
+      headers:
+        - name: content-type
+          value: application/json
+        - name: Authorization
+          value: Bearer {{authToken}}
+      body:
+        type: json
+        data: '{"action":"send_notification","payload":{"userId":"user-123","template":"welcome"}}'
+    response:
+      status: 202
+      body:
+        type: json
+        data: '{"success":true,"message":"success","data":{"asyncServiceResultId":"asr_abc123"}}'
+  - name: Wrong content type
+    request:
+      method: POST
+      url: "{{BASE_URL}}/api/v1/hook/notification-service"
+      headers:
+        - name: content-type
+          value: text/plain
+    response:
+      status: 415
+      body:
+        type: json
+        data: '{"success":false,"message":"Content-Type must be application/json","status_code":415}'

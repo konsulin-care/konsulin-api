@@ -1,0 +1,31 @@
+info:
+  name: Debug Cookie Test
+  description: Tests Bruno cookie jar
+  type: http
+http:
+  method: GET
+  url: "{{BASE_URL}}/api/v1/auth/logout"
+  headers:
+    - name: content-type
+      value: application/json
+runtime:
+  scripts:
+    - type: pre-request
+      code: |-
+        console.log("=== PRE-REQUEST ===");
+        if (bru && bru.cookies) {
+          console.log("bru.cookies exists");
+          try {
+            var c = bru.cookies.all();
+            console.log("count: " + (c ? c.length : 0));
+          } catch(e) {
+            console.log("error: " + e.message);
+          }
+        } else {
+          console.log("bru.cookies NOT available");
+        }
+        console.log("===================");
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"

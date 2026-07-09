@@ -1,0 +1,41 @@
+info:
+  name: Debug Cookies2
+  description: Checks cookies via bru.cookies API
+  type: http
+http:
+  method: POST
+  url: "{{BASE_URL}}/api/v1/auth/active-role"
+  headers:
+    - name: content-type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "role": "Patient"
+      }
+runtime:
+  scripts:
+    - type: pre-request
+      code: |-
+        console.log("pre-request: checking cookies...");
+        if (bru.cookies) {
+          console.log("bru.cookies exists, count: " + (bru.cookies.count ? bru.cookies.count() : "N/A"));
+          var allCookies = bru.cookies.all();
+          console.log("All cookies count: " + (allCookies ? allCookies.length : 0));
+          if (allCookies && allCookies.length > 0) {
+            for (var i = 0; i < allCookies.length; i++) {
+              console.log("  Cookie " + i + ": " + allCookies[i].key + "=" + allCookies[i].value);
+            }
+          }
+        } else {
+          console.log("bru.cookies NOT available");
+        }
+    - type: after-response
+      code: |-
+        console.log("after-response: status=" + res.status);
+        if (res.body) console.log("body: " + JSON.stringify(res.body));
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"

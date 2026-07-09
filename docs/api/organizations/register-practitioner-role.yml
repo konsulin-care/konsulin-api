@@ -1,0 +1,83 @@
+info:
+  name: Register Practitioner Role
+  description: Registers a practitioner role within an organization
+  type: http
+http:
+  method: POST
+  url: "{{BASE_URL}}/api/v1/organizations/{organizationId}/roles"
+  headers:
+    - name: content-type
+      value: application/json
+    - name: Authorization
+      value: Bearer {{authToken}}
+  body:
+    type: json
+    data: |-
+      {
+        "email": "practitioner@example.com"
+      }
+docs: |
+  Registers an existing user as a practitioner within the specified organization. Creates the FHIR PractitionerRole and generates a slot schedule.
+
+  ### Path Parameters
+  - `organizationId`: (required) FHIR Organization identifier.
+
+  ### Request Fields
+  - `email`: (required) email of the user to register as a practitioner. Must be a valid email format.
+
+  ### Responses
+  - **201 Created**: Practitioner role registered. Body: `{ "success": true, "message": "Created", "data": { "practitionerId": "...", "practitionerRoleId": "...", "scheduleId": "..." } }`.
+  - **400 Bad Request**: Missing or invalid email, or missing `organizationId`. Body: `{ "success": false, "message": "...", "status_code": 400 }`.
+  - **500 Internal Server Error**: Registration or FHIR resource creation failure. Body: `{ "success": false, "message": "...", "status_code": 500 }`.
+examples:
+  - name: Success
+    request:
+      method: POST
+      url: "{{BASE_URL}}/api/v1/organizations/Organization/org-123/roles"
+      headers:
+        - name: content-type
+          value: application/json
+        - name: Authorization
+          value: Bearer {{authToken}}
+      body:
+        type: json
+        data: '{"email":"practitioner@example.com"}'
+    response:
+      status: 201
+      body:
+        type: json
+        data: '{"success":true,"message":"Created","data":{"practitionerId":"Practitioner/abc","practitionerRoleId":"PractitionerRole/def","scheduleId":"Schedule/ghi"}}'
+  - name: Missing email
+    request:
+      method: POST
+      url: "{{BASE_URL}}/api/v1/organizations/Organization/org-123/roles"
+      headers:
+        - name: content-type
+          value: application/json
+        - name: Authorization
+          value: Bearer {{authToken}}
+      body:
+        type: json
+        data: '{}'
+    response:
+      status: 400
+      body:
+        type: json
+        data: '{"success":false,"message":"email is required","status_code":400}'
+  - name: Missing organizationId
+    request:
+      method: POST
+      url: "{{BASE_URL}}/api/v1/organizations//roles"
+      headers:
+        - name: content-type
+          value: application/json
+        - name: Authorization
+          value: Bearer {{authToken}}
+      body:
+        type: json
+        data: '{"email":"practitioner@example.com"}'
+    response:
+      status: 400
+      body:
+        type: json
+        data: '{"success":false,"message":"organizationId is required","status_code":400}'

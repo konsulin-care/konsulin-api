@@ -1,0 +1,73 @@
+info:
+  name: Get Async Service Result
+  description: Retrieves the result of an async service request by ID
+  type: http
+http:
+  method: GET
+  url: "{{BASE_URL}}/api/v1/service-request/test-id/result"
+  headers:
+    - name: content-type
+      value: application/json
+docs: |
+  Retrieves the stored result of an asynchronous service request by its identifier.
+
+  ### Path Parameters
+  - `id`: (required) the async service request identifier.
+
+  ### Responses
+  - **200 OK**: Result found. Body: `{ "success": true, "message": "success", "data": { "resourceType": "ServiceRequest", "status": "completed", "intent": "order", "instantiatesUri": [...], "subject": {...}, "requester": {...}, "authoredOn": "...", "note": "..." } }`.
+  - **400 Bad Request**: Missing `id` parameter. Body: `{ "success": false, "message": "id is required", "status_code": 400 }`.
+  - **404 Not Found**: No result found for the given ID. Body: `{ "success": false, "message": "Not found", "status_code": 404 }`.
+  - **405 Method Not Allowed**: Non-GET request. Body: `{ "success": false, "message": "Only GET is allowed", "status_code": 405 }`.
+  - **500 Internal Server Error**: Retrieval failure. Body: `{ "success": false, "message": "...", "status_code": 500 }`.
+examples:
+  - name: Success
+    request:
+      method: GET
+      url: "{{BASE_URL}}/api/v1/service-request/sr_abc123/result"
+      headers:
+        - name: content-type
+          value: application/json
+    response:
+      status: 200
+      body:
+        type: json
+        data: '{"success":true,"message":"success","data":{"resourceType":"ServiceRequest","status":"completed","intent":"order","instantiatesUri":["https://example.com/hooks/my-service"],"subject":{"reference":"Patient/123"},"requester":{"reference":"PractitionerRole/456"},"authoredOn":"2026-07-09T10:30:00Z","note":"Result processed"}}'
+  - name: Missing id
+    request:
+      method: GET
+      url: "{{BASE_URL}}/api/v1/service-request//result"
+      headers:
+        - name: content-type
+          value: application/json
+    response:
+      status: 400
+      body:
+        type: json
+        data: '{"success":false,"message":"id is required","status_code":400}'
+  - name: Not found
+    request:
+      method: GET
+      url: "{{BASE_URL}}/api/v1/service-request/unknown/result"
+      headers:
+        - name: content-type
+          value: application/json
+    response:
+      status: 404
+      body:
+        type: json
+        data: '{"success":false,"message":"Not found","status_code":404}'
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "500"
+    - expression: res.body.success
+      operator: eq
+      value: "false"
+    - expression: res.body.status_code
+      operator: eq
+      value: "500"
+    - expression: res.responseTime
+      operator: lt
+      value: "10000"

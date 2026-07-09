@@ -1,0 +1,50 @@
+info:
+  name: Debug Session5
+  description: Check cookie with full URL
+  type: http
+http:
+  method: POST
+  url: "{{BASE_URL}}/api/v1/auth/signinup/code/consume"
+  headers:
+    - name: content-type
+      value: application/json
+    - name: st-auth-mode
+      value: cookie
+  body:
+    type: json
+    data: |-
+      {
+        "preAuthSessionId": "{{preAuthSessionId}}",
+        "linkCode": "{{linkCode}}"
+      }
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        var baseUrl = bru.getVar("BASE_URL") || "http://localhost:3200";
+        var fullUrl = baseUrl + "/api/v1/auth/signinup/code/consume";
+        console.log("Checking cookies at: " + fullUrl);
+        var jar = bru.cookies.jar();
+        if (jar) {
+          jar.getCookies(fullUrl, function(err, cookies) {
+            if (err) {
+              console.log("Error: " + err.message);
+            } else {
+              console.log("Cookies found: " + (cookies ? cookies.length : 0));
+              if (cookies && cookies.length > 0) {
+                for (var i = 0; i < cookies.length; i++) {
+                  console.log("  [" + i + "] " + cookies[i].key + "=" + (cookies[i].value || "").substring(0, 30) + "...");
+                }
+                // Save the first cookie's value as sessionToken
+                bru.setVar("sessionToken", cookies[0].value);
+                console.log("Session token saved!");
+              }
+            }
+          });
+        } else {
+          console.log("jar not available");
+        }
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"

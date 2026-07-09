@@ -1,0 +1,132 @@
+info:
+  name: 00 - Send Magic Link
+  description: Sends a passwordless magic link to konsulin@mailinator.com with all roles
+  type: http
+http:
+  method: POST
+  url: "{{BASE_URL}}/api/v1/auth/magiclink"
+  headers:
+    - name: content-type
+      value: application/json
+    - name: X-API-Key
+      value: "{{SUPERADMIN_API_KEY}}"
+  body:
+    type: json
+    data: |-
+      {
+        "email": "konsulin@mailinator.com",
+        "roles": ["Patient", "Practitioner", "Clinic Admin", "Researcher"]
+      }
+docs: |
+  Initiates a passwordless magic link flow via SuperTokens for konsulin@mailinator.com.
+  The link is sent to the Mailinator public inbox. After sending, the after-response
+  script polls Mailinator (up to 3 retries with exponential backoff: 30s, 60s, 120s)
+  to retrieve the latest email, extract the magic link URL, and save preAuthSessionId
+  and linkCode as collection variables for the subsequent consume-code step.
+
+  ### Request Fields
+  - `email`: `konsulin@mailinator.com` — Mailinator public inbox for automated retrieval.
+  - `roles`: All four roles are assigned to enable testing across RBAC scenarios.
+
+  ### Responses
+  - **200 OK**: Magic link generated. Body: `{ "success": true, "message": "magic link successfully generated" }`.
+  - **400 Bad Request**: Validation error. Body: `{ "success": false, "message": "...", "status_code": 400 }`.
+  - **500 Internal Server Error**: Server failure. Body: `{ "success": false, "message": "...", "status_code": 500 }`.
+examples:
+  - name: Success
+    request:
+      method: POST
+      url: "{{BASE_URL}}/api/v1/auth/magiclink"
+      headers:
+        - name: content-type
+          value: application/json
+        - name: X-API-Key
+          value: "{{SUPERADMIN_API_KEY}}"
+      body:
+        type: json
+        data: '{"email":"konsulin@mailinator.com","roles":["Patient","Practitioner","Clinic Admin","Researcher"]}'
+    response:
+      status: 200
+      body:
+        type: json
+        data: '{"success":true,"message":"magic link successfully generated"}'
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        var retries = 0;
+        var maxRetries = 3;
+        var delays = [30000, 60000, 120000];
+
+        function fetchAndParse(retry) {
+          if (retry >= maxRetries) {
+            console.log("Mailinator: max retries reached");
+            bru.cb();
+            return;
+          }
+
+          setTimeout(function() {
+            $.ajax({
+              url: "https://api.mailinator.com/api/v2/domains/public/inboxes/konsulin",
+              method: "GET",
+              success: function(data) {
+                var messages = data.messages;
+                if (messages && messages.length > 0) {
+                  var latestMsg = messages[0];
+                  var msgUrl = "https://api.mailinator.com/api/v2/domains/public/messages/" + encodeURIComponent(latestMsg.id);
+                  $.ajax({
+                    url: msgUrl,
+                    method: "GET",
+                    success: function(msgData) {
+                      var emailBody = "";
+                      if (msgData.parts && msgData.parts.length > 0) {
+                        emailBody = msgData.parts[0].body || "";
+                      }
+                      var match = emailBody.match(/https:\/\/[^\s<"']+/);
+                      if (match) {
+                        var magicUrl = match[0];
+                        var pashMatch = magicUrl.match(/[?&]preAuthSessionId=([^&#]+)/);
+                        var lcMatch = magicUrl.match(/#([^#]+)$/);
+                        if (pashMatch && lcMatch) {
+                          bru.setVar("preAuthSessionId", decodeURIComponent(pashMatch[1]));
+                          bru.setVar("linkCode", decodeURIComponent(lcMatch[1]));
+                          console.log("Mailinator: magic link extracted, preAuthSessionId=" + pashMatch[1]);
+                          bru.cb();
+                          return;
+                        }
+                      }
+                      console.log("Mailinator: magic link not found in email body, retrying...");
+                      fetchAndParse(retry + 1);
+                    },
+                    error: function(err) {
+                      console.log("Mailinator: fetch message failed, retrying...");
+                      fetchAndParse(retry + 1);
+                    }
+                  });
+                } else {
+                  console.log("Mailinator: no messages found, retrying...");
+                  fetchAndParse(retry + 1);
+                }
+              },
+              error: function(err) {
+                console.log("Mailinator: fetch inbox failed, retrying...");
+                fetchAndParse(retry + 1);
+              }
+            });
+          }, delays[retry]);
+        }
+
+        fetchAndParse(0);
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.success
+      operator: eq
+      value: "true"
+    - expression: res.body.message
+      operator: eq
+      value: "magic link successfully generated"
+    - expression: res.responseTime
+      operator: lt
+      value: "5000"

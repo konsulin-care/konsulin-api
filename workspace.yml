@@ -1,0 +1,8 @@
+opencollection: 1.0.0
+info:
+  name: "Konsulin API"
+  type: workspace
+
+collections:
+  - name: "auth"
+    path: "docs/api/auth"
