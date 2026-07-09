@@ -40,6 +40,10 @@ type Usecase interface {
 	GetAsyncServiceResult(ctx context.Context, id string) (*GetAsyncServiceResultOutput, error)
 	// HandleSynchronousWebhookService forwards synchronous webhook services with RBAC and validation.
 	HandleSynchronousWebhookService(ctx context.Context, in *HandleSynchronousWebhookServiceInput) (*HandleSynchronousWebhookServiceOutput, error)
+	// ForwardSynchronousInternal forwards a synchronous webhook request to the external service,
+	// skipping authentication, authorization, and rate limiting.
+	// Intended for in-process callers that are already trusted.
+	ForwardSynchronousInternal(ctx context.Context, service, method string, body []byte, contentType string) (*HandleSynchronousWebhookServiceOutput, error)
 }
 
 type usecase struct {
@@ -611,6 +615,10 @@ func (u *usecase) validateSynchronousBody(ctx context.Context, roles []string, u
 	}
 
 	return u.validateContactByRole(ctx, role, userIdentifierId, email, phone, chatwoot)
+}
+
+func (u *usecase) ForwardSynchronousInternal(ctx context.Context, service, method string, body []byte, contentType string) (*HandleSynchronousWebhookServiceOutput, error) {
+	return u.forwardSynchronous(ctx, service, method, body, contentType)
 }
 
 func (u *usecase) forwardSynchronous(ctx context.Context, service, method string, body []byte, contentType string) (*HandleSynchronousWebhookServiceOutput, error) {

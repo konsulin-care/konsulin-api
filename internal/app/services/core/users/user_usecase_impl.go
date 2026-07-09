@@ -39,6 +39,17 @@ type userUsecase struct {
 	Log                        *zap.Logger
 	LockerService              contracts.LockerService
 	JWTTokenManager            *jwtmanager.JWTManager
+
+	// webhookForwardFn, when set, bypasses the HTTP loopback for synchronous webhook forwarding.
+	// Intended for in-process callers that are already trusted.
+	webhookForwardFn func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error)
+}
+
+// SetWebhookForwarder sets the in-process forwarder for synchronous webhook calls.
+// When set, callWebhookSvcKonsulinOmnichannel calls this function directly instead
+// of making an HTTP loopback to the backend's own webhook endpoint.
+func (uc *userUsecase) SetWebhookForwarder(fn func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error)) {
+	uc.webhookForwardFn = fn
 }
 
 var (
@@ -1029,6 +1040,34 @@ func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, in
 	// Keep this detail internal so callers don't have to know about it.
 	phoneE164 := utils.FormatE164WithPlus(input.Phone)
 
+	body := struct {
+		Email string `json:"email,omitempty"`
+		Name  string `json:"name"`
+		Phone string `json:"phoneNumber,omitempty"`
+	}{
+		Email: input.Email,
+		Name:  lastUsername,
+		Phone: phoneE164,
+	}
+
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		return callWebhookSvcKonsulinOmnichannelOutput{}, err
+	}
+
+	// Use in-process forwarder when available (skips HTTP loopback, JWT creation, auth).
+	if uc.webhookForwardFn != nil {
+		outStatusCode, respBody, err := uc.webhookForwardFn(ctx, "modify-profile", http.MethodPost, bodyBytes, "application/json")
+		if err != nil {
+			return callWebhookSvcKonsulinOmnichannelOutput{}, err
+		}
+		if outStatusCode != http.StatusOK {
+			return callWebhookSvcKonsulinOmnichannelOutput{}, errors.New("failed to call webhook svc konsulin omnichannel")
+		}
+
+		return parseOmnichannelResponse(respBody)
+	}
+
 	tokenOut, err := uc.JWTTokenManager.CreateToken(
 		ctx,
 		&jwtmanager.CreateTokenInput{
@@ -1044,21 +1083,6 @@ func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, in
 		strings.TrimRight(uc.InternalConfig.App.BaseUrl, "/"),
 		strings.Trim(uc.InternalConfig.App.WebhookInstantiateBasePath, "/"),
 	)
-
-	body := struct {
-		Email string `json:"email,omitempty"`
-		Name  string `json:"name"`
-		Phone string `json:"phoneNumber,omitempty"`
-	}{
-		Email: input.Email,
-		Name:  lastUsername,
-		Phone: phoneE164,
-	}
-
-	bodyBytes, err := json.Marshal(body)
-	if err != nil {
-		return callWebhookSvcKonsulinOmnichannelOutput{}, err
-	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(bodyBytes))
 	if err != nil {
@@ -1087,8 +1111,14 @@ func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, in
 		return callWebhookSvcKonsulinOmnichannelOutput{}, err
 	}
 
+	return parseOmnichannelResponse(bodyBytesResp)
+}
+
+// parseOmnichannelResponse parses the raw response body from the omnichannel webhook
+// into a structured output. It handles nil phone number fields safely.
+func parseOmnichannelResponse(body []byte) (callWebhookSvcKonsulinOmnichannelOutput, error) {
 	var rawOutputs []callWebhookSvcKonsulinOmnichannelRawOutput
-	if err = json.Unmarshal(bodyBytesResp, &rawOutputs); err != nil {
+	if err := json.Unmarshal(body, &rawOutputs); err != nil {
 		return callWebhookSvcKonsulinOmnichannelOutput{}, err
 	}
 	if len(rawOutputs) == 0 {
@@ -1108,7 +1138,6 @@ func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, in
 	if raw.PhoneNumber != nil {
 		output.PhoneNumber = *raw.PhoneNumber
 	}
-
 	return output, nil
 }
 

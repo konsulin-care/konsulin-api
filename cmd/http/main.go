@@ -263,6 +263,32 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		return err
 	}
 	webhookUsecase := webhook.NewUsecase(bootstrap.Logger, bootstrap.InternalConfig, webhookQueueService, jwtManager, patientFhirClient, practitionerFhirClient, personFhirClient, serviceRequestFhirClient, middlewares.Enforcer)
+
+	// Wire in-process forwarders for internal callers (magic link delivery, omnichannel)
+	// to skip the HTTP loopback and call ForwardSynchronousInternal directly.
+	if f, ok := magicLinkDelivery.(interface {
+		SetWebhookForwarder(fn func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error))
+	}); ok {
+		f.SetWebhookForwarder(func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
+			out, err := webhookUsecase.ForwardSynchronousInternal(ctx, service, method, body, contentType)
+			if err != nil {
+				return 0, nil, err
+			}
+			return out.StatusCode, out.Body, nil
+		})
+	}
+	if f, ok := userUsecase.(interface {
+		SetWebhookForwarder(fn func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error))
+	}); ok {
+		f.SetWebhookForwarder(func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
+			out, err := webhookUsecase.ForwardSynchronousInternal(ctx, service, method, body, contentType)
+			if err != nil {
+				return 0, nil, err
+			}
+			return out.StatusCode, out.Body, nil
+		})
+	}
+
 	webhookController := controllers.NewWebhookController(bootstrap.Logger, webhookUsecase, webhookLimiter, resourceLimiter, bootstrap.InternalConfig)
 	// Initialize payment usecase and controller (inject JWT manager)
 	serviceRequestStorage := storageKonsulin.NewServiceRequestStorage(serviceRequestFhirClient, bootstrap.Logger)

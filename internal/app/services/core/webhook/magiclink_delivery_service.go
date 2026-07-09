@@ -34,6 +34,13 @@ type magicLinkDeliveryService struct {
 	cfg        *config.InternalConfig
 	jwtManager *jwtmanager.JWTManager
 	httpClient *http.Client
+	forwardFn  func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error)
+}
+
+// SetWebhookForwarder sets the in-process forwarder for synchronous webhook calls.
+// When set, SendMagicLink calls this function directly instead of making an HTTP loopback.
+func (s *magicLinkDeliveryService) SetWebhookForwarder(fn func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error)) {
+	s.forwardFn = fn
 }
 
 // NewMagicLinkDeliveryService constructs an internal-only delivery service for passwordless magic links.
@@ -102,6 +109,19 @@ func (s *magicLinkDeliveryService) SendMagicLink(ctx context.Context, in contrac
 	bodyBytes, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshal payload: %w", err)
+	}
+
+	// Use in-process forwarder when available (skips HTTP loopback).
+	if s.forwardFn != nil {
+		outStatusCode, _, err := s.forwardFn(ctx, magicLinkServiceName, http.MethodPost, bodyBytes, constvars.MIMEApplicationJSON)
+		if err != nil {
+			return fmt.Errorf("forward magiclink: %w", err)
+		}
+		if outStatusCode == http.StatusOK || outStatusCode == http.StatusNoContent {
+			return nil
+		}
+		s.log.Error("magiclink webhook returned status", zap.Int("status_code", outStatusCode))
+		return fmt.Errorf("magiclink webhook returned status %d", outStatusCode)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewBuffer(bodyBytes))
