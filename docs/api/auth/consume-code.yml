@@ -1,6 +1,7 @@
 info:
   name: Consume Code
   description: Consumes the magic link code to create a SuperTokens session
+  seq: 6
   type: http
 http:
   method: POST

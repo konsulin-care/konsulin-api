@@ -1,6 +1,7 @@
 info:
   name: Mailinator Poll Inbox
   description: Polls Mailinator inbox until a message arrives for konsulin
+  seq: 4
   type: http
 http:
   method: GET

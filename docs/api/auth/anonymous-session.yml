@@ -1,6 +1,7 @@
 info:
   name: Create Anonymous Session
   description: Creates or retrieves an anonymous guest session via cookie
+  seq: 3
   type: http
 http:
   method: POST

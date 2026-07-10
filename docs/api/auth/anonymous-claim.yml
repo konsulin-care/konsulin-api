@@ -1,6 +1,7 @@
 info:
   name: Claim Anonymous Resources
   description: Transfers anonymous session resources to an authenticated user
+  seq: 7
   type: http
 http:
   method: PATCH

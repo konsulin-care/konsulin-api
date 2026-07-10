@@ -1,6 +1,7 @@
 info:
   name: Get Magic Link
   description: Fetches links from the latest Mailinator message and extracts magic URL params
+  seq: 5
   type: http
 http:
   method: GET

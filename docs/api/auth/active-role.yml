@@ -1,6 +1,7 @@
 info:
   name: Set Active Role
   description: Sets the active role in the current SuperTokens session
+  seq: 8
   type: http
 http:
   method: POST
@@ -78,7 +79,8 @@ examples:
       status: 401
       body:
         type: json
-        data: '{"success":false,"message":"you can't access this feature","status_code":401}'
+        data: |-
+          {"success":false,"message":"you can't access this feature","status_code":401}
 runtime:
   scripts:
     - type: after-response

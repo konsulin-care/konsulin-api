@@ -1,6 +1,7 @@
 info:
   name: Logout
   description: Logs out the user from the current SuperTokens session
+  seq: 9
   type: http
 http:
   method: POST
