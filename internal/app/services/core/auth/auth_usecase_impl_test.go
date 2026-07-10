@@ -8,8 +8,6 @@ import (
 
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/dto/requests"
-	"konsulin-service/internal/pkg/dto/responses"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -62,33 +60,6 @@ func TestLogErrorAndReturn_NilError(t *testing.T) {
 // MockUserUsecase implements contracts.UserUsecase for testing.
 type MockUserUsecase struct {
 	mock.Mock
-}
-
-func (m *MockUserUsecase) GetUserProfileBySession(ctx context.Context, sessionData string) (*responses.UserProfile, error) {
-	args := m.Called(ctx, sessionData)
-	var out *responses.UserProfile
-	if v := args.Get(0); v != nil {
-		out = v.(*responses.UserProfile)
-	}
-	return out, args.Error(1)
-}
-
-func (m *MockUserUsecase) UpdateUserProfileBySession(ctx context.Context, sessionData string, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error) {
-	args := m.Called(ctx, sessionData, request)
-	var out *responses.UpdateUserProfile
-	if v := args.Get(0); v != nil {
-		out = v.(*responses.UpdateUserProfile)
-	}
-	return out, args.Error(1)
-}
-
-func (m *MockUserUsecase) DeleteUserBySession(ctx context.Context, sessionData string) error {
-	args := m.Called(ctx, sessionData)
-	return args.Error(0)
-}
-
-func (m *MockUserUsecase) DeactivateUserBySession(ctx context.Context, sessionData string) error {
-	return m.DeleteUserBySession(ctx, sessionData)
 }
 
 func (m *MockUserUsecase) InitializeNewUserFHIRResources(ctx context.Context, input *contracts.InitializeNewUserFHIRResourcesInput) (*contracts.InitializeNewUserFHIRResourcesOutput, error) {

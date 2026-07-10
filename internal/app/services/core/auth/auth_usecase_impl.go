@@ -29,7 +29,6 @@ import (
 
 type authUsecase struct {
 	RedisRepository                 contracts.RedisRepository
-	SessionService                  contracts.SessionService
 	RoleRepository                  contracts.RoleRepository
 	UserUsecase                     contracts.UserUsecase
 	PatientFhirClient               contracts.PatientFhirClient
@@ -54,7 +53,6 @@ var (
 
 func NewAuthUsecase(
 	redisRepository contracts.RedisRepository,
-	sessionService contracts.SessionService,
 	patientFhirClient contracts.PatientFhirClient,
 	practitionerFhirClient contracts.PractitionerFhirClient,
 	questionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient,
@@ -69,7 +67,6 @@ func NewAuthUsecase(
 	onceAuthUsecase.Do(func() {
 		instance := &authUsecase{
 			RedisRepository:                 redisRepository,
-			SessionService:                  sessionService,
 			PatientFhirClient:               patientFhirClient,
 			PractitionerFhirClient:          practitionerFhirClient,
 			QuestionnaireResponseFhirClient: questionnaireResponseFhirClient,
@@ -88,29 +85,6 @@ func NewAuthUsecase(
 
 	return authUsecaseInstance, authUsecaseError
 }
-
-func (uc *authUsecase) LogoutUser(ctx context.Context, sessionData string) error {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	uc.Log.Info("authUsecase.LogoutUser called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-	)
-
-	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
-	if err != nil {
-		return logErrorAndReturn(uc.Log, requestID, "authUsecase.LogoutUser error parsing session data", err)
-	}
-
-	err = uc.RedisRepository.Delete(ctx, session.SessionID)
-	if err != nil {
-		return logErrorAndReturn(uc.Log, requestID, "authUsecase.LogoutUser error deleting session from Redis", err)
-	}
-
-	uc.Log.Info("authUsecase.LogoutUser succeeded",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-	)
-	return nil
-}
-
 func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.SupertokenPasswordlessCreateMagicLink) error {
 	hasPhone := strings.TrimSpace(request.Phone) != ""
 	hasEmail := strings.TrimSpace(request.Email) != ""

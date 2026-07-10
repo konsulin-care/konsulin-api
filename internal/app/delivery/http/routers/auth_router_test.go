@@ -54,11 +54,6 @@ func (m *MockAuthUsecase) CreateAnonymousSession(ctx context.Context, existingTo
 	return out, args.Error(1)
 }
 
-func (m *MockAuthUsecase) LogoutUser(ctx context.Context, sessionData string) error {
-	args := m.Called(ctx, sessionData)
-	return args.Error(0)
-}
-
 func (m *MockAuthUsecase) CheckUserExists(ctx context.Context, email string) (*contracts.CheckUserExistsOutput, error) {
 	args := m.Called(ctx, email)
 	var out *contracts.CheckUserExistsOutput

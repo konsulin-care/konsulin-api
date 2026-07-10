@@ -45,47 +45,6 @@ func NewAuthController(logger *zap.Logger, authUsecase contracts.AuthUsecase, in
 	return authControllerInstance
 }
 
-func (ctrl *AuthController) Logout(w http.ResponseWriter, r *http.Request) {
-	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	if !ok || requestID == "" {
-		ctrl.Log.Error("AuthController.Logout requestID not found in context")
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingRequestID(nil))
-		return
-	}
-	ctrl.Log.Info("AuthController.Logout called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-	)
-
-	sessionData, ok := r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string)
-	if !ok || sessionData == "" {
-		ctrl.Log.Error("AuthController.Logout sessionData not found in context",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-		)
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingSessionData(nil))
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	if err := ctrl.AuthUsecase.LogoutUser(ctx, sessionData); err != nil {
-		ctrl.Log.Error("AuthController.Logout error from usecase",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		if err == context.DeadlineExceeded {
-			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
-			return
-		}
-		utils.BuildErrorResponse(ctrl.Log, w, err)
-		return
-	}
-	ctrl.Log.Info("AuthController.Logout succeeded",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-	)
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.LogoutSuccessMessage, nil)
-}
-
 func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)

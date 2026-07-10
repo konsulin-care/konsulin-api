@@ -138,7 +138,6 @@ const (
 
 	// Authentication messages
 	ErrDevAuthSigningMethod             = "unexpected signing method"
-	ErrDevAuthTokenInvalidOrExpired     = "invalid or expired token"
 	ErrDevAuthTokenExpired              = "token lifetime already exceed our internal app config"
 	ErrDevAuthTokenMissing              = "token missing"
 	ErrDevAuthSessionTokenMissing       = "session token missing (Authorization header required)"
@@ -150,7 +149,6 @@ const (
 	ErrDevAuthRoleNotExists             = "role doesn't exist on the system"
 	ErrDevAuthWhatsAppOTPExpired        = "whatsapp otp lifetime already exceed our internal app config"
 	ErrDevAuthWhatsAppOTPInvalid        = "whatsapp otp given by user doesn't match with otp in database"
-	ErrDevAuthSessionDataIsMissing      = "session data not found in context"
 	ErrDevAuthRequestIDIsMissing        = "requestID not found in context"
 
 	// Database messages
@@ -190,7 +188,6 @@ const (
 	ErrDevServerBadRequest       = "bad request"
 	ErrDevServerNotFound         = "resource not found"
 	ErrDevServerDeadlineExceeded = "deadline exceeded"
-	ErrDevServerParseSessionData = "failed to parse session data"
 
 	// File handling messages
 	ErrDevFileUploadSuccess = "file uploaded successfully"

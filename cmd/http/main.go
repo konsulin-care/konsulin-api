@@ -14,7 +14,6 @@ import (
 	"konsulin-service/internal/app/services/core/auth"
 	"konsulin-service/internal/app/services/core/organization"
 	"konsulin-service/internal/app/services/core/payments"
-	"konsulin-service/internal/app/services/core/session"
 	"konsulin-service/internal/app/services/core/slot"
 	"konsulin-service/internal/app/services/core/transactions"
 	"konsulin-service/internal/app/services/core/users"
@@ -172,10 +171,6 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	// Initialize Xendit client (reusable)
 	xenditClient := xendit.NewClient(bootstrap.InternalConfig.Xendit.APIKey)
 
-	// Initialize session service with Redis repository
-	sessionService := session.NewSessionService(redisRepository, bootstrap.Logger)
-
-	// Initialize session service with Redis repository
 	lockService := locker.NewLockService(redisRepository, bootstrap.Logger)
 
 	// Initialize FHIR clients
@@ -200,14 +195,12 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	_ = serviceRequestFhirClient.EnsureAllNecessaryGroupsExists(context.Background())
 
 	userUsecase := users.NewUserUsecase(
-		nil, // userMongoRepository, not used yet
 		patientFhirClient,
 		practitionerFhirClient,
 		personFhirClient,
 		practitionerRoleClient,
 		nil, // organizationFhirClient, not used yet
 		redisRepository,
-		sessionService,
 		bootstrap.InternalConfig,
 		bootstrap.Logger,
 		lockService,
@@ -219,7 +212,6 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	// Initialize Auth usecase with dependencies
 	authUseCase, err := auth.NewAuthUsecase(
 		redisRepository,
-		sessionService,
 		patientFhirClient,
 		practitionerFhirClient,
 		questionnaireResponseFhirClient,
@@ -236,10 +228,9 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	}
 	authController := controllers.NewAuthController(bootstrap.Logger, authUseCase, bootstrap.InternalConfig)
 
-	// Initialize middlewares with logger, session service, and auth usecase
+	// Initialize middlewares
 	middlewares := middlewares.NewMiddlewares(
 		bootstrap.Logger,
-		sessionService,
 		authUseCase,
 		bootstrap.InternalConfig,
 		practitionerFhirClient,

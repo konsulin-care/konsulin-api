@@ -89,7 +89,6 @@ func newHTTPClient() *http.Client {
 
 func NewMiddlewares(
 	logger *zap.Logger,
-	sessionService contracts.SessionService,
 	authUsecase contracts.AuthUsecase,
 	internalConfig *config.InternalConfig,
 	practitionerFhirClient contracts.PractitionerFhirClient,
@@ -102,7 +101,6 @@ func NewMiddlewares(
 	startPolicyWatcher(enforcer, logger)
 	return &Middlewares{
 		Log:                             logger,
-		SessionService:                  sessionService,
 		AuthUsecase:                     authUsecase,
 		InternalConfig:                  internalConfig,
 		PractitionerFhirClient:          practitionerFhirClient,
@@ -119,7 +117,6 @@ type ContextKey string
 type Middlewares struct {
 	Log                             *zap.Logger
 	AuthUsecase                     contracts.AuthUsecase
-	SessionService                  contracts.SessionService
 	InternalConfig                  *config.InternalConfig
 	PractitionerFhirClient          contracts.PractitionerFhirClient
 	PatientFhirClient               contracts.PatientFhirClient

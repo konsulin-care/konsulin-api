@@ -3,9 +3,7 @@ package constvars
 const (
 	LoggingRequestIDKey      = "request_id"
 	LoggingDataKey           = "data"
-	LoggingSessionDataKey    = "session_data"
 	LoggingSessionIDKey      = "session_id"
-	LoggingRawSessionDataKey = "raw_session_data"
 	LoggingQueryParamsKey    = "query_params"
 	LoggingFhirUrlKey        = "fhir_url"
 	LoggingPreSignedUrlKey   = "pre_signed_url"

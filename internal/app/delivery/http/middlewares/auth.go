@@ -13,74 +13,13 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
 
-func (m *Middlewares) OptionalAuthenticate(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get(constvars.HeaderAuthorization)
-		if authHeader == "" {
-			next.ServeHTTP(w, r)
-			return
-		}
 
-		token := strings.TrimPrefix(authHeader, "Bearer ")
-		sessionID, err := utils.ParseJWT(token, m.InternalConfig.JWT.Secret)
-		if err != nil {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-		defer cancel()
-
-		sessionData, err := m.SessionService.GetSessionData(ctx, sessionID)
-		if err != nil {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		ctx = context.WithValue(r.Context(), constvars.CONTEXT_SESSION_DATA_KEY, sessionData)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
-func (m *Middlewares) Authenticate(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get(constvars.HeaderAuthorization)
-		if authHeader == "" {
-			utils.BuildErrorResponse(m.Log, w, exceptions.ErrTokenMissing(nil))
-			return
-		}
-
-		token := strings.TrimPrefix(authHeader, "Bearer ")
-		sessionID, err := utils.ParseJWT(token, m.InternalConfig.JWT.Secret)
-		if err != nil {
-			utils.BuildErrorResponse(m.Log, w, exceptions.ErrTokenInvalidOrExpired(err))
-			return
-		}
-
-		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-		defer cancel()
-
-		sessionData, err := m.SessionService.GetSessionData(ctx, sessionID)
-		if err != nil {
-			if err == context.DeadlineExceeded {
-				utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerDeadlineExceeded(err))
-				return
-			}
-			utils.BuildErrorResponse(m.Log, w, err)
-			return
-		}
-
-		ctx = context.WithValue(r.Context(), constvars.CONTEXT_SESSION_DATA_KEY, sessionData)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
 
 // handleAuthPostBody reads and validates the POST request body, restoring it for downstream use.
 func (m *Middlewares) handleAuthPostBody(ctxIface context.Context, r *http.Request, fhirRole, fhirID string) error {
