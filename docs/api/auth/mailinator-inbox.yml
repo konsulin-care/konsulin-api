@@ -1,14 +1,13 @@
 info:
   name: Mailinator Poll Inbox
-  description: Polls Mailinator inbox until a message arrives for konsulin
+  description: Polls Mailinator inbox until a message arrives for in the public inbox
   seq: 4
   type: http
 http:
   method: GET
-  url: https://api.mailinator.com/api/v2/domains/public/inboxes/konsulin
+  url: https://api.mailinator.com/api/v2/domains/public/inboxes/{{process.env.MAILINATOR_INBOX}}
 docs: |
-  Polls the Mailinator public inbox for konsulin@mailinator.com until a message
-  appears. The latest message ID is saved as `messageId` for the next request.
+  Polls the Mailinator public inbox until a message appears. The latest message ID is saved as `messageId` for the next request.
 
   Retries up to 3 times with 30s delay between attempts. On success, chains to
   "Get Magic Link". On exhaustion, stops the chain.
@@ -25,9 +24,10 @@ runtime:
         await bru.sleep(15000)
 
         if (msgs && msgs.length > 0) {
-          bru.setVar("messageId", msgs[0].id);
+          const latest_id = msgs[msgs.length - 1].id;
+          bru.setVar("messageId", latest_id);
           bru.deleteVar("mailinator_retry");
-          console.log("Mailinator: found " + msgs.length + " messages, latest id=" + msgs[0].id);
+          console.log("Mailinator: found " + msgs.length + " messages, latest id=" + latest_id);
           bru.runner.setNextRequest("Get Magic Link");
         } else if (retries < 3) {
           bru.setVar("mailinator_retry", String(retries + 1));

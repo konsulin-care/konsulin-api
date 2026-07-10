@@ -85,7 +85,7 @@ runtime:
   scripts:
     - type: after-response
       code: |-
-        bru.runner.setNextRequest("Logout");
+        bru.runner.setNextRequest("Sign Out");
   assertions:
     - expression: res.status
       operator: eq

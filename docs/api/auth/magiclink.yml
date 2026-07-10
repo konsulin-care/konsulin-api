@@ -1,6 +1,6 @@
 info:
   name: Send Magic Link
-  description: Sends a passwordless magic link to konsulin@mailinator.com with all roles
+  description: Sends a passwordless magic link to an email address with all supported roles
   type: http
   seq: 1
 http:
@@ -15,18 +15,18 @@ http:
     type: json
     data: |-
       {
-        "email": "konsulin@mailinator.com",
+        "email": "{{process.env.MAILINATOR_INBOX}}@mailinator.com",
         "roles": ["Patient", "Practitioner", "Clinic Admin", "Researcher"]
       }
 docs: |
-  Initiates a passwordless magic link flow via SuperTokens for konsulin@mailinator.com.
+  Initiates a passwordless magic link flow via SuperTokens for the given email address.
   The link is sent to the Mailinator public inbox. After the request completes, the
   chain proceeds to "Check Email Exists" (no-op check while the email is in transit),
   then "Create Anonymous Session", then "Mailinator Poll Inbox" which polls
   Mailinator and extracts the magic URL params for the subsequent "Consume Code" step.
 
   ### Request Fields
-  - `email`: `konsulin@mailinator.com` — Mailinator public inbox for automated retrieval.
+  - `email`: Mailinator public inbox for automated retrieval for testing purpose. In production, any email address can be used.
   - `roles`: All four roles are assigned to enable testing across RBAC scenarios.
 
   ### Responses
@@ -45,7 +45,7 @@ examples:
           value: "{{process.env.SUPERADMIN_API_KEY}}"
       body:
         type: json
-        data: '{"email":"konsulin@mailinator.com","roles":["Patient","Practitioner","Clinic Admin","Researcher"]}'
+        data: '{"email":"address@domain.tld","roles":["Patient","Practitioner","Clinic Admin","Researcher"]}'
     response:
       status: 200
       body:

@@ -1,0 +1,8 @@
+{
+  "filesystem": {
+    "denyWrite": [".env", ".pi/*"]
+  },
+  "bash": {
+    "commandWhitelist": ["bru"]
+  }
+}
