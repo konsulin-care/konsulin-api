@@ -1,0 +1,50 @@
+info:
+  name: Get Magic Link
+  description: Fetches links from the latest Mailinator message and extracts magic URL params
+  type: http
+http:
+  method: GET
+  url: https://api.mailinator.com/api/v2/domains/public/messages/{{messageId}}/links
+docs: |
+  Retrieves the links embedded in the latest Mailinator message. The response
+  contains a `links` array of URLs. This script scans for the SuperTokens magic
+  link (containing `preAuthSessionId=`), extracts `preAuthSessionId` and
+  `linkCode`, and saves them for the `Consume Code` request.
+
+  If the magic link is not found (e.g. stale message or wrong email), loops back
+  to `Mailinator Poll Inbox` to wait for a newer message.
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        const links = body && body.links;
+        var found = false;
+
+        if (links && links.length > 0) {
+          for (var li = 0; li < links.length; li++) {
+            var url = links[li];
+            if (url.indexOf("preAuthSessionId=") !== -1) {
+              var pashMatch = url.match(/[?&]preAuthSessionId=([^&#]+)/);
+              var lcMatch = url.match(/#([^#]+)$/);
+              if (pashMatch && lcMatch) {
+                bru.setVar("preAuthSessionId", decodeURIComponent(pashMatch[1]));
+                bru.setVar("linkCode", decodeURIComponent(lcMatch[1]));
+                console.log("Mailinator: magic link extracted, chaining to Consume Code");
+                found = true;
+                break;
+              }
+            }
+          }
+        }
+
+        if (found) {
+          bru.runner.setNextRequest("Consume Code");
+        } else {
+          console.log("Mailinator: no magic link in message, re-polling inbox");
+          bru.runner.setNextRequest("Mailinator Poll Inbox");
+        }
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"

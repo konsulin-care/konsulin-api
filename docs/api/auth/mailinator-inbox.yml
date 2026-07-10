@@ -1,0 +1,42 @@
+info:
+  name: Mailinator Poll Inbox
+  description: Polls Mailinator inbox until a message arrives for konsulin
+  type: http
+http:
+  method: GET
+  url: https://api.mailinator.com/api/v2/domains/public/inboxes/konsulin
+docs: |
+  Polls the Mailinator public inbox for konsulin@mailinator.com until a message
+  appears. The latest message ID is saved as `messageId` for the next request.
+
+  Retries up to 10 times with 5s delay between attempts. On success, chains to
+  "Get Magic Link". On exhaustion, stops the chain.
+
+  This request replaces the inline Mailinator polling that was previously inside
+  `00-magiclink.yml`'s after-response script.
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const retries = parseInt(bru.getVar("mailinator_retry") || "0", 10);
+        const body = res.getBody();
+        const msgs = body && body.messages;
+
+        if (msgs && msgs.length > 0) {
+          bru.setVar("messageId", msgs[0].id);
+          bru.deleteVar("mailinator_retry");
+          console.log("Mailinator: found " + msgs.length + " messages, latest id=" + msgs[0].id);
+          bru.runner.setNextRequest("Get Magic Link");
+        } else if (retries < 10) {
+          bru.setVar("mailinator_retry", String(retries + 1));
+          console.log("Mailinator: no messages yet, retry " + (retries + 1) + "/10");
+          await bru.sleep(5000);
+          bru.runner.setNextRequest("Mailinator Poll Inbox");
+        } else {
+          console.log("Mailinator: max retries reached, giving up");
+          bru.runner.setNextRequest(null);
+        }
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"

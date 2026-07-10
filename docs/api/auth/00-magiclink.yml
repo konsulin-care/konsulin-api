@@ -19,10 +19,10 @@ http:
       }
 docs: |
   Initiates a passwordless magic link flow via SuperTokens for konsulin@mailinator.com.
-  The link is sent to the Mailinator public inbox. After sending, the after-response
-  script polls Mailinator (up to 3 retries with exponential backoff: 30s, 60s, 120s)
-  to retrieve the latest email, extract the magic link URL, and save preAuthSessionId
-  and linkCode as collection variables for the subsequent consume-code step.
+  The link is sent to the Mailinator public inbox. After the request completes, the
+  chain proceeds to "Check Email Exists" (no-op check while the email is in transit),
+  then "Create Anonymous Session", then "Mailinator Poll Inbox" which polls
+  Mailinator and extracts the magic URL params for the subsequent "Consume Code" step.
 
   ### Request Fields
   - `email`: `konsulin@mailinator.com` — Mailinator public inbox for automated retrieval.
@@ -54,64 +54,8 @@ runtime:
   scripts:
     - type: after-response
       code: |-
-        var cp = require('child_process');
-
-        function sleep(ms) {
-          var start = Date.now();
-          while (Date.now() - start < ms) {}
-        }
-
-        var inboxUrl = 'https://api.mailinator.com/api/v2/domains/public/inboxes/konsulin';
-        var found = false;
-
-        for (var attempt = 0; attempt < 30; attempt++) {
-          bru.setVar("debug_attempt", String(attempt));
-          try {
-            var out = cp.execSync('curl -s ' + JSON.stringify(inboxUrl), { timeout: 10000, shell: true });
-            var data = JSON.parse(out.toString());
-            var msgs = data.messages;
-            bru.setVar("debug_inbox_msgs", String(msgs ? msgs.length : 0));
-
-            if (msgs && msgs.length > 0) {
-              var msgId = msgs[0].id;
-              bru.setVar("debug_msg_id", msgId);
-
-              var linksUrl = 'https://api.mailinator.com/api/v2/domains/public/messages/' + encodeURIComponent(msgId) + '/links';
-              var linksOut = cp.execSync('curl -s ' + JSON.stringify(linksUrl), { timeout: 10000, shell: true });
-              var linksData = JSON.parse(linksOut.toString());
-
-              bru.setVar("debug_links_count", String(linksData.links ? linksData.links.length : 0));
-
-              if (linksData.links) {
-                for (var li = 0; li < linksData.links.length; li++) {
-                  var link = linksData.links[li];
-                  if (link.indexOf('/auth/verify') !== -1 || link.indexOf('preAuthSessionId=') !== -1) {
-                    bru.setVar("debug_magic_url", link);
-                    var pashMatch = link.match(/[?&]preAuthSessionId=([^&#]+)/);
-                    var lcMatch = link.match(/#([^#]+)$/);
-                    bru.setVar("debug_pash_raw", pashMatch ? pashMatch[1] : "null");
-                    bru.setVar("debug_lc_raw", lcMatch ? lcMatch[1] : "null");
-                    if (pashMatch && lcMatch) {
-                      bru.setVar("preAuthSessionId", decodeURIComponent(pashMatch[1]));
-                      bru.setVar("linkCode", decodeURIComponent(lcMatch[1]));
-                      bru.setVar("debug_status", "success");
-                      found = true;
-                      break;
-                    }
-                  }
-                }
-              }
-              if (found) break;
-            }
-          } catch (e) {
-            bru.setVar("debug_error_" + attempt, String(e.message || e));
-          }
-          sleep(2000);
-        }
-
-        if (!found) {
-          bru.setVar("debug_status", "max_retries");
-        }
+        console.log("Send Magic Link: response OK, chaining to Check Email Exists");
+        bru.runner.setNextRequest("Check Email Exists");
   assertions:
     - expression: res.status
       operator: eq
