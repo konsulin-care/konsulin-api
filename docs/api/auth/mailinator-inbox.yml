@@ -10,7 +10,7 @@ docs: |
   Polls the Mailinator public inbox for konsulin@mailinator.com until a message
   appears. The latest message ID is saved as `messageId` for the next request.
 
-  Retries up to 10 times with 5s delay between attempts. On success, chains to
+  Retries up to 3 times with 30s delay between attempts. On success, chains to
   "Get Magic Link". On exhaustion, stops the chain.
 
   This request replaces the inline Mailinator polling that was previously inside
@@ -21,17 +21,18 @@ runtime:
       code: |-
         const retries = parseInt(bru.getVar("mailinator_retry") || "0", 10);
         const body = res.getBody();
-        const msgs = body && body.messages;
+        const msgs = body && body.msgs;
+        await bru.sleep(15000)
 
         if (msgs && msgs.length > 0) {
           bru.setVar("messageId", msgs[0].id);
           bru.deleteVar("mailinator_retry");
           console.log("Mailinator: found " + msgs.length + " messages, latest id=" + msgs[0].id);
           bru.runner.setNextRequest("Get Magic Link");
-        } else if (retries < 10) {
+        } else if (retries < 3) {
           bru.setVar("mailinator_retry", String(retries + 1));
-          console.log("Mailinator: no messages yet, retry " + (retries + 1) + "/10");
-          await bru.sleep(5000);
+          console.log("Mailinator: no messages yet, retry " + (retries + 1) + "/3");
+          await bru.sleep(15000);
           bru.runner.setNextRequest("Mailinator Poll Inbox");
         } else {
           console.log("Mailinator: max retries reached, giving up");
