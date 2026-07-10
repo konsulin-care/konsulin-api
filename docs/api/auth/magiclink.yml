@@ -55,7 +55,6 @@ runtime:
   scripts:
     - type: after-response
       code: |-
-        console.log("Send Magic Link: response OK, chaining to Check Email Exists");
         bru.runner.setNextRequest("Check Email Exists");
   assertions:
     - expression: res.status

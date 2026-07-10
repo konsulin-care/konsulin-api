@@ -56,19 +56,16 @@ runtime:
   scripts:
     - type: after-response
       code: |-
-        console.log("ConsumeCode: status=" + res.status + ", headers=" + JSON.stringify(res.headers));
-        console.log("ConsumeCode: body=" + JSON.stringify(res.body));
         var frontToken = res.getHeader("Front-Token");
         if (!frontToken) {
           frontToken = res.headers["st-access-token"];
         }
         if (frontToken) {
           bru.setVar("sessionToken", frontToken);
-          console.log("ConsumeCode: sessionToken saved");
+          bru.runner.setNextRequest("Claim Anonymous Resources");
         } else {
-          console.log("ConsumeCode: no session token found in response");
+          bru.runner.setNextRequest(null);
         }
-        bru.runner.setNextRequest("Claim Anonymous Resources");
   assertions:
     - expression: res.status
       operator: eq

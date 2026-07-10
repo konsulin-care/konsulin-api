@@ -21,21 +21,26 @@ runtime:
         const retries = parseInt(bru.getVar("mailinator_retry") || "0", 10);
         const body = res.getBody();
         const msgs = body && body.msgs;
-        await bru.sleep(15000)
+        const processedIds = (bru.getVar("processedMessageIds") || "").split(",").filter(Boolean);
 
         if (msgs && msgs.length > 0) {
-          const latest_id = msgs[msgs.length - 1].id;
-          bru.setVar("messageId", latest_id);
-          bru.deleteVar("mailinator_retry");
-          console.log("Mailinator: found " + msgs.length + " messages, latest id=" + latest_id);
-          bru.runner.setNextRequest("Get Magic Link");
+          const newest = msgs.reduce((a, b) => a.seconds_ago < b.seconds_ago ? a : b);
+
+          if (retries > 0 && newest.seconds_ago < 60 && processedIds.indexOf(newest.id) === -1) {
+            bru.setVar("messageId", newest.id);
+            bru.setVar("processedMessageIds", processedIds.concat([newest.id]).join(","));
+            bru.deleteVar("mailinator_retry");
+            bru.runner.setNextRequest("Get Magic Link");
+          } else {
+            bru.setVar("mailinator_retry", String(retries + 1));
+            await bru.sleep(30000);
+            bru.runner.setNextRequest("Mailinator Poll Inbox");
+          }
         } else if (retries < 3) {
           bru.setVar("mailinator_retry", String(retries + 1));
-          console.log("Mailinator: no messages yet, retry " + (retries + 1) + "/3");
-          await bru.sleep(15000);
+          await bru.sleep(30000);
           bru.runner.setNextRequest("Mailinator Poll Inbox");
         } else {
-          console.log("Mailinator: max retries reached, giving up");
           bru.runner.setNextRequest(null);
         }
   assertions:

@@ -43,7 +43,6 @@ runtime:
   scripts:
     - type: after-response
       code: |-
-        console.log("Logout: status=" + res.status);
         bru.runner.setNextRequest(null);
   assertions:
     - expression: res.status

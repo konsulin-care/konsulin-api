@@ -60,7 +60,6 @@ runtime:
   scripts:
     - type: after-response
       code: |-
-        console.log("AnonymousClaim: sessionToken=" + (bru.getVar("sessionToken") || "UNDEFINED"));
         bru.runner.setNextRequest("Set Active Role");
   assertions:
     - expression: res.status

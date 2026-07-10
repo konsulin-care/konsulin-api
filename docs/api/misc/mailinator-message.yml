@@ -31,7 +31,6 @@ runtime:
               if (pashMatch && lcMatch) {
                 bru.setVar("preAuthSessionId", decodeURIComponent(pashMatch[1]));
                 bru.setVar("linkCode", decodeURIComponent(lcMatch[1]));
-                console.log("Mailinator: magic link extracted, chaining to Consume Code");
                 found = true;
                 break;
               }
@@ -42,7 +41,6 @@ runtime:
         if (found) {
           bru.runner.setNextRequest("Consume Code");
         } else {
-          console.log("Mailinator: no magic link in message, re-polling inbox");
           bru.runner.setNextRequest("Mailinator Poll Inbox");
         }
   assertions:
