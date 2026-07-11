@@ -1,10 +1,11 @@
 info:
   name: Create Service Payment
-  description: Creates a payment for a consultation or other healthcare service
   type: http
+  seq: 1
+
 http:
   method: POST
-  url: "{{process.env.BASE_URL}}/api/v1/pay/service"
+  url: "{{process.env.APP_BASE_URL}}/api/v1/pay/service"
   headers:
     - name: content-type
       value: application/json
@@ -22,24 +23,32 @@ http:
           "patientId": "Patient/ref"
         }
       }
-docs: |
-  Creates a payment transaction via OY! Indonesia routing. Requires an authenticated session.
 
-  ### Request Fields
-  - `total_item`: (required) item count, min 1.
-  - `service`: (required) service type identifier (e.g. `consultation`).
-  - `body`: (required) service-specific payload as raw JSON — typically includes `practitionerRoleId`, `slotId`, `patientId`.
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.success
+      operator: eq
+      value: "true"
+    - expression: res.body.data.trx_id
+      operator: isDefined
+    - expression: res.responseTime
+      operator: lt
+      value: "10000"
 
-  ### Responses
-  - **200 OK**: Payment created. Body: `{ "success": true, "message": "success", "data": { "payment_checkout_url": "...", "partner_trx_id": "...", "trx_id": "...", "amount": 50000 } }`.
-  - **400 Bad Request**: Invalid or missing request fields. Body: `{ "success": false, "message": "...", "status_code": 400 }`.
-  - **401 Unauthorized**: Missing or invalid authentication token. Body: `{ "success": false, "message": "...", "status_code": 401 }`.
-  - **500 Internal Server Error**: Server timeout or unexpected failure. Body: `{ "success": false, "message": "...", "status_code": 500 }`.
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
 examples:
   - name: Success
     request:
-      method: POST
       url: "{{process.env.BASE_URL}}/api/v1/pay/service"
+      method: POST
       headers:
         - name: content-type
           value: application/json
@@ -55,8 +64,8 @@ examples:
         data: '{"success":true,"message":"success","data":{"payment_checkout_url":"https://checkout.oy.co.id/invoice/abc123","partner_trx_id":"INV-001","trx_id":"TRX-001","amount":50000}}'
   - name: Unauthorized
     request:
-      method: POST
       url: "{{process.env.BASE_URL}}/api/v1/pay/service"
+      method: POST
       headers:
         - name: content-type
           value: application/json
@@ -65,16 +74,17 @@ examples:
       body:
         type: json
         data: '{"success":false,"message":"Unauthenticated","status_code":401}'
-runtime:
-  assertions:
-    - expression: res.status
-      operator: eq
-      value: "200"
-    - expression: res.body.success
-      operator: eq
-      value: "true"
-    - expression: res.body.data.trx_id
-      operator: isDefined
-    - expression: res.responseTime
-      operator: lt
-      value: "10000"
+
+docs: |
+  Creates a payment transaction via OY! Indonesia routing. Requires an authenticated session.
+
+  ### Request Fields
+  - `total_item`: (required) item count, min 1.
+  - `service`: (required) service type identifier (e.g. `consultation`).
+  - `body`: (required) service-specific payload as raw JSON — typically includes `practitionerRoleId`, `slotId`, `patientId`.
+
+  ### Responses
+  - **200 OK**: Payment created. Body: `{ "success": true, "message": "success", "data": { "payment_checkout_url": "...", "partner_trx_id": "...", "trx_id": "...", "amount": 50000 } }`.
+  - **400 Bad Request**: Invalid or missing request fields. Body: `{ "success": false, "message": "...", "status_code": 400 }`.
+  - **401 Unauthorized**: Missing or invalid authentication token. Body: `{ "success": false, "message": "...", "status_code": 401 }`.
+  - **500 Internal Server Error**: Server timeout or unexpected failure. Body: `{ "success": false, "message": "...", "status_code": 500 }`.

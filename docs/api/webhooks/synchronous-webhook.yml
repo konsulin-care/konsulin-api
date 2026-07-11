@@ -1,10 +1,11 @@
 info:
   name: Synchronous Webhook
-  description: Forwards a synchronous webhook request to the configured upstream service
   type: http
+  seq: 1
+
 http:
   method: POST
-  url: "{{process.env.BASE_URL}}/api/v1/hook/synchronous/{service}"
+  url: "{{process.env.APP_BASE_URL}}/api/v1/hook/synchronous/{{serviceName}}"
   headers:
     - name: content-type
       value: application/json
@@ -19,26 +20,33 @@ http:
           "patientId": "Patient/123"
         }
       }
-docs: |
-  Forwards a synchronous webhook request to the upstream service identified by `{service}`.
 
-  ### Path Parameters
-  - `service`: (required) service name. Alphanumeric and hyphens only, max 256 chars.
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "400"
+    - expression: res.body.success
+      operator: eq
+      value: "false"
+    - expression: res.body.message
+      operator: eq
+      value: Invalid service name
+    - expression: res.responseTime
+      operator: lt
+      value: "10000"
 
-  ### Rate Limiting
-  - Configurable per-service rate limit. Returns 429 when exceeded with a `Retry-After` header.
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
 
-  ### Responses
-  - **200 OK**: Upstream service responded successfully. Body varies by upstream service.
-  - **400 Bad Request**: Invalid service name (empty, too long, or contains invalid characters). Body: `{ "success": false, "message": "Invalid service name", "status_code": 400 }`.
-  - **405 Method Not Allowed**: Non-POST request. Body: `{ "success": false, "message": "Only POST is allowed", "status_code": 405 }`.
-  - **429 Too Many Requests**: Rate limit exceeded. Body: `{ "success": false, "message": "Too many requests", "status_code": 429 }`.
-  - **500 Internal Server Error**: Upstream failure or unexpected error. Body: `{ "success": false, "message": "...", "status_code": 500 }`.
 examples:
   - name: Success
     request:
-      method: POST
       url: "{{process.env.BASE_URL}}/api/v1/hook/synchronous/my-service"
+      method: POST
       headers:
         - name: content-type
           value: application/json
@@ -54,8 +62,8 @@ examples:
         data: '{"status":"ok","message":"Forwarded successfully"}'
   - name: Invalid service name
     request:
-      method: POST
       url: "{{process.env.BASE_URL}}/api/v1/hook/synchronous/"
+      method: POST
       headers:
         - name: content-type
           value: application/json
@@ -64,17 +72,19 @@ examples:
       body:
         type: json
         data: '{"success":false,"message":"Invalid service name","status_code":400}'
-runtime:
-  assertions:
-    - expression: res.status
-      operator: eq
-      value: "400"
-    - expression: res.body.success
-      operator: eq
-      value: "false"
-    - expression: res.body.message
-      operator: eq
-      value: "Invalid service name"
-    - expression: res.responseTime
-      operator: lt
-      value: "10000"
+
+docs: |
+  Forwards a synchronous webhook request to the upstream service identified by `{service}`.
+
+  ### Path Parameters
+  - `service`: (required) service name. Alphanumeric and hyphens only, max 256 chars.
+
+  ### Rate Limiting
+  - Configurable per-service rate limit. Returns 429 when exceeded with a `Retry-After` header.
+
+  ### Responses
+  - **200 OK**: Upstream service responded successfully. Body varies by upstream service.
+  - **400 Bad Request**: Invalid service name (empty, too long, or contains invalid characters). Body: `{ "success": false, "message": "Invalid service name", "status_code": 400 }`.
+  - **405 Method Not Allowed**: Non-POST request. Body: `{ "success": false, "message": "Only POST is allowed", "status_code": 405 }`.
+  - **429 Too Many Requests**: Rate limit exceeded. Body: `{ "success": false, "message": "Too many requests", "status_code": 429 }`.
+  - **500 Internal Server Error**: Upstream failure or unexpected error. Body: `{ "success": false, "message": "...", "status_code": 500 }`.

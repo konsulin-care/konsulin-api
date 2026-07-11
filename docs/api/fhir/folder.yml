@@ -1,0 +1,9 @@
+info:
+  name: fhir
+  type: folder
+  seq: 1
+
+request:
+  headers:
+    - name: Content-Type
+      value: application/fhir+json

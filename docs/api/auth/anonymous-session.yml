@@ -1,54 +1,18 @@
 info:
   name: Create Anonymous Session
-  description: Creates or retrieves an anonymous guest session via cookie
-  seq: 3
   type: http
+  seq: 3
+
 http:
   method: POST
-  url: "{{process.env.BASE_URL}}/api/v1/auth/anonymous-session"
+  url: "{{process.env.APP_BASE_URL}}/api/v1/auth/anonymous-session"
   headers:
     - name: content-type
       value: application/json
   body:
     type: json
     data: "{}"
-docs: |
-  Creates a new anonymous guest session or returns an existing one. No authentication required.
 
-  The session token is set as an HttpOnly cookie (`anonymous-session`) and also
-  returned in the response body for programmatic use.
-
-  Runs after "Check Email Exists" while the email is still in transit. On
-  completion, chains to "Mailinator Poll Inbox".
-
-  ### Responses
-  - **200 OK**: Session created or existing session returned. Body: `{ "success": true, "message": "Anonymous session created successfully", "data": { "token": "<jwt>", "guest_id": "<uuid>", "is_new": true|false, "role": "guest" } }`.
-  - **500 Internal Server Error**: Server timeout or unexpected failure. Body: `{ "success": false, "message": "...", "status_code": 500 }`.
-examples:
-  - name: Success
-    request:
-      method: POST
-      url: "{{process.env.BASE_URL}}/api/v1/auth/anonymous-session"
-      headers:
-        - name: content-type
-          value: application/json
-    response:
-      status: 200
-      body:
-        type: json
-        data: '{"success":true,"message":"Anonymous session created successfully","data":{"token":"eyJ...","guest_id":"550e8400-e29b-41d4-a716-446655440000","is_new":true,"role":"guest"}}'
-  - name: Force new session
-    request:
-      method: POST
-      url: "{{process.env.BASE_URL}}/api/v1/auth/anonymous-session?force-new=true"
-      headers:
-        - name: content-type
-          value: application/json
-    response:
-      status: 200
-      body:
-        type: json
-        data: '{"success":true,"message":"Anonymous session created successfully","data":{"token":"eyJ...","guest_id":"550e8400-e29b-41d4-a716-446655440000","is_new":true,"role":"guest"}}'
 runtime:
   scripts:
     - type: after-response
@@ -69,7 +33,52 @@ runtime:
       operator: isDefined
     - expression: res.body.data.role
       operator: eq
-      value: "guest"
+      value: guest
     - expression: res.responseTime
       operator: lt
       value: "2000"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples:
+  - name: Success
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/auth/anonymous-session"
+      method: POST
+      headers:
+        - name: content-type
+          value: application/json
+    response:
+      status: 200
+      body:
+        type: json
+        data: '{"success":true,"message":"Anonymous session created successfully","data":{"token":"eyJ...","guest_id":"550e8400-e29b-41d4-a716-446655440000","is_new":true,"role":"guest"}}'
+  - name: Force new session
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/auth/anonymous-session?force-new=true"
+      method: POST
+      headers:
+        - name: content-type
+          value: application/json
+    response:
+      status: 200
+      body:
+        type: json
+        data: '{"success":true,"message":"Anonymous session created successfully","data":{"token":"eyJ...","guest_id":"550e8400-e29b-41d4-a716-446655440000","is_new":true,"role":"guest"}}'
+
+docs: |
+  Creates a new anonymous guest session or returns an existing one. No authentication required.
+
+  The session token is set as an HttpOnly cookie (`anonymous-session`) and also
+  returned in the response body for programmatic use.
+
+  Runs after "Check Email Exists" while the email is still in transit. On
+  completion, chains to "Mailinator Poll Inbox".
+
+  ### Responses
+  - **200 OK**: Session created or existing session returned. Body: `{ "success": true, "message": "Anonymous session created successfully", "data": { "token": "<jwt>", "guest_id": "<uuid>", "is_new": true|false, "role": "guest" } }`.
+  - **500 Internal Server Error**: Server timeout or unexpected failure. Body: `{ "success": false, "message": "...", "status_code": 500 }`.

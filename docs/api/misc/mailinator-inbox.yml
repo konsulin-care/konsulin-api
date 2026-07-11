@@ -1,19 +1,12 @@
 info:
   name: Mailinator Poll Inbox
-  description: Polls Mailinator inbox until a message arrives for in the public inbox
-  seq: 4
   type: http
+  seq: 4
+
 http:
   method: GET
-  url: https://api.mailinator.com/api/v2/domains/public/inboxes/{{process.env.MAILINATOR_INBOX}}
-docs: |
-  Polls the Mailinator public inbox until a message appears. The latest message ID is saved as `messageId` for the next request.
+  url: https://api.mailinator.com/api/v2/domains/public/inboxes/{{process.env.ORGANIZATION}}
 
-  Retries up to 3 times with 30s delay between attempts. On success, chains to
-  "Get Magic Link". On exhaustion, stops the chain.
-
-  This request replaces the inline Mailinator polling that was previously inside
-  `00-magiclink.yml`'s after-response script.
 runtime:
   scripts:
     - type: after-response
@@ -47,3 +40,18 @@ runtime:
     - expression: res.status
       operator: eq
       value: "200"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Polls the Mailinator public inbox until a message appears. The latest message ID is saved as `messageId` for the next request.
+
+  Retries up to 3 times with 30s delay between attempts. On success, chains to
+  "Get Magic Link". On exhaustion, stops the chain.
+
+  This request replaces the inline Mailinator polling that was previously inside
+  `00-magiclink.yml`'s after-response script.

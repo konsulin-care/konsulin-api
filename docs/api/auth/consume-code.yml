@@ -1,11 +1,11 @@
 info:
   name: Consume Code
-  description: Consumes the magic link code to create a SuperTokens session
-  seq: 6
   type: http
+  seq: 4
+
 http:
   method: POST
-  url: "{{process.env.BASE_URL}}/api/v1/auth/signinup/code/consume"
+  url: "{{process.env.APP_BASE_URL}}/api/v1/auth/signinup/code/consume"
   headers:
     - name: content-type
       value: application/json
@@ -18,40 +18,7 @@ http:
         "preAuthSessionId": "{{preAuthSessionId}}",
         "linkCode": "{{linkCode}}"
       }
-docs: |
-  Consumes the magic link code to authenticate the user and create a SuperTokens session.
-  The `preAuthSessionId` and `linkCode` are injected from the runtime variables set
-  by the "Get Magic Link" request (fetched from Mailinator).
 
-  On success, the after-response script reads the `St-Access-Token` response header
-  and saves it as `sessionToken` for subsequent authenticated requests.
-
-  On completion, chains to "Claim Anonymous Resources".
-
-  ### Request Fields
-  - `preAuthSessionId`: (required) from the magic link URL query parameter.
-  - `linkCode`: (required) from the magic link URL fragment.
-
-  ### Responses
-  - **200 OK**: Code consumed, session created. Sets `St-Access-Token` header.
-  - **400 Bad Request**: Invalid or expired code. Body: `{ "success": false, "message": "Invalid code", "status_code": 400 }`.
-  - **500 Internal Server Error**: Server failure.
-examples:
-  - name: Success
-    request:
-      method: POST
-      url: "{{process.env.BASE_URL}}/api/v1/auth/signinup/code/consume"
-      headers:
-        - name: content-type
-          value: application/json
-      body:
-        type: json
-        data: '{"preAuthSessionId":"pash_abc123","linkCode":"lc_abc123"}'
-    response:
-      status: 200
-      body:
-        type: json
-        data: '{"status":"OK"}'
 runtime:
   scripts:
     - type: after-response
@@ -73,3 +40,45 @@ runtime:
     - expression: res.responseTime
       operator: lt
       value: "5000"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples:
+  - name: Success
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/auth/signinup/code/consume"
+      method: POST
+      headers:
+        - name: content-type
+          value: application/json
+      body:
+        type: json
+        data: '{"preAuthSessionId":"pash_abc123","linkCode":"lc_abc123"}'
+    response:
+      status: 200
+      body:
+        type: json
+        data: '{"status":"OK"}'
+
+docs: |
+  Consumes the magic link code to authenticate the user and create a SuperTokens session.
+  The `preAuthSessionId` and `linkCode` are injected from the runtime variables set
+  by the "Get Magic Link" request (fetched from Mailinator).
+
+  On success, the after-response script reads the `St-Access-Token` response header
+  and saves it as `sessionToken` for subsequent authenticated requests.
+
+  On completion, chains to "Claim Anonymous Resources".
+
+  ### Request Fields
+  - `preAuthSessionId`: (required) from the magic link URL query parameter.
+  - `linkCode`: (required) from the magic link URL fragment.
+
+  ### Responses
+  - **200 OK**: Code consumed, session created. Sets `St-Access-Token` header.
+  - **400 Bad Request**: Invalid or expired code. Body: `{ "success": false, "message": "Invalid code", "status_code": 400 }`.
+  - **500 Internal Server Error**: Server failure.

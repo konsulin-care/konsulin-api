@@ -1,19 +1,12 @@
 info:
   name: Get Magic Link
-  description: Fetches links from the latest Mailinator message and extracts magic URL params
-  seq: 5
   type: http
+  seq: 5
+
 http:
   method: GET
   url: https://api.mailinator.com/api/v2/domains/public/messages/{{messageId}}/links
-docs: |
-  Retrieves the links embedded in the latest Mailinator message. The response
-  contains a `links` array of URLs. This script scans for the SuperTokens magic
-  link (containing `preAuthSessionId=`), extracts `preAuthSessionId` and
-  `linkCode`, and saves them for the `Consume Code` request.
 
-  If the magic link is not found (e.g. stale message or wrong email), loops back
-  to `Mailinator Poll Inbox` to wait for a newer message.
 runtime:
   scripts:
     - type: after-response
@@ -47,3 +40,18 @@ runtime:
     - expression: res.status
       operator: eq
       value: "200"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Retrieves the links embedded in the latest Mailinator message. The response
+  contains a `links` array of URLs. This script scans for the SuperTokens magic
+  link (containing `preAuthSessionId=`), extracts `preAuthSessionId` and
+  `linkCode`, and saves them for the `Consume Code` request.
+
+  If the magic link is not found (e.g. stale message or wrong email), loops back
+  to `Mailinator Poll Inbox` to wait for a newer message.

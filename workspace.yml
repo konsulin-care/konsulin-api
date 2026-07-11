@@ -6,3 +6,9 @@ info:
 collections:
   - name: "auth"
     path: "docs/api/auth"
+  - name: "Konsulin API"
+    path: "docs/api"
+
+specs:
+
+docs: ''

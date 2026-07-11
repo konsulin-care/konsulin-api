@@ -1,6 +1,1 @@
 name: local
-variables:
-  - name: BASE_URL
-    value: "{{pocess.env.APP_BASE_URL}}"
-  - name: SUPERADMIN_API_KEY
-    value: "{{process.env.SUPERADMIN_API_KEY}}"

@@ -1,11 +1,11 @@
 info:
   name: Sign Out
-  description: Sign out the user from the current SuperTokens session
-  seq: 9
   type: http
+  seq: 7
+
 http:
   method: POST
-  url: "{{process.env.BASE_URL}}/api/v1/auth/signout"
+  url: "{{process.env.APP_BASE_URL}}/api/v1/auth/signout"
   headers:
     - name: content-type
       value: application/json
@@ -14,21 +14,30 @@ http:
   body:
     type: json
     data: "{}"
-docs: |
-  Logs out the user from the current SuperTokens session. Requires a valid
-  SuperTokens session via `Authorization: Bearer {{sessionToken}}`.
 
-  This is the final request in the auth test chain. Sets `setNextRequest(null)`
-  to stop the runner.
+runtime:
+  scripts:
+    - type: after-response
+      code: bru.runner.setNextRequest(null);
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.responseTime
+      operator: lt
+      value: "5000"
 
-  ### Responses
-  - **200 OK**: Logout successful.
-  - **401 Unauthorized**: No valid session.
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
 examples:
   - name: Success
     request:
-      method: POST
       url: "{{process.env.BASE_URL}}/api/v1/auth/logout"
+      method: POST
       headers:
         - name: content-type
           value: application/json
@@ -39,15 +48,14 @@ examples:
       body:
         type: json
         data: "{}"
-runtime:
-  scripts:
-    - type: after-response
-      code: |-
-        bru.runner.setNextRequest(null);
-  assertions:
-    - expression: res.status
-      operator: eq
-      value: "200"
-    - expression: res.responseTime
-      operator: lt
-      value: "5000"
+
+docs: |
+  Logs out the user from the current SuperTokens session. Requires a valid
+  SuperTokens session via `Authorization: Bearer {{sessionToken}}`.
+
+  This is the final request in the auth test chain. Sets `setNextRequest(null)`
+  to stop the runner.
+
+  ### Responses
+  - **200 OK**: Logout successful.
+  - **401 Unauthorized**: No valid session.

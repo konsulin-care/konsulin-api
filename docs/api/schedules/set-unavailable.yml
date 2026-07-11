@@ -1,10 +1,11 @@
 info:
   name: Set Unavailable Slot
-  description: Marks practitioner role slots as unavailable for a given period
   type: http
+  seq: 1
+
 http:
   method: POST
-  url: "{{process.env.BASE_URL}}/api/v1/schedule/unavailable"
+  url: "{{process.env.APP_BASE_URL}}/api/v1/schedule/unavailable"
   headers:
     - name: content-type
       value: application/json
@@ -20,6 +21,92 @@ http:
         "date": "2026-07-15",
         "setStatus": "busy-unavailable"
       }
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.success
+      operator: eq
+      value: "true"
+    - expression: res.body.message
+      operator: isDefined
+    - expression: res.responseTime
+      operator: lt
+      value: "10000"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples:
+  - name: All-day unavailable
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/schedule/unavailable"
+      method: POST
+      headers:
+        - name: content-type
+          value: application/json
+        - name: Authorization
+          value: Bearer {{sessionToken}}
+      body:
+        type: json
+        data: '{"practitionerRoleIds":["PractitionerRole/example"],"reason":"Annual leave","allDay":true,"date":"2026-07-15","setStatus":"busy-unavailable"}'
+    response:
+      status: 201
+      body:
+        type: json
+        data: '{"success":true,"message":"Created","data":{"createdSlots":["Slot/new-1","Slot/new-2"],"conflicts":[],"updatedPractitionerRoles":["PractitionerRole/example"]}}'
+  - name: Time-range unavailable
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/schedule/unavailable"
+      method: POST
+      headers:
+        - name: content-type
+          value: application/json
+        - name: Authorization
+          value: Bearer {{sessionToken}}
+      body:
+        type: json
+        data: '{"practitionerRoleIds":["PractitionerRole/example"],"reason":"Meeting","allDay":false,"from":"2026-07-15T09:00:00+07:00","to":"2026-07-15T10:00:00+07:00"}'
+    response:
+      status: 200
+      body:
+        type: json
+        data: '{"success":true,"message":"OK","data":{"createdSlots":["Slot/new-3"],"conflicts":[],"updatedPractitionerRoles":["PractitionerRole/example"]}}'
+  - name: Conflict
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/schedule/unavailable"
+      method: POST
+      headers:
+        - name: content-type
+          value: application/json
+        - name: Authorization
+          value: Bearer {{sessionToken}}
+      body:
+        type: json
+        data: '{"practitionerRoleIds":["PractitionerRole/example"],"reason":"Annual leave","allDay":true,"date":"2026-07-15"}'
+    response:
+      status: 409
+      body:
+        type: json
+        data: '{"success":true,"message":"Conflict","data":{"createdSlots":[],"conflicts":["Slot/existing-1","Slot/existing-2"],"updatedPractitionerRoles":["PractitionerRole/example"]}}'
+  - name: Unauthorized
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/schedule/unavailable"
+      method: POST
+      headers:
+        - name: content-type
+          value: application/json
+    response:
+      status: 403
+      body:
+        type: json
+        data: '{"success":false,"message":"Forbidden","status_code":403}'
+
 docs: |
   Marks one or more practitioner role slots as unavailable (e.g., leave, holiday). Supports all-day or time-range blocks.
 
@@ -38,80 +125,3 @@ docs: |
   - **403 Forbidden**: Missing or invalid session. Body: `{ "success": false, "message": "...", "status_code": 403 }`.
   - **409 Conflict**: Overlapping slots detected. Body: `{ "success": true, "message": "Conflict", "data": { "createdSlots": [...], "conflicts": [...], "updatedPractitionerRoles": [...] } }`.
   - **500 Internal Server Error**: Unexpected failure. Body: `{ "success": false, "message": "...", "status_code": 500 }`.
-examples:
-  - name: All-day unavailable
-    request:
-      method: POST
-      url: "{{process.env.BASE_URL}}/api/v1/schedule/unavailable"
-      headers:
-        - name: content-type
-          value: application/json
-        - name: Authorization
-          value: Bearer {{sessionToken}}
-      body:
-        type: json
-        data: '{"practitionerRoleIds":["PractitionerRole/example"],"reason":"Annual leave","allDay":true,"date":"2026-07-15","setStatus":"busy-unavailable"}'
-    response:
-      status: 201
-      body:
-        type: json
-        data: '{"success":true,"message":"Created","data":{"createdSlots":["Slot/new-1","Slot/new-2"],"conflicts":[],"updatedPractitionerRoles":["PractitionerRole/example"]}}'
-  - name: Time-range unavailable
-    request:
-      method: POST
-      url: "{{process.env.BASE_URL}}/api/v1/schedule/unavailable"
-      headers:
-        - name: content-type
-          value: application/json
-        - name: Authorization
-          value: Bearer {{sessionToken}}
-      body:
-        type: json
-        data: '{"practitionerRoleIds":["PractitionerRole/example"],"reason":"Meeting","allDay":false,"from":"2026-07-15T09:00:00+07:00","to":"2026-07-15T10:00:00+07:00"}'
-    response:
-      status: 200
-      body:
-        type: json
-        data: '{"success":true,"message":"OK","data":{"createdSlots":["Slot/new-3"],"conflicts":[],"updatedPractitionerRoles":["PractitionerRole/example"]}}'
-  - name: Conflict
-    request:
-      method: POST
-      url: "{{process.env.BASE_URL}}/api/v1/schedule/unavailable"
-      headers:
-        - name: content-type
-          value: application/json
-        - name: Authorization
-          value: Bearer {{sessionToken}}
-      body:
-        type: json
-        data: '{"practitionerRoleIds":["PractitionerRole/example"],"reason":"Annual leave","allDay":true,"date":"2026-07-15"}'
-    response:
-      status: 409
-      body:
-        type: json
-        data: '{"success":true,"message":"Conflict","data":{"createdSlots":[],"conflicts":["Slot/existing-1","Slot/existing-2"],"updatedPractitionerRoles":["PractitionerRole/example"]}}'
-  - name: Unauthorized
-    request:
-      method: POST
-      url: "{{process.env.BASE_URL}}/api/v1/schedule/unavailable"
-      headers:
-        - name: content-type
-          value: application/json
-    response:
-      status: 403
-      body:
-        type: json
-        data: '{"success":false,"message":"Forbidden","status_code":403}'
-runtime:
-  assertions:
-    - expression: res.status
-      operator: eq
-      value: "200"
-    - expression: res.body.success
-      operator: eq
-      value: "true"
-    - expression: res.body.message
-      operator: isDefined
-    - expression: res.responseTime
-      operator: lt
-      value: "10000"

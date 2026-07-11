@@ -1,16 +1,22 @@
-opencollection: "1.0.0"
+opencollection: 1.0.0
+
 info:
   name: Konsulin API
-  summary: API collection for the Konsulin backend gateway
-  description: |
-    API documentation for all live endpoints of the Konsulin digital mental health
-    platform. Covers auth (magic link with Mailinator-based code retrieval, anonymous
-    sessions, logout), payments (service creation, appointment payment, Xendit
-    callbacks), schedules (unavailability), webhooks (synchronous, service request
-    callbacks, enqueue), and organizations (practitioner role registration). Excludes
-    FHIR (/fhir) and terminology (/tx) proxy endpoints.
+config:
+  proxy:
+    inherit: true
+    config:
+      protocol: http
+      hostname: ""
+      port: ""
+      auth:
+        username: ""
+        password: ""
+      bypassProxy: ""
 
-    Files marked as documentation-only (without runtime.assertions) are skipped by
-    `bru run --tests-only` but retained as reference.
-  version: "1"
+request:
+  headers:
+    - name: Content-Type
+      value: application/json
 bundled: false
+extensions: {}
