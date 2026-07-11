@@ -3,6 +3,6 @@
     "denyWrite": [".env", ".pi/*"]
   },
   "bash": {
-    "commandWhitelist": ["bru"]
+    "commandWhitelist": ["bru", "mise"]
   }
 }
