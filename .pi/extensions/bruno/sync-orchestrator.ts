@@ -6,6 +6,8 @@
 
 import { type ParsedRoute, parseGoRoutes } from './go-parser.ts';
 import { computeDiff } from './state-tracker.ts';
+import { scanDocInventory, EXTERNAL_ROUTES, EXTERNAL_DOMAINS, formatInventoryReport } from './doc-inventory.ts';
+import type { DocInventory, DocInventoryEntry } from './doc-inventory.ts';
 import {
   generateBrunoSkeleton,
   buildBrunoPath,
@@ -15,6 +17,10 @@ import {
 import { validateBrunoYaml } from './bruno-validator.ts';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+
+// Re-export doc-inventory symbols for use by index.ts
+export { scanDocInventory, EXTERNAL_ROUTES, EXTERNAL_DOMAINS, formatInventoryReport };
+export type { DocInventory, DocInventoryEntry };
 
 // --- Public types ---
 
