@@ -13,14 +13,16 @@ import {
   buildBrunoPath,
   findNextSeq,
   deleteBrunoDoc,
+  type ChainInfo,
 } from './bruno-generator.ts';
 import { validateBrunoYaml } from './bruno-validator.ts';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-// Re-export doc-inventory symbols for use by index.ts
+// Re-export doc-inventory and bruno-generator symbols for use by index.ts
 export { scanDocInventory, EXTERNAL_ROUTES, EXTERNAL_DOMAINS, formatInventoryReport };
 export type { DocInventory, DocInventoryEntry };
+export type { ChainInfo };
 
 // --- Public types ---
 
@@ -57,14 +59,26 @@ export function scanAllRouterFiles(projectRoot: string): ParsedRoute[] {
 }
 
 /**
+ * Build a route key string from a route.
+ */
+export function routeKey(route: ParsedRoute): string {
+  return `${route.method} ${route.path}`;
+}
+
+/**
  * Run a full sync between old and new route states.
  * Creates, deletes, and flags Bruno docs as needed.
+ *
+ * @param chainLookup - Optional map from route key to chain info.
+ *   When provided, new Bruno docs get chain scripts filled based
+ *   on detected dependencies.
  */
 export function runSync(
   oldRoutes: ParsedRoute[],
   newRoutes: ParsedRoute[],
   docsBaseDir: string,
   apiPrefix: string,
+  chainLookup?: Map<string, ChainInfo>,
 ): SyncResult[] {
   const diff = computeDiff(oldRoutes, newRoutes);
   const results: SyncResult[] = [];
@@ -82,7 +96,8 @@ export function runSync(
     }
 
     const seq = findNextSeq(domainDir);
-    const yaml = generateBrunoSkeleton(route, seq, apiPrefix);
+    const chainInfo = chainLookup?.get(routeKey(route));
+    const yaml = generateBrunoSkeleton(route, seq, apiPrefix, chainInfo);
 
     try {
       writeFileSync(docPath, yaml, 'utf-8');

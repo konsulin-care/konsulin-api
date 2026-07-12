@@ -139,7 +139,7 @@ await describe('bruno-generator', async () => {
 
       assert.ok(yaml.includes('tags:'));
       assert.ok(yaml.includes('after-response'));
-      assert.ok(yaml.includes('setNextRequest'));
+      assert.ok(yaml.includes('TODO: set chain'));
     });
 
     await it('generates skeleton for GET endpoint', () => {
@@ -167,6 +167,77 @@ await describe('bruno-generator', async () => {
 
       assert.ok(yaml.includes('method: PATCH'));
       assert.ok(yaml.includes('seq: 5'));
+    });
+
+    await it('writes confirmed chain script when nextRequestName is provided', () => {
+      const route = makeRoute({
+        method: 'POST',
+        path: '/magiclink',
+        handler: 'CreateMagicLink',
+        file: 'auth_router.go',
+      });
+      const yaml = generateBrunoSkeleton(route, 1, '/api/v1', {
+        nextRequestName: 'Check Email Exists',
+      });
+
+      assert.ok(yaml.includes('setNextRequest("Check Email Exists")'),
+        'should include confirmed nextRequestName in chain script');
+      assert.ok(!yaml.includes('TODO: set chain'),
+        'confirmed chain should not have generic chain TODO');
+    });
+
+    await it('writes detected dependencies as comment when no confirmed next request', () => {
+      const route = makeRoute({
+        method: 'POST',
+        path: '/pay/appointment',
+        handler: 'HandleAppointmentPayment',
+        file: 'payment_router.go',
+      });
+      const yaml = generateBrunoSkeleton(route, 1, '/api/v1', {
+        downstreamDeps: ['POST /pay/callback/xendit/invoice'],
+      });
+
+      assert.ok(yaml.includes('Detected downstream: POST /pay/callback/xendit/invoice'),
+        'should list detected dependencies as comment');
+      assert.ok(yaml.includes('TODO'),
+        'unconfirmed chain should still have TODO');
+    });
+
+    await it('writes multiple detected dependencies in comment', () => {
+      const route = makeRoute({
+        method: 'POST',
+        path: '/hook/{service}',
+        handler: 'HandleEnqueueWebHook',
+        file: 'webhook_router.go',
+      });
+      const yaml = generateBrunoSkeleton(route, 1, '/api/v1', {
+        downstreamDeps: [
+          'POST /callback/service-request',
+          'GET /service-request/{id}/result',
+        ],
+      });
+
+      assert.ok(yaml.includes('Detected downstream: POST /callback/service-request'),
+        'should include first detected dependency');
+      assert.ok(yaml.includes('Detected downstream: GET /service-request/{id}/result'),
+        'should include second detected dependency');
+      assert.ok(yaml.includes('TODO'),
+        'unconfirmed chain should still have TODO');
+    });
+
+    await it('generates generic TODO when no chainInfo is given', () => {
+      const route = makeRoute({
+        method: 'POST',
+        path: '/magiclink',
+        handler: 'CreateMagicLink',
+        file: 'auth_router.go',
+      });
+      const yaml = generateBrunoSkeleton(route, 1, '/api/v1');
+
+      assert.ok(yaml.includes('TODO: set chain based on workflow'),
+        'no chainInfo should produce generic TODO');
+      assert.ok(yaml.includes('setNextRequest'),
+        'no chainInfo should still include a setNextRequest example');
     });
   });
 

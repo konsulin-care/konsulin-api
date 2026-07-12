@@ -14,7 +14,7 @@
  *   sync_bruno_api_docs → doSync → return results
  */
 
-import { type ParsedRoute } from './go-parser.ts';
+import { type ParsedRoute, handlerToDisplayName } from './go-parser.ts';
 import { shouldTrackFile } from './state-tracker.ts';
 import {
   runSync,
@@ -24,6 +24,8 @@ import {
   EXTERNAL_DOMAINS,
   formatInventoryReport,
 } from './sync-orchestrator.ts';
+import { analyzeChains, formatChainReport } from './chain-analyzer.ts';
+import type { ChainDiagnostic } from './chain-analyzer.ts';
 
 const DOCS_BASE = 'docs/api';
 const API_PREFIX = '/api/v1';
@@ -34,9 +36,11 @@ export {
   scanDocInventory,
   EXTERNAL_ROUTES,
   EXTERNAL_DOMAINS,
+  routeKey,
 } from './sync-orchestrator.ts';
 export type { SyncResult, SyncError } from './sync-orchestrator.ts';
 export type { DocInventory, DocInventoryEntry } from './sync-orchestrator.ts';
+export type { ChainInfo } from './sync-orchestrator.ts';
 
 export default function (pi: any) {
   let dirty = false;
@@ -72,13 +76,42 @@ export default function (pi: any) {
     }
   });
 
-  /**
-   * Run the full sync: scan router files, diff against currentRoutes,
-   * generate/delete/stale Bruno docs, validate all output.
-   *
-   * Deduplicates the sync loop between turn_end, tool execute, and /bruno command.
-   */
-  function doSync(): {
+  /** Build a chain lookup: high-confidence (≥0.7) chains get deps, ≥0.9 async auto-confirms. */
+  function buildChainLookup(diags: ChainDiagnostic[], allRoutes: ParsedRoute[]): Map<string, any> {
+    const lookup = new Map<string, any>();
+    // Build a display name lookup: routeKey → display name
+    const displayNames = new Map<string, string>();
+    for (const route of allRoutes) {
+      displayNames.set(`${route.method} ${route.path}`, handlerToDisplayName(route.handler));
+    }
+
+    for (const diag of diags) {
+      const key = `${diag.endpoint.method} ${diag.endpoint.path}`;
+      const highConf = diag.detectedChains.filter(c => c.confidence >= 0.7);
+      const mediumConf = diag.detectedChains.filter(c => c.confidence >= 0.5 && c.confidence < 0.7);
+      const deps = [...highConf, ...mediumConf].map(c => c.toKey);
+
+      if (deps.length > 0) {
+        const info: { downstreamDeps?: string[]; nextRequestName?: string } = {
+          downstreamDeps: deps,
+        };
+
+        // Auto-confirm async chains with very high confidence (≥0.9)
+        const asyncChain = highConf.find(c => c.type === 'async' && c.confidence >= 0.9);
+        if (asyncChain) {
+          const name = displayNames.get(asyncChain.toKey);
+          if (name) {
+            info.nextRequestName = name;
+          }
+        }
+
+        lookup.set(key, info);
+      }
+    }
+    return lookup;
+  }
+
+  function doSync(chainLookup?: Map<string, any>): {
     newRoutes: ParsedRoute[];
     created: number;
     deleted: number;
@@ -87,7 +120,7 @@ export default function (pi: any) {
     results: ReturnType<typeof runSync>;
   } {
     const newRoutes = scanAllRouterFiles(projectRoot);
-    const results = runSync(currentRoutes, newRoutes, `${projectRoot}/${DOCS_BASE}`, API_PREFIX);
+    const results = runSync(currentRoutes, newRoutes, `${projectRoot}/${DOCS_BASE}`, API_PREFIX, chainLookup);
     return {
       newRoutes,
       created: results.filter(r => r.action === 'created').length,
@@ -145,7 +178,10 @@ export default function (pi: any) {
     ],
     parameters: { type: 'object', properties: {} },
     async execute(_toolCallId: string, _params: any, _signal: any, _onUpdate: any, _ctx: any) {
-      const sync = doSync();
+      const newRoutes = scanAllRouterFiles(projectRoot);
+      const diags = analyzeChains(newRoutes, projectRoot);
+      const chainLookup = buildChainLookup(diags, newRoutes);
+      const sync = doSync(chainLookup);
 
       currentRoutes = sync.newRoutes;
       dirty = false;
@@ -163,44 +199,52 @@ export default function (pi: any) {
 
       const docsDir = `${projectRoot}/${DOCS_BASE}`;
       const inventory = scanDocInventory(docsDir, sync.newRoutes, API_PREFIX, EXTERNAL_ROUTES, EXTERNAL_DOMAINS);
-
-      const syncParts: string[] = [];
-      if (sync.created > 0) syncParts.push(`created ${sync.created}`);
-      if (sync.deleted > 0) syncParts.push(`deleted ${sync.deleted}`);
-      if (sync.stale > 0) syncParts.push(`${sync.stale} stale`);
-      const syncSummary = syncParts.length > 0
-        ? `Bruno docs synced: ${syncParts.join(', ')}.`
-        : 'Bruno docs synced: no route changes.';
-
+      const syncSummary = buildSyncSummary(sync);
       const report = formatInventoryReport(inventory, syncSummary);
+      const chainReport = formatChainReport(diags);
 
       return {
-        content: [{ type: 'text', text: report }],
+        content: [{ type: 'text', text: `${report}\n\n${chainReport}` }],
         details: {
-          created: sync.created,
-          deleted: sync.deleted,
-          stale: sync.stale,
-          errors: 0,
+          created: sync.created, deleted: sync.deleted, stale: sync.stale, errors: 0,
           results: sync.results,
-          inventory: {
-            managed: inventory.managed.length,
-            external: inventory.external.length,
-            unrecognized: inventory.unrecognized.length,
-          },
+          inventory: { managed: inventory.managed.length, external: inventory.external.length, unrecognized: inventory.unrecognized.length },
+          chainAnalysis: diags,
         },
       };
     },
   });
 
+  /** Build a sync summary line like "Bruno docs synced: 2 created, 1 deleted." */
+  function buildSyncSummary(sync: ReturnType<typeof doSync>): string {
+    const parts: string[] = [];
+    if (sync.created > 0) parts.push(`${sync.created} created`);
+    if (sync.deleted > 0) parts.push(`${sync.deleted} deleted`);
+    if (sync.stale > 0) parts.push(`${sync.stale} stale`);
+    return parts.length > 0
+      ? `Bruno docs synced: ${parts.join(', ')}.`
+      : 'Bruno docs synced: no route changes.';
+  }
+
+  /** Format change detail lines for the /bruno output. */
+  function formatChangeLines(sync: ReturnType<typeof doSync>): string {
+    return sync.results
+      .filter(r => r.action === 'created' || r.action === 'deleted' || r.action === 'stale')
+      .map(r => `  [${r.action}] ${r.docPath}  (${r.handler})`)
+      .join('\n');
+  }
+
   // --- Slash command ---
 
   pi.registerCommand('bruno', {
     description:
-      'Sync Bruno API docs with Go route definitions. ' +
-      'Scans routers, compares with docs, generates missing docs, ' +
-      'deletes stale ones, and validates all YAML against official schema.',
+      'Sync Bruno API docs with Go route definitions, validate YAML, ' +
+      'and analyze endpoint chaining from controller source code.',
     handler: async (_args: string, ctx: any) => {
-      const sync = doSync();
+      const newRoutes = scanAllRouterFiles(projectRoot);
+      const diags = analyzeChains(newRoutes, projectRoot);
+      const chainLookup = buildChainLookup(diags, newRoutes);
+      const sync = doSync(chainLookup);
 
       currentRoutes = sync.newRoutes;
       dirty = false;
@@ -210,9 +254,7 @@ export default function (pi: any) {
           .filter(r => r.action === 'error')
           .map(e => `  ${e.docPath}: ${e.error}`)
           .join('\n');
-
         ctx.ui.notify(`Bruno sync failed (${sync.errors} error(s))`, 'error');
-
         pi.sendMessage({
           customType: 'bruno-sync',
           content: [{ type: 'text', text: `Bruno sync failed with ${sync.errors} error(s):\n${detail}\n\nFix the YAML and run /bruno again.` }],
@@ -221,28 +263,18 @@ export default function (pi: any) {
       } else {
         const docsDir = `${projectRoot}/${DOCS_BASE}`;
         const inventory = scanDocInventory(docsDir, sync.newRoutes, API_PREFIX, EXTERNAL_ROUTES, EXTERNAL_DOMAINS);
-
-        const syncParts: string[] = [];
-        if (sync.created > 0) syncParts.push(`${sync.created} created`);
-        if (sync.deleted > 0) syncParts.push(`${sync.deleted} deleted`);
-        if (sync.stale > 0) syncParts.push(`${sync.stale} stale`);
-        const syncSummary = syncParts.length > 0
-          ? `Bruno docs synced: ${syncParts.join(', ')}.`
-          : 'Bruno docs synced: no route changes.';
-
+        const syncSummary = buildSyncSummary(sync);
         const report = formatInventoryReport(inventory, syncSummary);
+        const chainReport = formatChainReport(diags);
+        const changeLines = formatChangeLines(sync);
+        const fullReport = changeLines
+          ? `${report}\n\n${chainReport}\n\nChanges:\n${changeLines}`
+          : `${report}\n\n${chainReport}`;
 
-        // Detailed change lines
-        const changeLines = sync.results
-          .filter(r => r.action === 'created' || r.action === 'deleted' || r.action === 'stale')
-          .map(r => `  [${r.action}] ${r.docPath}  (${r.handler})`)
-          .join('\n');
-
-        ctx.ui.notify(report, 'info');
-
+        ctx.ui.notify(`${report}\n\n${chainReport}`, 'info');
         pi.sendMessage({
           customType: 'bruno-sync',
-          content: [{ type: 'text', text: changeLines ? `${report}\n\nChanges:\n${changeLines}` : report }],
+          content: [{ type: 'text', text: fullReport }],
           display: true,
         });
       }

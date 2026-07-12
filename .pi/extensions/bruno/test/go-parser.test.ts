@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseGoRoutes, type ParsedRoute } from '../go-parser.ts';
+import {
+  parseGoRoutes,
+  routeToControllerFile,
+  type ParsedRoute,
+} from '../go-parser.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = join(__dirname, 'fixtures/routers');
@@ -103,6 +107,68 @@ await describe('go-parser', async () => {
 func someHelper() string { return "ok" }`;
       const routes = parseGoRoutes(source, 'helper.go');
       assert.deepEqual(routes, []);
+    });
+  });
+
+  await describe('routeToControllerFile', async () => {
+    await it('derives controller path from auth router file', () => {
+      const route: ParsedRoute = {
+        method: 'POST',
+        path: '/magiclink',
+        handler: 'CreateMagicLink',
+        file: 'auth_router.go',
+        middlewares: [],
+      };
+      const result = routeToControllerFile(route);
+      assert.equal(result, 'controllers/auth_controller.go');
+    });
+
+    await it('derives controller path from payment router file', () => {
+      const route: ParsedRoute = {
+        method: 'POST',
+        path: '/pay/service',
+        handler: 'CreatePay',
+        file: 'payment_router.go',
+        middlewares: [],
+      };
+      const result = routeToControllerFile(route);
+      assert.equal(result, 'controllers/payment_controller.go');
+    });
+
+    await it('derives controller path from webhook router file', () => {
+      const route: ParsedRoute = {
+        method: 'POST',
+        path: '/hook/{service}',
+        handler: 'HandleEnqueueWebHook',
+        file: 'webhook_router.go',
+        middlewares: [],
+      };
+      const result = routeToControllerFile(route);
+      assert.equal(result, 'controllers/webhook_controller.go');
+    });
+
+    await it('derives controller path from organization router file', () => {
+      const route: ParsedRoute = {
+        method: 'POST',
+        path: '/organizations/{organizationId}/roles',
+        handler: 'RegisterPractitionerRole',
+        file: 'organization_router.go',
+        middlewares: [],
+      };
+      const result = routeToControllerFile(route);
+      assert.equal(result, 'controllers/organization_controller.go');
+    });
+
+    await it('derives controller path from schedule router file', () => {
+      const route: ParsedRoute = {
+        method: 'POST',
+        path: '/schedule/unavailable',
+        handler: 'SetUnavailable',
+        file: 'schedule_router.go',
+        middlewares: [],
+      };
+      const result = routeToControllerFile(route);
+      assert.equal(result, 'controllers/schedule_controller.go');
     });
   });
 });

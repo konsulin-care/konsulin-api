@@ -87,20 +87,56 @@ export function buildBrunoPath(route: ParsedRoute, docsBaseDir: string): string 
 }
 
 /**
+ * Chain information for filling in the Bruno runtime chain script.
+ */
+export interface ChainInfo {
+  /** User-confirmed name of the next request in the chain. */
+  nextRequestName?: string;
+  /** Detected downstream dependencies (not yet confirmed). */
+  downstreamDeps?: string[];
+}
+
+/**
+ * Generate the runtime after-response script code based on chain info.
+ */
+function buildChainScript(chainInfo?: ChainInfo): string {
+  if (chainInfo?.nextRequestName) {
+    return `        bru.runner.setNextRequest("${chainInfo.nextRequestName}");`;
+  }
+
+  if (chainInfo?.downstreamDeps && chainInfo.downstreamDeps.length > 0) {
+    const depLines = chainInfo.downstreamDeps
+      .map(dep => `        # Detected downstream: ${dep}`)
+      .join('\n');
+    return `${depLines}\n        # TODO: confirm chain order, then enable:
+        # bru.runner.setNextRequest("Next Request Name");`;
+  }
+
+  return `        # TODO: set chain based on workflow
+        # bru.runner.setNextRequest("Next Request Name");`;
+}
+
+/**
  * Generate an OpenCollection-compliant YAML skeleton for a new route.
  *
  * The skeleton is minimal but spec-valid. The LLM is expected to:
  * 1. Read the Go controller implementation
  * 2. Fill headers, body schema, assertions, examples, docs, and chain scripts
  * 3. Call sync-bruno-api-docs again to validate
+ *
+ * @param chainInfo - Optional chain information. If `nextRequestName` is set,
+ *   writes a confirmed chain script. If only `downstreamDeps` is set, writes
+ *   detected dependencies as context for the user. Omit for generic TODO.
  */
 export function generateBrunoSkeleton(
   route: ParsedRoute,
   seq: number,
   apiPrefix: string,
+  chainInfo?: ChainInfo,
 ): string {
   const displayName = handlerToDisplayName(route.handler);
   const fullUrl = `{{process.env.APP_BASE_URL}}${apiPrefix}${route.path}`;
+  const chainCode = buildChainScript(chainInfo);
 
   return `info:
   name: "${displayName}"
@@ -122,8 +158,7 @@ runtime:
   scripts:
     - type: after-response
       code: |-
-        # TODO: set chain based on workflow
-        # bru.runner.setNextRequest("Next Request Name");
+${chainCode}
   assertions: []
 
 settings:

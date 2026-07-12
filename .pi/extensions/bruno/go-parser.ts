@@ -102,6 +102,18 @@ export function routeToDocFilename(route: ParsedRoute): string {
 }
 
 /**
+ * Derive the controller file path from a route's router file.
+ * auth_router.go → controllers/auth_controller.go
+ * payment_router.go → controllers/payment_controller.go
+ */
+export function routeToControllerFile(route: ParsedRoute): string {
+  const name = route.file
+    .replace(/_router\.go$/, '')
+    .replace(/\.go$/, '');
+  return `controllers/${name}_controller.go`;
+}
+
+/**
  * Build a human-readable display name from a handler function.
  * CreateMagicLink → "Create Magic Link"
  * HandleSynchronousWebHook → "Handle Synchronous Web Hook"

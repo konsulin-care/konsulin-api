@@ -10,6 +10,7 @@ import {
   runSync,
   type SyncResult,
   type SyncError,
+  type ChainInfo,
 } from '../index.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -159,6 +160,80 @@ await describe('bruno-sync', async () => {
       assert.ok(deleted);
       assert.ok(created.docPath);
       assert.ok(deleted.docPath);
+
+      rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    await it('uses chainLookup to write confirmed chain script in new doc', () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'bruno-sync-'));
+      const docsDir = join(tmpDir, 'docs/api');
+      const authDir = join(docsDir, 'auth');
+
+      const oldRoutes: ParsedRoute[] = [];
+      const newRoutes: ParsedRoute[] = [
+        makeRoute({
+          method: 'POST',
+          path: '/magiclink',
+          handler: 'CreateMagicLink',
+          file: 'auth_router.go',
+        }),
+      ];
+
+      const chainLookup = new Map<string, ChainInfo>();
+      chainLookup.set('POST /magiclink', {
+        nextRequestName: 'Check Email Exists',
+      });
+
+      const results = runSync(oldRoutes, newRoutes, docsDir, '/api/v1', chainLookup);
+
+      assert.equal(results.length, 1);
+      assert.equal(results[0].action, 'created');
+      assert.equal(results[0].success, true);
+
+      const docPath = join(authDir, 'magiclink.yml');
+      assert.ok(existsSync(docPath));
+      const content = readFileSync(docPath, 'utf-8');
+      assert.ok(content.includes('setNextRequest("Check Email Exists")'),
+        'chainLookup with nextRequestName should write confirmed chain script');
+      assert.ok(!content.includes('TODO: set chain'),
+        'chainLookup with nextRequestName should not have generic chain TODO');
+
+      rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    await it('uses chainLookup to write detected deps comment in new doc', () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'bruno-sync-'));
+      const docsDir = join(tmpDir, 'docs/api');
+      const webhookDir = join(docsDir, 'webhooks');
+
+      const oldRoutes: ParsedRoute[] = [];
+      const newRoutes: ParsedRoute[] = [
+        makeRoute({
+          method: 'POST',
+          path: '/hook/{service}',
+          handler: 'HandleEnqueueWebHook',
+          file: 'webhook_router.go',
+        }),
+      ];
+
+      const chainLookup = new Map<string, ChainInfo>();
+      chainLookup.set('POST /hook/{service}', {
+        downstreamDeps: ['POST /callback/service-request', 'GET /service-request/{id}/result'],
+      });
+
+      const results = runSync(oldRoutes, newRoutes, docsDir, '/api/v1', chainLookup);
+
+      assert.equal(results.length, 1);
+      assert.equal(results[0].action, 'created');
+      assert.equal(results[0].success, true);
+
+      const docPath = join(webhookDir, 'hook-service.yml');
+      assert.ok(existsSync(docPath));
+      const content = readFileSync(docPath, 'utf-8');
+      assert.ok(content.includes('Detected downstream: POST /callback/service-request'),
+        'chainLookup with downstreamDeps should write dep comment');
+      assert.ok(content.includes('TODO: confirm chain order'),
+        'chainLookup with downstreamDeps should still have confirm TODO');
 
       rmSync(tmpDir, { recursive: true, force: true });
     });
