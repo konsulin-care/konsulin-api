@@ -21,6 +21,63 @@ http:
 
 runtime:
   scripts:
+    - type: before-request
+      code: |-
+        const org = bru.getProcessEnv("ORGANIZATION");
+
+        bru.sleep(30000)
+
+        await bru.sendRequest(
+          {
+            method: "GET",
+            url: `https://api.mailinator.com/api/v2/domains/public/inboxes/${org}`
+          },
+          function(err, res) {
+            if (err) {
+              console.error("Error: ", err);
+              return;
+            }
+            const retries = parseInt(bru.getVar("mailinator_retry") || "0", 10);
+            const body = res.data;
+            const msgs = body && body.msgs;
+            const newest = msgs.reduce(
+              (a, b) => a.seconds_ago < b.seconds_ago? a : b
+            );
+            bru.setVar("messageId", newest.id)
+         }
+        )
+
+        const messageId = bru.getVar("messageId");
+
+        await bru.sendRequest(
+          {
+            method: "GET",
+            url: `https://api.mailinator.com/api/v2/domains/public/messages/${messageId}/links`,
+          },
+          function(err, res) {
+            if (err) {
+              console.error("Error: ", err);
+              return;
+            }
+            const body = res.data;
+            const links = body && body.links;
+            
+            if (links && links.length > 0) {
+              for (var li = 0; li < links.length; li++) {
+                var url = links[li];
+                if (url.indexOf("preAuthSessionId=") !== -1) {
+                  var pashMatch = url.match(/[?&]preAuthSessionId=([^&#]+)/);
+                  var lcMatch = url.match(/#([^#]+)$/);
+                  if (pashMatch && lcMatch) {
+                    bru.setVar("preAuthSessionId", decodeURIComponent(pashMatch[1]));
+                    bru.setVar("linkCode", decodeURIComponent(lcMatch[1]));
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        )
     - type: after-response
       code: |-
         var frontToken = res.getHeader("Front-Token");

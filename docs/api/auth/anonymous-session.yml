@@ -21,7 +21,7 @@ runtime:
         if (body && body.data && body.data.token) {
           bru.setVar("authToken", body.data.token);
         }
-        bru.runner.setNextRequest("Mailinator Poll Inbox");
+        bru.runner.setNextRequest("Consume Code");
   assertions:
     - expression: res.status
       operator: eq
