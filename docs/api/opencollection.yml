@@ -18,5 +18,14 @@ request:
   headers:
     - name: Content-Type
       value: application/json
+  variables:
+    - name: preAuthSessionId
+      value: ""
+    - name: linkCode
+      value: ""
+    - name: messageId
+      value: ""
+    - name: sessionToken
+      value: ""
 bundled: false
 extensions: {}

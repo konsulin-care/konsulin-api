@@ -42,7 +42,7 @@ settings:
 examples:
   - name: Success
     request:
-      url: "{{process.env.BASE_URL}}/api/v1/auth/anonymous/claim"
+      url: "{{process.env.APP_BASE_URL}}/api/v1/auth/anonymous/claim"
       method: PATCH
       headers:
         - name: content-type

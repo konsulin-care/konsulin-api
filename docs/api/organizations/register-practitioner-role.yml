@@ -10,7 +10,7 @@ http:
     - name: content-type
       value: application/json
     - name: Authorization
-      value: Bearer {{authToken}}
+      value: Bearer {{sessionToken}}
   body:
     type: json
     data: |-
