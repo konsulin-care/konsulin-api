@@ -14,6 +14,7 @@ import (
 	"konsulin-service/internal/app/services/core/auth"
 	"konsulin-service/internal/app/services/core/organization"
 	"konsulin-service/internal/app/services/core/payments"
+	privacy "konsulin-service/internal/app/services/core/privacy"
 	"konsulin-service/internal/app/services/core/slot"
 	"konsulin-service/internal/app/services/core/transactions"
 	"konsulin-service/internal/app/services/core/users"
@@ -21,6 +22,7 @@ import (
 	bundle "konsulin-service/internal/app/services/fhir_spark/bundle"
 	invoicesFhir "konsulin-service/internal/app/services/fhir_spark/invoices"
 	planDefinitionsFhir "konsulin-service/internal/app/services/fhir_spark/plan_definitions"
+	privacyFhir "konsulin-service/internal/app/services/fhir_spark/privacy"
 	organizationsFhir "konsulin-service/internal/app/services/fhir_spark/organizations"
 	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/persons"
@@ -326,6 +328,12 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	)
 	orgController := controllers.NewOrganizationController(bootstrap.Logger, orgUsecase)
 
+	// Initialize purge (erasure) components: FHIR client, account deletion, usecase, controller.
+	purgeFhirClient := privacyFhir.NewPurgeFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	accountDeletion := users.NewAccountDeletionService(bootstrap.Logger)
+	purgeUsecase := privacy.NewPurgeUsecase(purgeFhirClient, bundleClient, accountDeletion, bootstrap.Logger)
+	purgeController := controllers.NewPurgeController(purgeUsecase, middlewares, bootstrap.Logger)
+
 	if err := orgUsecase.InitializeKonsulinOrganizationResource(context.Background()); err != nil {
 		log.Fatalf("Error initializing Konsulin organization resource: %v", err)
 	}
@@ -351,6 +359,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		webhookController,
 		scheduleController,
 		orgController,
+		purgeController,
 	)
 
 	return nil

@@ -1,0 +1,59 @@
+info:
+  name: "Purge Data"
+  type: http
+  seq: 1
+  tags: []
+
+http:
+  method: DELETE
+  url: "{{process.env.APP_BASE_URL}}/api/v1/privacy/purge"
+  headers:
+    - name: content-type
+      value: application/json
+  body:
+    type: json
+    data: "{}"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        # TODO: set chain based on workflow
+        # bru.runner.setNextRequest("Next Request Name");
+  assertions: []
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples: []
+
+docs: |
+  ## Purge Data (erasure)
+
+  Erases all FHIR data linked to the session patient and, on success, deletes
+  the associated SuperTokens account (sessions revoked). Only the caller's own
+  identity is ever purged; a second call is a no-op success.
+
+  **Auth:** requires a Patient SuperTokens session (guest/practitioner → 403).
+
+  ### Flow
+  1. Resolve the session's FHIR Patient id (same resolution as the Auth middleware).
+  2. Enumerate every resource via `GET /fhir/Patient/{id}/$everything` (paginated, id-only).
+  3. Delete linked resources via chunked `type: batch` DELETE bundles.
+  4. Delete the Patient resource; if that fails, replace it with a PII-free shell
+     carrying only its id.
+  5. Orphan check: assert no Communication (sender/recipient) or
+     QuestionnaireResponse (author) still references the identity.
+  6. Delete the SuperTokens account.
+
+  ### Success (200)
+  ```json
+  { "code": 200, "message": "data purged successfully" }
+  ```
+
+  ### Errors
+  - 401/403 — no valid Patient session or identity unresolvable.
+  - 500 — FHIR purge or account deletion failed.

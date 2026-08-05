@@ -162,6 +162,14 @@ func (m *Middlewares) resolveUserRoles(ctx context.Context, roles []string, uid 
 	return constvars.KonsulinRoleGuest, "", nil
 }
 
+// ResolveUserRoles returns the FHIR role and FHIR resource id for a session,
+// mirroring the Auth middleware's identity resolution. Backend routes outside
+// the /fhir proxy mount (e.g. the purge endpoint) use it to resolve the
+// caller's FHIR identity from the session context values.
+func (m *Middlewares) ResolveUserRoles(ctx context.Context, roles []string, uid string) (string, string, error) {
+	return m.resolveUserRoles(ctx, roles, uid)
+}
+
 func (m *Middlewares) validatePostRequestBody(ctx context.Context, body []byte, fhirRole, fhirID string) error {
 	if fhirRole == constvars.KonsulinRoleSuperadmin || fhirRole == constvars.KonsulinRoleGuest {
 		return nil

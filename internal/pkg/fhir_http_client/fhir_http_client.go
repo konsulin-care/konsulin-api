@@ -18,6 +18,20 @@ import (
 // ErrFHIRRequestFailed is a sentinel error wrapping all FHIR request failures.
 var ErrFHIRRequestFailed = errors.New("fhir request failed")
 
+// FHIRHTTPError carries the HTTP status code alongside the wrapped failure so
+// callers can branch on status (e.g. treat 404 as "not found") without parsing
+// the error message.
+type FHIRHTTPError struct {
+	// StatusCode is the HTTP status returned by the FHIR server.
+	StatusCode int
+	// Err is the underlying wrapped error.
+	Err error
+}
+
+func (e *FHIRHTTPError) Error() string { return e.Err.Error() }
+
+func (e *FHIRHTTPError) Unwrap() error { return e.Err }
+
 // FHIRHTTPClient is a thin wrapper around http.Client that handles the common
 // FHIR HTTP round-trip: request creation, Content-Type header, status code
 // validation, and OperationOutcome parsing.
@@ -73,7 +87,10 @@ func (c *FHIRHTTPClient) Do(ctx context.Context, method, url string, body io.Rea
 	}
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("%w: %s", ErrFHIRRequestFailed, parseFHIRError(respBody, resp.StatusCode))
+		return nil, &FHIRHTTPError{
+			StatusCode: resp.StatusCode,
+			Err:        fmt.Errorf("%w: %s", ErrFHIRRequestFailed, parseFHIRError(respBody, resp.StatusCode)),
+		}
 	}
 
 	return respBody, nil

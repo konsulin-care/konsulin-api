@@ -25,6 +25,7 @@ func SetupRoutes(
 	webhookController *controllers.WebhookController,
 	scheduleController *controllers.ScheduleController,
 	organizationController *controllers.OrganizationController,
+	purgeController *controllers.PurgeController,
 ) {
 	corsOptions := cors.Options{
 		AllowOriginFunc: func(r *http.Request, origin string) bool {
@@ -74,6 +75,7 @@ func SetupRoutes(
 			attachScheduleRouter(r, middlewares, scheduleController)
 			attachWebhookRouter(r, middlewares, webhookController)
 			attachOrganizationRoutes(r, middlewares, organizationController)
+			attachPrivacyRouter(r, middlewares, purgeController)
 
 			r.Mount("/tx", middlewares.TxProxy(internalConfig.FHIR.TerminologyServerBaseUrl))
 		})
