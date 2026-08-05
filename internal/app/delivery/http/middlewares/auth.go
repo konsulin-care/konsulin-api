@@ -227,6 +227,44 @@ func validateBodySubjectRef(body []byte, id, prefix string) error {
 	return nil
 }
 
+// validateBodyFieldRef checks that a JSON reference field matches the given prefix and ID.
+// A missing field is lenient (nil); a malformed format or a mismatched ID is an error.
+func validateBodyFieldRef(body []byte, field, id, prefix string) error {
+	ref := gjson.GetBytes(body, field+".reference").String()
+	if ref == "" {
+		return nil
+	}
+	if !strings.HasPrefix(ref, prefix+"/") {
+		return fmt.Errorf("invalid %s reference format: %s", field, ref)
+	}
+	refID := strings.TrimPrefix(ref, prefix+"/")
+	if refID != id {
+		return fmt.Errorf("%s %s is trying to create resource for different %s %s", prefix, id, prefix, refID)
+	}
+	return nil
+}
+
+// ownsPostBody validates POST create bodies for patient-scoped resources.
+// Consent (patient.reference) and ResearchSubject (individual.reference) must
+// point at the caller's own Patient ID so a patient cannot consent on behalf
+// of another patient. Non-patient roles, unrelated resource types, empty
+// bodies, and missing reference fields stay lenient.
+func ownsPostBody(fhirID, role, resourceType string, resource []byte) bool {
+	if role != constvars.KonsulinRolePatient || len(resource) == 0 {
+		return true
+	}
+	var field string
+	switch resourceType {
+	case constvars.ResourceConsent:
+		field = "patient"
+	case constvars.ResourceResearchSubject:
+		field = "individual"
+	default:
+		return true
+	}
+	return validateBodyFieldRef(resource, field, fhirID, constvars.ResourcePatient) == nil
+}
+
 // validateBodyArrayRefs checks that all references in a JSON array field match the given prefix and ID.
 func validateBodyArrayRefs(body []byte, field, id, prefix string) error {
 	for _, item := range gjson.GetBytes(body, field).Array() {
@@ -551,6 +589,7 @@ func checkPatientRefs(resourceStr, fhirID string) bool {
 		gjson.Get(resourceStr, constvars.FhirGJSONPathSubjectRef).String(),
 		gjson.Get(resourceStr, "patient.reference").String(),
 		gjson.Get(resourceStr, "actor.reference").String(),
+		gjson.Get(resourceStr, "individual.reference").String(),
 	} {
 		if strings.HasPrefix(ref, constvars.FHIRRefPrefixPatient) && strings.TrimPrefix(ref, constvars.FHIRRefPrefixPatient) == fhirID {
 			return true
@@ -672,7 +711,7 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 	}
 
 	if method == constvars.MethodPost {
-		return true
+		return ownsPostBody(fhirID, role, resourceType, resource)
 	}
 
 	if method == constvars.MethodPut && len(resource) > 0 {

@@ -248,6 +248,124 @@ func TestResolveFHIRIdentity_ActiveRolePatient_NoPatientResource(t *testing.T) {
 	assert.Equal(t, "prac-1", id)
 }
 
+func TestOwnsPostBody(t *testing.T) {
+	tests := []struct {
+		name         string
+		fhirID       string
+		role         string
+		resourceType string
+		body         string
+		want         bool
+	}{
+		{
+			name:         "Patient consents for self",
+			fhirID:       "pat-1",
+			role:         constvars.KonsulinRolePatient,
+			resourceType: constvars.ResourceConsent,
+			body:         `{"resourceType":"Consent","status":"active","patient":{"reference":"Patient/pat-1"}}`,
+			want:         true,
+		},
+		{
+			name:         "Patient consenting for another patient is denied",
+			fhirID:       "pat-1",
+			role:         constvars.KonsulinRolePatient,
+			resourceType: constvars.ResourceConsent,
+			body:         `{"resourceType":"Consent","status":"active","patient":{"reference":"Patient/pat-2"}}`,
+			want:         false,
+		},
+		{
+			name:         "Patient ResearchSubject for self",
+			fhirID:       "pat-1",
+			role:         constvars.KonsulinRolePatient,
+			resourceType: constvars.ResourceResearchSubject,
+			body:         `{"resourceType":"ResearchSubject","status":"active","individual":{"reference":"Patient/pat-1"}}`,
+			want:         true,
+		},
+		{
+			name:         "Patient ResearchSubject for another patient is denied",
+			fhirID:       "pat-1",
+			role:         constvars.KonsulinRolePatient,
+			resourceType: constvars.ResourceResearchSubject,
+			body:         `{"resourceType":"ResearchSubject","status":"active","individual":{"reference":"Patient/pat-2"}}`,
+			want:         false,
+		},
+		{
+			name:         "Missing patient field is lenient",
+			fhirID:       "pat-1",
+			role:         constvars.KonsulinRolePatient,
+			resourceType: constvars.ResourceConsent,
+			body:         `{"resourceType":"Consent","status":"active"}`,
+			want:         true,
+		},
+		{
+			name:         "Missing individual field is lenient",
+			fhirID:       "pat-1",
+			role:         constvars.KonsulinRolePatient,
+			resourceType: constvars.ResourceResearchSubject,
+			body:         `{"resourceType":"ResearchSubject","status":"active"}`,
+			want:         true,
+		},
+		{
+			name:         "Non-Patient reference prefix in patient field is denied",
+			fhirID:       "pat-1",
+			role:         constvars.KonsulinRolePatient,
+			resourceType: constvars.ResourceConsent,
+			body:         `{"resourceType":"Consent","status":"active","patient":{"reference":"Practitioner/prac-1"}}`,
+			want:         false,
+		},
+		{
+			name:         "Non-Patient role is allowed",
+			fhirID:       "prac-1",
+			role:         constvars.KonsulinRolePractitioner,
+			resourceType: constvars.ResourceConsent,
+			body:         `{"resourceType":"Consent","status":"active","patient":{"reference":"Patient/pat-2"}}`,
+			want:         true,
+		},
+		{
+			name:         "Unrelated resource type is allowed",
+			fhirID:       "pat-1",
+			role:         constvars.KonsulinRolePatient,
+			resourceType: constvars.ResourceObservation,
+			body:         `{"resourceType":"Observation","subject":{"reference":"Patient/pat-2"}}`,
+			want:         true,
+		},
+		{
+			name:         "Empty body is allowed",
+			fhirID:       "pat-1",
+			role:         constvars.KonsulinRolePatient,
+			resourceType: constvars.ResourceConsent,
+			body:         ``,
+			want:         true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ownsPostBody(tt.fhirID, tt.role, tt.resourceType, []byte(tt.body))
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestOwnsResource_PostConsentOwnership(t *testing.T) {
+	// A Patient may POST a Consent only when patient.reference is their own id.
+	got := ownsResource(context.Background(), "pat-1", "/fhir/Consent", constvars.KonsulinRolePatient, constvars.MethodPost, nil, nil, nil, nil, nil,
+		[]byte(`{"resourceType":"Consent","status":"active","patient":{"reference":"Patient/pat-1"}}`))
+	assert.True(t, got, "Patient should own Consent POST referencing themselves")
+
+	got = ownsResource(context.Background(), "pat-1", "/fhir/Consent", constvars.KonsulinRolePatient, constvars.MethodPost, nil, nil, nil, nil, nil,
+		[]byte(`{"resourceType":"Consent","status":"active","patient":{"reference":"Patient/pat-2"}}`))
+	assert.False(t, got, "Patient must not POST a Consent for another patient")
+}
+
+func TestCheckPatientRefs_ResearchSubjectIndividual(t *testing.T) {
+	// PUT ownership for ResearchSubject relies on individual.reference.
+	assert.True(t, checkPatientRefs(`{"resourceType":"ResearchSubject","status":"active","individual":{"reference":"Patient/pat-1"}}`, "pat-1"),
+		"patient should own a ResearchSubject referencing themselves via individual")
+	assert.False(t, checkPatientRefs(`{"resourceType":"ResearchSubject","status":"active","individual":{"reference":"Patient/pat-2"}}`, "pat-1"),
+		"patient must not own a ResearchSubject referencing another patient")
+}
+
 func TestExtractPathResourceID(t *testing.T) {
 	tests := []struct {
 		name         string

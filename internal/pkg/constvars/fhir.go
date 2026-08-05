@@ -25,6 +25,8 @@ const (
 	ResourceQuestionnaire            = "Questionnaire"
 	ResourceQuestionnaireResponse    = "QuestionnaireResponse"
 	ResourceResearchStudy            = "ResearchStudy"
+	ResourceResearchSubject          = "ResearchSubject"
+	ResourceConsent                  = "Consent"
 	ResourceDevice                   = "Device"
 	ResourceLocation                 = "Location"
 	ResourceHealthcareService        = "HealthcareService"

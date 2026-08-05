@@ -77,7 +77,7 @@ func TestOwnsResourceFunction(t *testing.T) {
 			})
 		}
 
-		patientResources := []string{"Patient", "Appointment", "Observation", "Encounter"}
+		patientResources := []string{"Patient", "Appointment", "Observation", "Encounter", "ResearchSubject"}
 		for _, resource := range patientResources {
 			t.Run("PatientSpecific_"+resource, func(t *testing.T) {
 				assert.False(t, utils.IsPublicResource(resource), "%s should not be classified as public", resource)
@@ -86,7 +86,7 @@ func TestOwnsResourceFunction(t *testing.T) {
 		}
 
 		// Practitioner-owned resources that are neither public nor patient-owned.
-		practitionerResources := []string{"Communication", "Task", "Consent"}
+		practitionerResources := []string{"Communication", "Task"}
 		for _, resource := range practitionerResources {
 			t.Run("PractitionerSpecific_"+resource, func(t *testing.T) {
 				assert.False(t, utils.IsPublicResource(resource), "%s should not be classified as public", resource)
@@ -94,6 +94,13 @@ func TestOwnsResourceFunction(t *testing.T) {
 				assert.True(t, utils.RequiresPractitionerOwnership(resource), "%s should require practitioner ownership", resource)
 			})
 		}
+
+		// Consent is owned by both Patient and Practitioner (dual-owned).
+		t.Run("Consent_DualOwned", func(t *testing.T) {
+			assert.False(t, utils.IsPublicResource("Consent"), "Consent should not be classified as public")
+			assert.True(t, utils.RequiresPatientOwnership("Consent"), "Consent should require patient ownership")
+			assert.True(t, utils.RequiresPractitionerOwnership("Consent"), "Consent should require practitioner ownership")
+		})
 
 		// Practitioner and Schedule are public AND practitioner-owned (maps overlap).
 		for _, resource := range []string{"Practitioner", "Schedule"} {
