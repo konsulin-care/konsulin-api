@@ -69,16 +69,15 @@ func TestOwnsResourceFunction(t *testing.T) {
 
 	t.Run("Resource Type Classification", func(t *testing.T) {
 
-		publicResources := []string{"Questionnaire", "ResearchStudy", "Organization", "Location", "HealthcareService", "PractitionerRole", "Slot"}
+		publicResources := []string{"Questionnaire", "ResearchStudy", "Organization", "Location", "HealthcareService", "PractitionerRole", "Slot", "Practitioner", "Schedule"}
 		for _, resource := range publicResources {
 			t.Run("Public_"+resource, func(t *testing.T) {
 				assert.True(t, utils.IsPublicResource(resource), "%s should be classified as public", resource)
 				assert.False(t, utils.RequiresPatientOwnership(resource), "%s should not require patient ownership", resource)
-				assert.False(t, utils.RequiresPractitionerOwnership(resource), "%s should not require practitioner ownership", resource)
 			})
 		}
 
-		patientResources := []string{"Patient", "Appointment", "Observation", "QuestionnaireResponse", "Encounter"}
+		patientResources := []string{"Patient", "Appointment", "Observation", "Encounter"}
 		for _, resource := range patientResources {
 			t.Run("PatientSpecific_"+resource, func(t *testing.T) {
 				assert.False(t, utils.IsPublicResource(resource), "%s should not be classified as public", resource)
@@ -86,7 +85,8 @@ func TestOwnsResourceFunction(t *testing.T) {
 			})
 		}
 
-		practitionerResources := []string{"Practitioner", "Schedule"}
+		// Practitioner-owned resources that are neither public nor patient-owned.
+		practitionerResources := []string{"Communication", "Task", "Consent"}
 		for _, resource := range practitionerResources {
 			t.Run("PractitionerSpecific_"+resource, func(t *testing.T) {
 				assert.False(t, utils.IsPublicResource(resource), "%s should not be classified as public", resource)
@@ -94,6 +94,22 @@ func TestOwnsResourceFunction(t *testing.T) {
 				assert.True(t, utils.RequiresPractitionerOwnership(resource), "%s should require practitioner ownership", resource)
 			})
 		}
+
+		// Practitioner and Schedule are public AND practitioner-owned (maps overlap).
+		for _, resource := range []string{"Practitioner", "Schedule"} {
+			t.Run("PublicPractitionerOwned_"+resource, func(t *testing.T) {
+				assert.True(t, utils.IsPublicResource(resource), "%s should be classified as public", resource)
+				assert.True(t, utils.RequiresPractitionerOwnership(resource), "%s should require practitioner ownership", resource)
+			})
+		}
+
+		// QuestionnaireResponse has no static ownership classification: ownership is
+		// validated per-resource on writes (validateQuestionnaireResponseOwner in auth.go).
+		t.Run("QuestionnaireResponse_NoStaticOwnership", func(t *testing.T) {
+			assert.False(t, utils.IsPublicResource("QuestionnaireResponse"), "QuestionnaireResponse should not be classified as public")
+			assert.False(t, utils.RequiresPatientOwnership("QuestionnaireResponse"), "QuestionnaireResponse should not require patient ownership")
+			assert.False(t, utils.RequiresPractitionerOwnership("QuestionnaireResponse"), "QuestionnaireResponse should not require practitioner ownership")
+		})
 
 		testCases := []struct {
 			name     string
@@ -148,7 +164,13 @@ func TestOwnsResourceFunction(t *testing.T) {
 		assert.True(t, owns, "Practitioner should be able to access their own practitioner resource")
 
 		owns = ownsResource("practitioner-123", "/fhir/Practitioner/other-practitioner-456", constvars.KonsulinRolePractitioner, "GET")
-		assert.False(t, owns, "Practitioner should not be able to access other practitioners' resources")
+		assert.True(t, owns, "Practitioner is public directory data; another practitioner's profile is readable")
+
+		owns = ownsResource("practitioner-123", "/fhir/Encounter?practitioner=Practitioner/practitioner-123", constvars.KonsulinRolePractitioner, "GET")
+		assert.True(t, owns, "Practitioner should be able to access their own encounters")
+
+		owns = ownsResource("practitioner-123", "/fhir/Encounter?practitioner=Practitioner/other-practitioner-456", constvars.KonsulinRolePractitioner, "GET")
+		assert.False(t, owns, "Practitioner should not be able to access other practitioners' encounters")
 
 		owns = ownsResource("practitioner-123", "/fhir/PractitionerRole?practitioner=Practitioner/practitioner-123&_include=PractitionerRole:organization", constvars.KonsulinRolePractitioner, "GET")
 		assert.True(t, owns, "Practitioner should be able to access their own practitioner roles")
