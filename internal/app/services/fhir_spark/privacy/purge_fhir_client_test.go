@@ -220,4 +220,3 @@ func TestFindQuestionnaireResponseRefsByAuthor(t *testing.T) {
 	assert.Equal(t, "QuestionnaireResponse", refs[0].ResourceType)
 	assert.Equal(t, "qr-1", refs[0].ID)
 }
-

@@ -19,7 +19,7 @@ import (
 
 // mockPurgeClient is a configurable contracts.PurgeFhirClient for usecase tests.
 type mockPurgeClient struct {
-	everything   []contracts.ResourceRef
+	everything    []contracts.ResourceRef
 	everythingErr error
 
 	deleteErr   error
@@ -28,10 +28,10 @@ type mockPurgeClient struct {
 	stripErr   error
 	stripCalls int
 
-	commRefs   []contracts.ResourceRef
-	commErr    error
-	qrRefs     []contracts.ResourceRef
-	qrErr      error
+	commRefs []contracts.ResourceRef
+	commErr  error
+	qrRefs   []contracts.ResourceRef
+	qrErr    error
 }
 
 func (m *mockPurgeClient) GetPatientEverything(_ context.Context, _ string) ([]contracts.ResourceRef, error) {

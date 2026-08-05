@@ -40,7 +40,9 @@ type ctrlMockPatientClient struct {
 func (m *ctrlMockPatientClient) FindPatientByIdentifier(_ context.Context, _ string) ([]fhir_dto.Patient, error) {
 	return m.patients, m.err
 }
-func (*ctrlMockPatientClient) FindPatientByID(_ context.Context, _ string) (*fhir_dto.Patient, error) { return nil, nil }
+func (*ctrlMockPatientClient) FindPatientByID(_ context.Context, _ string) (*fhir_dto.Patient, error) {
+	return nil, nil
+}
 func (*ctrlMockPatientClient) FindPatientByEmail(_ context.Context, _ string) ([]fhir_dto.Patient, error) {
 	return nil, nil
 }

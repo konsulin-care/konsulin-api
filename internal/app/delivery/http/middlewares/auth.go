@@ -3,6 +3,7 @@ package middlewares
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"konsulin-service/internal/app/contracts"
@@ -111,6 +112,13 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 		}
 
 		if err := m.handleAuthSingleResource(ctxIface, r, roles); err != nil {
+			// Referral validation rejections are client-forbidden (403); all other
+			// authorization failures keep the default unauthorized (401) mapping.
+			var rfErr *referralForbiddenError
+			if errors.As(err, &rfErr) {
+				utils.BuildErrorResponse(m.Log, w, exceptions.BuildNewCustomError(err, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, "forbidden"))
+				return
+			}
 			utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
 			return
 		}

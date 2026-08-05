@@ -50,7 +50,7 @@ func NewPurgeFhirClient(baseUrl string, logger *zap.Logger) contracts.PurgeFhirC
 // bundlePage is the minimal slice of a FHIR bundle needed for id-only
 // enumeration: pagination links and raw entry payloads.
 type bundlePage struct {
-	Link  []struct {
+	Link []struct {
 		Relation string `json:"relation"`
 		URL      string `json:"url"`
 	} `json:"link"`

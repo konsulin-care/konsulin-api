@@ -11,6 +11,7 @@ import (
 	"konsulin-service/internal/pkg/fhir_dto"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func referralCommJSON(id, sender, recipient, batchRef, topicCode string) string {
@@ -154,6 +155,48 @@ func TestValidateReferralCommunication_ValidPatientToPatient(t *testing.T) {
 	id, body := validReferralBody()
 	err := mw.validateReferralCommunication(context.Background(), nil, []string{constvars.KonsulinRolePatient}, "referee-1", id, []byte(body))
 	assert.NoError(t, err)
+}
+
+// rejectionError asserts err is a *referralForbiddenError (mapped to 403 by the
+// Auth middleware) and returns it for further checks.
+func rejectionError(t *testing.T, err error) *referralForbiddenError {
+	t.Helper()
+	require.Error(t, err)
+	var rfErr *referralForbiddenError
+	require.ErrorAs(t, err, &rfErr, "referral rejections must map to 403, not the default 401")
+	return rfErr
+}
+
+func TestValidateReferralCommunication_RejectionsAreForbidden(t *testing.T) {
+	mw := newReferralTestMW()
+	t.Run("guest", func(t *testing.T) {
+		id, body := validReferralBody()
+		rejectionError(t, mw.validateReferralCommunication(context.Background(), nil, []string{constvars.KonsulinRoleGuest}, "", id, []byte(body)))
+	})
+	t.Run("practitioner", func(t *testing.T) {
+		id, body := validReferralBody()
+		rejectionError(t, mw.validateReferralCommunication(context.Background(), nil, []string{constvars.KonsulinRolePractitioner}, "prac-1", id, []byte(body)))
+	})
+	t.Run("forged hash", func(t *testing.T) {
+		urlID := "referral-" + "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+		body := referralCommJSON(urlID, "Patient/DG3F3STPYZ6HX25A", "Patient/referee-1", "PlanDefinition/batch-1", "research-referral")
+		rejectionError(t, mw.validateReferralCommunication(context.Background(), nil, []string{constvars.KonsulinRolePatient}, "referee-1", urlID, []byte(body)))
+	})
+	t.Run("unknown batch", func(t *testing.T) {
+		mw2 := newReferralTestMW()
+		mw2.PlanDefinitionFhirClient = &mockPlanDefinitionClient{batchExists: false}
+		id, body := validReferralBody()
+		rejectionError(t, mw2.validateReferralCommunication(context.Background(), nil, []string{constvars.KonsulinRolePatient}, "referee-1", id, []byte(body)))
+	})
+	t.Run("non-referral id", func(t *testing.T) {
+		body := referralCommJSON("some-other-id", "Patient/DG3F3STPYZ6HX25A", "Patient/referee-1", "PlanDefinition/batch-1", "research-referral")
+		rejectionError(t, mw.validateReferralCommunication(context.Background(), nil, []string{constvars.KonsulinRolePatient}, "referee-1", "some-other-id", []byte(body)))
+	})
+}
+
+func TestRejectReferralPOST_RejectionIsForbidden(t *testing.T) {
+	id, body := validReferralBody()
+	rejectionError(t, rejectReferralPOST(constvars.MethodPost, []byte(body), id))
 }
 
 func TestValidateReferralCommunication_GuestRejected(t *testing.T) {

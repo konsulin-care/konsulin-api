@@ -36,13 +36,26 @@ func isReferralID(id string) bool {
 	return strings.HasPrefix(id, ReferralIDPrefix)
 }
 
+// referralForbiddenError marks a referral validation rejection so the Auth
+// middleware can map it to 403 Forbidden instead of the default 401.
+type referralForbiddenError struct {
+	msg string
+}
+
+func (e *referralForbiddenError) Error() string { return e.msg }
+
+// referralForbidden builds a *referralForbiddenError with a formatted message.
+func referralForbidden(format string, args ...any) error {
+	return &referralForbiddenError{msg: fmt.Sprintf(format, args...)}
+}
+
 // rejectReferralPOST rejects POST creates that carry a referral- id. Referral
 // Communications are PUT-only, deterministic resources; a POST create with a
 // referral- id would let a caller forge an edge id (the hash would be ignored
 // by Blaze and the id would pass through unvalidated).
 func rejectReferralPOST(method string, body []byte, bodyID string) error {
 	if method == constvars.MethodPost && isReferralID(bodyID) {
-		return fmt.Errorf("forbidden: referral Communications cannot be created via POST")
+		return referralForbidden("forbidden: referral Communications cannot be created via POST")
 	}
 	return nil
 }
@@ -57,29 +70,29 @@ func rejectReferralPOST(method string, body []byte, bodyID string) error {
 // error, which the Auth middleware turns into a 403.
 func (m *Middlewares) validateReferralCommunication(ctx context.Context, r *http.Request, roles []string, fhirID, urlID string, body []byte) error {
 	if !isReferralID(urlID) {
-		return fmt.Errorf("forbidden: non-referral- ids are not validated as referral Communications")
+		return referralForbidden("forbidden: non-referral- ids are not validated as referral Communications")
 	}
 
 	// Patient session only: guests (ephemeral, untracked) and practitioners
 	// must not create referral edges in the research network graph.
 	if !hasRole(roles, constvars.KonsulinRolePatient) || hasRole(roles, constvars.KonsulinRolePractitioner) {
-		return fmt.Errorf("forbidden: referral Communication writes are patient-only")
+		return referralForbidden("forbidden: referral Communication writes are patient-only")
 	}
 	if fhirID == "" {
-		return fmt.Errorf("forbidden: referral Communication writes require a patient identity")
+		return referralForbidden("forbidden: referral Communication writes require a patient identity")
 	}
 
 	senderID, _, batchID, ok := validateReferralCommunicationBody(body, urlID, fhirID)
 	if !ok {
-		return fmt.Errorf("forbidden: invalid referral Communication")
+		return referralForbidden("forbidden: invalid referral Communication")
 	}
 
 	// Live checks: the sender must be a registered Patient, the batch must exist.
 	if _, err := m.PatientFhirClient.FindPatientByID(ctx, senderID); err != nil {
-		return fmt.Errorf("forbidden: referral sender is not a registered Patient")
+		return referralForbidden("forbidden: referral sender is not a registered Patient")
 	}
 	if _, err := m.PlanDefinitionFhirClient.FindPlanDefinitionByID(ctx, batchID); err != nil {
-		return fmt.Errorf("forbidden: referral batch PlanDefinition not found")
+		return referralForbidden("forbidden: referral batch PlanDefinition not found")
 	}
 
 	return nil

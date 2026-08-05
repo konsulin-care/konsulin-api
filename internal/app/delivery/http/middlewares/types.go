@@ -125,8 +125,8 @@ type Middlewares struct {
 	PractitionerRoleFhirClient      contracts.PractitionerRoleFhirClient
 	ScheduleFhirClient              contracts.ScheduleFhirClient
 	QuestionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient
-	PlanDefinitionFhirClient       contracts.PlanDefinitionFhirClient
-	Enforcer                       *casbin.Enforcer
+	PlanDefinitionFhirClient        contracts.PlanDefinitionFhirClient
+	Enforcer                        *casbin.Enforcer
 
 	// HTTPClient is a client for sending HTTP requests and can be reused for all requests.
 	HTTPClient *http.Client
