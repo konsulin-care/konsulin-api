@@ -19,8 +19,6 @@ import (
 	"go.uber.org/zap"
 )
 
-
-
 // handleAuthPostBody reads and validates the POST request body, restoring it for downstream use.
 func (m *Middlewares) handleAuthPostBody(ctxIface context.Context, r *http.Request, fhirRole, fhirID string) error {
 	body, _ := io.ReadAll(r.Body)
@@ -52,6 +50,7 @@ func (m *Middlewares) handleAuthBundle(ctxIface context.Context, r *http.Request
 // handleAuthSingleResource validates a single FHIR resource request.
 func (m *Middlewares) handleAuthSingleResource(ctxIface context.Context, r *http.Request, roles []string) error {
 	fullURL := r.URL.RequestURI()
+	fhirID, _ := ctxIface.Value(keyFHIRID).(string)
 
 	var resourceBody []byte
 	if r.Method == constvars.MethodPut || r.Method == constvars.MethodPost {
@@ -59,6 +58,21 @@ func (m *Middlewares) handleAuthSingleResource(ctxIface context.Context, r *http
 		_ = r.Body.Close()
 		resourceBody = body
 		r.Body = io.NopCloser(bytes.NewReader(body))
+	}
+
+	// B3: referral Communications are PUT-only, deterministic resources. A POST
+	// create carrying a referral- id would let a caller forge an edge id.
+	if err := rejectReferralPOST(r.Method, resourceBody, gjson.GetBytes(resourceBody, "id").String()); err != nil {
+		return err
+	}
+
+	// B3: validate referral Communication PUTs before any RBAC/ownership dispatch.
+	if r.Method == constvars.MethodPut {
+		if res, id := extractPathResourceID(fullURL); res == constvars.ResourceCommunication && isReferralID(id) {
+			if err := m.validateReferralCommunication(ctxIface, r, roles, fhirID, id, resourceBody); err != nil {
+				return err
+			}
+		}
 	}
 
 	return checkSingle(ctxIface, m.Enforcer, r.Method, fullURL, roles, ctxIface.Value(keyFHIRID).(string), m.PatientFhirClient, m.PractitionerFhirClient, m.PractitionerRoleFhirClient, m.ScheduleFhirClient, m.QuestionnaireResponseFhirClient, resourceBody)
@@ -338,6 +352,15 @@ func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, ro
 	normalizedPath := normalizePath(url)
 	resourceType := utils.ExtractResourceTypeFromPath(normalizedPath)
 
+	// C3: entry-level QuestionnaireResponse / Communication GET reads must carry
+	// an identity scope (aggregate _summary=count stays public). Closes the
+	// open-endpoint hole where a bare query returned every response.
+	if method == http.MethodGet && isScopedEntryResource(resourceType) {
+		if !allowScopedEntryRead(roles, fhirID, url, resourceType) {
+			return fmt.Errorf("forbidden: entry-level %s read requires an identity scope", resourceType)
+		}
+	}
+
 	// direct request to public resource is allowed to bypass RBAC checks
 	// but only for GET requests to avoid unwanted modifications
 	if utils.IsPublicResource(resourceType) && method == http.MethodGet {
@@ -366,6 +389,70 @@ func allowed(e *casbin.Enforcer, role, method, path string) bool {
 		return false
 	}
 	return ok
+}
+
+// isScopedEntryResource reports whether the resource type is one whose
+// entry-level (search) GET reads must carry an identity scope.
+func isScopedEntryResource(resourceType string) bool {
+	return resourceType == constvars.ResourceQuestionnaireResponse ||
+		resourceType == constvars.ResourceCommunication
+}
+
+// queryHasOwnRef reports whether any of the given query params reference the
+// provided FHIR id, tolerating the "Patient/" prefix.
+func queryHasOwnRef(q url.Values, fhirID string, params ...string) bool {
+	for _, key := range params {
+		val := q.Get(key)
+		if val == "" {
+			continue
+		}
+		val = strings.TrimPrefix(val, constvars.FHIRRefPrefixPatient)
+		if val == fhirID {
+			return true
+		}
+	}
+	return false
+}
+
+// allowScopedEntryRead enforces that entry-level QuestionnaireResponse /
+// Communication GET reads carry an identity scope. Aggregate `_summary=count`
+// queries stay public (social-proof counts). Practitioners keep their existing
+// authz, and single-resource reads (no query) are untouched. Patients must
+// scope QR reads to their own author/patient/subject and Communication reads
+// to their own sender; guests may read QRs only via an anonymous identifier.
+func allowScopedEntryRead(roles []string, fhirID, rawURL, resourceType string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+
+	// No query -> not an entry-level search (single-resource read) -> exempt.
+	if u.RawQuery == "" {
+		return true
+	}
+
+	// Aggregate counts are public social-proof data.
+	if u.Query().Get("_summary") == "count" {
+		return true
+	}
+
+	// Practitioners keep their existing (stricter) practitioner authz.
+	if hasRole(roles, constvars.KonsulinRolePractitioner) {
+		return true
+	}
+
+	switch resourceType {
+	case constvars.ResourceQuestionnaireResponse:
+		if fhirID != "" {
+			return queryHasOwnRef(u.Query(), fhirID, "author", "patient", "subject")
+		}
+		// Guest / anonymous reads must present an identifier scope.
+		return u.Query().Get("identifier") != ""
+	case constvars.ResourceCommunication:
+		// Only a patient reading their own referral Communications.
+		return fhirID != "" && queryHasOwnRef(u.Query(), fhirID, "sender")
+	}
+	return true
 }
 
 func normalizePath(rawURL string) string {

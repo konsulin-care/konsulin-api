@@ -87,6 +87,7 @@ const (
 
 const (
 	LoggingQuestionnaireResponseIDKey    = "questionnaire_response_id"
+	LoggingPlanDefinitionIDKey           = "plan_definition_id"
 	LoggingQuestionnaireResponseCountKey = "questionnaire_response_count"
 )
 

@@ -20,6 +20,7 @@ import (
 	"konsulin-service/internal/app/services/core/webhook"
 	bundle "konsulin-service/internal/app/services/fhir_spark/bundle"
 	invoicesFhir "konsulin-service/internal/app/services/fhir_spark/invoices"
+	planDefinitionsFhir "konsulin-service/internal/app/services/fhir_spark/plan_definitions"
 	organizationsFhir "konsulin-service/internal/app/services/fhir_spark/organizations"
 	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/persons"
@@ -183,6 +184,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	slotClient := slotFhir.NewSlotFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	serviceRequestFhirClient := service_requests.NewServiceRequestFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	questionnaireResponseFhirClient := questionnaireResponsesFhir.NewQuestionnaireResponseFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	planDefinitionFhirClient := planDefinitionsFhir.NewPlanDefinitionFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 
 	jwtManager, err := jwtmanager.NewJWTManager(bootstrap.InternalConfig, bootstrap.Logger)
 	if err != nil {
@@ -238,6 +240,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		practitionerRoleClient,
 		scheduleClient,
 		questionnaireResponseFhirClient,
+		planDefinitionFhirClient,
 	)
 
 	// Initialize supertokens

@@ -96,6 +96,7 @@ func NewMiddlewares(
 	practitionerRoleFhirClient contracts.PractitionerRoleFhirClient,
 	scheduleFhirClient contracts.ScheduleFhirClient,
 	questionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient,
+	planDefinitionFhirClient contracts.PlanDefinitionFhirClient,
 ) *Middlewares {
 	enforcer := newEnforcer(logger)
 	startPolicyWatcher(enforcer, logger)
@@ -108,6 +109,7 @@ func NewMiddlewares(
 		PractitionerRoleFhirClient:      practitionerRoleFhirClient,
 		ScheduleFhirClient:              scheduleFhirClient,
 		QuestionnaireResponseFhirClient: questionnaireResponseFhirClient,
+		PlanDefinitionFhirClient:        planDefinitionFhirClient,
 		Enforcer:                        enforcer,
 		HTTPClient:                      newHTTPClient(),
 	}
@@ -123,7 +125,8 @@ type Middlewares struct {
 	PractitionerRoleFhirClient      contracts.PractitionerRoleFhirClient
 	ScheduleFhirClient              contracts.ScheduleFhirClient
 	QuestionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient
-	Enforcer                        *casbin.Enforcer
+	PlanDefinitionFhirClient       contracts.PlanDefinitionFhirClient
+	Enforcer                       *casbin.Enforcer
 
 	// HTTPClient is a client for sending HTTP requests and can be reused for all requests.
 	HTTPClient *http.Client

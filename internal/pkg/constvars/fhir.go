@@ -34,6 +34,8 @@ const (
 	ResourcePaymentNotice            = "PaymentNotice"
 	ResourceMedicationRequest        = "MedicationRequest"
 	ResourceMedicationAdministration = "MedicationAdministration"
+	ResourceCommunication            = "Communication"
+	ResourcePlanDefinition           = "PlanDefinition"
 )
 
 const (
