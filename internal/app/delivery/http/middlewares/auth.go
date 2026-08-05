@@ -377,6 +377,17 @@ func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, ro
 		}
 	}
 
+	// B3: referral Communication PUTs are fully validated in
+	// handleAuthSingleResource (deterministic body + live sender/batch checks,
+	// patient-only). Allow them through the RBAC/ownership dispatch — the policy
+	// grants nobody a PUT on Communication, and non-referral Communication
+	// writes stay rejected below.
+	if method == constvars.MethodPut && resourceType == constvars.ResourceCommunication {
+		if _, id := extractPathResourceID(normalizedPath); isReferralID(id) {
+			return nil
+		}
+	}
+
 	// direct request to public resource is allowed to bypass RBAC checks
 	// but only for GET requests to avoid unwanted modifications
 	if utils.IsPublicResource(resourceType) && method == http.MethodGet {

@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"konsulin-service/internal/app/contracts"
@@ -197,6 +200,66 @@ func TestValidateReferralCommunication_RejectionsAreForbidden(t *testing.T) {
 func TestRejectReferralPOST_RejectionIsForbidden(t *testing.T) {
 	id, body := validReferralBody()
 	rejectionError(t, rejectReferralPOST(constvars.MethodPost, []byte(body), id))
+}
+
+// --- B3 wiring: handleAuthSingleResource end-to-end through the gate ---
+
+// newWiringMW returns a Middlewares whose referral paths never reach the
+// enforcer (validated referral PUTs are short-circuited in checkSingle before
+// any enforcer call), so a nil Enforcer is safe here.
+func newWiringMW() *Middlewares {
+	mw := newReferralTestMW()
+	mw.Enforcer = nil
+	return mw
+}
+
+func newAuthSingleResourceRequest(t *testing.T, method, path, body string) (*http.Request, context.Context) {
+	t.Helper()
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	ctx := context.WithValue(req.Context(), keyFHIRID, "referee-1")
+	ctx = context.WithValue(ctx, keyRoles, []string{constvars.KonsulinRolePatient})
+	return req, ctx
+}
+
+func TestHandleAuthSingleResource_ValidReferralPUTPasses(t *testing.T) {
+	mw := newWiringMW()
+	id, body := validReferralBody()
+	req, ctx := newAuthSingleResourceRequest(t, http.MethodPut, "/fhir/Communication/"+id, body)
+
+	err := mw.handleAuthSingleResource(ctx, req, []string{constvars.KonsulinRolePatient})
+	assert.NoError(t, err, "a valid patient referral PUT must pass the gate and RBAC dispatch")
+}
+
+func TestHandleAuthSingleResource_InvalidReferralPUTRejected(t *testing.T) {
+	mw := newWiringMW()
+	id, _ := validReferralBody()
+	body := referralCommJSON(id, "Patient/DG3F3STPYZ6HX25A", "Patient/referee-1", "PlanDefinition/batch-1", "general") // wrong topic
+	req, ctx := newAuthSingleResourceRequest(t, http.MethodPut, "/fhir/Communication/"+id, body)
+
+	err := mw.handleAuthSingleResource(ctx, req, []string{constvars.KonsulinRolePatient})
+	rejectionError(t, err)
+	assert.Contains(t, err.Error(), "invalid referral")
+}
+
+func TestHandleAuthSingleResource_ReferralPOSTRejected(t *testing.T) {
+	mw := newWiringMW()
+	_, body := validReferralBody()
+	req, ctx := newAuthSingleResourceRequest(t, http.MethodPost, "/fhir/Communication", body)
+
+	err := mw.handleAuthSingleResource(ctx, req, []string{constvars.KonsulinRolePatient})
+	rejectionError(t, err)
+	assert.Contains(t, err.Error(), "POST")
+}
+
+func TestHandleAuthSingleResource_NonReferralCommunicationPUTStillForbidden(t *testing.T) {
+	// A non-referral Communication PUT by a patient is not referral-validated and
+	// must remain rejected by RBAC (no policy grants Communication PUTs).
+	mw := newWiringMW()
+	req, ctx := newAuthSingleResourceRequest(t, http.MethodPut, "/fhir/Communication/some-other-id",
+		`{"resourceType":"Communication","id":"some-other-id","status":"completed"}`)
+
+	err := mw.handleAuthSingleResource(ctx, req, []string{constvars.KonsulinRolePatient})
+	assert.Error(t, err, "non-referral Communication writes must stay forbidden")
 }
 
 func TestValidateReferralCommunication_GuestRejected(t *testing.T) {
