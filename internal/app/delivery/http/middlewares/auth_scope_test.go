@@ -9,7 +9,9 @@ import (
 
 // C3: entry-level QuestionnaireResponse/Communication reads must carry an
 // identity scope. Aggregate `_summary=count` stays public. Practitioners keep
-// their existing authz. Single-resource reads (no query) are untouched.
+// their existing authz. Researchers must scope Communication reads to referral
+// data (sender/recipient/topic/subject); Superadmin is exempt. Single-resource
+// reads (no query) are untouched.
 
 func TestAllowScopedEntryRead_QRCountPublic(t *testing.T) {
 	// Aggregate counts are public social-proof data for any caller.
@@ -120,4 +122,60 @@ func TestAllowScopedEntryRead_OtherResourcesExempt(t *testing.T) {
 func TestHasRole_Helper(t *testing.T) {
 	assert.True(t, hasRole([]string{constvars.KonsulinRolePatient, "x"}, constvars.KonsulinRolePatient))
 	assert.False(t, hasRole([]string{constvars.KonsulinRoleGuest}, constvars.KonsulinRolePatient))
+}
+
+func TestAllowScopedEntryRead_PatientOwnCommunicationByRecipient(t *testing.T) {
+	// Referral writes validate recipient == session patient, so a patient must
+	// be able to read Communications scoped to their own recipient id.
+	ok := allowScopedEntryRead([]string{constvars.KonsulinRolePatient}, "pat-1",
+		"/Communication?recipient=Patient/pat-1&topic=research-referral", constvars.ResourceCommunication)
+	assert.True(t, ok)
+}
+
+func TestAllowScopedEntryRead_PatientOwnCommunicationByRecipientList(t *testing.T) {
+	// FHIR reference search params accept comma-joined values; a patient whose
+	// id appears anywhere in the list must pass the ownership scope.
+	ok := allowScopedEntryRead([]string{constvars.KonsulinRolePatient}, "pat-1",
+		"/Communication?recipient=Patient/pat-2,Patient/pat-1", constvars.ResourceCommunication)
+	assert.True(t, ok)
+}
+
+func TestAllowScopedEntryRead_PatientDeniedOthersRecipient(t *testing.T) {
+	ok := allowScopedEntryRead([]string{constvars.KonsulinRolePatient}, "pat-1",
+		"/Communication?recipient=Patient/pat-2", constvars.ResourceCommunication)
+	assert.False(t, ok)
+}
+
+func TestAllowScopedEntryRead_ResearcherScopedBySender(t *testing.T) {
+	ok := allowScopedEntryRead([]string{constvars.KonsulinRoleResearcher}, "",
+		"/Communication?sender=Patient/pat-1&topic=research-referral", constvars.ResourceCommunication)
+	assert.True(t, ok)
+}
+
+func TestAllowScopedEntryRead_ResearcherScopedByTopicOnly(t *testing.T) {
+	ok := allowScopedEntryRead([]string{constvars.KonsulinRoleResearcher}, "",
+		"/Communication?topic=research-referral", constvars.ResourceCommunication)
+	assert.True(t, ok)
+}
+
+func TestAllowScopedEntryRead_ResearcherRejectedWithoutScope(t *testing.T) {
+	// A bare Communication query by a Researcher must be denied: no scope
+	// param means the read is not anchored to any referral data.
+	ok := allowScopedEntryRead([]string{constvars.KonsulinRoleResearcher}, "",
+		"/Communication?_count=500", constvars.ResourceCommunication)
+	assert.False(t, ok)
+}
+
+func TestAllowScopedEntryRead_SuperadminExempt(t *testing.T) {
+	// Superadmin is trusted and may read unscoped; the response field filter is
+	// the abuse guard for that role.
+	ok := allowScopedEntryRead([]string{constvars.KonsulinRoleSuperadmin}, "",
+		"/Communication?_count=500", constvars.ResourceCommunication)
+	assert.True(t, ok)
+}
+
+func TestAllowScopedEntryRead_GuestStillDeniedCommunication(t *testing.T) {
+	ok := allowScopedEntryRead([]string{constvars.KonsulinRoleGuest}, "",
+		"/Communication?topic=research-referral", constvars.ResourceCommunication)
+	assert.False(t, ok)
 }

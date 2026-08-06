@@ -79,6 +79,7 @@ func RequiresPatientOwnership(resourceType string) bool {
 		"Invoice":                  true,
 		"Consent":                  true,
 		"ResearchSubject":          true,
+		"Communication":            true,
 	}
 
 	return patientSpecificResources[resourceType]

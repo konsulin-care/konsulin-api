@@ -190,6 +190,12 @@ func (m *Middlewares) validatePostRequestBody(ctx context.Context, body []byte, 
 
 	resourceTypeFromPath := utils.ExtractResourceTypeFromPath("/fhir/" + resourceType)
 
+	// Communication sender must be the patient themselves; a patient must not
+	// create a Communication impersonating another sender.
+	if resourceTypeFromPath == constvars.ResourceCommunication && fhirRole == constvars.KonsulinRolePatient {
+		return m.validateCommunicationSenderInBody(body, fhirID)
+	}
+
 	if utils.RequiresPatientOwnership(resourceTypeFromPath) && fhirRole == constvars.KonsulinRolePatient {
 		return m.validatePatientOwnershipInBody(body, fhirID)
 	}
@@ -199,6 +205,22 @@ func (m *Middlewares) validatePostRequestBody(ctx context.Context, body []byte, 
 	}
 
 	return nil
+}
+
+// validateCommunicationSenderInBody enforces that a Communication POST body's
+// sender references the caller's own Patient ID. A missing sender is lenient
+// (nil); a malformed reference or a mismatched patient is an error.
+func (m *Middlewares) validateCommunicationSenderInBody(body []byte, patientID string) error {
+	return validateBodyFieldRef(body, "sender", patientID, constvars.ResourcePatient)
+}
+
+// validatePatientCommunicationSender reports whether a Communication resource
+// is owned by the given patient via its sender reference. Missing or mismatched
+// senders are not owned.
+func validatePatientCommunicationSender(resourceStr, fhirID string) bool {
+	senderRef := gjson.Get(resourceStr, "sender.reference").String()
+	return strings.HasPrefix(senderRef, constvars.FHIRRefPrefixPatient) &&
+		strings.TrimPrefix(senderRef, constvars.FHIRRefPrefixPatient) == fhirID
 }
 
 func (m *Middlewares) validatePatientOwnershipInBody(body []byte, patientID string) error {
@@ -464,16 +486,17 @@ func isScopedEntryResource(resourceType string) bool {
 }
 
 // queryHasOwnRef reports whether any of the given query params reference the
-// provided FHIR id, tolerating the "Patient/" prefix.
+// provided FHIR id, tolerating the "Patient/" prefix. Every value of a param
+// is scanned, including comma-separated FHIR reference lists.
 func queryHasOwnRef(q url.Values, fhirID string, params ...string) bool {
 	for _, key := range params {
-		val := q.Get(key)
-		if val == "" {
-			continue
-		}
-		val = strings.TrimPrefix(val, constvars.FHIRRefPrefixPatient)
-		if val == fhirID {
-			return true
+		for _, val := range q[key] {
+			for _, v := range strings.Split(val, ",") {
+				v = strings.TrimPrefix(v, constvars.FHIRRefPrefixPatient)
+				if v == fhirID {
+					return true
+				}
+			}
 		}
 	}
 	return false
@@ -514,8 +537,26 @@ func allowScopedEntryRead(roles []string, fhirID, rawURL, resourceType string) b
 		// Guest / anonymous reads must present an identifier scope.
 		return u.Query().Get("identifier") != ""
 	case constvars.ResourceCommunication:
-		// Only a patient reading their own referral Communications.
-		return fhirID != "" && queryHasOwnRef(u.Query(), fhirID, "sender")
+		// Patients may read their own referral Communications, scoped to their
+		// own sender or recipient id (referral writes anchor the session
+		// patient as recipient).
+		if fhirID != "" {
+			return queryHasOwnRef(u.Query(), fhirID, "sender") ||
+				queryHasOwnRef(u.Query(), fhirID, "recipient")
+		}
+		// Researchers must anchor their read to referral data (sender,
+		// recipient, topic, or subject); a bare query is denied.
+		if hasRole(roles, constvars.KonsulinRoleResearcher) {
+			q := u.Query()
+			return q.Get("sender") != "" || q.Get("recipient") != "" ||
+				q.Get("topic") != "" || q.Get("subject") != ""
+		}
+		// Superadmin may read unscoped; the response field filter (proxy.go)
+		// is the abuse guard for that role.
+		if hasRole(roles, constvars.KonsulinRoleSuperadmin) {
+			return true
+		}
+		return false
 	}
 	return true
 }
@@ -557,6 +598,8 @@ func validatePatientResourceOwnership(ctx context.Context, fhirID, resourceType 
 		return validatePatientSlotResource(resourceStr)
 	case constvars.ResourceQuestionnaireResponse:
 		return validateQuestionnaireResponseOwner(ctx, fhirID, resourceStr, questionnaireResponseClient)
+	case constvars.ResourceCommunication:
+		return validatePatientCommunicationSender(resourceStr, fhirID)
 	case constvars.ResourcePatient:
 		return gjson.Get(resourceStr, "id").String() == fhirID
 	default:

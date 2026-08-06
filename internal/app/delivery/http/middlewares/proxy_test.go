@@ -1,6 +1,7 @@
 package middlewares
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"konsulin-service/internal/pkg/constvars"
 
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
@@ -381,4 +384,105 @@ type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
+}
+
+func TestStripCommunicationFields_SingleResource(t *testing.T) {
+	body := `{"resourceType":"Communication","id":"comm-1","meta":{"versionId":"1","lastUpdated":"2025-01-01T00:00:00Z"},"status":"completed","topic":{"coding":[{"system":"http://konsulin.care/fhir/CodeSystem/research-referral","code":"research-referral"}]},"subject":{"reference":"Patient/pat-1"},"sender":{"reference":"Patient/pat-1"},"recipient":[{"reference":"Patient/pat-2"}],"sent":"2025-01-01T00:00:00Z","received":"2025-01-02T00:00:00Z","payload":[{"contentString":"sensitive"}]}`
+
+	out, mutated := stripCommunicationFields([]byte(body))
+	assert.True(t, mutated, "a Communication must be marked mutated")
+
+	var m map[string]any
+	if !assert.NoError(t, json.Unmarshal(out, &m)) {
+		return
+	}
+	assert.Equal(t, "Communication", m["resourceType"])
+	assert.Equal(t, "comm-1", m["id"])
+	assert.NotNil(t, m["meta"])
+	assert.NotNil(t, m["sender"])
+	assert.NotNil(t, m["recipient"])
+	assert.NotNil(t, m["sent"])
+	assert.NotNil(t, m["received"])
+	assert.NotContains(t, m, "status")
+	assert.NotContains(t, m, "topic")
+	assert.NotContains(t, m, "subject")
+	assert.NotContains(t, m, "payload")
+}
+
+func TestStripCommunicationFields_BundleMixedEntries(t *testing.T) {
+	body := `{"resourceType":"Bundle","type":"searchset","total":2,"entry":[
+		{"resource":{"resourceType":"Communication","id":"comm-1","status":"completed","sender":{"reference":"Patient/pat-1"},"recipient":[{"reference":"Patient/pat-2"}],"payload":[{"contentString":"secret"}]}},
+		{"resource":{"resourceType":"Patient","id":"pat-1","name":[{"family":"Doe"}]}}
+	]}`
+
+	out, mutated := stripCommunicationFields([]byte(body))
+	assert.True(t, mutated, "bundle with a Communication entry must be marked mutated")
+
+	var b struct {
+		Entry []struct {
+			Resource map[string]any `json:"resource"`
+		} `json:"entry"`
+	}
+	if !assert.NoError(t, json.Unmarshal(out, &b)) {
+		return
+	}
+	assert.Len(t, b.Entry, 2)
+
+	comm := b.Entry[0].Resource
+	assert.Equal(t, "Communication", comm["resourceType"])
+	assert.NotContains(t, comm, "status")
+	assert.NotContains(t, comm, "payload")
+	assert.NotNil(t, comm["sender"])
+
+	pat := b.Entry[1].Resource
+	assert.Equal(t, "Patient", pat["resourceType"])
+	assert.NotNil(t, pat["name"], "non-Communication entries must be untouched")
+}
+
+func TestStripCommunicationFields_NonCommunicationUntouched(t *testing.T) {
+	body := `{"resourceType":"Observation","id":"obs-1","status":"final"}`
+	out, mutated := stripCommunicationFields([]byte(body))
+	assert.False(t, mutated)
+	assert.Equal(t, body, string(out))
+}
+
+func TestShouldStripCommunicationFields(t *testing.T) {
+	ownSender, _ := url.Parse("/fhir/Communication?sender=Patient/pat-1&topic=research-referral")
+	ownRecipient, _ := url.Parse("/fhir/Communication?recipient=Patient/pat-1&topic=research-referral")
+	crossPatient, _ := url.Parse("/fhir/Communication?sender=Patient/pat-2&topic=research-referral")
+	bare, _ := url.Parse("/fhir/Communication")
+
+	t.Run("patient scoped to own sender keeps full fields", func(t *testing.T) {
+		assert.False(t, shouldStripCommunicationFields([]string{constvars.KonsulinRolePatient}, "pat-1", ownSender))
+	})
+
+	t.Run("patient scoped to own recipient keeps full fields", func(t *testing.T) {
+		assert.False(t, shouldStripCommunicationFields([]string{constvars.KonsulinRolePatient}, "pat-1", ownRecipient))
+	})
+
+	t.Run("researcher strips fields", func(t *testing.T) {
+		assert.True(t, shouldStripCommunicationFields([]string{constvars.KonsulinRoleResearcher}, "", crossPatient))
+	})
+
+	t.Run("superadmin strips fields", func(t *testing.T) {
+		assert.True(t, shouldStripCommunicationFields([]string{constvars.KonsulinRoleSuperadmin}, "", bare))
+	})
+
+	t.Run("patient+researcher on own data keeps full fields", func(t *testing.T) {
+		assert.False(t, shouldStripCommunicationFields(
+			[]string{constvars.KonsulinRolePatient, constvars.KonsulinRoleResearcher}, "pat-1", ownSender))
+	})
+
+	t.Run("patient+researcher on cross-patient query strips fields", func(t *testing.T) {
+		assert.True(t, shouldStripCommunicationFields(
+			[]string{constvars.KonsulinRolePatient, constvars.KonsulinRoleResearcher}, "pat-1", crossPatient))
+	})
+
+	t.Run("guest never strips", func(t *testing.T) {
+		assert.False(t, shouldStripCommunicationFields([]string{constvars.KonsulinRoleGuest}, "", bare))
+	})
+
+	t.Run("practitioner never strips", func(t *testing.T) {
+		assert.False(t, shouldStripCommunicationFields([]string{constvars.KonsulinRolePractitioner}, "prac-1", bare))
+	})
 }

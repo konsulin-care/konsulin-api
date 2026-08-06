@@ -86,7 +86,7 @@ func TestOwnsResourceFunction(t *testing.T) {
 		}
 
 		// Practitioner-owned resources that are neither public nor patient-owned.
-		practitionerResources := []string{"Communication", "Task"}
+		practitionerResources := []string{"Task"}
 		for _, resource := range practitionerResources {
 			t.Run("PractitionerSpecific_"+resource, func(t *testing.T) {
 				assert.False(t, utils.IsPublicResource(resource), "%s should not be classified as public", resource)
@@ -100,6 +100,16 @@ func TestOwnsResourceFunction(t *testing.T) {
 			assert.False(t, utils.IsPublicResource("Consent"), "Consent should not be classified as public")
 			assert.True(t, utils.RequiresPatientOwnership("Consent"), "Consent should require patient ownership")
 			assert.True(t, utils.RequiresPractitionerOwnership("Consent"), "Consent should require practitioner ownership")
+		})
+
+		// Communication is dual-owned by Patient and Practitioner (like Consent):
+		// patients read their own referrals and researchers get field-filtered
+		// reads, so the response ownership filter must keep patient-owned
+		// Communications instead of stripping them as practitioner-only.
+		t.Run("Communication_DualOwned", func(t *testing.T) {
+			assert.False(t, utils.IsPublicResource("Communication"), "Communication should not be classified as public")
+			assert.True(t, utils.RequiresPatientOwnership("Communication"), "Communication should require patient ownership")
+			assert.True(t, utils.RequiresPractitionerOwnership("Communication"), "Communication should require practitioner ownership")
 		})
 
 		// Practitioner and Schedule are public AND practitioner-owned (maps overlap).

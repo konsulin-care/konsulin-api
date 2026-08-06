@@ -443,3 +443,52 @@ func TestExtractPathResourceID(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateCommunicationSenderInBody(t *testing.T) {
+	mw := &Middlewares{}
+
+	t.Run("own sender passes", func(t *testing.T) {
+		body := `{"resourceType":"Communication","status":"completed","sender":{"reference":"Patient/pat-1"},"recipient":[{"reference":"Patient/pat-2"}]}`
+		assert.NoError(t, mw.validateCommunicationSenderInBody([]byte(body), "pat-1"))
+	})
+
+	t.Run("other patient sender rejected", func(t *testing.T) {
+		body := `{"resourceType":"Communication","status":"completed","sender":{"reference":"Patient/pat-2"}}`
+		err := mw.validateCommunicationSenderInBody([]byte(body), "pat-1")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "pat-2")
+	})
+
+	t.Run("missing sender is lenient", func(t *testing.T) {
+		body := `{"resourceType":"Communication","status":"completed","recipient":[{"reference":"Patient/pat-2"}]}`
+		assert.NoError(t, mw.validateCommunicationSenderInBody([]byte(body), "pat-1"))
+	})
+
+	t.Run("non-patient sender rejected", func(t *testing.T) {
+		body := `{"resourceType":"Communication","status":"completed","sender":{"reference":"Practitioner/prac-1"}}`
+		err := mw.validateCommunicationSenderInBody([]byte(body), "pat-1")
+		assert.Error(t, err)
+	})
+}
+
+func TestValidatePatientCommunicationSender(t *testing.T) {
+	t.Run("own sender passes", func(t *testing.T) {
+		body := `{"resourceType":"Communication","status":"completed","sender":{"reference":"Patient/pat-1"},"recipient":[{"reference":"Patient/pat-2"}]}`
+		assert.True(t, validatePatientCommunicationSender(body, "pat-1"))
+	})
+
+	t.Run("other patient sender rejected", func(t *testing.T) {
+		body := `{"resourceType":"Communication","status":"completed","sender":{"reference":"Patient/pat-2"}}`
+		assert.False(t, validatePatientCommunicationSender(body, "pat-1"))
+	})
+
+	t.Run("missing sender rejected", func(t *testing.T) {
+		body := `{"resourceType":"Communication","status":"completed","recipient":[{"reference":"Patient/pat-2"}]}`
+		assert.False(t, validatePatientCommunicationSender(body, "pat-1"))
+	})
+
+	t.Run("non-patient sender rejected", func(t *testing.T) {
+		body := `{"resourceType":"Communication","status":"completed","sender":{"reference":"Practitioner/prac-1"}}`
+		assert.False(t, validatePatientCommunicationSender(body, "pat-1"))
+	})
+}

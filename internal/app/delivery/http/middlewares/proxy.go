@@ -244,7 +244,95 @@ func (m *Middlewares) filterFHIRResponse(ctx context.Context, resp *http.Respons
 		}
 	}
 
+	// Researcher and Superadmin reads of Communication resources are reduced
+	// to non-sensitive fields (sender/recipient/sent/received + envelope).
+	// Patient reads scoped to their own sender/recipient keep full fields.
+	if rMethod := resp.Request.Method; rMethod == http.MethodGet &&
+		shouldStripCommunicationFields(roles, fhirID, resp.Request.URL) {
+		bodyAfterFilters, mutated = stripCommunicationFields(bodyAfterFilters)
+	}
+
 	return bodyAfterFilters, enc, mutated, nil
+}
+
+// communicationAllowedFields is the whitelist kept when a Researcher or
+// Superadmin reads Communication resources. Every other field (status, topic,
+// subject, payload, ...) may carry sensitive content and is stripped.
+var communicationAllowedFields = []string{"resourceType", "id", "meta", "sender", "recipient", "sent", "received"}
+
+// shouldStripCommunicationFields reports whether a Communication GET response
+// must be reduced to non-sensitive fields. Patients scoped to their own
+// sender/recipient keep full fields (ownership-checked); Researcher and
+// Superadmin calls are stripped to communicationAllowedFields.
+func shouldStripCommunicationFields(roles []string, fhirID string, u *url.URL) bool {
+	if fhirID != "" && (queryHasOwnRef(u.Query(), fhirID, "sender", "recipient")) {
+		return false
+	}
+	return hasRole(roles, constvars.KonsulinRoleResearcher) ||
+		hasRole(roles, constvars.KonsulinRoleSuperadmin)
+}
+
+// stripCommunicationFields reduces Communication resources in a response body
+// to communicationAllowedFields. A single Communication resource or each
+// Communication entry inside a Bundle is stripped; non-Communication resources
+// are left untouched. Returns (body, mutated) where mutated reports whether any
+// resource was rewritten.
+func stripCommunicationFields(body []byte) ([]byte, bool) {
+	switch extractResourceTypeFromJSON(body) {
+	case constvars.ResourceCommunication:
+		stripped, ok := stripSingleCommunication(body)
+		if !ok {
+			return body, false
+		}
+		return stripped, true
+	case "Bundle":
+		var bundle Bundle
+		if err := json.Unmarshal(body, &bundle); err != nil {
+			return body, false
+		}
+		mutated := false
+		for i := range bundle.Entry {
+			if extractResourceTypeFromJSON(bundle.Entry[i].Resource) != constvars.ResourceCommunication {
+				continue
+			}
+			stripped, ok := stripSingleCommunication(bundle.Entry[i].Resource)
+			if !ok {
+				continue
+			}
+			bundle.Entry[i].Resource = stripped
+			mutated = true
+		}
+		if !mutated {
+			return body, false
+		}
+		out, err := json.Marshal(bundle)
+		if err != nil {
+			return body, false
+		}
+		return out, true
+	default:
+		return body, false
+	}
+}
+
+// stripSingleCommunication keeps only communicationAllowedFields from a
+// Communication resource. Returns (nil, false) on parse or marshal failure.
+func stripSingleCommunication(raw json.RawMessage) ([]byte, bool) {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, false
+	}
+	out := make(map[string]json.RawMessage, len(communicationAllowedFields))
+	for _, k := range communicationAllowedFields {
+		if v, ok := m[k]; ok {
+			out[k] = v
+		}
+	}
+	res, err := json.Marshal(out)
+	if err != nil {
+		return nil, false
+	}
+	return res, true
 }
 
 // applyOwnershipFilter handles bundle and single-resource ownership filtering.

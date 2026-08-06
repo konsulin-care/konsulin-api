@@ -37,6 +37,9 @@ p, Guest, POST, /hook/synchronous/modify-profile
 p, Guest, POST, /hook/synchronous/send-magiclink
 p, Patient, GET, /fhir/Appointment
 p, Patient, POST, /fhir/Appointment
+p, Patient, GET, /fhir/Communication
+p, Patient, POST, /fhir/Communication
+p, Patient, PUT, /fhir/Communication
 p, Patient, GET, /fhir/Consent
 p, Patient, POST, /fhir/Consent
 p, Patient, PUT, /fhir/Consent
@@ -107,6 +110,7 @@ p, Researcher, GET, /fhir/Questionnaire
 p, Researcher, POST, /fhir/Questionnaire
 p, Researcher, PUT, /fhir/Questionnaire
 p, Researcher, GET, /fhir/QuestionnaireResponse
+p, Researcher, GET, /fhir/Communication
 p, Researcher, GET, /fhir/ResearchStudy
 p, Researcher, POST, /fhir/ResearchStudy
 p, Researcher, PUT, /fhir/ResearchStudy
@@ -142,6 +146,7 @@ p, Superadmin, GET, /fhir/Questionnaire
 p, Superadmin, POST, /fhir/Questionnaire
 p, Superadmin, PUT, /fhir/Questionnaire
 p, Superadmin, GET, /fhir/QuestionnaireResponse
+p, Superadmin, GET, /fhir/Communication
 p, Superadmin, GET, /fhir/ResearchStudy
 p, Superadmin, POST, /fhir/ResearchStudy
 p, Superadmin, PUT, /fhir/ResearchStudy
