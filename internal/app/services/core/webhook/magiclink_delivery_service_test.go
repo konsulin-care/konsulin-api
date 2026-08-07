@@ -12,7 +12,10 @@ import (
 	"konsulin-service/internal/app/services/shared/jwtmanager"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 // defaultTestConfig returns the base config used by most tests.
@@ -181,6 +184,40 @@ func TestMagicLinkDelivery_ForwardFn_ReturnsError_OnNonOKStatusCode(t *testing.T
 	})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "403")
+}
+
+// TestMagicLinkDelivery_ForwardFn_5xx_LogsDispatchFailure verifies the
+// observability contract for the observed failure: a post-dispatch 5xx is
+// logged as "magiclink webhook returned status" with the status code, while
+// SendMagicLink still returns nil (the email was already dispatched).
+func TestMagicLinkDelivery_ForwardFn_5xx_LogsDispatchFailure(t *testing.T) {
+	core, observedLogs := observer.New(zapcore.ErrorLevel)
+	logger := zap.New(core)
+	cfg := defaultTestConfig()
+	jwtMgr, err := jwtmanager.NewJWTManager(cfg, logger)
+	require.NoError(t, err)
+
+	s := &magicLinkDeliveryService{
+		log:        logger,
+		cfg:        cfg,
+		jwtManager: jwtMgr,
+		httpClient: &http.Client{},
+		forwardFn: func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
+			return http.StatusInternalServerError, nil, nil
+		},
+	}
+
+	err = s.SendMagicLink(context.Background(), contracts.SendMagicLinkInput{
+		URL:   "https://example.com/magic-link",
+		Email: "user@test.com",
+	})
+	assert.NoError(t, err)
+
+	logs := observedLogs.TakeAll()
+	require.Len(t, logs, 1)
+	entry := logs[0]
+	assert.Equal(t, "magiclink webhook returned status", entry.Message)
+	assert.EqualValues(t, http.StatusInternalServerError, entry.ContextMap()["status_code"])
 }
 
 func TestMagicLinkDelivery_ForwardFn_Empty_DefaultsToHTTP(t *testing.T) {
