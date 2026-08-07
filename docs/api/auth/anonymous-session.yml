@@ -2,6 +2,7 @@ info:
   name: Create Anonymous Session
   type: http
   seq: 3
+  tags: [auth]
 
 http:
   method: POST

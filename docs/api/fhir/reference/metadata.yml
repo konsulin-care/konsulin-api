@@ -2,6 +2,7 @@ info:
   name: FHIR Server Metadata
   type: http
   seq: 1
+  tags: [utility]
 
 http:
   method: GET
@@ -25,3 +26,8 @@ settings:
   timeout: 0
   followRedirects: true
   maxRedirects: 5
+
+docs: |
+  Read-only capability statement of the FHIR proxy target (Blaze). Returns the
+  supported FHIR version, resources and interactions. Standalone — does not
+  chain.

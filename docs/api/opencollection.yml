@@ -27,11 +27,37 @@ request:
       value: ""
     - name: sessionToken
       value: ""
+    - name: activeRole
+      value: "Patient"
+    - name: userId
+      value: ""
+    - name: patientId
+      value: ""
+    - name: practitionerId
+      value: ""
+    - name: organizationId
+      value: ""
     - name: locationId
+      value: ""
+    - name: healthcareServiceId
       value: ""
     - name: practitionerRoleId
       value: ""
-    - name: ""
+    - name: scheduleId
+      value: ""
+    - name: slotId
+      value: ""
+    - name: appointmentId
+      value: ""
+    - name: questionnaireId
+      value: ""
+    - name: questionnaireResponseId
+      value: ""
+    - name: journalId
+      value: ""
+    - name: planDefinitionId
+      value: ""
+    - name: researchStudyId
       value: ""
 bundled: false
 extensions: {}

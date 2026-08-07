@@ -1,0 +1,96 @@
+info:
+  name: Seed Questionnaire
+  type: http
+  seq: 6
+  tags: [assessment, utility]
+
+http:
+  method: POST
+  url: "{{process.env.APP_BASE_URL}}/fhir/Questionnaire"
+  headers:
+    - name: X-API-Key
+      value: "{{process.env.SUPERADMIN_API_KEY}}"
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "Questionnaire",
+        "status": "active",
+        "title": "Konsulin General Wellbeing Assessment",
+        "description": "A short wellbeing check-in used by the assessment catalog.",
+        "subjectType": ["Person", "Patient"],
+        "useContext": [
+          {
+            "code": {
+              "system": "http://terminology.hl7.org/CodeSystem/usage-context-type",
+              "code": "focus",
+              "display": "Clinical Focus"
+            },
+            "valueCodeableConcept": {
+              "coding": [
+                {
+                  "system": "http://api.konsulin.care/fhir/CodeSystem/assessment-context",
+                  "code": "regular"
+                }
+              ]
+            }
+          }
+        ],
+        "extension": [
+          {
+            "url": "http://konsulin.care/fhir/StructureDefinition/questionnaireEstimatedDuration",
+            "valueDuration": {
+              "value": 5,
+              "system": "https://unitsofmeasure.org",
+              "code": "min"
+            }
+          },
+          {
+            "url": "http://konsulin.care/fhir/StructureDefinition/fee",
+            "valueMoney": {
+              "value": 50000,
+              "currency": "IDR"
+            }
+          }
+        ],
+        "item": [
+          {
+            "linkId": "q1",
+            "text": "How would you rate your overall wellbeing?",
+            "type": "choice",
+            "answerOption": [
+              {"valueCoding": {"code": "1", "display": "Poor"}},
+              {"valueCoding": {"code": "2", "display": "Fair"}},
+              {"valueCoding": {"code": "3", "display": "Good"}},
+              {"valueCoding": {"code": "4", "display": "Excellent"}}
+            ]
+          }
+        ]
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        bru.setVar("questionnaireId", body.id);
+        bru.runner.setNextRequest("Seed SOAP Questionnaire");
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "201"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Seeds an active catalog questionnaire: catalog placement is expressed via
+  `useContext` with the `assessment-context` code `regular` (the `context`
+  search parameter maps to it) plus the platform's real extension URLs
+  (`questionnaireEstimatedDuration`, `fee`). The catalog queries
+  (`GET /fhir/Questionnaire?context=regular&status=active`) return it.
+  Captures `questionnaireId` and chains to "Seed SOAP Questionnaire".
+  Superadmin.

@@ -1,0 +1,11 @@
+info:
+  name: reference
+  type: folder
+  seq: 6
+
+request: {}
+
+docs: |
+  Read-only reference chain: FHIR server metadata, clinic locations, and
+  practitioner/service details. Independent of the main journey; runs under the
+  default session bearer token.

@@ -1,0 +1,73 @@
+info:
+  name: "Practitioner: Get Today Sessions"
+  type: http
+  seq: 7
+  tags: [appointment]
+
+http:
+  method: GET
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  url: "{{process.env.APP_BASE_URL}}/fhir/Appointment?practitioner={{practitionerId}}&slot.start=ge{{todayStart}}&slot.start=le{{todayEnd}}&_elements=id,participant,start&_include=Appointment:participant&_include=Appointment:slot"
+  params:
+    - name: practitioner
+      value: "{{practitionerId}}"
+      type: query
+    - name: slot.start
+      value: "ge{{todayStart}}"
+      type: query
+    - name: slot.start
+      value: "le{{todayEnd}}"
+      type: query
+    - name: _elements
+      value: id,participant,start
+      type: query
+    - name: _include
+      value: Appointment:participant
+      type: query
+    - name: _include
+      value: Appointment:slot
+      type: query
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        bru.setVar("activeRole", "Practitioner");
+        var dayStart = new Date();
+        dayStart.setUTCHours(0, 0, 0, 0);
+        var dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+        bru.setVar("todayStart", dayStart.toISOString());
+        bru.setVar("todayEnd", dayEnd.toISOString());
+        await bru.sendRequest({
+          method: "POST",
+          url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
+          headers: {
+            "content-type": "application/json",
+            "Authorization": "Bearer " + bru.getVar("sessionToken")
+          },
+          data: JSON.stringify({ role: bru.getVar("activeRole") })
+        }, function(err, res) {
+          if (err) {
+            console.error("role switch failed: " + err.message);
+          } else if (res && res.headers) {
+            // the active-role response carries the regenerated access token;
+            // capture it so the following request sees the new active role
+            var newToken = res.headers["st-access-token"] || res.headers["front-token"];
+            if (newToken) { bru.setVar("sessionToken", newToken); }
+          }
+        });
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Practitioner: Update Availability");'
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Today's sessions for the home dashboard, bounded by the UTC day range and
+  trimmed with `_elements`. Pre-request switches to Practitioner and stamps the
+  UTC day bounds.

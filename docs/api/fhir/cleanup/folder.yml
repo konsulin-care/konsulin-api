@@ -1,0 +1,21 @@
+info:
+  name: cleanup
+  type: folder
+  seq: 5
+
+request: {}
+
+docs: |
+  Tears down the resources the journey created. Only three deletions are
+  permitted by the RBAC policies (`Patient`→Patient, `Practitioner`→Practitioner,
+  `Superadmin`→Organization); these run in order and then chain to Sign Out.
+
+  Everything else (Slots, Schedule, PractitionerRole, HealthcareService,
+  Location, Questionnaires, PlanDefinition, ResearchStudy, Appointment,
+  QuestionnaireResponse, Consent, ResearchSubject, Communication, Observation)
+  has no DELETE policy and must be removed directly against Blaze, e.g.:
+
+      curl -X DELETE http://localhost:<blaze>/fhir/<ResourceType>/<id>
+
+  or a bulk purge of the Blaze database before re-running the collection on a
+  clean backend.

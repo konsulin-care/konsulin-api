@@ -1,0 +1,59 @@
+info:
+  name: "Patient: List Research Studies"
+  type: http
+  seq: 2
+  tags: [research]
+
+http:
+  method: GET
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  url: "{{process.env.APP_BASE_URL}}/fhir/ResearchStudy?status=active&date=ge2026-01-01&_include=ResearchStudy:protocol"
+  params:
+    - name: status
+      value: active
+      type: query
+    - name: date
+      value: "ge2026-01-01"
+      type: query
+    - name: _include
+      value: ResearchStudy:protocol
+      type: query
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        bru.setVar("activeRole", "Patient");
+        await bru.sendRequest({
+          method: "POST",
+          url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
+          headers: {
+            "content-type": "application/json",
+            "Authorization": "Bearer " + bru.getVar("sessionToken")
+          },
+          data: JSON.stringify({ role: bru.getVar("activeRole") })
+        }, function(err, res) {
+          if (err) {
+            console.error("role switch failed: " + err.message);
+          } else if (res && res.headers) {
+            // the active-role response carries the regenerated access token;
+            // capture it so the following request sees the new active role
+            var newToken = res.headers["st-access-token"] || res.headers["front-token"];
+            if (newToken) { bru.setVar("sessionToken", newToken); }
+          }
+        });
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Patient: Record Study Consent");'
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Lists active research studies with their protocol PlanDefinitions included
+  (`_include=ResearchStudy:protocol`). The seeded study matches
+  `status=active&date=ge2026-01-01`. Pre-request switches to Patient.

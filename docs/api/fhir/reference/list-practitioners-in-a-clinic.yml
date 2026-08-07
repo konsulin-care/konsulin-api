@@ -2,9 +2,13 @@ info:
   name: List Practitioners in a Clinic
   type: http
   seq: 3
+  tags: [clinic]
 
 http:
   method: GET
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
   url: "{{process.env.APP_BASE_URL}}/fhir/PractitionerRole?location={{locationId}}&status=active&_include=PractitionerRole:practitioner&_include=PractitionerRole:service&_include=PractitionerRole:organization&_include=PractitionerRole:location"
   params:
     - name: location
@@ -37,7 +41,7 @@ runtime:
         const randomId = ids[Math.floor(Math.random() * ids.length)];
 
         // Save to a variable for use in subsequent requests
-        bru.setVar("locationId", randomId);
+        bru.setVar("practitionerRoleId", randomId);
         bru.setNextRequest("View Healthcare Service Provided by a Practitioner in a Clinic")
 
         console.log("Available IDs:", ids);
@@ -48,3 +52,9 @@ settings:
   timeout: 0
   followRedirects: true
   maxRedirects: 5
+
+docs: |
+  Lists PractitionerRoles working at the selected Location (active, with
+  practitioner/service/organization/location includes). Picks a random
+  PractitionerRole id, stores it as `practitionerRoleId`, and chains to
+  "View Healthcare Service Provided by a Practitioner in a Clinic".

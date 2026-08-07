@@ -2,6 +2,7 @@ info:
   name: Consume Code
   type: http
   seq: 4
+  tags: [auth]
 
 http:
   method: POST
@@ -59,7 +60,7 @@ runtime:
             }
             const body = res.data;
             const links = body && body.links;
-            
+
             if (links && links.length > 0) {
               for (var li = 0; li < links.length; li++) {
                 var url = links[li];
@@ -84,6 +85,32 @@ runtime:
         }
         if (frontToken) {
           bru.setVar("sessionToken", frontToken);
+          // Decode the JWT payload once to capture the SuperTokens userId (sub).
+          // atob is not available in the QuickJS sandbox, so decode base64url by hand.
+          try {
+            function b64uToStr(b64u) {
+              var b64 = b64u.replace(/-/g, "+").replace(/_/g, "/");
+              var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+              var out = "";
+              for (var i = 0; i < b64.length; i += 4) {
+                if (b64[i] === "=" || b64[i + 1] === "=") { break; }
+                var n = (chars.indexOf(b64[i]) << 18) |
+                        (chars.indexOf(b64[i + 1]) << 12) |
+                        (chars.indexOf(b64[i + 2]) << 6) |
+                        chars.indexOf(b64[i + 3]);
+                out += String.fromCharCode((n >>> 16) & 255);
+                if (b64[i + 2] !== "=") { out += String.fromCharCode((n >>> 8) & 255); }
+                if (b64[i + 3] !== "=") { out += String.fromCharCode(n & 255); }
+              }
+              return out;
+            }
+            var payload = JSON.parse(b64uToStr(frontToken.split(".")[1]));
+            if (payload && payload.sub) {
+              bru.setVar("userId", payload.sub);
+            }
+          } catch (e) {
+            console.log("userId extraction skipped: " + e.message);
+          }
           bru.runner.setNextRequest("Claim Anonymous Resources");
         } else {
           bru.runner.setNextRequest(null);
@@ -125,7 +152,9 @@ docs: |
   by the "Get Magic Link" request (fetched from Mailinator).
 
   On success, the after-response script reads the `St-Access-Token` response header
-  and saves it as `sessionToken` for subsequent authenticated requests.
+  and saves it as `sessionToken` for subsequent authenticated requests. The JWT
+  payload is decoded once to capture the SuperTokens `userId` (`sub` claim), which
+  the FHIR profile lookups use to map the session to Patient/Practitioner resources.
 
   On completion, chains to "Claim Anonymous Resources".
 

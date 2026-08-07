@@ -2,9 +2,13 @@ info:
   name: List All Clinic Locations
   type: http
   seq: 2
+  tags: [clinic]
 
 http:
   method: GET
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
   url: "{{process.env.APP_BASE_URL}}/fhir/Location"
 
 runtime:
@@ -33,3 +37,7 @@ settings:
   timeout: 0
   followRedirects: true
   maxRedirects: 5
+
+docs: |
+  Lists all clinic Locations (public read). Picks a random Location id, stores
+  it as `locationId`, and chains to "List Practitioners in a Clinic".

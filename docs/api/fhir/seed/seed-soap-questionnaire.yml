@@ -1,0 +1,70 @@
+info:
+  name: Seed SOAP Questionnaire
+  type: http
+  seq: 7
+  tags: [assessment, utility]
+
+http:
+  method: PUT
+  url: "{{process.env.APP_BASE_URL}}/fhir/Questionnaire/soap"
+  headers:
+    - name: X-API-Key
+      value: "{{process.env.SUPERADMIN_API_KEY}}"
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "Questionnaire",
+        "id": "soap",
+        "status": "active",
+        "title": "SOAP Consultation Notes",
+        "description": "Subjective, Objective, Assessment, Plan — the consultation note structure.",
+        "subjectType": ["Patient"],
+        "item": [
+          {
+            "linkId": "subjective",
+            "text": "Subjective",
+            "type": "text"
+          },
+          {
+            "linkId": "objective",
+            "text": "Objective",
+            "type": "text"
+          },
+          {
+            "linkId": "assessment",
+            "text": "Assessment",
+            "type": "text"
+          },
+          {
+            "linkId": "plan",
+            "text": "Plan",
+            "type": "text"
+          }
+        ]
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: bru.runner.setNextRequest("Seed Plan Definition");
+  assertions:
+    - expression: res.status
+      operator: gte
+      value: "200"
+    - expression: res.status
+      operator: lte
+      value: "201"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Seeds the SOAP questionnaire with the fixed id `soap` so
+  `GET /fhir/Questionnaire/soap` resolves. Uses PUT because Blaze ignores
+  client-supplied ids on POST; PUT creates (201) or replaces (200) the `soap`
+  resource and is idempotent across runs. Chains to "Seed Plan Definition".
+  Superadmin.

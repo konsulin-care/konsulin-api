@@ -1,0 +1,137 @@
+info:
+  name: "Patient: Book Appointment"
+  type: http
+  seq: 14
+  tags: [appointment]
+
+http:
+  method: POST
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  url: "{{process.env.APP_BASE_URL}}/fhir"
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "Bundle",
+        "type": "transaction",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:slot-1",
+            "request": {
+              "method": "POST",
+              "url": "Slot"
+            },
+            "resource": {
+              "resourceType": "Slot",
+              "status": "busy-tentative",
+              "schedule": {
+                "reference": "Schedule/{{scheduleId}}"
+              },
+              "start": "{{slotStart}}",
+              "end": "{{slotEnd}}"
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "url": "Appointment"
+            },
+            "resource": {
+              "resourceType": "Appointment",
+              "status": "booked",
+              "slot": [
+                {
+                  "reference": "urn:uuid:slot-1"
+                }
+              ],
+              "participant": [
+                {
+                  "actor": {
+                    "reference": "Patient/{{patientId}}"
+                  },
+                  "status": "accepted"
+                },
+                {
+                  "actor": {
+                    "reference": "Practitioner/{{practitionerId}}"
+                  },
+                  "status": "accepted"
+                },
+                {
+                  "actor": {
+                    "reference": "PractitionerRole/{{practitionerRoleId}}"
+                  },
+                  "status": "accepted"
+                }
+              ],
+              "start": "{{slotStart}}",
+              "end": "{{slotEnd}}"
+            }
+          }
+        ]
+      }
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        bru.setVar("activeRole", "Patient");
+        // Book a window inside the seeded availableTime (Mon-Fri 09:00-17:00 WIB):
+        // next Friday 10:00 WIB (03:00 UTC), duration 30 minutes.
+        var d = new Date();
+        var friday = new Date(d.getTime() + ((8 - d.getDay() + 7) % 7) * 24 * 60 * 60 * 1000);
+        friday.setUTCHours(3, 0, 0, 0);
+        bru.setVar("slotStart", friday.toISOString());
+        bru.setVar("slotEnd", new Date(friday.getTime() + 30 * 60 * 1000).toISOString());
+        await bru.sendRequest({
+          method: "POST",
+          url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
+          headers: {
+            "content-type": "application/json",
+            "Authorization": "Bearer " + bru.getVar("sessionToken")
+          },
+          data: JSON.stringify({ role: bru.getVar("activeRole") })
+        }, function(err, res) {
+          if (err) {
+            console.error("role switch failed: " + err.message);
+          } else if (res && res.headers) {
+            // the active-role response carries the regenerated access token;
+            // capture it so the following request sees the new active role
+            var newToken = res.headers["st-access-token"] || res.headers["front-token"];
+            if (newToken) { bru.setVar("sessionToken", newToken); }
+          }
+        });
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        if (body.entry) {
+          for (const e of body.entry) {
+            if (e.resource && e.resource.resourceType === "Slot") {
+              bru.setVar("slotId", e.resource.id);
+            }
+            if (e.resource && e.resource.resourceType === "Appointment") {
+              bru.setVar("appointmentId", e.resource.id);
+            }
+          }
+        }
+        bru.runner.setNextRequest("Patient: Update Appointment Status");
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Books an appointment atomically: a transaction bundle creating a Slot
+  (`status=busy-tentative`, sized by the HealthcareService duration extension)
+  plus the Appointment referencing it via `urn:uuid`. The slot time is computed
+  in the pre-request script inside the seeded `availableTime` window. Captures
+  `slotId` and `appointmentId` from the transaction response. Pre-request
+  switches to Patient.

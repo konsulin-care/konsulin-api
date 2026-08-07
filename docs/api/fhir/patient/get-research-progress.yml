@@ -1,0 +1,75 @@
+info:
+  name: "Patient: Get Research Progress"
+  type: http
+  seq: 4
+  tags: [research]
+
+http:
+  method: POST
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  url: "{{process.env.APP_BASE_URL}}/fhir"
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "Bundle",
+        "type": "batch",
+        "entry": [
+          {
+            "request": {
+              "method": "GET",
+              "url": "ResearchStudy?status=active&date=ge2026-01-01&_include=ResearchStudy:protocol"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "url": "ResearchSubject?patient=Patient/{{patientId}}&_elements=study,status&_count=100"
+            }
+          }
+        ]
+      }
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        bru.setVar("activeRole", "Patient");
+        await bru.sendRequest({
+          method: "POST",
+          url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
+          headers: {
+            "content-type": "application/json",
+            "Authorization": "Bearer " + bru.getVar("sessionToken")
+          },
+          data: JSON.stringify({ role: bru.getVar("activeRole") })
+        }, function(err, res) {
+          if (err) {
+            console.error("role switch failed: " + err.message);
+          } else if (res && res.headers) {
+            // the active-role response carries the regenerated access token;
+            // capture it so the following request sees the new active role
+            var newToken = res.headers["st-access-token"] || res.headers["front-token"];
+            if (newToken) { bru.setVar("sessionToken", newToken); }
+          }
+        });
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Patient: List Questionnaires");'
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Fetches active studies plus the patient's consent status in one batch bundle:
+  `GET ResearchStudy...` + `GET ResearchSubject?patient=Patient/{id}`. After
+  consent, the ResearchSubject entry shows `status=on-study`. Pre-request
+  switches to Patient.

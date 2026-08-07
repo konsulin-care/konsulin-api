@@ -1,0 +1,66 @@
+info:
+  name: "Patient: Get Circle Stats"
+  type: http
+  seq: 17
+  tags: [referral, research]
+
+http:
+  method: GET
+  url: "{{process.env.APP_BASE_URL}}/fhir/Communication?sender=Patient/{{patientId}}&topic=research-referral&_elements=recipient&_count=500"
+  params:
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+    - name: sender
+      value: "Patient/{{patientId}}"
+      type: query
+    - name: topic
+      value: research-referral
+      type: query
+    - name: _elements
+      value: recipient
+      type: query
+    - name: _count
+      value: "500"
+      type: query
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        bru.setVar("activeRole", "Patient");
+        await bru.sendRequest({
+          method: "POST",
+          url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
+          headers: {
+            "content-type": "application/json",
+            "Authorization": "Bearer " + bru.getVar("sessionToken")
+          },
+          data: JSON.stringify({ role: bru.getVar("activeRole") })
+        }, function(err, res) {
+          if (err) {
+            console.error("role switch failed: " + err.message);
+          } else if (res && res.headers) {
+            // the active-role response carries the regenerated access token;
+            // capture it so the following request sees the new active role
+            var newToken = res.headers["st-access-token"] || res.headers["front-token"];
+            if (newToken) { bru.setVar("sessionToken", newToken); }
+          }
+        });
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Practitioner: Get Profile");'
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Circle stats: referral Communications sent by the patient (scoped to own
+  sender, so the response keeps full fields). Hand-off request to the
+  practitioner journey. Pre-request switches to Patient.

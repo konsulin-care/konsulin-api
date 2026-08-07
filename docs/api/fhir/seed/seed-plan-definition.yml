@@ -1,0 +1,58 @@
+info:
+  name: Seed Plan Definition
+  type: http
+  seq: 8
+  tags: [research, utility]
+
+http:
+  method: POST
+  url: "{{process.env.APP_BASE_URL}}/fhir/PlanDefinition"
+  headers:
+    - name: X-API-Key
+      value: "{{process.env.SUPERADMIN_API_KEY}}"
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "PlanDefinition",
+        "status": "active",
+        "title": "Wellbeing Check-in Protocol",
+        "description": "Weekly wellbeing assessment protocol for the research study.",
+        "type": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/plan-definition-type",
+              "code": "clinical-protocol"
+            }
+          ]
+        },
+        "action": [
+          {
+            "title": "Complete weekly wellbeing questionnaire",
+            "definitionCanonical": "{{process.env.APP_BASE_URL}}/fhir/Questionnaire/{{questionnaireId}}"
+          }
+        ]
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        bru.setVar("planDefinitionId", body.id);
+        bru.runner.setNextRequest("Seed Research Study");
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "201"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Seeds the research protocol PlanDefinition referenced by the ResearchStudy
+  (`_include=ResearchStudy:protocol` pulls it into study listings). Captures
+  `planDefinitionId` and chains to "Seed Research Study". Superadmin.

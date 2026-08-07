@@ -1,0 +1,75 @@
+info:
+  name: "Patient: List Record Summary"
+  type: http
+  seq: 9
+  tags: [record, assessment]
+
+http:
+  method: POST
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  url: "{{process.env.APP_BASE_URL}}/fhir"
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "Bundle",
+        "type": "batch",
+        "entry": [
+          {
+            "request": {
+              "method": "GET",
+              "url": "QuestionnaireResponse?author=Patient/{{patientId}}&status=completed&_elements=questionnaire,authored&_count=100"
+            }
+          },
+          {
+            "request": {
+              "method": "GET",
+              "url": "Observation?patient=Patient/{{patientId}}&_count=100"
+            }
+          }
+        ]
+      }
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        bru.setVar("activeRole", "Patient");
+        await bru.sendRequest({
+          method: "POST",
+          url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
+          headers: {
+            "content-type": "application/json",
+            "Authorization": "Bearer " + bru.getVar("sessionToken")
+          },
+          data: JSON.stringify({ role: bru.getVar("activeRole") })
+        }, function(err, res) {
+          if (err) {
+            console.error("role switch failed: " + err.message);
+          } else if (res && res.headers) {
+            // the active-role response carries the regenerated access token;
+            // capture it so the following request sees the new active role
+            var newToken = res.headers["st-access-token"] || res.headers["front-token"];
+            if (newToken) { bru.setVar("sessionToken", newToken); }
+          }
+        });
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Patient: Create Journal");'
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Patient record summary in one batch: the patient's completed
+  QuestionnaireResponses (scoped by `author=Patient/{id}`) plus their
+  Observations. The response just submitted in the previous step appears here.
+  Pre-request switches to Patient.

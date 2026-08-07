@@ -2,6 +2,7 @@ info:
   name: Sign Out
   type: http
   seq: 7
+  tags: [auth]
 
 http:
   method: POST

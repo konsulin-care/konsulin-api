@@ -1,0 +1,54 @@
+info:
+  name: Seed Research Study
+  type: http
+  seq: 9
+  tags: [research, utility]
+
+http:
+  method: POST
+  url: "{{process.env.APP_BASE_URL}}/fhir/ResearchStudy"
+  headers:
+    - name: X-API-Key
+      value: "{{process.env.SUPERADMIN_API_KEY}}"
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "ResearchStudy",
+        "status": "active",
+        "title": "Wellbeing Monitoring Study",
+        "description": "Longitudinal wellbeing study using the weekly check-in questionnaire.",
+        "period": {
+          "start": "2026-01-01"
+        },
+        "protocol": [
+          {
+            "reference": "PlanDefinition/{{planDefinitionId}}"
+          }
+        ]
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        bru.setVar("researchStudyId", body.id);
+        bru.runner.setNextRequest("Patient: Get Profile");
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "201"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Seeds an active ResearchStudy dated from 2026-01-01 so
+  `GET /fhir/ResearchStudy?status=active&date=ge2026-01-01` returns it; its
+  `protocol` reference pulls in the PlanDefinition. No `enrollment` Group is
+  set — Blaze enforces referential integrity and rejects dangling references.
+  Captures `researchStudyId` and hands off to the patient journey. Superadmin.

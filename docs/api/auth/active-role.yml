@@ -2,6 +2,7 @@ info:
   name: Set Active Role
   type: http
   seq: 6
+  tags: [auth]
 
 http:
   method: POST
@@ -15,13 +16,21 @@ http:
     type: json
     data: |-
       {
-        "role": "Patient"
+        "role": "{{activeRole}}"
       }
 
 runtime:
   scripts:
     - type: after-response
-      code: bru.runner.setNextRequest("Purge Data");
+      code: |-
+        // The active-role merge regenerates the access token; the response
+        // carries it in the st-access-token / Front-Token headers. Capture it
+        // so later requests see the new active role.
+        var newToken = res.getHeader("st-access-token") || res.getHeader("Front-Token") || res.headers["st-access-token"];
+        if (newToken) {
+          bru.setVar("sessionToken", newToken);
+        }
+        bru.runner.setNextRequest("Seed Organization");
   assertions:
     - expression: res.status
       operator: eq
@@ -95,9 +104,17 @@ examples:
 
 docs: |
   Sets the active role in the SuperTokens session's access token payload.
+  The role value is variable-driven (`{{activeRole}}`), so this single request
+  serves every journey. Journey requests set `activeRole` in their pre-request
+  scripts and invoke the "Switch Active Role" helper via `runNext`; this request
+  itself is the terminal step of the plain auth chain.
+
   Requires a valid SuperTokens session via `Authorization: Bearer {{sessionToken}}`.
 
-  On completion, chains to "Logout".
+  On completion, chains to "Seed Organization" to start the FHIR journey. The
+  response carries the regenerated access token (st-access-token / Front-Token
+  headers), which is captured as `sessionToken` so subsequent requests observe
+  the new active role.
 
   ### Request Fields
   - `role`: (required) the role to activate. Must be assigned to the user.

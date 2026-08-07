@@ -1,0 +1,78 @@
+info:
+  name: "Patient: Update Journal"
+  type: http
+  seq: 11
+  tags: [record]
+
+http:
+  method: PUT
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  url: "{{process.env.APP_BASE_URL}}/fhir/Observation/{{journalId}}"
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "Observation",
+        "id": "{{journalId}}",
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "34117-2",
+              "display": "Patient journal"
+            }
+          ],
+          "text": "Journal"
+        },
+        "subject": {
+          "reference": "Patient/{{patientId}}"
+        },
+        "issued": "{{now}}",
+        "valueString": "Updated: a walk in the park helped me unwind."
+      }
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        bru.setVar("activeRole", "Patient");
+        bru.setVar("now", new Date().toISOString());
+        await bru.sendRequest({
+          method: "POST",
+          url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
+          headers: {
+            "content-type": "application/json",
+            "Authorization": "Bearer " + bru.getVar("sessionToken")
+          },
+          data: JSON.stringify({ role: bru.getVar("activeRole") })
+        }, function(err, res) {
+          if (err) {
+            console.error("role switch failed: " + err.message);
+          } else if (res && res.headers) {
+            // the active-role response carries the regenerated access token;
+            // capture it so the following request sees the new active role
+            var newToken = res.headers["st-access-token"] || res.headers["front-token"];
+            if (newToken) { bru.setVar("sessionToken", newToken); }
+          }
+        });
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Patient: List Upcoming Appointments");'
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Updates the journal entry with full-resource PUT semantics. The body is the
+  created Observation with the edited `valueString`; ownership validation
+  requires `subject` to stay on the session patient. Pre-request switches to
+  Patient.

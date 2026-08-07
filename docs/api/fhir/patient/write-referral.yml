@@ -1,0 +1,95 @@
+info:
+  name: "Patient: Write Referral"
+  type: http
+  seq: 16
+  tags: [referral]
+
+http:
+  method: PUT
+  url: "{{process.env.APP_BASE_URL}}/fhir/Communication/{{referralId}}"
+  headers:
+    - name: If-None-Match
+      value: "*"
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "Communication",
+        "id": "{{referralId}}",
+        "status": "completed",
+        "topic": {
+          "coding": [
+            {
+              "system": "http://konsulin.care/fhir/CodeSystem/research-referral",
+              "code": "research-referral"
+            }
+          ]
+        },
+        "sender": {
+          "reference": "Patient/{{patientId}}"
+        },
+        "recipient": [
+          {
+            "reference": "Patient/{{patientId}}"
+          }
+        ],
+        "extension": [
+          {
+            "url": "http://konsulin.care/fhir/StructureDefinition/referralBatch",
+            "valueReference": {
+              "reference": "PlanDefinition/{{planDefinitionId}}"
+            }
+          }
+        ]
+      }
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        bru.setVar("activeRole", "Patient");
+        // Deterministic referral id: "referral-" + sha256(recipient|sender|batch).
+        // Sender, recipient and batch must match the body below.
+        var hash = bru.crypto.sha256(bru.getVar("patientId") + "|" + bru.getVar("patientId") + "|" + bru.getVar("planDefinitionId"));
+        bru.setVar("referralId", "referral-" + hash);
+        await bru.sendRequest({
+          method: "POST",
+          url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
+          headers: {
+            "content-type": "application/json",
+            "Authorization": "Bearer " + bru.getVar("sessionToken")
+          },
+          data: JSON.stringify({ role: bru.getVar("activeRole") })
+        }, function(err, res) {
+          if (err) {
+            console.error("role switch failed: " + err.message);
+          } else if (res && res.headers) {
+            // the active-role response carries the regenerated access token;
+            // capture it so the following request sees the new active role
+            var newToken = res.headers["st-access-token"] || res.headers["front-token"];
+            if (newToken) { bru.setVar("sessionToken", newToken); }
+          }
+        });
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Patient: Get Circle Stats");'
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Writes a referral Communication with a deterministic id
+  (`referral-` + sha256 of `recipient|sender|batch`, computed in the
+  pre-request script) and `If-None-Match: *` for idempotency — 201 on first
+  write, 409 when it already exists. The backend re-validates the id, the
+  research-referral topic, the batch extension (must reference the seeded
+  PlanDefinition) and that the sender resolves to a registered Patient.
+
+  NOTE: referral writes are patient-only — the Auth middleware rejects them
+  when the session also carries the Practitioner role (our demo session does),
+  so the expected status here is 403. Documented as a known constraint; the
+  request is the correct API shape. Pre-request switches to Patient.
