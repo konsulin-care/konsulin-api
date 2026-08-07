@@ -8,7 +8,6 @@ linters:
     - govet
     - staticcheck
     - errcheck
-    - gofumpt
   settings:
     gocognit:
       min-complexity: 20
@@ -21,3 +20,6 @@ linters:
     paths:
       - ".*_test\\.go$"
       - vendor
+formatters:
+  enable:
+    - gofumpt

@@ -2,14 +2,10 @@ package privacy
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"net/http"
-
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/services/fhir_spark/bundle"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/fhir_http_client"
+	"net/http"
 
 	"go.uber.org/zap"
 )
@@ -26,8 +22,9 @@ type purgeUsecaseImpl struct {
 	batchSize       int
 }
 
-// NewPurgeUsecase returns a PurgeUsecase that erases a patient's FHIR data via
-// $everything enumeration + batch DELETE bundles and, on success, deletes the
+// NewPurgeUsecase returns a PurgeUsecase that erases a patient's actively-owned
+// FHIR data via registry-driven enumeration + batch DELETE bundles, strips the
+// Patient resource to a shell, verifies erasure, and only then deletes the
 // associated SuperTokens account.
 func NewPurgeUsecase(
 	purgeClient contracts.PurgeFhirClient,
@@ -44,35 +41,34 @@ func NewPurgeUsecase(
 	}
 }
 
-// PurgePatientData erases all FHIR resources linked to fhirID, deletes (or
-// PII-strips) the Patient resource itself, asserts no orphan edges remain, and
-// only then deletes the SuperTokens account. Empty enumeration (already purged)
-// is a no-op success.
+// PurgePatientData erases every actively-owned FHIR resource linked to fhirID,
+// strips the Patient resource to a PII-free shell, verifies that no
+// actively-owned resource survives, and only then deletes the SuperTokens
+// account. Shared resources (those referencing other patients or
+// practitioners) are excluded by the client and remain referencing the shell.
+// An empty enumeration (already purged) is a no-op success.
 func (uc *purgeUsecaseImpl) PurgePatientData(ctx context.Context, fhirID, supertokensUserID string) error {
-	refs, err := uc.purgeClient.GetPatientEverything(ctx, fhirID)
+	deletable, err := uc.purgeClient.FindActivelyOwnedResources(ctx, fhirID)
 	if err != nil {
-		return fmt.Errorf("purge: enumerate patient resources: %w", err)
+		return fmt.Errorf("purge: enumerate actively owned resources: %w", err)
 	}
 
-	// Delete every linked resource except the Patient row itself, which is
-	// handled separately so a failed delete can fall back to a PII strip.
-	deleteRefs := make([]contracts.ResourceRef, 0, len(refs))
-	for _, ref := range refs {
-		if ref.ResourceType == constvars.ResourcePatient && ref.ID == fhirID {
-			continue
-		}
-		deleteRefs = append(deleteRefs, ref)
-	}
-	if err := uc.postDeleteBundles(ctx, deleteRefs); err != nil {
+	if err := uc.postDeleteBundles(ctx, deletable); err != nil {
 		return fmt.Errorf("purge: delete linked resources: %w", err)
 	}
 
-	if err := uc.deleteOrStripPatient(ctx, fhirID); err != nil {
-		return err
+	if err := uc.purgeClient.StripPatientToShell(ctx, fhirID); err != nil {
+		return fmt.Errorf("purge: strip patient to shell: %w", err)
 	}
 
-	if err := uc.assertNoOrphans(ctx, fhirID); err != nil {
-		return err
+	// Fail-closed verification: any remaining actively-owned resource means the
+	// erasure is incomplete and the account must not be deleted.
+	leftovers, err := uc.purgeClient.FindActivelyOwnedResources(ctx, fhirID)
+	if err != nil {
+		return fmt.Errorf("purge: verify erasure: %w", err)
+	}
+	if len(leftovers) > 0 {
+		return fmt.Errorf("purge: %d actively-owned resource(s) still remain", len(leftovers))
 	}
 
 	// The FHIR purge fully succeeded — only now may the account be deleted.
@@ -105,48 +101,6 @@ func (uc *purgeUsecaseImpl) postDeleteBundles(ctx context.Context, refs []contra
 		if _, err := uc.bundleClient.PostTransactionBundle(ctx, batch); err != nil {
 			return err
 		}
-	}
-	return nil
-}
-
-// deleteOrStripPatient deletes the Patient resource; when the delete fails for
-// a real reason (not a 404 from an already-purged patient), it honors erasure
-// by replacing the resource with a PII-free shell carrying only its id.
-func (uc *purgeUsecaseImpl) deleteOrStripPatient(ctx context.Context, fhirID string) error {
-	if err := uc.purgeClient.DeletePatient(ctx, fhirID); err != nil {
-		var httpErr *fhir_http_client.FHIRHTTPError
-		if errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusNotFound {
-			uc.log.Info("purge: patient already deleted; nothing to strip",
-				zap.String(constvars.LoggingPatientIDKey, fhirID))
-			return nil
-		}
-		uc.log.Warn("purge: patient delete failed; stripping PII instead",
-			zap.String(constvars.LoggingPatientIDKey, fhirID),
-			zap.Error(err))
-		if stripErr := uc.purgeClient.StripPatientPII(ctx, fhirID); stripErr != nil {
-			return fmt.Errorf("purge: patient delete failed (%v) and PII strip failed: %w", err, stripErr)
-		}
-	}
-	return nil
-}
-
-// assertNoOrphans verifies no Communication (sender or recipient) or
-// QuestionnaireResponse (author) still references the purged identity.
-func (uc *purgeUsecaseImpl) assertNoOrphans(ctx context.Context, fhirID string) error {
-	commRefs, err := uc.purgeClient.FindCommunicationRefs(ctx, fhirID)
-	if err != nil {
-		return fmt.Errorf("purge: orphan check (communications): %w", err)
-	}
-	if len(commRefs) > 0 {
-		return fmt.Errorf("purge: %d orphan Communication(s) still reference %s", len(commRefs), fhirID)
-	}
-
-	qrRefs, err := uc.purgeClient.FindQuestionnaireResponseRefsByAuthor(ctx, fhirID)
-	if err != nil {
-		return fmt.Errorf("purge: orphan check (questionnaire responses): %w", err)
-	}
-	if len(qrRefs) > 0 {
-		return fmt.Errorf("purge: %d orphan QuestionnaireResponse(s) still reference %s", len(qrRefs), fhirID)
 	}
 	return nil
 }

@@ -3,12 +3,10 @@ package privacy
 import (
 	"context"
 	"errors"
-	"net/http"
 	"testing"
 
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/fhir_dto"
-	"konsulin-service/internal/pkg/fhir_http_client"
 
 	bundlepkg "konsulin-service/internal/app/services/fhir_spark/bundle"
 
@@ -17,43 +15,31 @@ import (
 	"go.uber.org/zap"
 )
 
-// mockPurgeClient is a configurable contracts.PurgeFhirClient for usecase tests.
+// mockPurgeClient is a configurable contracts.PurgeFhirClient for usecase
+// tests. The first FindActivelyOwnedResources call (enumeration) returns owned;
+// later calls (fail-closed verification) return ownedAfter.
 type mockPurgeClient struct {
-	everything    []contracts.ResourceRef
-	everythingErr error
-
-	deleteErr   error
-	deleteCalls int
+	owned        []contracts.ResourceRef
+	ownedErr     error
+	ownedAfter   []contracts.ResourceRef
+	ownedErrAfter error
+	ownedCalls   int
 
 	stripErr   error
 	stripCalls int
-
-	commRefs []contracts.ResourceRef
-	commErr  error
-	qrRefs   []contracts.ResourceRef
-	qrErr    error
 }
 
-func (m *mockPurgeClient) GetPatientEverything(_ context.Context, _ string) ([]contracts.ResourceRef, error) {
-	return m.everything, m.everythingErr
+func (m *mockPurgeClient) FindActivelyOwnedResources(_ context.Context, _ string) ([]contracts.ResourceRef, error) {
+	m.ownedCalls++
+	if m.ownedCalls == 1 {
+		return m.owned, m.ownedErr
+	}
+	return m.ownedAfter, m.ownedErrAfter
 }
 
-func (m *mockPurgeClient) DeletePatient(_ context.Context, _ string) error {
-	m.deleteCalls++
-	return m.deleteErr
-}
-
-func (m *mockPurgeClient) StripPatientPII(_ context.Context, _ string) error {
+func (m *mockPurgeClient) StripPatientToShell(_ context.Context, _ string) error {
 	m.stripCalls++
 	return m.stripErr
-}
-
-func (m *mockPurgeClient) FindCommunicationRefs(_ context.Context, _ string) ([]contracts.ResourceRef, error) {
-	return m.commRefs, m.commErr
-}
-
-func (m *mockPurgeClient) FindQuestionnaireResponseRefsByAuthor(_ context.Context, _ string) ([]contracts.ResourceRef, error) {
-	return m.qrRefs, m.qrErr
 }
 
 // mockBundleClient captures the bundles posted by the usecase.
@@ -91,12 +77,11 @@ func newTestUsecase(purge *mockPurgeClient, bundle *mockBundleClient, acct *mock
 	}
 }
 
-func TestPurgePatientData_Success_DeletesLinkedResourcesAndPatient(t *testing.T) {
+func TestPurgePatientData_Success_DeletesOwnedResourcesStripsShellAndAccount(t *testing.T) {
 	purge := &mockPurgeClient{
-		everything: []contracts.ResourceRef{
+		owned: []contracts.ResourceRef{
 			{ResourceType: "QuestionnaireResponse", ID: "qr-1"},
 			{ResourceType: "Communication", ID: "comm-1"},
-			{ResourceType: "Patient", ID: "pat-1"}, // the patient itself — excluded from the batch
 		},
 	}
 	bundle := &mockBundleClient{}
@@ -108,16 +93,17 @@ func TestPurgePatientData_Success_DeletesLinkedResourcesAndPatient(t *testing.T)
 
 	require.Len(t, bundle.posted, 1, "one batch bundle expected")
 	entries := bundle.posted[0]["entry"].([]map[string]any)
-	require.Len(t, entries, 2, "patient resource must not be in the delete batch")
+	require.Len(t, entries, 2)
 	urls := []string{
 		entries[0]["request"].(map[string]any)["url"].(string),
 		entries[1]["request"].(map[string]any)["url"].(string),
 	}
 	assert.ElementsMatch(t, []string{"QuestionnaireResponse/qr-1", "Communication/comm-1"}, urls)
 	assert.Equal(t, "batch", bundle.posted[0]["type"])
-	assert.Equal(t, 1, purge.deleteCalls, "patient resource must be deleted separately")
-	assert.Equal(t, 0, purge.stripCalls)
-	assert.Equal(t, []string{"user-123"}, acct.deleted, "account deleted only after FHIR purge succeeds")
+
+	assert.Equal(t, 1, purge.stripCalls, "patient must be stripped to its shell")
+	assert.Equal(t, 2, purge.ownedCalls, "enumeration must run once and verification once")
+	assert.Equal(t, []string{"user-123"}, acct.deleted, "account deleted only after the full purge succeeds")
 }
 
 func TestPurgePatientData_ChunksLargeBatches(t *testing.T) {
@@ -125,7 +111,7 @@ func TestPurgePatientData_ChunksLargeBatches(t *testing.T) {
 	for i := 0; i < 250; i++ {
 		refs = append(refs, contracts.ResourceRef{ResourceType: "QuestionnaireResponse", ID: "qr"})
 	}
-	purge := &mockPurgeClient{everything: refs}
+	purge := &mockPurgeClient{owned: refs}
 	bundle := &mockBundleClient{}
 	acct := &mockAccountDeletion{}
 
@@ -141,7 +127,7 @@ func TestPurgePatientData_ChunksLargeBatches(t *testing.T) {
 
 func TestPurgePatientData_AccountDeletionFailurePropagates(t *testing.T) {
 	purge := &mockPurgeClient{
-		everything: []contracts.ResourceRef{{ResourceType: "QuestionnaireResponse", ID: "qr-1"}},
+		owned: []contracts.ResourceRef{{ResourceType: "QuestionnaireResponse", ID: "qr-1"}},
 	}
 	bundle := &mockBundleClient{}
 	acct := &mockAccountDeletion{err: errors.New("supertokens core unreachable")}
@@ -150,49 +136,13 @@ func TestPurgePatientData_AccountDeletionFailurePropagates(t *testing.T) {
 	err := uc.PurgePatientData(context.Background(), "pat-1", "user-123")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "delete account")
-	assert.Equal(t, 1, purge.deleteCalls, "FHIR purge must complete before account deletion is attempted")
+	assert.Equal(t, 1, purge.stripCalls, "FHIR purge must complete before account deletion is attempted")
 }
 
-func TestPurgePatientData_PatientDeleteFailureStripsPII(t *testing.T) {
+func TestPurgePatientData_StripFailurePropagatesAndBlocksAccountDeletion(t *testing.T) {
 	purge := &mockPurgeClient{
-		everything: []contracts.ResourceRef{
-			{ResourceType: "QuestionnaireResponse", ID: "qr-1"},
-			{ResourceType: "Patient", ID: "pat-1"},
-		},
-		deleteErr: errors.New("blaze refused delete"),
-	}
-	bundle := &mockBundleClient{}
-	acct := &mockAccountDeletion{}
-
-	uc := newTestUsecase(purge, bundle, acct)
-	err := uc.PurgePatientData(context.Background(), "pat-1", "user-123")
-	require.NoError(t, err, "purge must still report success when the patient row cannot be deleted")
-	assert.Equal(t, 1, purge.stripCalls, "PII-free shell must be written when the patient delete fails")
-	assert.Equal(t, []string{"user-123"}, acct.deleted)
-}
-
-func TestPurgePatientData_PatientAlreadyDeletedIsNoOp(t *testing.T) {
-	purge := &mockPurgeClient{
-		everything: nil, // $everything 404 → empty
-		deleteErr: &fhir_http_client.FHIRHTTPError{
-			StatusCode: http.StatusNotFound,
-			Err:        errors.New("patient not found"),
-		}, // second run: patient already gone
-	}
-	bundle := &mockBundleClient{}
-	acct := &mockAccountDeletion{}
-
-	uc := newTestUsecase(purge, bundle, acct)
-	err := uc.PurgePatientData(context.Background(), "pat-1", "")
-	require.NoError(t, err, "repeat purge must be a no-op success")
-	assert.Empty(t, bundle.posted)
-	assert.Equal(t, 0, purge.stripCalls, "a missing patient must not trigger a PII strip")
-}
-
-func TestPurgePatientData_OrphanCommunicationFails(t *testing.T) {
-	purge := &mockPurgeClient{
-		everything: []contracts.ResourceRef{{ResourceType: "Communication", ID: "comm-1"}},
-		commRefs:   []contracts.ResourceRef{{ResourceType: "Communication", ID: "comm-1"}},
+		owned:    []contracts.ResourceRef{{ResourceType: "QuestionnaireResponse", ID: "qr-1"}},
+		stripErr: errors.New("blaze refused put"),
 	}
 	bundle := &mockBundleClient{}
 	acct := &mockAccountDeletion{}
@@ -200,15 +150,43 @@ func TestPurgePatientData_OrphanCommunicationFails(t *testing.T) {
 	uc := newTestUsecase(purge, bundle, acct)
 	err := uc.PurgePatientData(context.Background(), "pat-1", "user-123")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "orphan")
+	assert.Contains(t, err.Error(), "strip patient")
 	assert.Empty(t, acct.deleted, "account deletion must never run when the purge did not fully succeed")
 }
 
-func TestPurgePatientData_OrphanQuestionnaireResponseFails(t *testing.T) {
+func TestPurgePatientData_OnlySharedResourcesRemainIsSuccess(t *testing.T) {
+	// The client filters shared (recipient/practitioner-referencing) resources
+	// out of the enumeration, so an empty deletable set means nothing to delete
+	// while the shared edges keep referencing the Patient shell.
+	purge := &mockPurgeClient{}
+	bundle := &mockBundleClient{}
+	acct := &mockAccountDeletion{}
+
+	uc := newTestUsecase(purge, bundle, acct)
+	err := uc.PurgePatientData(context.Background(), "pat-1", "user-123")
+	require.NoError(t, err)
+	assert.Empty(t, bundle.posted, "shared resources must never reach a delete bundle")
+	assert.Equal(t, 1, purge.stripCalls)
+	assert.Equal(t, []string{"user-123"}, acct.deleted)
+}
+
+func TestPurgePatientData_VerificationFindsSurvivorAborts(t *testing.T) {
 	purge := &mockPurgeClient{
-		everything: []contracts.ResourceRef{{ResourceType: "QuestionnaireResponse", ID: "qr-1"}},
-		qrRefs:     []contracts.ResourceRef{{ResourceType: "QuestionnaireResponse", ID: "qr-1"}},
+		owned:      []contracts.ResourceRef{{ResourceType: "Observation", ID: "obs-1"}},
+		ownedAfter: []contracts.ResourceRef{{ResourceType: "Observation", ID: "obs-1"}}, // delete did not take
 	}
+	bundle := &mockBundleClient{}
+	acct := &mockAccountDeletion{}
+
+	uc := newTestUsecase(purge, bundle, acct)
+	err := uc.PurgePatientData(context.Background(), "pat-1", "user-123")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "still remain")
+	assert.Empty(t, acct.deleted, "account deletion must never run when the purge did not fully succeed")
+}
+
+func TestPurgePatientData_VerificationErrorAborts(t *testing.T) {
+	purge := &mockPurgeClient{ownedErrAfter: errors.New("fhir down")}
 	bundle := &mockBundleClient{}
 	acct := &mockAccountDeletion{}
 
@@ -219,7 +197,7 @@ func TestPurgePatientData_OrphanQuestionnaireResponseFails(t *testing.T) {
 }
 
 func TestPurgePatientData_EnumerationErrorAborts(t *testing.T) {
-	purge := &mockPurgeClient{everythingErr: errors.New("fhir down")}
+	purge := &mockPurgeClient{ownedErr: errors.New("fhir down")}
 	bundle := &mockBundleClient{}
 	acct := &mockAccountDeletion{}
 
@@ -227,8 +205,21 @@ func TestPurgePatientData_EnumerationErrorAborts(t *testing.T) {
 	err := uc.PurgePatientData(context.Background(), "pat-1", "user-123")
 	require.Error(t, err)
 	assert.Empty(t, bundle.posted)
-	assert.Equal(t, 0, purge.deleteCalls)
+	assert.Equal(t, 0, purge.stripCalls)
 	assert.Empty(t, acct.deleted)
+}
+
+func TestPurgePatientData_AlreadyPurgedIsIdempotentNoOp(t *testing.T) {
+	purge := &mockPurgeClient{}
+	bundle := &mockBundleClient{}
+	acct := &mockAccountDeletion{}
+
+	uc := newTestUsecase(purge, bundle, acct)
+	err := uc.PurgePatientData(context.Background(), "pat-1", "user-123")
+	require.NoError(t, err, "repeat purge must be a no-op success")
+	assert.Empty(t, bundle.posted)
+	assert.Equal(t, 1, purge.stripCalls)
+	assert.Equal(t, []string{"user-123"}, acct.deleted)
 }
 
 var _ contracts.PurgeFhirClient = (*mockPurgeClient)(nil)

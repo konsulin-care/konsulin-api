@@ -15,26 +15,18 @@ type ResourceRef struct {
 // PurgeFhirClient enumerates and mutates a patient's FHIR resources for the
 // erasure (purge) flow. All requests go through FHIRHTTPClient.Do.
 type PurgeFhirClient interface {
-	// GetPatientEverything returns ResourceRefs for every resource linked to the
-	// patient via GET /Patient/{id}/$everything, following pagination until
-	// exhausted. A missing or already-purged patient yields an empty, nil result.
-	GetPatientEverything(ctx context.Context, patientID string) ([]ResourceRef, error)
+	// FindActivelyOwnedResources returns ResourceRefs for every resource the
+	// patient actively owns and that is safe to delete. Enumeration is driven by
+	// the constvars.PurgeRules registry; each candidate passes the shared-resource
+	// safety check (no Patient/{x != patient} or Practitioner/{x} reference) and
+	// results are paginated and deduped. Passively owned and shared resources are
+	// intentionally excluded.
+	FindActivelyOwnedResources(ctx context.Context, patientID string) ([]ResourceRef, error)
 
-	// DeletePatient DELETEs the Patient resource. Returns an error on failure.
-	DeletePatient(ctx context.Context, patientID string) error
-
-	// StripPatientPII replaces the Patient resource with a PII-free shell that
-	// carries only its id (resourceType + id, no name/identifier/telecom/address).
-	StripPatientPII(ctx context.Context, patientID string) error
-
-	// FindCommunicationRefs returns Communications referencing the patient as
-	// sender or recipient (sender and recipient searches combined and deduped).
-	// Used by the post-purge orphan-edge check.
-	FindCommunicationRefs(ctx context.Context, patientID string) ([]ResourceRef, error)
-
-	// FindQuestionnaireResponseRefsByAuthor returns QuestionnaireResponses
-	// authored by the patient. Used by the post-purge orphan-edge check.
-	FindQuestionnaireResponseRefsByAuthor(ctx context.Context, patientID string) ([]ResourceRef, error)
+	// StripPatientToShell replaces the Patient resource with a PII-free shell
+	// carrying only resourceType, id, meta, and active:false. A missing or
+	// already-purged patient is a no-op success.
+	StripPatientToShell(ctx context.Context, patientID string) error
 }
 
 // AccountDeletionService removes a user's SuperTokens account (and its

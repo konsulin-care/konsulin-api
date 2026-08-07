@@ -1,19 +1,18 @@
 package privacy
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/url"
-	"strings"
-	"sync"
-
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/services/fhir_spark/base"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/fhir_http_client"
+	"net/http"
+	"net/url"
+	"sync"
 
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
@@ -24,7 +23,7 @@ var (
 	oncePurgeFhirClient     sync.Once
 )
 
-// purgePageSize bounds each $everything response page so memory stays flat
+// purgePageSize bounds each enumeration response page so memory stays flat
 // regardless of how many resources a patient accumulated.
 const purgePageSize = 100
 
@@ -47,8 +46,8 @@ func NewPurgeFhirClient(baseUrl string, logger *zap.Logger) contracts.PurgeFhirC
 	return purgeFhirClientInstance
 }
 
-// bundlePage is the minimal slice of a FHIR bundle needed for id-only
-// enumeration: pagination links and raw entry payloads.
+// bundlePage is the minimal slice of a FHIR bundle needed for enumeration:
+// pagination links and raw entry payloads.
 type bundlePage struct {
 	Link []struct {
 		Relation string `json:"relation"`
@@ -57,126 +56,99 @@ type bundlePage struct {
 	Entry []json.RawMessage `json:"entry"`
 }
 
-// GetPatientEverything returns ResourceRefs (resourceType + id only) for every
-// resource linked to the patient via the $everything operation, following
-// link.relation=next pagination until exhausted. Resource bodies are never
-// decoded — each entry is parsed with gjson for its type and id. A missing or
-// already-purged patient (404) yields an empty result without error, which
-// makes the purge flow idempotent.
-func (c *purgeFhirClient) GetPatientEverything(ctx context.Context, patientID string) ([]contracts.ResourceRef, error) {
+// FindActivelyOwnedResources returns ResourceRefs for every resource the
+// patient actively owns and that is safe to delete. Enumeration is driven by
+// the constvars.PurgeRules registry: for each rule and ownership search
+// parameter it runs a paged search and follows link.relation=next until
+// exhausted. Each candidate's full body (already present in the search
+// response) is checked with isDeletable, so shared resources — anything
+// referencing another Patient or a Practitioner — are excluded. Results are
+// deduped by resourceType + id. Passively owned and shared resources are never
+// returned, which makes the result directly consumable as a delete batch.
+func (c *purgeFhirClient) FindActivelyOwnedResources(ctx context.Context, patientID string) ([]contracts.ResourceRef, error) {
+	seen := make(map[string]struct{})
 	refs := make([]contracts.ResourceRef, 0)
-	nextURL := fmt.Sprintf("%s/%s/$everything?_count=%d", c.BaseUrl, patientID, c.pageSize)
+	patientRef := constvars.FHIRRefPrefixPatient + patientID
 
-	for nextURL != "" {
-		respBody, err := c.Client.Do(ctx, constvars.MethodGet, nextURL, nil)
-		if err != nil {
-			var httpErr *fhir_http_client.FHIRHTTPError
-			if errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusNotFound {
-				return nil, nil
-			}
-			return nil, err
-		}
-
-		var page bundlePage
-		if err := json.Unmarshal(respBody, &page); err != nil {
-			return nil, err
-		}
-
-		for _, entry := range page.Entry {
-			resourceType := gjson.GetBytes(entry, "resource.resourceType").String()
-			id := gjson.GetBytes(entry, "resource.id").String()
-			if resourceType == "" || id == "" {
-				continue
-			}
-			refs = append(refs, contracts.ResourceRef{ResourceType: resourceType, ID: id})
-		}
-
-		nextURL = ""
-		for _, link := range page.Link {
-			if link.Relation == "next" && link.URL != "" {
-				nextURL = link.URL
-				break
+	for _, rule := range constvars.PurgeRules {
+		for _, param := range rule.Params {
+			nextURL := fmt.Sprintf("%s%s?%s=%s&_count=%d",
+				c.baseFHIRURL, rule.ResourceType, param, url.QueryEscape(patientRef), c.pageSize)
+			for nextURL != "" {
+				respBody, err := c.Client.Do(ctx, constvars.MethodGet, nextURL, nil)
+				if err != nil {
+					return nil, err
+				}
+				var next string
+				if next, err = collectDeletableRefs(respBody, patientID, seen, &refs); err != nil {
+					return nil, err
+				}
+				nextURL = next
 			}
 		}
 	}
-
 	return refs, nil
 }
 
-// collectSearchRefs parses a FHIR search bundle and extracts resourceType + id
-// from each entry, skipping entries that carry neither.
-func collectSearchRefs(respBody []byte) ([]contracts.ResourceRef, error) {
+// collectDeletableRefs parses one search page, appends the refs of deletable
+// (safety-passing, unseen) entries to refs, and returns the next page URL, if
+// any.
+func collectDeletableRefs(respBody []byte, patientID string, seen map[string]struct{}, refs *[]contracts.ResourceRef) (string, error) {
 	var page bundlePage
 	if err := json.Unmarshal(respBody, &page); err != nil {
-		return nil, err
+		return "", err
 	}
-	refs := make([]contracts.ResourceRef, 0, len(page.Entry))
 	for _, entry := range page.Entry {
 		resourceType := gjson.GetBytes(entry, "resource.resourceType").String()
 		id := gjson.GetBytes(entry, "resource.id").String()
 		if resourceType == "" || id == "" {
 			continue
 		}
-		refs = append(refs, contracts.ResourceRef{ResourceType: resourceType, ID: id})
+		key := resourceType + "/" + id
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		if !isDeletable([]byte(gjson.GetBytes(entry, "resource").Raw), patientID) {
+			continue
+		}
+		seen[key] = struct{}{}
+		*refs = append(*refs, contracts.ResourceRef{ResourceType: resourceType, ID: id})
 	}
-	return refs, nil
-}
-
-// DeletePatient DELETEs the Patient resource. Returns an error on failure.
-func (c *purgeFhirClient) DeletePatient(ctx context.Context, patientID string) error {
-	_, err := c.Client.Do(ctx, http.MethodDelete, fmt.Sprintf("%s/%s", c.BaseUrl, patientID), nil)
-	return err
-}
-
-// StripPatientPII replaces the Patient resource with a PII-free shell carrying
-// only its id. Used when the Patient delete itself fails: erasure is still
-// honored (no name/identifier/telecom/address remain) while leaving a valid,
-// id-only resource behind.
-func (c *purgeFhirClient) StripPatientPII(ctx context.Context, patientID string) error {
-	shell := fmt.Sprintf(`{"resourceType":"Patient","id":%q}`, patientID)
-	_, err := c.Client.Do(ctx, http.MethodPut, fmt.Sprintf("%s/%s", c.BaseUrl, patientID), strings.NewReader(shell))
-	return err
-}
-
-// FindCommunicationRefs returns Communications referencing the patient as
-// sender or recipient, combining both searches and deduping by id.
-func (c *purgeFhirClient) FindCommunicationRefs(ctx context.Context, patientID string) ([]contracts.ResourceRef, error) {
-	commBase := c.baseFHIRURL + constvars.ResourceCommunication
-	patientRef := constvars.FHIRRefPrefixPatient + patientID
-
-	seen := make(map[string]struct{})
-	refs := make([]contracts.ResourceRef, 0)
-	for _, param := range []string{"sender", "recipient"} {
-		respBody, err := c.Client.Do(ctx, constvars.MethodGet,
-			fmt.Sprintf("%s?%s=%s&_count=%d", commBase, param, url.QueryEscape(patientRef), c.pageSize), nil)
-		if err != nil {
-			return nil, err
-		}
-		pageRefs, err := collectSearchRefs(respBody)
-		if err != nil {
-			return nil, err
-		}
-		for _, ref := range pageRefs {
-			if _, dup := seen[ref.ID]; dup {
-				continue
-			}
-			seen[ref.ID] = struct{}{}
-			refs = append(refs, ref)
+	for _, link := range page.Link {
+		if link.Relation == "next" && link.URL != "" {
+			return link.URL, nil
 		}
 	}
-	return refs, nil
+	return "", nil
 }
 
-// FindQuestionnaireResponseRefsByAuthor returns QuestionnaireResponses authored
-// by the patient (author=Patient/{id} search).
-func (c *purgeFhirClient) FindQuestionnaireResponseRefsByAuthor(ctx context.Context, patientID string) ([]contracts.ResourceRef, error) {
-	qrBase := c.baseFHIRURL + constvars.ResourceQuestionnaireResponse
-	patientRef := constvars.FHIRRefPrefixPatient + patientID
-
-	respBody, err := c.Client.Do(ctx, constvars.MethodGet,
-		fmt.Sprintf("%s?author=%s&_count=%d", qrBase, url.QueryEscape(patientRef), c.pageSize), nil)
+// StripPatientToShell replaces the Patient resource with a PII-free shell
+// carrying only resourceType, id, the preserved meta, and active:false. A
+// missing or already-purged patient (404) is a no-op success, keeping repeat
+// purges idempotent.
+func (c *purgeFhirClient) StripPatientToShell(ctx context.Context, patientID string) error {
+	respBody, err := c.Client.Do(ctx, constvars.MethodGet, fmt.Sprintf("%s/%s", c.BaseUrl, patientID), nil)
 	if err != nil {
-		return nil, err
+		var httpErr *fhir_http_client.FHIRHTTPError
+		if errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusNotFound {
+			return nil
+		}
+		return err
 	}
-	return collectSearchRefs(respBody)
+
+	shell := map[string]any{
+		"resourceType": constvars.ResourcePatient,
+		"id":           patientID,
+		"active":       false,
+	}
+	if meta := gjson.GetBytes(respBody, "meta").Raw; meta != "" {
+		shell["meta"] = json.RawMessage(meta)
+	}
+	body, err := json.Marshal(shell)
+	if err != nil {
+		return err
+	}
+
+	_, err = c.Client.Do(ctx, http.MethodPut, fmt.Sprintf("%s/%s", c.BaseUrl, patientID), bytes.NewReader(body))
+	return err
 }
