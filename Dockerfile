@@ -34,6 +34,7 @@ ARG BUILD_TIME
 ARG TAG
 ARG TZ_ARG
 ARG AUTHOR
+ARG RUN_NUMBER
 
 ENV CGO_ENABLED=0
 ENV GOOS=linux
@@ -49,20 +50,22 @@ RUN echo "Set ARG value of [TAG] as $TAG"
 ARG RELEASE_NOTE="author=$AUTHOR \nversion=$VERSION \ncommit=${GIT_COMMIT} \ntag=$TAG \nbuild time=$BUILD_TIME \nrun number=$RUN_NUMBER"
 RUN echo "${RELEASE_NOTE}" > /go/src/github.com/konsulin-id/be-konsulin/RELEASE
 
-ADD . ./
-ADD go.mod go.sum ./
-ADD cmd ./cmd
-ADD cmd/http ./cmd/http
-#ADD cmd/example ./cmd/example
-ADD internal ./internal
-ADD pkg ./pkg
+COPY . ./
+COPY go.mod go.sum ./
+COPY cmd ./cmd
+COPY cmd/http ./cmd/http
+#COPY cmd/example ./cmd/example
+COPY internal ./internal
+COPY pkg ./pkg
 
 # updates vendor
 RUN go mod tidy && go mod vendor
 
 # builds
 RUN go build -o api-service \
-    -ldflags "-X konsulin-service/internal/pkg/buildinfo.Version=$VERSION -X konsulin-service/internal/pkg/buildinfo.Tag=$TAG -X konsulin-service/internal/pkg/buildinfo.CommitHash=$GIT_COMMIT" \
+    -ldflags "-X konsulin-service/internal/pkg/buildinfo.Version=$VERSION \
+        -X konsulin-service/internal/pkg/buildinfo.Tag=$TAG \
+        -X konsulin-service/internal/pkg/buildinfo.CommitHash=$GIT_COMMIT" \
     /go/src/github.com/konsulin-id/be-konsulin/cmd/http
 #    /go/src/github.com/konsulin-id/be-konsulin/cmd/example
 
