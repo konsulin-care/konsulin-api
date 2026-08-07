@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"konsulin-service/internal/app/contracts"
@@ -63,10 +64,8 @@ func (uc *authUsecase) InitializeSupertoken() error {
 	}
 
 	err := supertokens.Init(supertokens.TypeInput{
-		OnSuperTokensAPIError: func(err error, _ *http.Request, _ http.ResponseWriter) {
-			log.Println(err.Error())
-		},
-		Supertokens: supertokenConnectionInfo,
+		OnSuperTokensAPIError: handleSupertokensAPIError,
+		Supertokens:          supertokenConnectionInfo,
 		AppInfo:     supertokenAppInfo,
 		RecipeList:  supertokenRecipeList,
 	})
@@ -78,6 +77,24 @@ func (uc *authUsecase) InitializeSupertoken() error {
 
 	log.Println("Successfully initialized supertokens SDK")
 	return nil
+}
+
+// handleSupertokensAPIError is the OnSuperTokensAPIError callback. It logs the
+// full error for observability and writes a real 500 JSON response in
+// SuperTokens' GeneralErrorResponse shape, so recipe API failures never surface
+// as Go's implicit 200 with an empty body (which breaks the frontend SDK's
+// response.json() call). The message is generic on purpose: internal error
+// strings stay in the backend logs.
+func handleSupertokensAPIError(err error, _ *http.Request, res http.ResponseWriter) {
+	if err != nil {
+		log.Println(err.Error())
+	}
+
+	res.Header().Set(constvars.HeaderContentType, constvars.MIMEApplicationJSON)
+	res.WriteHeader(http.StatusInternalServerError)
+	_ = json.NewEncoder(res).Encode(map[string]string{
+		"message": "Something went wrong. Please try again.",
+	})
 }
 
 // buildPasswordlessConfig builds the full passwordless recipe configuration.
