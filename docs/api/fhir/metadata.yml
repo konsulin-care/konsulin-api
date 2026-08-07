@@ -12,12 +12,6 @@ http:
 
 runtime:
   assertions:
-    - expression: res.status
-      operator: eq
-      value: "200"
-    - expression: res.headers["content-type"]
-      operator: contains
-      value: application/fhir+json
     - expression: res.body.resourceType
       operator: isDefined
     - expression: res.body.resourceType
@@ -25,9 +19,6 @@ runtime:
       value: CapabilityStatement
     - expression: res.body.publisher
       operator: isDefined
-    - expression: res.responseTime
-      operator: lt
-      value: "5000"
 
 settings:
   encodeUrl: true

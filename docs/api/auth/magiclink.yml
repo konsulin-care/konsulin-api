@@ -22,7 +22,9 @@ http:
 runtime:
   scripts:
     - type: after-response
-      code: bru.runner.setNextRequest("Check Email Exists");
+      code: |-
+        bru.sleep(10000);
+        bru.runner.setNextRequest("Check Email Exists");
   assertions:
     - expression: res.status
       operator: eq

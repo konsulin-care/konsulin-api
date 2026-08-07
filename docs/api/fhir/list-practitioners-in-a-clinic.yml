@@ -1,0 +1,50 @@
+info:
+  name: List Practitioners in a Clinic
+  type: http
+  seq: 3
+
+http:
+  method: GET
+  url: "{{process.env.APP_BASE_URL}}/fhir/PractitionerRole?location={{locationId}}&status=active&_include=PractitionerRole:practitioner&_include=PractitionerRole:service&_include=PractitionerRole:organization&_include=PractitionerRole:location"
+  params:
+    - name: location
+      value: "{{locationId}}"
+      type: query
+    - name: status
+      value: active
+      type: query
+    - name: _include
+      value: PractitionerRole:practitioner
+      type: query
+    - name: _include
+      value: PractitionerRole:service
+      type: query
+    - name: _include
+      value: PractitionerRole:organization
+      type: query
+    - name: _include
+      value: PractitionerRole:location
+      type: query
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        const ids = body.entry.map(e => e.resource.id);
+
+        // Pick a random ID
+        const randomId = ids[Math.floor(Math.random() * ids.length)];
+
+        // Save to a variable for use in subsequent requests
+        bru.setVar("locationId", randomId);
+        bru.setNextRequest("View Healthcare Service Provided by a Practitioner in a Clinic")
+
+        console.log("Available IDs:", ids);
+        console.log("Selected ID:", randomId);
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

@@ -7,3 +7,14 @@ request:
   headers:
     - name: Content-Type
       value: application/fhir+json
+  auth:
+    type: bearer
+    token: "{{sessionToken}}"
+  scripts:
+    - type: tests
+      code: |-
+        test("content-type is application/fhir+json", function() {
+          expect(res.headers['content-type']).to.include('application/fhir+json');
+          expect(res.status).to.equal(200);
+          expect(res.responseTime).to.be.lessThan(5000);
+        });

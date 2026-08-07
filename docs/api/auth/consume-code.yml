@@ -25,8 +25,6 @@ runtime:
       code: |-
         const org = bru.getProcessEnv("ORGANIZATION");
 
-        bru.sleep(30000)
-
         await bru.sendRequest(
           {
             method: "GET",
