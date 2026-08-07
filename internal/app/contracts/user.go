@@ -92,7 +92,7 @@ type InitializeNewUserFHIRResourcesOutput struct {
 	PersonID       string
 }
 
-type UserUsecase interface {
+type UserFHIRInitializer interface {
 	InitializeNewUserFHIRResources(ctx context.Context, input *InitializeNewUserFHIRResourcesInput) (*InitializeNewUserFHIRResourcesOutput, error)
 }
 

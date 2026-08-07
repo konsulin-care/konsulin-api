@@ -29,7 +29,7 @@ func newTestUsecaseWithForwarder(forwardFn func(ctx context.Context, service, me
 	}
 }
 
-func TestUserUsecase_WebhookForwardFn_Called_WhenSet(t *testing.T) {
+func TestUserFHIRInitializer_WebhookForwardFn_Called_WhenSet(t *testing.T) {
 	var recordedService, recordedMethod string
 	var recordedContentType string
 
@@ -61,7 +61,7 @@ func TestUserUsecase_WebhookForwardFn_Called_WhenSet(t *testing.T) {
 	assert.Equal(t, "application/json", recordedContentType)
 }
 
-func TestUserUsecase_WebhookForwardFn_Error_Propagates(t *testing.T) {
+func TestUserFHIRInitializer_WebhookForwardFn_Error_Propagates(t *testing.T) {
 	forwardFn := func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
 		return 0, nil, errors.New("forwarder error")
 	}
@@ -74,7 +74,7 @@ func TestUserUsecase_WebhookForwardFn_Error_Propagates(t *testing.T) {
 	assert.Contains(t, err.Error(), "forwarder error")
 }
 
-func TestUserUsecase_WebhookForwardFn_NonOKStatus_ReturnsError(t *testing.T) {
+func TestUserFHIRInitializer_WebhookForwardFn_NonOKStatus_ReturnsError(t *testing.T) {
 	forwardFn := func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
 		return http.StatusForbidden, []byte("Forbidden"), nil
 	}
@@ -87,7 +87,7 @@ func TestUserUsecase_WebhookForwardFn_NonOKStatus_ReturnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to call webhook svc konsulin omnichannel")
 }
 
-func TestUserUsecase_WebhookForwardFn_EmptyResponse_ReturnsError(t *testing.T) {
+func TestUserFHIRInitializer_WebhookForwardFn_EmptyResponse_ReturnsError(t *testing.T) {
 	forwardFn := func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
 		return http.StatusOK, []byte("[]"), nil
 	}
@@ -104,7 +104,7 @@ func strPtr(s string) *string {
 	return &s
 }
 
-func TestUserUsecase_SetWebhookForwarder_SetsField(t *testing.T) {
+func TestUserFHIRInitializer_SetWebhookForwarder_SetsField(t *testing.T) {
 	uc := &userUsecase{Log: zap.NewNop()}
 	called := false
 	fn := func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {

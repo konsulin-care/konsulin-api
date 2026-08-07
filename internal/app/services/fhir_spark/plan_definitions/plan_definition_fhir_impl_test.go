@@ -25,16 +25,16 @@ func newTestClient(baseURL string, logger *zap.Logger) *planDefinitionFhirClient
 	}
 }
 
-func TestNewPlanDefinitionFhirClient(t *testing.T) {
+func TestNewPlanDefinitionFinder(t *testing.T) {
 	logger := zap.NewNop()
-	client := NewPlanDefinitionFhirClient("http://fhir.example.com", logger)
+	client := NewPlanDefinitionFinder("http://fhir.example.com", logger)
 	require.NotNil(t, client)
 
 	_, ok := client.(*planDefinitionFhirClient)
 	assert.True(t, ok, "expected *planDefinitionFhirClient")
 }
 
-func TestPlanDefinitionFhirClient_FindPlanDefinitionByID_Success(t *testing.T) {
+func TestPlanDefinitionFinder_FindPlanDefinitionByID_Success(t *testing.T) {
 	logger := zap.NewNop()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -55,7 +55,7 @@ func TestPlanDefinitionFhirClient_FindPlanDefinitionByID_Success(t *testing.T) {
 	assert.Equal(t, "ResearchBatch", plan.Name)
 }
 
-func TestPlanDefinitionFhirClient_FindPlanDefinitionByID_NotFound(t *testing.T) {
+func TestPlanDefinitionFinder_FindPlanDefinitionByID_NotFound(t *testing.T) {
 	logger := zap.NewNop()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

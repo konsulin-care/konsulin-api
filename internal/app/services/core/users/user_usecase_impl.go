@@ -49,11 +49,11 @@ func (uc *userUsecase) SetWebhookForwarder(fn func(ctx context.Context, service,
 }
 
 var (
-	userUsecaseInstance contracts.UserUsecase
-	onceUserUsecase     sync.Once
+	userUsecaseInstance     contracts.UserFHIRInitializer
+	onceUserFHIRInitializer sync.Once
 )
 
-func NewUserUsecase(
+func NewUserFHIRInitializer(
 	patientFhirClient contracts.PatientFhirClient,
 	practitionerFhirClient contracts.PractitionerFhirClient,
 	personFhirClient contracts.PersonFhirClient,
@@ -64,8 +64,8 @@ func NewUserUsecase(
 	logger *zap.Logger,
 	lockerService contracts.LockerService,
 	jwtManager *jwtmanager.JWTManager,
-) contracts.UserUsecase {
-	onceUserUsecase.Do(func() {
+) contracts.UserFHIRInitializer {
+	onceUserFHIRInitializer.Do(func() {
 		instance := &userUsecase{
 			PatientFhirClient:          patientFhirClient,
 			PractitionerFhirClient:     practitionerFhirClient,

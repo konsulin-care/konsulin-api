@@ -96,7 +96,7 @@ func NewMiddlewares(
 	practitionerRoleFhirClient contracts.PractitionerRoleFhirClient,
 	scheduleFhirClient contracts.ScheduleFhirClient,
 	questionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient,
-	planDefinitionFhirClient contracts.PlanDefinitionFhirClient,
+	planDefinitionFhirClient contracts.PlanDefinitionFinder,
 ) *Middlewares {
 	enforcer := newEnforcer(logger)
 	startPolicyWatcher(enforcer, logger)
@@ -109,32 +109,34 @@ func NewMiddlewares(
 		PractitionerRoleFhirClient:      practitionerRoleFhirClient,
 		ScheduleFhirClient:              scheduleFhirClient,
 		QuestionnaireResponseFhirClient: questionnaireResponseFhirClient,
-		PlanDefinitionFhirClient:        planDefinitionFhirClient,
+		PlanDefinitionFinder:            planDefinitionFhirClient,
 		Enforcer:                        enforcer,
 		HTTPClient:                      newHTTPClient(),
 	}
 }
 
-type ContextKey string
-type Middlewares struct {
-	Log                             *zap.Logger
-	AuthUsecase                     contracts.AuthUsecase
-	InternalConfig                  *config.InternalConfig
-	PractitionerFhirClient          contracts.PractitionerFhirClient
-	PatientFhirClient               contracts.PatientFhirClient
-	PractitionerRoleFhirClient      contracts.PractitionerRoleFhirClient
-	ScheduleFhirClient              contracts.ScheduleFhirClient
-	QuestionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient
-	PlanDefinitionFhirClient        contracts.PlanDefinitionFhirClient
-	Enforcer                        *casbin.Enforcer
+type (
+	ContextKey  string
+	Middlewares struct {
+		Log                             *zap.Logger
+		AuthUsecase                     contracts.AuthUsecase
+		InternalConfig                  *config.InternalConfig
+		PractitionerFhirClient          contracts.PractitionerFhirClient
+		PatientFhirClient               contracts.PatientFhirClient
+		PractitionerRoleFhirClient      contracts.PractitionerRoleFhirClient
+		ScheduleFhirClient              contracts.ScheduleFhirClient
+		QuestionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient
+		PlanDefinitionFinder            contracts.PlanDefinitionFinder
+		Enforcer                        *casbin.Enforcer
 
-	// HTTPClient is a client for sending HTTP requests and can be reused for all requests.
-	HTTPClient *http.Client
+		// HTTPClient is a client for sending HTTP requests and can be reused for all requests.
+		HTTPClient *http.Client
 
-	// PostFHIRProxyHooks run after a successful FHIR proxy response (status < 400), before response filtering.
-	// Hooks are called synchronously; on error the middleware only logs and continues.
-	PostFHIRProxyHooks []PostFHIRProxyHook
-}
+		// PostFHIRProxyHooks run after a successful FHIR proxy response (status < 400), before response filtering.
+		// Hooks are called synchronously; on error the middleware only logs and continues.
+		PostFHIRProxyHooks []PostFHIRProxyHook
+	}
+)
 
 // PostFHIRProxyUserRequestDetail carries request data for post-FHIR-proxy hooks.
 type PostFHIRProxyUserRequestDetail struct {

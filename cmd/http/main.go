@@ -158,7 +158,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	redisRepository := redisKonsulin.NewRedisRepository(bootstrap.Redis, bootstrap.Logger)
 
 	// Initialize the mailer service with RabbitMQ
-	mailerService, err := mailer.NewMailerService(bootstrap.RabbitMQ, bootstrap.Logger, bootstrap.InternalConfig.RabbitMQ.MailerQueue)
+	mailerService, err := mailer.NewEmailSender(bootstrap.RabbitMQ, bootstrap.Logger, bootstrap.InternalConfig.RabbitMQ.MailerQueue)
 	if err != nil {
 		return err
 	}
@@ -181,19 +181,19 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	slotClient := slotFhir.NewSlotFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	serviceRequestFhirClient := service_requests.NewServiceRequestFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	questionnaireResponseFhirClient := questionnaireResponsesFhir.NewQuestionnaireResponseFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
-	planDefinitionFhirClient := planDefinitionsFhir.NewPlanDefinitionFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	planDefinitionFhirClient := planDefinitionsFhir.NewPlanDefinitionFinder(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 
 	jwtManager, err := jwtmanager.NewJWTManager(bootstrap.InternalConfig, bootstrap.Logger)
 	if err != nil {
 		return err
 	}
 
-	magicLinkDelivery := webhook.NewMagicLinkDeliveryService(bootstrap.InternalConfig, jwtManager, bootstrap.Logger)
+	magicLinkDelivery := webhook.NewMagicLinkSender(bootstrap.InternalConfig, jwtManager, bootstrap.Logger)
 
 	// Ensure default FHIR Groups exist for ServiceRequest subjects
 	_ = serviceRequestFhirClient.EnsureAllNecessaryGroupsExists(context.Background())
 
-	userUsecase := users.NewUserUsecase(
+	userUsecase := users.NewUserFHIRInitializer(
 		patientFhirClient,
 		practitionerFhirClient,
 		personFhirClient,
@@ -325,8 +325,8 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 
 	// Initialize purge (erasure) components: FHIR client, account deletion, usecase, controller.
 	purgeFhirClient := privacyFhir.NewPurgeFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
-	accountDeletion := users.NewAccountDeletionService(bootstrap.Logger)
-	purgeUsecase := privacy.NewPurgeUsecase(purgeFhirClient, bundleClient, accountDeletion, bootstrap.Logger)
+	accountDeletion := users.NewUserAccountDeleter(bootstrap.Logger)
+	purgeUsecase := privacy.NewPatientDataPurger(purgeFhirClient, bundleClient, accountDeletion, bootstrap.Logger)
 	purgeController := controllers.NewPurgeController(purgeUsecase, middlewares, bootstrap.Logger)
 
 	if err := orgUsecase.InitializeKonsulinOrganizationResource(context.Background()); err != nil {

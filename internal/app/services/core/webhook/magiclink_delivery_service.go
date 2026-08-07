@@ -41,9 +41,9 @@ func (s *magicLinkDeliveryService) SetWebhookForwarder(fn func(ctx context.Conte
 	s.forwardFn = fn
 }
 
-// NewMagicLinkDeliveryService constructs an internal-only delivery service for passwordless magic links.
+// NewMagicLinkSender constructs an internal-only delivery service for passwordless magic links.
 // It is NOT exposed as an HTTP endpoint; intended usage is via internal components like SuperTokens overrides.
-func NewMagicLinkDeliveryService(cfg *config.InternalConfig, jwtManager *jwtmanager.JWTManager, logger *zap.Logger) contracts.MagicLinkDeliveryService {
+func NewMagicLinkSender(cfg *config.InternalConfig, jwtManager *jwtmanager.JWTManager, logger *zap.Logger) contracts.MagicLinkSender {
 	timeoutSeconds := 15
 	if cfg != nil && cfg.Webhook.HTTPTimeoutInSeconds > 0 {
 		timeoutSeconds = cfg.Webhook.HTTPTimeoutInSeconds

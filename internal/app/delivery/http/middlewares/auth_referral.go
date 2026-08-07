@@ -91,7 +91,7 @@ func (m *Middlewares) validateReferralCommunication(ctx context.Context, r *http
 	if _, err := m.PatientFhirClient.FindPatientByID(ctx, senderID); err != nil {
 		return referralForbidden("forbidden: referral sender is not a registered Patient")
 	}
-	if _, err := m.PlanDefinitionFhirClient.FindPlanDefinitionByID(ctx, batchID); err != nil {
+	if _, err := m.PlanDefinitionFinder.FindPlanDefinitionByID(ctx, batchID); err != nil {
 		return referralForbidden("forbidden: referral batch PlanDefinition not found")
 	}
 

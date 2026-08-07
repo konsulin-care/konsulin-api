@@ -2,30 +2,29 @@ package plan_definitions
 
 import (
 	"context"
-	"sync"
-
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/services/fhir_spark/base"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/fhir_http_client"
+	"sync"
 
 	"go.uber.org/zap"
 )
 
 var (
-	planDefinitionFhirClientInstance contracts.PlanDefinitionFhirClient
-	oncePlanDefinitionFhirClient     sync.Once
+	planDefinitionFhirClientInstance contracts.PlanDefinitionFinder
+	oncePlanDefinitionFinder         sync.Once
 )
 
 type planDefinitionFhirClient struct {
 	*base.ResourceClient
 }
 
-// NewPlanDefinitionFhirClient returns a singleton PlanDefinitionFhirClient bound
+// NewPlanDefinitionFinder returns a singleton PlanDefinitionFinder bound
 // to the given FHIR base URL. All HTTP traffic goes through FHIRHTTPClient.Do.
-func NewPlanDefinitionFhirClient(baseUrl string, logger *zap.Logger) contracts.PlanDefinitionFhirClient {
-	oncePlanDefinitionFhirClient.Do(func() {
+func NewPlanDefinitionFinder(baseUrl string, logger *zap.Logger) contracts.PlanDefinitionFinder {
+	oncePlanDefinitionFinder.Do(func() {
 		planDefinitionFhirClientInstance = &planDefinitionFhirClient{
 			ResourceClient: base.New(baseUrl, constvars.ResourcePlanDefinition, logger),
 		}

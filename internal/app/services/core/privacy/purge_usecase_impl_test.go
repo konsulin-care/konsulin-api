@@ -223,5 +223,5 @@ func TestPurgePatientData_AlreadyPurgedIsIdempotentNoOp(t *testing.T) {
 }
 
 var _ contracts.PurgeFhirClient = (*mockPurgeClient)(nil)
-var _ contracts.AccountDeletionService = (*mockAccountDeletion)(nil)
+var _ contracts.UserAccountDeleter = (*mockAccountDeletion)(nil)
 var _ bundlepkg.BundleFhirClient = (*mockBundleClient)(nil)

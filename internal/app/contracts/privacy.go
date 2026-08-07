@@ -29,16 +29,16 @@ type PurgeFhirClient interface {
 	StripPatientToShell(ctx context.Context, patientID string) error
 }
 
-// AccountDeletionService removes a user's SuperTokens account (and its
+// UserAccountDeleter removes a user's SuperTokens account (and its
 // sessions). It is invoked only after a successful FHIR purge.
-type AccountDeletionService interface {
+type UserAccountDeleter interface {
 	// DeleteUserAccount permanently deletes the SuperTokens account for userID.
 	DeleteUserAccount(ctx context.Context, userID string) error
 }
 
-// PurgeUsecase orchestrates erasure: it removes all FHIR data linked to the
+// PatientDataPurger orchestrates erasure: it removes all FHIR data linked to the
 // session patient and, on success, deletes the associated SuperTokens account.
-type PurgeUsecase interface {
+type PatientDataPurger interface {
 	// PurgePatientData erases all FHIR resources linked to fhirID, then (and only
 	// then) deletes the SuperTokens account for supertokensUserID. When
 	// supertokensUserID is empty, the account step is skipped. A second run is a

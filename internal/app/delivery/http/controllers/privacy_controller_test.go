@@ -17,14 +17,14 @@ import (
 	"go.uber.org/zap"
 )
 
-// ctrlMockPurgeUsecase records purge invocations.
-type ctrlMockPurgeUsecase struct {
+// ctrlMockPatientDataPurger records purge invocations.
+type ctrlMockPatientDataPurger struct {
 	fhirIDs []string
 	uids    []string
 	err     error
 }
 
-func (m *ctrlMockPurgeUsecase) PurgePatientData(_ context.Context, fhirID, supertokensUserID string) error {
+func (m *ctrlMockPatientDataPurger) PurgePatientData(_ context.Context, fhirID, supertokensUserID string) error {
 	m.fhirIDs = append(m.fhirIDs, fhirID)
 	m.uids = append(m.uids, supertokensUserID)
 	return m.err
@@ -87,7 +87,7 @@ func (*ctrlMockPractitionerClient) PatchPractitioner(_ context.Context, _ *fhir_
 	return nil, nil
 }
 
-func newPurgeTestController(usecase contracts.PurgeUsecase) *PurgeController {
+func newPurgeTestController(usecase contracts.PatientDataPurger) *PurgeController {
 	mw := &middlewares.Middlewares{
 		PatientFhirClient: &ctrlMockPatientClient{
 			patients: []fhir_dto.Patient{{ID: "pat-1"}},
@@ -99,7 +99,7 @@ func newPurgeTestController(usecase contracts.PurgeUsecase) *PurgeController {
 
 // newPurgeTestControllerWithPractitioner resolves the session to a Practitioner
 // FHIR identity (practitioner-first resolution wins).
-func newPurgeTestControllerWithPractitioner(usecase contracts.PurgeUsecase) *PurgeController {
+func newPurgeTestControllerWithPractitioner(usecase contracts.PatientDataPurger) *PurgeController {
 	mw := &middlewares.Middlewares{
 		PatientFhirClient: &ctrlMockPatientClient{
 			patients: []fhir_dto.Patient{{ID: "pat-1"}},
@@ -124,7 +124,7 @@ func doPurgeRequest(t *testing.T, c *PurgeController, roles []string, uid string
 }
 
 func TestPurgeData_PatientSessionPurgesOwnData(t *testing.T) {
-	usecase := &ctrlMockPurgeUsecase{}
+	usecase := &ctrlMockPatientDataPurger{}
 	c := newPurgeTestController(usecase)
 
 	rec := doPurgeRequest(t, c, []string{constvars.KonsulinRolePatient}, "user-123")
@@ -134,7 +134,7 @@ func TestPurgeData_PatientSessionPurgesOwnData(t *testing.T) {
 }
 
 func TestPurgeData_GuestSessionForbidden(t *testing.T) {
-	usecase := &ctrlMockPurgeUsecase{}
+	usecase := &ctrlMockPatientDataPurger{}
 	c := newPurgeTestController(usecase)
 
 	rec := doPurgeRequest(t, c, []string{constvars.KonsulinRoleGuest}, "anonymous")
@@ -143,7 +143,7 @@ func TestPurgeData_GuestSessionForbidden(t *testing.T) {
 }
 
 func TestPurgeData_PractitionerSessionForbidden(t *testing.T) {
-	usecase := &ctrlMockPurgeUsecase{}
+	usecase := &ctrlMockPatientDataPurger{}
 	c := newPurgeTestControllerWithPractitioner(usecase)
 
 	rec := doPurgeRequest(t, c, []string{constvars.KonsulinRolePractitioner}, "user-456")
@@ -152,7 +152,7 @@ func TestPurgeData_PractitionerSessionForbidden(t *testing.T) {
 }
 
 func TestPurgeData_NoSessionForbidden(t *testing.T) {
-	usecase := &ctrlMockPurgeUsecase{}
+	usecase := &ctrlMockPatientDataPurger{}
 	c := newPurgeTestController(usecase)
 
 	rec := doPurgeRequest(t, c, nil, "")
@@ -161,7 +161,7 @@ func TestPurgeData_NoSessionForbidden(t *testing.T) {
 }
 
 func TestPurgeData_UsecaseErrorReturns500(t *testing.T) {
-	usecase := &ctrlMockPurgeUsecase{err: errors.New("fhir down")}
+	usecase := &ctrlMockPatientDataPurger{err: errors.New("fhir down")}
 	c := newPurgeTestController(usecase)
 
 	rec := doPurgeRequest(t, c, []string{constvars.KonsulinRolePatient}, "user-123")

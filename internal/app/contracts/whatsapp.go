@@ -5,6 +5,6 @@ import (
 	"konsulin-service/internal/pkg/dto/requests"
 )
 
-type WhatsAppService interface {
+type WhatsAppSender interface {
 	SendWhatsAppMessage(ctx context.Context, request *requests.WhatsAppMessage) error
 }

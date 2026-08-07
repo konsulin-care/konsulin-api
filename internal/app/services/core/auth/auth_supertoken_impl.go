@@ -347,7 +347,7 @@ func (uc *authUsecase) initializeFHIRForUser(userID string, email *string, phone
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(10*time.Second))
 	defer cancel()
 
-	result, err := uc.UserUsecase.InitializeNewUserFHIRResources(ctx, initInput)
+	result, err := uc.UserFHIRInitializer.InitializeNewUserFHIRResources(ctx, initInput)
 	if err != nil {
 		uc.Log.Error("authUsecase failed to initialize FHIR resources",
 			zap.Error(err),

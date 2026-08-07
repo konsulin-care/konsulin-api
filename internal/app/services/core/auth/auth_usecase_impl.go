@@ -30,15 +30,15 @@ import (
 type authUsecase struct {
 	RedisRepository                 contracts.RedisRepository
 	RoleRepository                  contracts.RoleRepository
-	UserUsecase                     contracts.UserUsecase
+	UserFHIRInitializer             contracts.UserFHIRInitializer
 	PatientFhirClient               contracts.PatientFhirClient
 	PractitionerFhirClient          contracts.PractitionerFhirClient
 	QuestionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient
 	BundleFhirClient                bundleSvc.BundleFhirClient
-	MailerService                   contracts.MailerService
-	WhatsAppService                 contracts.WhatsAppService
+	EmailSender                     contracts.EmailSender
+	WhatsAppSender                  contracts.WhatsAppSender
 	MinioStorage                    contracts.Storage
-	MagicLinkDelivery               contracts.MagicLinkDeliveryService
+	MagicLinkDelivery               contracts.MagicLinkSender
 	InternalConfig                  *config.InternalConfig
 	DriverConfig                    *config.DriverConfig
 	Roles                           map[string]*models.Role
@@ -57,9 +57,9 @@ func NewAuthUsecase(
 	practitionerFhirClient contracts.PractitionerFhirClient,
 	questionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient,
 	bundleFhirClient bundleSvc.BundleFhirClient,
-	userUsecase contracts.UserUsecase,
-	mailerService contracts.MailerService,
-	magicLinkDelivery contracts.MagicLinkDeliveryService,
+	userUsecase contracts.UserFHIRInitializer,
+	mailerService contracts.EmailSender,
+	magicLinkDelivery contracts.MagicLinkSender,
 	internalConfig *config.InternalConfig,
 	driverConfig *config.DriverConfig,
 	logger *zap.Logger,
@@ -71,8 +71,8 @@ func NewAuthUsecase(
 			PractitionerFhirClient:          practitionerFhirClient,
 			QuestionnaireResponseFhirClient: questionnaireResponseFhirClient,
 			BundleFhirClient:                bundleFhirClient,
-			UserUsecase:                     userUsecase,
-			MailerService:                   mailerService,
+			UserFHIRInitializer:             userUsecase,
+			EmailSender:                     mailerService,
 			MagicLinkDelivery:               magicLinkDelivery,
 			InternalConfig:                  internalConfig,
 			DriverConfig:                    driverConfig,
@@ -85,6 +85,7 @@ func NewAuthUsecase(
 
 	return authUsecaseInstance, authUsecaseError
 }
+
 func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.SupertokenPasswordlessCreateMagicLink) error {
 	hasPhone := strings.TrimSpace(request.Phone) != ""
 	hasEmail := strings.TrimSpace(request.Email) != ""
@@ -269,7 +270,7 @@ func initializeMagicLinkFHIR(ctx context.Context, in initializeMagicLinkFHIRInpu
 	input.ToogleByRoles(in.Roles)
 	initCtx, cancel := context.WithDeadline(ctx, time.Now().Add(10*time.Second))
 	defer cancel()
-	res, err := in.Uc.UserUsecase.InitializeNewUserFHIRResources(initCtx, input)
+	res, err := in.Uc.UserFHIRInitializer.InitializeNewUserFHIRResources(initCtx, input)
 	if err != nil {
 		in.Uc.Log.Error("Failed to initialize FHIR resources during magic link creation",
 			zap.String(constvars.LoggingRequestIDKey, in.RequestID),

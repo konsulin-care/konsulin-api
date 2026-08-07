@@ -17,21 +17,21 @@ const purgeBatchSize = 100
 type purgeUsecaseImpl struct {
 	purgeClient     contracts.PurgeFhirClient
 	bundleClient    bundle.BundleFhirClient
-	accountDeletion contracts.AccountDeletionService
+	accountDeletion contracts.UserAccountDeleter
 	log             *zap.Logger
 	batchSize       int
 }
 
-// NewPurgeUsecase returns a PurgeUsecase that erases a patient's actively-owned
+// NewPatientDataPurger returns a PatientDataPurger that erases a patient's actively-owned
 // FHIR data via registry-driven enumeration + batch DELETE bundles, strips the
 // Patient resource to a shell, verifies erasure, and only then deletes the
 // associated SuperTokens account.
-func NewPurgeUsecase(
+func NewPatientDataPurger(
 	purgeClient contracts.PurgeFhirClient,
 	bundleClient bundle.BundleFhirClient,
-	accountDeletion contracts.AccountDeletionService,
+	accountDeletion contracts.UserAccountDeleter,
 	logger *zap.Logger,
-) contracts.PurgeUsecase {
+) contracts.PatientDataPurger {
 	return &purgeUsecaseImpl{
 		purgeClient:     purgeClient,
 		bundleClient:    bundleClient,

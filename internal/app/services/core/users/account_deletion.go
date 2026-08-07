@@ -17,9 +17,9 @@ type accountDeletionService struct {
 	deleteFn func(userID string) error
 }
 
-// NewAccountDeletionService returns an AccountDeletionService backed by the
+// NewUserAccountDeleter returns an UserAccountDeleter backed by the
 // SuperTokens Go SDK. deleteFn is injectable for tests.
-func NewAccountDeletionService(logger *zap.Logger) contracts.AccountDeletionService {
+func NewUserAccountDeleter(logger *zap.Logger) contracts.UserAccountDeleter {
 	return &accountDeletionService{
 		log:      logger,
 		deleteFn: supertokens.DeleteUser,

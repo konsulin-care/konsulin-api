@@ -5,6 +5,6 @@ import (
 	"konsulin-service/internal/pkg/dto/requests"
 )
 
-type MailerService interface {
+type EmailSender interface {
 	SendEmail(ctx context.Context, request *requests.EmailPayload) error
 }

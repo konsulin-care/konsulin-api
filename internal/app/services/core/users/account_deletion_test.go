@@ -13,7 +13,7 @@ import (
 
 func TestDeleteUserAccount_CallsDeleteWithUserID(t *testing.T) {
 	var gotUserID string
-	svc := NewAccountDeletionService(zap.NewNop()).(*accountDeletionService)
+	svc := NewUserAccountDeleter(zap.NewNop()).(*accountDeletionService)
 	svc.deleteFn = func(userID string) error {
 		gotUserID = userID
 		return nil
@@ -25,7 +25,7 @@ func TestDeleteUserAccount_CallsDeleteWithUserID(t *testing.T) {
 }
 
 func TestDeleteUserAccount_PropagatesError(t *testing.T) {
-	svc := NewAccountDeletionService(zap.NewNop()).(*accountDeletionService)
+	svc := NewUserAccountDeleter(zap.NewNop()).(*accountDeletionService)
 	svc.deleteFn = func(_ string) error {
 		return errors.New("core unreachable")
 	}

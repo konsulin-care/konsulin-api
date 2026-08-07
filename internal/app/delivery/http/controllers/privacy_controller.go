@@ -17,14 +17,14 @@ import (
 // identity the same way the Auth middleware does and delegates to the purge
 // usecase, which owns the FHIR deletion + account-deletion ordering.
 type PurgeController struct {
-	Usecase     contracts.PurgeUsecase
+	Usecase     contracts.PatientDataPurger
 	Middlewares *middlewares.Middlewares
 	Log         *zap.Logger
 }
 
 // NewPurgeController returns a PurgeController with the purge usecase and the
 // middlewares (for session identity resolution).
-func NewPurgeController(usecase contracts.PurgeUsecase, mw *middlewares.Middlewares, log *zap.Logger) *PurgeController {
+func NewPurgeController(usecase contracts.PatientDataPurger, mw *middlewares.Middlewares, log *zap.Logger) *PurgeController {
 	return &PurgeController{
 		Usecase:     usecase,
 		Middlewares: mw,

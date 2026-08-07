@@ -14,8 +14,8 @@ import (
 )
 
 var (
-	mailerServiceInstance contracts.MailerService
-	onceMailerService     sync.Once
+	mailerServiceInstance contracts.EmailSender
+	onceEmailSender       sync.Once
 	mailerServiceError    error
 )
 
@@ -25,8 +25,8 @@ type mailerService struct {
 	Log     *zap.Logger
 }
 
-func NewMailerService(rabbitMQConnection *amqp091.Connection, logger *zap.Logger, queue string) (contracts.MailerService, error) {
-	onceMailerService.Do(func() {
+func NewEmailSender(rabbitMQConnection *amqp091.Connection, logger *zap.Logger, queue string) (contracts.EmailSender, error) {
+	onceEmailSender.Do(func() {
 		channel, mailerServiceError := rabbitMQConnection.Channel()
 		if mailerServiceError != nil {
 			return
@@ -40,6 +40,7 @@ func NewMailerService(rabbitMQConnection *amqp091.Connection, logger *zap.Logger
 	})
 	return mailerServiceInstance, mailerServiceError
 }
+
 func (s *mailerService) SendEmail(ctx context.Context, request *requests.EmailPayload) error {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	s.Log.Info("mailerService.SendEmail called",

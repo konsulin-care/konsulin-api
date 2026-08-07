@@ -119,7 +119,7 @@ func (m *mockReferralPatientClient) FindPatientByID(_ context.Context, _ string)
 	return &fhir_dto.Patient{ID: "DG3F3STPYZ6HX25A"}, nil
 }
 
-// mockPlanDefinitionClient implements contracts.PlanDefinitionFhirClient.
+// mockPlanDefinitionClient implements contracts.PlanDefinitionFinder.
 type mockPlanDefinitionClient struct {
 	batchExists bool
 	err         error
@@ -141,7 +141,7 @@ func newReferralTestMW() *Middlewares {
 			mockPatientClient: &mockPatientClient{},
 			patientExists:     true,
 		},
-		PlanDefinitionFhirClient: &mockPlanDefinitionClient{batchExists: true},
+		PlanDefinitionFinder: &mockPlanDefinitionClient{batchExists: true},
 	}
 }
 
@@ -187,7 +187,7 @@ func TestValidateReferralCommunication_RejectionsAreForbidden(t *testing.T) {
 	})
 	t.Run("unknown batch", func(t *testing.T) {
 		mw2 := newReferralTestMW()
-		mw2.PlanDefinitionFhirClient = &mockPlanDefinitionClient{batchExists: false}
+		mw2.PlanDefinitionFinder = &mockPlanDefinitionClient{batchExists: false}
 		id, body := validReferralBody()
 		rejectionError(t, mw2.validateReferralCommunication(context.Background(), nil, []string{constvars.KonsulinRolePatient}, "referee-1", id, []byte(body)))
 	})
@@ -330,7 +330,7 @@ func TestValidateReferralCommunication_SenderNotRegisteredRejected(t *testing.T)
 
 func TestValidateReferralCommunication_BatchNotFoundRejected(t *testing.T) {
 	mw := newReferralTestMW()
-	mw.PlanDefinitionFhirClient = &mockPlanDefinitionClient{batchExists: false}
+	mw.PlanDefinitionFinder = &mockPlanDefinitionClient{batchExists: false}
 	id, body := validReferralBody()
 	err := mw.validateReferralCommunication(context.Background(), nil, []string{constvars.KonsulinRolePatient}, "referee-1", id, []byte(body))
 	assert.Error(t, err)
@@ -366,4 +366,4 @@ func TestIsReferralID(t *testing.T) {
 	assert.False(t, isReferralID(""))
 }
 
-var _ contracts.PlanDefinitionFhirClient = (*mockPlanDefinitionClient)(nil)
+var _ contracts.PlanDefinitionFinder = (*mockPlanDefinitionClient)(nil)
