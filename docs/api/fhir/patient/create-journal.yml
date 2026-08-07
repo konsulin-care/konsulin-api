@@ -10,8 +10,6 @@ http:
   headers:
     - name: Authorization
       value: Bearer {{sessionToken}}
-    - name: Authorization
-      value: Bearer {{sessionToken}}
   body:
     type: json
     data: |-

@@ -7,10 +7,10 @@ info:
 http:
   method: GET
   url: "{{process.env.APP_BASE_URL}}/fhir/Communication?sender=Patient/{{patientId}}&topic=research-referral&_elements=recipient&_count=500"
-  params:
   headers:
     - name: Authorization
       value: Bearer {{sessionToken}}
+  params:
     - name: sender
       value: "Patient/{{patientId}}"
       type: query
@@ -23,10 +23,6 @@ http:
     - name: _count
       value: "500"
       type: query
-    - name: Authorization
-      value: Bearer {{sessionToken}}
-    - name: Authorization
-      value: Bearer {{sessionToken}}
 
 runtime:
   scripts:
