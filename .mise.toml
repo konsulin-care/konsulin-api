@@ -4,3 +4,4 @@ golangci-lint = "2.12.2"
 node = "26"
 "npm:@usebruno/cli" = "3.5.1"
 pre-commit = { version = "4.2", backend = "pipx" }
+"github:hadolint/hadolint" = "2.14.0"
