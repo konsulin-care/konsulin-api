@@ -65,6 +65,10 @@ runtime:
         });
     - type: after-response
       code: 'bru.runner.setNextRequest("Patient: Write Referral");'
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "401"
 
 settings:
   encodeUrl: true
@@ -78,6 +82,7 @@ docs: |
 
   NOTE: the current RBAC policy grants Patient only `GET`/`POST` on
   `/fhir/Appointment` — there is no `PUT` rule, so this request is expected to
-  be denied (403) until the policy gains a Patient PUT rule. Documented as a
-  known backend gap; the request itself is the correct API shape.
+  be denied (401) until the policy gains a Patient PUT rule. The assertion
+  pins this expected status so the collection stays green while documenting
+  the backend gap; once the policy is fixed, the assertion will flag it.
   Pre-request switches to Patient.

@@ -6,7 +6,7 @@ info:
 
 http:
   method: PUT
-  url: "{{process.env.APP_BASE_URL}}/fhir/Questionnaire/{{questionnaireId}}"
+  url: "{{process.env.APP_BASE_URL}}/fhir/Questionnaire/{{draftQuestionnaireId}}"
   headers:
     - name: X-API-Key
       value: "{{process.env.SUPERADMIN_API_KEY}}"
@@ -15,12 +15,11 @@ http:
     data: |-
       {
         "resourceType": "Questionnaire",
-        "id": "{{questionnaireId}}",
+        "id": "{{draftQuestionnaireId}}",
         "status": "active",
         "title": "Mood Tracking Assessment",
         "description": "A draft assessment prepared by the clinic, now published.",
         "subjectType": ["Patient"],
-        "context": "regular",
         "item": [
           {
             "linkId": "mood",
@@ -38,7 +37,7 @@ http:
 runtime:
   scripts:
     - type: after-response
-      code: 'bru.runner.setNextRequest("Cleanup: Delete Organization");'
+      code: 'bru.runner.setNextRequest("Cleanup: Purge Journey Resources");'
   assertions:
     - expression: res.status
       operator: eq

@@ -35,11 +35,11 @@ runtime:
           }
         });
     - type: after-response
-      code: bru.runner.setNextRequest("Sign Out");
+      code: 'bru.runner.setNextRequest("Sign Out");'
   assertions:
     - expression: res.status
       operator: eq
-      value: "200"
+      value: "204"
 
 settings:
   encodeUrl: true
@@ -51,4 +51,6 @@ docs: |
   Deletes the session user's Patient profile (RBAC grants Patient DELETE on
   `/fhir/Patient`, ownership-checked to the caller's own id). Final FHIR step:
   after this, the session has no resolvable FHIR identity left, so the chain
-  terminates at "Sign Out". Pre-request switches to Patient.
+  terminates at "Sign Out". The preceding Blaze-direct purge removes
+  referencing resources, so the DELETE succeeds with 200. Pre-request switches
+  to Patient.

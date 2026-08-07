@@ -19,7 +19,6 @@ http:
         "title": "Mood Tracking Assessment (Draft)",
         "description": "A draft assessment prepared by the clinic.",
         "subjectType": ["Patient"],
-        "context": "regular",
         "item": [
           {
             "linkId": "mood",
@@ -39,7 +38,7 @@ runtime:
     - type: after-response
       code: |-
         const body = res.getBody();
-        bru.setVar("questionnaireId", body.id);
+        bru.setVar("draftQuestionnaireId", body.id);
         bru.runner.setNextRequest("Admin: Update Questionnaire");
   assertions:
     - expression: res.status
@@ -55,5 +54,5 @@ settings:
 docs: |
   Creates a draft questionnaire as superadmin (X-API-Key). The proxy passes the
   request straight through (no draft-enforcement handler exists in the current
-  backend). Captures the draft id into `questionnaireId` (the journey's current
-  questionnaire of interest) and chains to "Admin: Update Questionnaire".
+  backend). Captures the draft id into `draftQuestionnaireId` (distinct from the
+  seeded `questionnaireId`) and chains to "Admin: Update Questionnaire".

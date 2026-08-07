@@ -6,16 +6,17 @@ info:
 request: {}
 
 docs: |
-  Tears down the resources the journey created. Only three deletions are
-  permitted by the RBAC policies (`Patient`→Patient, `Practitioner`→Practitioner,
-  `Superadmin`→Organization); these run in order and then chain to Sign Out.
+  Tears down the resources the journey created.
 
-  Everything else (Slots, Schedule, PractitionerRole, HealthcareService,
-  Location, Questionnaires, PlanDefinition, ResearchStudy, Appointment,
-  QuestionnaireResponse, Consent, ResearchSubject, Communication, Observation)
-  has no DELETE policy and must be removed directly against Blaze, e.g.:
+  1. **Purge Journey Resources** — one transaction bundle of DELETE entries
+     sent directly to Blaze (`{{blazeBaseUrl}}`, default http://localhost:8080).
+     The RBAC policies grant no DELETE on the journey resources, and Blaze
+     enforces referential integrity, so this direct purge is the only teardown
+     path; children are deleted before parents to keep every DELETE green.
+  2. **API deletions** — Organization (Superadmin), Practitioner
+     (Practitioner role), Patient (Patient role) — succeed with 200 once the
+     referencing resources are gone.
+  3. Chain terminates at Sign Out.
 
-      curl -X DELETE http://localhost:<blaze>/fhir/<ResourceType>/<id>
-
-  or a bulk purge of the Blaze database before re-running the collection on a
-  clean backend.
+  Run the whole journey on a clean backend (purge Blaze or start fresh) so the
+  seed phase starts from a known state.

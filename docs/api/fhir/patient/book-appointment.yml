@@ -107,13 +107,15 @@ runtime:
       code: |-
         const body = res.getBody();
         if (body.entry) {
+          // Blaze transaction responses carry created ids in response.location
+          // (e.g. .../fhir/Slot/<id>/_history/<v>), not in entry.resource.
           for (const e of body.entry) {
-            if (e.resource && e.resource.resourceType === "Slot") {
-              bru.setVar("slotId", e.resource.id);
-            }
-            if (e.resource && e.resource.resourceType === "Appointment") {
-              bru.setVar("appointmentId", e.resource.id);
-            }
+            const loc = (e.response && e.response.location) || "";
+            const parts = loc.split("/");
+            const type = parts[parts.length - 4];
+            const id = parts[parts.length - 3];
+            if (type === "Slot") { bru.setVar("slotId", id); }
+            if (type === "Appointment") { bru.setVar("appointmentId", id); }
           }
         }
         bru.runner.setNextRequest("Patient: Update Appointment Status");

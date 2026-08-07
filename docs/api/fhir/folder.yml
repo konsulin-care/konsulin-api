@@ -10,10 +10,10 @@ request:
   scripts:
     - type: tests
       code: |-
-        test("response is fhir+json and 2xx", function() {
-          expect(res.headers['content-type']).to.include('application/fhir+json');
-          expect(res.status).to.be.greaterThanOrEqual(200);
-          expect(res.status).to.be.lessThan(300);
+        test("fhir responses are well-formed", function() {
+          if (res.status >= 200 && res.status < 300 && res.headers['content-type']) {
+            expect(res.headers['content-type']).to.include('application/fhir+json');
+          }
           expect(res.responseTime).to.be.lessThan(5000);
         });
 

@@ -65,6 +65,7 @@ EXPECTED_FHIR_TREE = {
         "update-questionnaire.yml",
     ],
     "cleanup": [
+        "purge-journey-resources.yml",
         "delete-organization.yml",
         "delete-practitioner-profile.yml",
         "delete-patient-profile.yml",
@@ -162,7 +163,8 @@ EXPECTED_CHAIN = {
     "Practitioner: Update Availability": "Practitioner: Create SOAP Notes",
     "Practitioner: Create SOAP Notes": "Admin: Create Questionnaire Draft",
     "Admin: Create Questionnaire Draft": "Admin: Update Questionnaire",
-    "Admin: Update Questionnaire": "Cleanup: Delete Organization",
+    "Admin: Update Questionnaire": "Cleanup: Purge Journey Resources",
+    "Cleanup: Purge Journey Resources": "Cleanup: Delete Organization",
     "Cleanup: Delete Organization": "Cleanup: Delete Practitioner Profile",
     "Cleanup: Delete Practitioner Profile": "Cleanup: Delete Patient Profile",
     "Cleanup: Delete Patient Profile": "Sign Out",
@@ -296,8 +298,8 @@ def test_seed_and_cleanup_carry_utility_tag():
                                        "SOAP Questionnaire", "Plan Definition", "Research Study"]]:
         tags = docs[name][1]["info"]["tags"]
         assert "utility" in tags, f"{name}: seed requests must carry the utility tag"
-    for name in ["Cleanup: Delete Organization", "Cleanup: Delete Practitioner Profile",
-                 "Cleanup: Delete Patient Profile"]:
+    for name in ["Cleanup: Purge Journey Resources", "Cleanup: Delete Organization",
+                 "Cleanup: Delete Practitioner Profile", "Cleanup: Delete Patient Profile"]:
         tags = docs[name][1]["info"]["tags"]
         assert "utility" in tags, f"{name}: cleanup requests must carry the utility tag"
 
@@ -347,8 +349,8 @@ def test_fhir_chain_is_single_linear_sequence():
         "List Practitioner Slots", "Get Busy Slots", "List Sessions",
         "Get Today Sessions", "Update Availability", "Create SOAP Notes"]] \
         + ["Admin: Create Questionnaire Draft", "Admin: Update Questionnaire",
-           "Cleanup: Delete Organization", "Cleanup: Delete Practitioner Profile",
-           "Cleanup: Delete Patient Profile", "Sign Out"]
+           "Cleanup: Purge Journey Resources", "Cleanup: Delete Organization",
+           "Cleanup: Delete Practitioner Profile", "Cleanup: Delete Patient Profile", "Sign Out"]
     for name in chain_names:
         rel, doc = docs[name]
         targets = [t for code in scripts_of(doc, "after-response") for t in chained_targets(code)]

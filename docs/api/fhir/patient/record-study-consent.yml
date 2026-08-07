@@ -101,10 +101,20 @@ runtime:
             if (newToken) { bru.setVar("sessionToken", newToken); }
           }
         });
-        console.log("consent vars: patientId=" + bru.getVar("patientId") + " researchStudyId=" + bru.getVar("researchStudyId") + " practitionerId=" + bru.getVar("practitionerId"));
     - type: after-response
       code: |-
-        console.log("consent response: status=" + res.status + " body=" + JSON.stringify(res.getBody()).slice(0, 300));
+        const body = res.getBody();
+        if (body.entry) {
+          // Blaze transaction responses carry created ids in response.location.
+          for (const e of body.entry) {
+            const loc = (e.response && e.response.location) || "";
+            const parts = loc.split("/");
+            const type = parts[parts.length - 4];
+            const id = parts[parts.length - 3];
+            if (type === "Consent") { bru.setVar("consentId", id); }
+            if (type === "ResearchSubject") { bru.setVar("researchSubjectId", id); }
+          }
+        }
         bru.runner.setNextRequest("Patient: Get Research Progress");
   assertions:
     - expression: res.status

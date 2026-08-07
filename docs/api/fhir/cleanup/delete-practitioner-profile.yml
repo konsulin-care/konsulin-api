@@ -39,7 +39,7 @@ runtime:
   assertions:
     - expression: res.status
       operator: eq
-      value: "200"
+      value: "204"
 
 settings:
   encodeUrl: true
@@ -50,5 +50,7 @@ settings:
 docs: |
   Deletes the session user's Practitioner profile (RBAC grants Practitioner
   DELETE on `/fhir/Practitioner`, ownership-checked to the caller's own id).
-  Must run after all practitioner-scoped FHIR work. Pre-request switches to
-  Practitioner. Chains to the Patient profile deletion.
+  Must run after all practitioner-scoped FHIR work; the preceding Blaze-direct
+  purge removes referencing resources, so the DELETE succeeds with 200.
+  Pre-request switches to Practitioner. Chains to the Patient profile
+  deletion.

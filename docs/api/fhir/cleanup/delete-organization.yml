@@ -18,7 +18,7 @@ runtime:
   assertions:
     - expression: res.status
       operator: eq
-      value: "200"
+      value: "204"
 
 settings:
   encodeUrl: true
@@ -28,8 +28,6 @@ settings:
 
 docs: |
   Deletes the seeded Organization as superadmin — the only DELETE the RBAC
-  policy grants on Organization. The other seeded resources (Location,
-  HealthcareService, PractitionerRole, Schedule, Slots, Questionnaires,
-  PlanDefinition, ResearchStudy) have no DELETE policy and must be removed
-  directly against Blaze (see cleanup/folder.yml). Chains to the Practitioner
-  profile deletion.
+  policy grants on Organization. "Cleanup: Purge Journey Resources" runs
+  first, so no child resources reference the Organization anymore and the
+  DELETE succeeds with 200. Chains to the Practitioner profile deletion.

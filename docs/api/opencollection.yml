@@ -59,5 +59,15 @@ request:
       value: ""
     - name: researchStudyId
       value: ""
+    - name: draftQuestionnaireId
+      value: ""
+    - name: consentId
+      value: ""
+    - name: researchSubjectId
+      value: ""
+    - name: soapQuestionnaireResponseId
+      value: ""
+    - name: blazeBaseUrl
+      value: "http://localhost:8080"
 bundled: false
 extensions: {}

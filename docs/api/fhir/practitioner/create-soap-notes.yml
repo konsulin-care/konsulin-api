@@ -101,7 +101,19 @@ runtime:
           }
         });
     - type: after-response
-      code: 'bru.runner.setNextRequest("Admin: Create Questionnaire Draft");'
+      code: |-
+        const body = res.getBody();
+        if (body.entry) {
+          // Blaze transaction responses carry created ids in response.location.
+          for (const e of body.entry) {
+            const loc = (e.response && e.response.location) || "";
+            const parts = loc.split("/");
+            const type = parts[parts.length - 4];
+            const id = parts[parts.length - 3];
+            if (type === "QuestionnaireResponse") { bru.setVar("soapQuestionnaireResponseId", id); }
+          }
+        }
+        bru.runner.setNextRequest("Admin: Create Questionnaire Draft");
   assertions:
     - expression: res.status
       operator: eq
