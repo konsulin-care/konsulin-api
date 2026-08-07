@@ -62,7 +62,7 @@ RUN go mod tidy && go mod vendor
 
 # builds
 RUN go build -o api-service \
-    -ldflags "-X main.Version=$VERSION -X main.Tag=$TAG" \
+    -ldflags "-X konsulin-service/internal/pkg/buildinfo.Version=$VERSION -X konsulin-service/internal/pkg/buildinfo.Tag=$TAG -X konsulin-service/internal/pkg/buildinfo.CommitHash=$GIT_COMMIT" \
     /go/src/github.com/konsulin-id/be-konsulin/cmd/http
 #    /go/src/github.com/konsulin-id/be-konsulin/cmd/example
 

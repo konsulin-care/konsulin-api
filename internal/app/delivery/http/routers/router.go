@@ -1,10 +1,12 @@
 package routers
 
 import (
+	"encoding/json"
 	"fmt"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/delivery/http/controllers"
 	"konsulin-service/internal/app/delivery/http/middlewares"
+	"konsulin-service/internal/pkg/buildinfo"
 	"net/http"
 	"net/url"
 	"strings"
@@ -27,6 +29,10 @@ func SetupRoutes(
 	organizationController *controllers.OrganizationController,
 	purgeController *controllers.PurgeController,
 ) {
+	// Liveness endpoint registered before the middleware chain so it stays
+	// reachable without an API key or rate-limit interference.
+	attachHealthRoute(router)
+
 	corsOptions := cors.Options{
 		AllowOriginFunc: func(r *http.Request, origin string) bool {
 			if strings.HasPrefix(origin, "http://localhost:") || strings.HasPrefix(origin, "http://127.0.0.1:") {
@@ -83,6 +89,25 @@ func SetupRoutes(
 
 	router.With(middlewares.Auth).
 		Mount("/fhir", middlewares.Bridge(internalConfig.FHIR.BaseUrl))
+}
+
+// attachHealthRoute registers the /health liveness endpoint outside the
+// middleware chain so deployments can probe the running image.
+func attachHealthRoute(router chi.Router) {
+	router.Get("/health", handleHealth)
+}
+
+// handleHealth responds with the build metadata (version, git tag, commit
+// hash) so production can verify the backend has been properly updated.
+func handleHealth(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"status":  "OK",
+		"version": buildinfo.Version,
+		"tag":     buildinfo.Tag,
+		"hash":    buildinfo.CommitHash,
+	})
 }
 
 func isAllowedOrigin(allowedDomain, origin string) bool {

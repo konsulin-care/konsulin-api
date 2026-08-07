@@ -21,7 +21,7 @@ http:
 runtime:
   scripts:
     - type: after-response
-      code: bru.runner.setNextRequest("Sign Out");
+      code: bru.runner.setNextRequest("Purge Data");
   assertions:
     - expression: res.status
       operator: eq

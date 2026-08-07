@@ -40,6 +40,7 @@ import (
 	redisKonsulin "konsulin-service/internal/app/services/shared/redis"
 	storageKonsulin "konsulin-service/internal/app/services/shared/storage"
 	"konsulin-service/internal/app/services/shared/webhookqueue"
+	"konsulin-service/internal/pkg/buildinfo"
 	"log"
 	"net/http"
 	"os"
@@ -50,12 +51,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	xendit "github.com/xendit/xendit-go/v7"
 )
-
-// Version sets the default build version
-var Version = "develop"
-
-// Tag sets the default latest commit tag
-var Tag = "0.0.1-rc"
 
 func main() {
 	// Load configuration for external drivers (database, redis, etc.)
@@ -108,8 +103,8 @@ func main() {
 
 	// Start the server in a separate goroutine
 	go func() {
-		log.Printf("Server Version: %s", Version)
-		log.Printf("Server Tag: %s", Tag)
+		log.Printf("Server Version: %s", buildinfo.Version)
+		log.Printf("Server Tag: %s", buildinfo.Tag)
 		log.Printf("Server is running on port: %s", internalConfig.App.Port)
 		err := server.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {

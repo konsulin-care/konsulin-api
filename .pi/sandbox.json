@@ -1,6 +1,6 @@
 {
   "filesystem": {
-    "denyWrite": [".env", ".pi/*"]
+    "denyWrite": [".env", ".pi/sandbox.json"]
   },
   "bash": {
     "commandWhitelist": ["bru", "mise"]

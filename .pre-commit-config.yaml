@@ -39,3 +39,21 @@ repos:
         language: system
         pass_filenames: false
         stages: [pre-push]
+
+      # Pre-commit: run Bruno API collection tests if the API server is
+      # reachable, skip otherwise
+      - id: bru-run
+        name: bru run (docs/api)
+        entry: bash scripts/bru-run.sh
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # Pre-push: Bruno API collection tests REQUIRED — fail if the API server
+      # is down or any test fails
+      - id: bru-run-required
+        name: bru run (docs/api) — required
+        entry: bash scripts/bru-run.sh --required
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

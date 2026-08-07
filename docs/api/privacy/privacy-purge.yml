@@ -17,10 +17,11 @@ http:
 runtime:
   scripts:
     - type: after-response
-      code: |-
-        # TODO: set chain based on workflow
-        # bru.runner.setNextRequest("Next Request Name");
-  assertions: []
+      code: bru.runner.setNextRequest(null);
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
 
 settings:
   encodeUrl: true
