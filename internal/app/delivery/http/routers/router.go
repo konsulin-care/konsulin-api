@@ -29,10 +29,10 @@ func SetupRoutes(
 	organizationController *controllers.OrganizationController,
 	purgeController *controllers.PurgeController,
 ) {
-	// Liveness endpoint registered before the middleware chain so it stays
-	// reachable without an API key or rate-limit interference.
-	attachHealthRoute(router)
-
+	// Liveness endpoint. Registered AFTER the middleware chain: chi requires
+	// all Use() calls to precede any route registration on the same mux, so a
+	// route cannot bypass the mux's own middleware stack. The chain is benign
+	// for a keyless GET /health (API key and session middlewares pass through).
 	corsOptions := cors.Options{
 		AllowOriginFunc: func(r *http.Request, origin string) bool {
 			if strings.HasPrefix(origin, "http://localhost:") || strings.HasPrefix(origin, "http://127.0.0.1:") {
@@ -68,6 +68,10 @@ func SetupRoutes(
 
 	router.Use(middlewares.ErrorHandler)
 
+	// Registered last: all middlewares are already attached to the mux, so the
+	// ordering invariant "middlewares before routes" holds.
+	attachHealthRoute(router)
+
 	endpointPrefix := fmt.Sprintf("/%s", internalConfig.App.EndpointPrefix)
 	versionPrefix := fmt.Sprintf("/%s", internalConfig.App.Version)
 
@@ -91,8 +95,10 @@ func SetupRoutes(
 		Mount("/fhir", middlewares.Bridge(internalConfig.FHIR.BaseUrl))
 }
 
-// attachHealthRoute registers the /health liveness endpoint outside the
-// middleware chain so deployments can probe the running image.
+// attachHealthRoute registers the /health liveness endpoint on the router.
+// It must be called after every router.Use(...) on the same mux: chi requires
+// all middlewares to be defined before routes, and a route cannot bypass the
+// mux's own middleware stack.
 func attachHealthRoute(router chi.Router) {
 	router.Get("/health", handleHealth)
 }
