@@ -446,6 +446,54 @@ func TestStripCommunicationFields_NonCommunicationUntouched(t *testing.T) {
 	assert.Equal(t, body, string(out))
 }
 
+func TestStripCommunicationBundle_StripsCommunicationEntries(t *testing.T) {
+	body := `{"resourceType":"Bundle","type":"searchset","total":2,"entry":[
+		{"resource":{"resourceType":"Communication","id":"comm-1","status":"completed","sender":{"reference":"Patient/pat-1"},"recipient":[{"reference":"Patient/pat-2"}],"payload":[{"contentString":"secret"}]}},
+		{"resource":{"resourceType":"Patient","id":"pat-1","name":[{"family":"Doe"}]}}
+	]}`
+
+	out, mutated := stripCommunicationBundle([]byte(body))
+	assert.True(t, mutated, "bundle with a Communication entry must be marked mutated")
+
+	var b struct {
+		Entry []struct {
+			Resource map[string]any `json:"resource"`
+		} `json:"entry"`
+	}
+	if !assert.NoError(t, json.Unmarshal(out, &b)) {
+		return
+	}
+	assert.Len(t, b.Entry, 2)
+
+	comm := b.Entry[0].Resource
+	assert.Equal(t, "Communication", comm["resourceType"])
+	assert.NotContains(t, comm, "status")
+	assert.NotContains(t, comm, "payload")
+	assert.NotNil(t, comm["sender"])
+
+	pat := b.Entry[1].Resource
+	assert.Equal(t, "Patient", pat["resourceType"])
+	assert.NotNil(t, pat["name"], "non-Communication entries must be untouched")
+}
+
+func TestStripCommunicationBundle_NoCommunicationUnmutated(t *testing.T) {
+	body := `{"resourceType":"Bundle","type":"searchset","total":1,"entry":[
+		{"resource":{"resourceType":"Patient","id":"pat-1","name":[{"family":"Doe"}]}}
+	]}`
+
+	out, mutated := stripCommunicationBundle([]byte(body))
+	assert.False(t, mutated, "bundle without Communication entries must be unmutated")
+	assert.Equal(t, body, string(out))
+}
+
+func TestStripCommunicationBundle_InvalidJSONUnmutated(t *testing.T) {
+	body := []byte(`{not json`)
+
+	out, mutated := stripCommunicationBundle(body)
+	assert.False(t, mutated)
+	assert.Equal(t, body, out)
+}
+
 func TestShouldStripCommunicationFields(t *testing.T) {
 	ownSender, _ := url.Parse("/fhir/Communication?sender=Patient/pat-1&topic=research-referral")
 	ownRecipient, _ := url.Parse("/fhir/Communication?recipient=Patient/pat-1&topic=research-referral")

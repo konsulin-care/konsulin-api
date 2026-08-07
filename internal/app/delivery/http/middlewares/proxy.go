@@ -286,33 +286,41 @@ func stripCommunicationFields(body []byte) ([]byte, bool) {
 		}
 		return stripped, true
 	case "Bundle":
-		var bundle Bundle
-		if err := json.Unmarshal(body, &bundle); err != nil {
-			return body, false
-		}
-		mutated := false
-		for i := range bundle.Entry {
-			if extractResourceTypeFromJSON(bundle.Entry[i].Resource) != constvars.ResourceCommunication {
-				continue
-			}
-			stripped, ok := stripSingleCommunication(bundle.Entry[i].Resource)
-			if !ok {
-				continue
-			}
-			bundle.Entry[i].Resource = stripped
-			mutated = true
-		}
-		if !mutated {
-			return body, false
-		}
-		out, err := json.Marshal(bundle)
-		if err != nil {
-			return body, false
-		}
-		return out, true
+		return stripCommunicationBundle(body)
 	default:
 		return body, false
 	}
+}
+
+// stripCommunicationBundle reduces each Communication entry inside a Bundle
+// to communicationAllowedFields; non-Communication entries are left untouched.
+// Returns (body, mutated) where mutated reports whether any resource was
+// rewritten, mirroring stripCommunicationFields' contract for bundles.
+func stripCommunicationBundle(body []byte) ([]byte, bool) {
+	var bundle Bundle
+	if err := json.Unmarshal(body, &bundle); err != nil {
+		return body, false
+	}
+	mutated := false
+	for i := range bundle.Entry {
+		if extractResourceTypeFromJSON(bundle.Entry[i].Resource) != constvars.ResourceCommunication {
+			continue
+		}
+		stripped, ok := stripSingleCommunication(bundle.Entry[i].Resource)
+		if !ok {
+			continue
+		}
+		bundle.Entry[i].Resource = stripped
+		mutated = true
+	}
+	if !mutated {
+		return body, false
+	}
+	out, err := json.Marshal(bundle)
+	if err != nil {
+		return body, false
+	}
+	return out, true
 }
 
 // stripSingleCommunication keeps only communicationAllowedFields from a

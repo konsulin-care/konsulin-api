@@ -231,3 +231,57 @@ func TestMagicLinkDelivery_ForwardFn_Empty_DefaultsToHTTP(t *testing.T) {
 	// Should fail trying to connect to localhost:3200 (nothing listening)
 	assert.Error(t, err)
 }
+
+func TestValidate_ConfigAndInputGuards(t *testing.T) {
+	valid := contracts.SendMagicLinkInput{URL: "https://example.com/magic-link", Email: "user@test.com"}
+
+	t.Run("nil config rejected", func(t *testing.T) {
+		s := &magicLinkDeliveryService{}
+		err := s.validate(valid)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "internal config is required")
+	})
+
+	t.Run("empty webhook url rejected", func(t *testing.T) {
+		cfg := defaultTestConfig()
+		cfg.Webhook.URL = ""
+		s := newTestMagicLinkDeliveryWithConfig(cfg, nil)
+		err := s.validate(valid)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "webhook base url")
+	})
+
+	t.Run("nil jwt manager rejected", func(t *testing.T) {
+		cfg := defaultTestConfig()
+		s := &magicLinkDeliveryService{cfg: cfg}
+		err := s.validate(valid)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "jwt manager is required")
+	})
+
+	t.Run("empty magic link url rejected", func(t *testing.T) {
+		s := newTestMagicLinkDelivery(nil)
+		err := s.validate(contracts.SendMagicLinkInput{Email: "user@test.com"})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "url is required")
+	})
+
+	t.Run("email and phone mutually exclusive", func(t *testing.T) {
+		s := newTestMagicLinkDelivery(nil)
+		err := s.validate(contracts.SendMagicLinkInput{URL: "https://example.com/magic-link", Email: "user@test.com", Phone: "628123"})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "mutually exclusive")
+	})
+
+	t.Run("neither email nor phone rejected", func(t *testing.T) {
+		s := newTestMagicLinkDelivery(nil)
+		err := s.validate(contracts.SendMagicLinkInput{URL: "https://example.com/magic-link"})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "either email or phone is required")
+	})
+
+	t.Run("valid input passes", func(t *testing.T) {
+		s := newTestMagicLinkDelivery(nil)
+		assert.NoError(t, s.validate(valid))
+	})
+}

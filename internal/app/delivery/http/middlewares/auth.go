@@ -431,10 +431,8 @@ func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, ro
 	// C3: entry-level QuestionnaireResponse / Communication GET reads must carry
 	// an identity scope (aggregate _summary=count stays public). Closes the
 	// open-endpoint hole where a bare query returned every response.
-	if method == http.MethodGet && isScopedEntryResource(resourceType) {
-		if !allowScopedEntryRead(roles, fhirID, url, resourceType) {
-			return fmt.Errorf("forbidden: entry-level %s read requires an identity scope", resourceType)
-		}
+	if err := checkScopedEntryRead(method, resourceType, roles, fhirID, url); err != nil {
+		return err
 	}
 
 	// B3: referral Communication PUTs are fully validated in
@@ -442,10 +440,8 @@ func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, ro
 	// patient-only). Allow them through the RBAC/ownership dispatch — the policy
 	// grants nobody a PUT on Communication, and non-referral Communication
 	// writes stay rejected below.
-	if method == constvars.MethodPut && resourceType == constvars.ResourceCommunication {
-		if _, id := extractPathResourceID(normalizedPath); isReferralID(id) {
-			return nil
-		}
+	if isReferralCommunicationPut(method, resourceType, normalizedPath) {
+		return nil
 	}
 
 	// direct request to public resource is allowed to bypass RBAC checks
@@ -454,6 +450,38 @@ func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, ro
 		return nil
 	}
 
+	return enforceRBAC(ctx, e, method, normalizedPath, roles, fhirID, url, patientClient, practitionerClient, practitionerRoleClient, scheduleClient, questionnaireResponseClient, resource)
+}
+
+// checkScopedEntryRead enforces that entry-level QuestionnaireResponse /
+// Communication GET reads carry an identity scope. Aggregate _summary=count
+// queries and single-resource reads stay public; see allowScopedEntryRead for
+// the full rules. Returns nil when the request needs no scope or satisfies it.
+func checkScopedEntryRead(method, resourceType string, roles []string, fhirID, url string) error {
+	if method != http.MethodGet || !isScopedEntryResource(resourceType) {
+		return nil
+	}
+	if allowScopedEntryRead(roles, fhirID, url, resourceType) {
+		return nil
+	}
+	return fmt.Errorf("forbidden: entry-level %s read requires an identity scope", resourceType)
+}
+
+// isReferralCommunicationPut reports whether the request is a referral
+// Communication PUT, which bypasses the RBAC/ownership dispatch (it is fully
+// validated in handleAuthSingleResource instead).
+func isReferralCommunicationPut(method, resourceType, normalizedPath string) bool {
+	if method != constvars.MethodPut || resourceType != constvars.ResourceCommunication {
+		return false
+	}
+	_, id := extractPathResourceID(normalizedPath)
+	return isReferralID(id)
+}
+
+// enforceRBAC applies the Casbin policy for each session role and, for
+// Patient/Practitioner roles, the ownership check on the target resource.
+// Returns an error when no role authorizes the request.
+func enforceRBAC(ctx context.Context, e *casbin.Enforcer, method, normalizedPath string, roles []string, fhirID, url string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient, practitionerRoleClient contracts.PractitionerRoleFhirClient, scheduleClient contracts.ScheduleFhirClient, questionnaireResponseClient contracts.QuestionnaireResponseFhirClient, resource []byte) error {
 	for _, role := range roles {
 		if allowed(e, role, method, normalizedPath) {
 

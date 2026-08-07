@@ -2,10 +2,12 @@ package middlewares
 
 import (
 	"context"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/fhir_dto"
+	"net/http"
 	"net/url"
 	"testing"
+
+	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/fhir_dto"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -491,4 +493,73 @@ func TestValidatePatientCommunicationSender(t *testing.T) {
 		body := `{"resourceType":"Communication","status":"completed","sender":{"reference":"Practitioner/prac-1"}}`
 		assert.False(t, validatePatientCommunicationSender(body, "pat-1"))
 	})
+}
+
+func TestCheckScopedEntryRead(t *testing.T) {
+	const patientID = "pat-1"
+	tests := []struct {
+		name         string
+		method       string
+		resourceType string
+		roles        []string
+		fhirID       string
+		rawURL       string
+		wantErr      bool
+	}{
+		{
+			name:         "patient scoped communication read allowed",
+			method:       http.MethodGet,
+			resourceType: constvars.ResourceCommunication,
+			roles:        []string{constvars.KonsulinRolePatient},
+			fhirID:       patientID,
+			rawURL:       "http://blaze/fhir/Communication?sender=Patient/pat-1",
+		},
+		{
+			name:         "patient unscoped communication read denied",
+			method:       http.MethodGet,
+			resourceType: constvars.ResourceCommunication,
+			roles:        []string{constvars.KonsulinRolePatient},
+			fhirID:       patientID,
+			rawURL:       "http://blaze/fhir/Communication?status=completed",
+			wantErr:      true,
+		},
+		{
+			name:         "aggregate count stays public",
+			method:       http.MethodGet,
+			resourceType: constvars.ResourceQuestionnaireResponse,
+			roles:        []string{constvars.KonsulinRolePatient},
+			fhirID:       patientID,
+			rawURL:       "http://blaze/fhir/QuestionnaireResponse?_summary=count",
+		},
+		{
+			name:         "non-GET exempt",
+			method:       http.MethodPost,
+			resourceType: constvars.ResourceCommunication,
+			rawURL:       "http://blaze/fhir/Communication",
+		},
+		{
+			name:         "non-scoped resource exempt",
+			method:       http.MethodGet,
+			resourceType: constvars.ResourcePatient,
+			rawURL:       "http://blaze/fhir/Patient",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkScopedEntryRead(tt.method, tt.resourceType, tt.roles, tt.fhirID, tt.rawURL)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestIsReferralCommunicationPut(t *testing.T) {
+	assert.True(t, isReferralCommunicationPut(http.MethodPut, constvars.ResourceCommunication, "/fhir/Communication/referral-abc123"))
+	assert.False(t, isReferralCommunicationPut(http.MethodPost, constvars.ResourceCommunication, "/fhir/Communication/referral-abc123"))
+	assert.False(t, isReferralCommunicationPut(http.MethodPut, constvars.ResourceObservation, "/fhir/Observation/referral-abc123"))
+	assert.False(t, isReferralCommunicationPut(http.MethodPut, constvars.ResourceCommunication, "/fhir/Communication/comm-1"))
+	assert.False(t, isReferralCommunicationPut(http.MethodPut, constvars.ResourceCommunication, "/fhir/Communication"))
 }
