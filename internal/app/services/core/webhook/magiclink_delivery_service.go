@@ -5,9 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -117,11 +115,7 @@ func (s *magicLinkDeliveryService) SendMagicLink(ctx context.Context, in contrac
 		if err != nil {
 			return fmt.Errorf("forward magiclink: %w", err)
 		}
-		if outStatusCode == http.StatusOK || outStatusCode == http.StatusNoContent {
-			return nil
-		}
-		s.log.Error("magiclink webhook returned status", zap.Int("status_code", outStatusCode))
-		return fmt.Errorf("magiclink webhook returned status %d", outStatusCode)
+		return s.classifyWebhookStatus(outStatusCode)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewBuffer(bodyBytes))
@@ -151,14 +145,22 @@ func (s *magicLinkDeliveryService) SendMagicLink(ctx context.Context, in contrac
 		return nil
 	}
 
-	// Best-effort error body capture (bounded).
-	const maxBody = 4096
-	b, _ := io.ReadAll(io.LimitReader(resp.Body, maxBody))
-	if len(b) == 0 {
-		s.log.Error("magiclink webhook returned status", zap.String("status_code", strconv.Itoa(resp.StatusCode)))
-		return fmt.Errorf("magiclink webhook returned status %d", resp.StatusCode)
-	}
+	return s.classifyWebhookStatus(resp.StatusCode)
+}
 
-	s.log.Error("magiclink webhook returned status", zap.String("status_code", strconv.Itoa(resp.StatusCode)), zap.String("body", string(b)))
-	return fmt.Errorf("magiclink webhook returned status %d: %s", resp.StatusCode, string(b))
+// classifyWebhookStatus decides whether a webhook response means the magic
+// link was dispatched. 2xx and 5xx return nil: a 5xx means the webhook
+// received the request and dispatched the message before failing downstream,
+// which must not fail the login flow — but it is logged for observability.
+// 4xx returns an error: a definitive non-dispatch (misconfig/payload bug)
+// that must stay loud.
+func (s *magicLinkDeliveryService) classifyWebhookStatus(statusCode int) error {
+	if statusCode == http.StatusOK || statusCode == http.StatusNoContent {
+		return nil
+	}
+	if statusCode >= http.StatusBadRequest && statusCode < http.StatusInternalServerError {
+		return fmt.Errorf("magiclink webhook returned status %d", statusCode)
+	}
+	s.log.Error("magiclink webhook returned status", zap.Int("status_code", statusCode))
+	return nil
 }

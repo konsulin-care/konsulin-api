@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"konsulin-service/internal/app/config"
@@ -14,11 +15,10 @@ import (
 	"go.uber.org/zap"
 )
 
-// newTestMagicLinkDelivery creates a magicLinkDeliveryService with a given forwardFn.
-func newTestMagicLinkDelivery(forwardFn func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error)) *magicLinkDeliveryService {
-	logger := zap.NewNop()
+// defaultTestConfig returns the base config used by most tests.
+func defaultTestConfig() *config.InternalConfig {
 	key := generateTestECKey()
-	cfg := &config.InternalConfig{
+	return &config.InternalConfig{
 		App: config.App{
 			Env:                        "test",
 			BaseUrl:                    "http://localhost:3200",
@@ -31,6 +31,16 @@ func newTestMagicLinkDelivery(forwardFn func(ctx context.Context, service, metho
 			HTTPTimeoutInSeconds: 5,
 		},
 	}
+}
+
+// newTestMagicLinkDelivery creates a magicLinkDeliveryService with a given forwardFn.
+func newTestMagicLinkDelivery(forwardFn func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error)) *magicLinkDeliveryService {
+	return newTestMagicLinkDeliveryWithConfig(defaultTestConfig(), forwardFn)
+}
+
+// newTestMagicLinkDeliveryWithConfig creates a magicLinkDeliveryService from a custom config.
+func newTestMagicLinkDeliveryWithConfig(cfg *config.InternalConfig, forwardFn func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error)) *magicLinkDeliveryService {
+	logger := zap.NewNop()
 	jwtMgr, err := jwtmanager.NewJWTManager(cfg, logger)
 	if err != nil {
 		panic("NewJWTManager: " + err.Error())
@@ -84,6 +94,79 @@ func TestMagicLinkDelivery_ForwardFn_ReturnsError_WhenForwarderFails(t *testing.
 	})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "forward magiclink")
+}
+
+// TestMagicLinkDelivery_ForwardFn_5xx_TreatedAsDelivered verifies that a 5xx
+// response from the webhook after dispatch is not a login failure: the webhook
+// received the request and dispatched the message, so SendMagicLink logs and
+// returns nil instead of failing createCode.
+func TestMagicLinkDelivery_ForwardFn_5xx_TreatedAsDelivered(t *testing.T) {
+	forwardFn := func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
+		return http.StatusInternalServerError, []byte("upstream exploded after dispatch"), nil
+	}
+	s := newTestMagicLinkDelivery(forwardFn)
+
+	err := s.SendMagicLink(context.Background(), contracts.SendMagicLinkInput{
+		URL:   "https://example.com/magic-link",
+		Email: "user@test.com",
+	})
+	assert.NoError(t, err)
+}
+
+// TestMagicLinkDelivery_ForwardFn_4xx_ReturnsError verifies that a 4xx response
+// is a definitive non-dispatch (misconfig/payload bug) and must stay loud.
+func TestMagicLinkDelivery_ForwardFn_4xx_ReturnsError(t *testing.T) {
+	forwardFn := func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
+		return http.StatusBadRequest, []byte("bad payload"), nil
+	}
+	s := newTestMagicLinkDelivery(forwardFn)
+
+	err := s.SendMagicLink(context.Background(), contracts.SendMagicLinkInput{
+		URL:   "https://example.com/magic-link",
+		Email: "user@test.com",
+	})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "400")
+}
+
+// TestMagicLinkDelivery_HTTP_5xx_TreatedAsDelivered verifies the HTTP path
+// (forwardFn nil) applies the same post-dispatch classification: a 5xx response
+// is logged but does not fail delivery.
+func TestMagicLinkDelivery_HTTP_5xx_TreatedAsDelivered(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	cfg := defaultTestConfig()
+	cfg.App.BaseUrl = srv.URL
+	s := newTestMagicLinkDeliveryWithConfig(cfg, nil)
+
+	err := s.SendMagicLink(context.Background(), contracts.SendMagicLinkInput{
+		URL:   "https://example.com/magic-link",
+		Email: "user@test.com",
+	})
+	assert.NoError(t, err)
+}
+
+// TestMagicLinkDelivery_HTTP_4xx_ReturnsError verifies the HTTP path keeps 4xx
+// responses as hard errors.
+func TestMagicLinkDelivery_HTTP_4xx_ReturnsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer srv.Close()
+
+	cfg := defaultTestConfig()
+	cfg.App.BaseUrl = srv.URL
+	s := newTestMagicLinkDeliveryWithConfig(cfg, nil)
+
+	err := s.SendMagicLink(context.Background(), contracts.SendMagicLinkInput{
+		URL:   "https://example.com/magic-link",
+		Email: "user@test.com",
+	})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "400")
 }
 
 func TestMagicLinkDelivery_ForwardFn_ReturnsError_OnNonOKStatusCode(t *testing.T) {
