@@ -83,7 +83,6 @@ func NewUserUsecase(
 	return userUsecaseInstance
 }
 
-
 func (uc *userUsecase) InitializeNewUserFHIRResources(ctx context.Context, input *contracts.InitializeNewUserFHIRResourcesInput) (*contracts.InitializeNewUserFHIRResourcesOutput, error) {
 	if err := input.Validate(); err != nil {
 		return nil, exceptions.ErrInvalidFormat(err, "email_or_phone")
@@ -547,7 +546,6 @@ func (uc *userUsecase) createPersonIfNotExists(ctx context.Context, email string
 	}
 	return uc.createNewPerson(ctx, email, phone, superTokenUserID)
 }
-
 
 type callWebhookSvcKonsulinOmnichannelOutput struct {
 	ChatwootID  int    `json:"chatwoot_id"`

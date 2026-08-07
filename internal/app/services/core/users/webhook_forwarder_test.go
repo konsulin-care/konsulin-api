@@ -100,8 +100,6 @@ func TestUserUsecase_WebhookForwardFn_EmptyResponse_ReturnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "empty response")
 }
 
-
-
 func strPtr(s string) *string {
 	return &s
 }

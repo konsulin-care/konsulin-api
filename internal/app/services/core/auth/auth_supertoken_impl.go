@@ -65,9 +65,9 @@ func (uc *authUsecase) InitializeSupertoken() error {
 
 	err := supertokens.Init(supertokens.TypeInput{
 		OnSuperTokensAPIError: handleSupertokensAPIError,
-		Supertokens:          supertokenConnectionInfo,
-		AppInfo:     supertokenAppInfo,
-		RecipeList:  supertokenRecipeList,
+		Supertokens:           supertokenConnectionInfo,
+		AppInfo:               supertokenAppInfo,
+		RecipeList:            supertokenRecipeList,
 	})
 	if err != nil {
 		return err

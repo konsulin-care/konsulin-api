@@ -44,7 +44,7 @@ func newTestUsecase() *usecase {
 	cfg := &config.InternalConfig{
 		App: config.App{Env: "test"},
 		Webhook: config.AppWebhook{
-			JWTAlg:    "ES256",
+			JWTAlg:     "ES256",
 			JWTHookKey: key,
 		},
 	}

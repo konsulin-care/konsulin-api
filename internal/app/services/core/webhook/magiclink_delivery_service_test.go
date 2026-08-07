@@ -28,9 +28,9 @@ func defaultTestConfig() *config.InternalConfig {
 			WebhookInstantiateBasePath: "/api/v1/hook",
 		},
 		Webhook: config.AppWebhook{
-			JWTAlg:              "ES256",
-			JWTHookKey:          key,
-			URL:                 "http://localhost:9999", // not used when forwardFn is set
+			JWTAlg:               "ES256",
+			JWTHookKey:           key,
+			URL:                  "http://localhost:9999", // not used when forwardFn is set
 			HTTPTimeoutInSeconds: 5,
 		},
 	}

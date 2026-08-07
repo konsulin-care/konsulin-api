@@ -23,12 +23,12 @@ import (
 func setupRoutesTestConfig() *config.InternalConfig {
 	return &config.InternalConfig{
 		App: config.App{
-			EndpointPrefix:             "api",
-			Version:                    "v1",
-			FrontendDomain:             "http://localhost:3000",
-			SuperadminAPIKey:           "test-superadmin-api-key",
-			MaxRequests:                100,
-			SuperadminAPIKeyRateLimit:  100,
+			EndpointPrefix:            "api",
+			Version:                   "v1",
+			FrontendDomain:            "http://localhost:3000",
+			SuperadminAPIKey:          "test-superadmin-api-key",
+			MaxRequests:               100,
+			SuperadminAPIKeyRateLimit: 100,
 		},
 		FHIR: config.AppFHIR{
 			BaseUrl:                  "http://localhost:8080/fhir",

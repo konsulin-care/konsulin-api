@@ -19,11 +19,11 @@ import (
 // tests. The first FindActivelyOwnedResources call (enumeration) returns owned;
 // later calls (fail-closed verification) return ownedAfter.
 type mockPurgeClient struct {
-	owned        []contracts.ResourceRef
-	ownedErr     error
-	ownedAfter   []contracts.ResourceRef
+	owned         []contracts.ResourceRef
+	ownedErr      error
+	ownedAfter    []contracts.ResourceRef
 	ownedErrAfter error
-	ownedCalls   int
+	ownedCalls    int
 
 	stripErr   error
 	stripCalls int
