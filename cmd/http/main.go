@@ -196,18 +196,18 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	// Ensure default FHIR Groups exist for ServiceRequest subjects
 	_ = serviceRequestFhirClient.EnsureAllNecessaryGroupsExists(context.Background())
 
-	userUsecase := users.NewUserFHIRInitializer(
-		patientFhirClient,
-		practitionerFhirClient,
-		personFhirClient,
-		practitionerRoleClient,
-		nil, // organizationFhirClient, not used yet
-		redisRepository,
-		bootstrap.InternalConfig,
-		bootstrap.Logger,
-		lockService,
-		jwtManager,
-	)
+	userUsecase := users.NewUserFHIRInitializer(users.UserFHIRInitializerDeps{
+		PatientFhirClient:          patientFhirClient,
+		PractitionerFhirClient:     practitionerFhirClient,
+		PersonFhirClient:           personFhirClient,
+		PractitionerRoleFhirClient: practitionerRoleClient,
+		OrganizationFhirClient:     nil, // not used yet
+		RedisRepository:            redisRepository,
+		InternalConfig:             bootstrap.InternalConfig,
+		Logger:                     bootstrap.Logger,
+		LockerService:              lockService,
+		JWTTokenManager:            jwtManager,
+	})
 
 	bundleClient := bundle.NewBundleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 

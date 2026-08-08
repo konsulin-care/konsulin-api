@@ -23,6 +23,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// logPrefix namespaces every log entry emitted by this use case.
+const logPrefix = "userUsecase."
+
 type userUsecase struct {
 	PatientFhirClient          contracts.PatientFhirClient
 	PractitionerFhirClient     contracts.PractitionerFhirClient
@@ -52,30 +55,33 @@ var (
 	onceUserFHIRInitializer sync.Once
 )
 
-func NewUserFHIRInitializer(
-	patientFhirClient contracts.PatientFhirClient,
-	practitionerFhirClient contracts.PractitionerFhirClient,
-	personFhirClient contracts.PersonFhirClient,
-	practitionerRoleFhirClient contracts.PractitionerRoleFhirClient,
-	organizationFhirClient contracts.OrganizationFhirClient,
-	redisRepository contracts.RedisRepository,
-	internalConfig *config.InternalConfig,
-	logger *zap.Logger,
-	lockerService contracts.LockerService,
-	jwtManager *jwtmanager.JWTManager,
-) contracts.UserFHIRInitializer {
+// UserFHIRInitializerDeps bundles the dependencies for NewUserFHIRInitializer.
+type UserFHIRInitializerDeps struct {
+	PatientFhirClient          contracts.PatientFhirClient
+	PractitionerFhirClient     contracts.PractitionerFhirClient
+	PersonFhirClient           contracts.PersonFhirClient
+	PractitionerRoleFhirClient contracts.PractitionerRoleFhirClient
+	OrganizationFhirClient     contracts.OrganizationFhirClient
+	RedisRepository            contracts.RedisRepository
+	InternalConfig             *config.InternalConfig
+	Logger                     *zap.Logger
+	LockerService              contracts.LockerService
+	JWTTokenManager            *jwtmanager.JWTManager
+}
+
+func NewUserFHIRInitializer(deps UserFHIRInitializerDeps) contracts.UserFHIRInitializer {
 	onceUserFHIRInitializer.Do(func() {
 		instance := &userUsecase{
-			PatientFhirClient:          patientFhirClient,
-			PractitionerFhirClient:     practitionerFhirClient,
-			PersonFhirClient:           personFhirClient,
-			PractitionerRoleFhirClient: practitionerRoleFhirClient,
-			OrganizationFhirClient:     organizationFhirClient,
-			RedisRepository:            redisRepository,
-			InternalConfig:             internalConfig,
-			Log:                        logger,
-			LockerService:              lockerService,
-			JWTTokenManager:            jwtManager,
+			PatientFhirClient:          deps.PatientFhirClient,
+			PractitionerFhirClient:     deps.PractitionerFhirClient,
+			PersonFhirClient:           deps.PersonFhirClient,
+			PractitionerRoleFhirClient: deps.PractitionerRoleFhirClient,
+			OrganizationFhirClient:     deps.OrganizationFhirClient,
+			RedisRepository:            deps.RedisRepository,
+			InternalConfig:             deps.InternalConfig,
+			Log:                        deps.Logger,
+			LockerService:              deps.LockerService,
+			JWTTokenManager:            deps.JWTTokenManager,
 		}
 		userUsecaseInstance = instance
 	})
@@ -160,7 +166,7 @@ func (uc *userUsecase) callChatwootWithFallback(ctx context.Context, email, phon
 		Phone:    phone,
 	})
 	if err != nil {
-		uc.Log.Error("userUsecase.callChatwootWithFallback error calling webhook svc konsulin omnichannel",
+		uc.Log.Error(logPrefix+"callChatwootWithFallback error calling webhook svc konsulin omnichannel",
 			zap.Error(err),
 		)
 		return callWebhookSvcKonsulinOmnichannelOutput{}, err
