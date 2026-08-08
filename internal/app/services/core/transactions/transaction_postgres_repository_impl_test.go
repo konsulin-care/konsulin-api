@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"konsulin-service/internal/app/models"
+	"konsulin-service/internal/pkg/exceptions"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -184,4 +185,19 @@ func TestUpdateTransactionDBError(t *testing.T) {
 	logs := buf.String()
 	require.Contains(t, logs, "transactionPostgresRepository.UpdateTransaction called")
 	require.Contains(t, logs, "transactionPostgresRepository.UpdateTransaction error executing update")
+}
+
+// TestScanTransactionRowOptionsPinsAPIShape locks the bundled-options call
+// shape so the 8-parameter signature cannot regress.
+func TestScanTransactionRowOptionsPinsAPIShape(t *testing.T) {
+	repo, _ := newTestRepo(t, "txn-options-ok", false)
+
+	tx, err := repo.scanTransactionRow(context.Background(), "SELECT 1", nil, scanTransactionOptions{
+		opName:     "CreateTransaction",
+		errMsg:     "error executing insert",
+		errFactory: exceptions.ErrPostgresDBInsertData,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, tx)
+	require.Equal(t, "txn-1", tx.ID)
 }

@@ -114,14 +114,21 @@ func (repo *transactionPostgresRepository) FindByID(ctx context.Context, transac
 }
 
 func (repo *transactionPostgresRepository) CreateTransaction(ctx context.Context, transaction *models.Transaction) (*models.Transaction, error) {
-	return repo.scanTransactionRow(ctx, queries.InsertTransaction, "CreateTransaction", "error executing insert", exceptions.ErrPostgresDBInsertData, nil, nil, transactionArgs(transaction)...)
+	return repo.scanTransactionRow(ctx, queries.InsertTransaction, transactionArgs(transaction), scanTransactionOptions{
+		opName:     "CreateTransaction",
+		errMsg:     "error executing insert",
+		errFactory: exceptions.ErrPostgresDBInsertData,
+	})
 }
 
 func (repo *transactionPostgresRepository) UpdateTransaction(ctx context.Context, transaction *models.Transaction) (*models.Transaction, error) {
-	return repo.scanTransactionRow(ctx, queries.UpdateTransaction, "UpdateTransaction", "error executing update", exceptions.ErrPostgresDBUpdateData,
-		[]zap.Field{zap.String(constvars.LoggingTransactionIDKey, transaction.ID)},
-		[]zap.Field{zap.String(constvars.LoggingTransactionIDKey, transaction.ID)},
-		updateTransactionArgs(transaction)...)
+	return repo.scanTransactionRow(ctx, queries.UpdateTransaction, updateTransactionArgs(transaction), scanTransactionOptions{
+		opName:       "UpdateTransaction",
+		errMsg:       "error executing update",
+		errFactory:   exceptions.ErrPostgresDBUpdateData,
+		calledFields: []zap.Field{zap.String(constvars.LoggingTransactionIDKey, transaction.ID)},
+		errFields:    []zap.Field{zap.String(constvars.LoggingTransactionIDKey, transaction.ID)},
+	})
 }
 
 // transactionArgs returns the transaction fields in INSERT placeholder order.
@@ -136,22 +143,32 @@ func updateTransactionArgs(t *models.Transaction) []any {
 	return append(args[1:], args[0])
 }
 
+// scanTransactionOptions carries the per-operation logging and error-mapping
+// configuration for scanTransactionRow.
+type scanTransactionOptions struct {
+	opName       string
+	errMsg       string
+	errFactory   func(error) *exceptions.CustomError
+	calledFields []zap.Field
+	errFields    []zap.Field
+}
+
 // scanTransactionRow runs query with args, scanning the single result row into
 // a Transaction and logging success/failure with the operation name. calledFields
 // and errFields carry per-operation log fields.
-func (repo *transactionPostgresRepository) scanTransactionRow(ctx context.Context, query string, opName, errMsg string, errFactory func(error) *exceptions.CustomError, calledFields, errFields []zap.Field, args ...any) (*models.Transaction, error) {
+func (repo *transactionPostgresRepository) scanTransactionRow(ctx context.Context, query string, args []any, opts scanTransactionOptions) (*models.Transaction, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	called := append([]zap.Field{zap.String(constvars.LoggingRequestIDKey, requestID)}, calledFields...)
-	repo.Log.Info(logPrefix+opName+" called", called...)
+	called := append([]zap.Field{zap.String(constvars.LoggingRequestIDKey, requestID)}, opts.calledFields...)
+	repo.Log.Info(logPrefix+opts.opName+" called", called...)
 
 	tx, err := scanTransaction(repo.DB.QueryRowContext(ctx, query, args...))
 	if err != nil {
-		errLog := append([]zap.Field{zap.String(constvars.LoggingRequestIDKey, requestID)}, errFields...)
+		errLog := append([]zap.Field{zap.String(constvars.LoggingRequestIDKey, requestID)}, opts.errFields...)
 		errLog = append(errLog, zap.Error(err))
-		repo.Log.Error(logPrefix+opName+" "+errMsg, errLog...)
-		return nil, errFactory(err)
+		repo.Log.Error(logPrefix+opts.opName+" "+opts.errMsg, errLog...)
+		return nil, opts.errFactory(err)
 	}
-	repo.Log.Info(logPrefix+opName+" succeeded",
+	repo.Log.Info(logPrefix+opts.opName+" succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String(constvars.LoggingTransactionIDKey, tx.ID),
 	)
