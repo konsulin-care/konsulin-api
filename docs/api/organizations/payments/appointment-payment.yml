@@ -1,0 +1,98 @@
+info:
+  name: Handle Appointment Payment
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{process.env.APP_BASE_URL}}/api/v1/pay/appointment"
+  headers:
+    - name: content-type
+      value: application/json
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  body:
+    type: json
+    data: |-
+      {
+        "patientId": "Patient/123",
+        "invoiceId": "Invoice/456",
+        "useOnlinePayment": true,
+        "practitionerRoleId": "PractitionerRole/789",
+        "slotId": "Slot/012",
+        "healthcareServiceId": "HealthcareService/345",
+        "condition": "R45.1"
+      }
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "201"
+    - expression: res.body.success
+      operator: eq
+      value: "true"
+    - expression: res.body.data.slot
+      operator: isDefined
+    - expression: res.responseTime
+      operator: lt
+      value: "10000"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples:
+  - name: Online payment
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/pay/appointment"
+      method: POST
+      headers:
+        - name: content-type
+          value: application/json
+        - name: Authorization
+          value: Bearer {{sessionToken}}
+      body:
+        type: json
+        data: '{"patientId":"Patient/123","invoiceId":"Invoice/456","useOnlinePayment":true,"practitionerRoleId":"PractitionerRole/789","slotId":"Slot/012"}'
+    response:
+      status: 201
+      body:
+        type: json
+        data: '{"success":true,"message":"Appointment payment processed","data":{"status":201,"message":"Appointment payment processed","slot":"Slot/012","appointment":"Appointment/abc","paymentNotice":"PaymentNotice/xyz","paymentUrl":"https://checkout.xendit.co/inv_123","expiresAt":"2026-07-09T11:00:00Z"}}'
+  - name: Validation error
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/pay/appointment"
+      method: POST
+      headers:
+        - name: content-type
+          value: application/json
+        - name: Authorization
+          value: Bearer {{sessionToken}}
+      body:
+        type: json
+        data: '{"patientId":"invalid"}'
+    response:
+      status: 400
+      body:
+        type: json
+        data: '{"success":false,"message":"patientId is required","status_code":400}'
+
+docs: |
+  Processes payment for an appointment. Requires an authenticated session. Supports both online payment (via payment gateway) and offline payment.
+
+  ### Request Fields
+  - `patientId`: (required) FHIR Patient reference (`Patient/ID`).
+  - `invoiceId`: (required) FHIR Invoice reference (`Invoice/ID`).
+  - `useOnlinePayment`: (required) `true` for online gateway, `false` for offline.
+  - `practitionerRoleId`: (required) FHIR PractitionerRole reference.
+  - `slotId`: (required) FHIR Slot reference.
+  - `healthcareServiceId`: (optional) FHIR HealthcareService reference.
+  - `condition`: (optional) ICD-10 diagnosis code.
+
+  ### Responses
+  - **201 Created**: Payment processed. Body: `{ "success": true, "message": "...", "data": { "status": 201, "message": "...", "slot": "Slot/012", "appointment": "Appointment/...", "paymentNotice": "PaymentNotice/...", "paymentUrl": "...", "expiresAt": "..." } }`.
+  - **400 Bad Request**: Validation error — missing required fields or invalid reference format. Body: `{ "success": false, "message": "...", "status_code": 400 }`.
+  - **500 Internal Server Error**: Processing failure or timeout. Body: `{ "success": false, "message": "...", "status_code": 500 }`.

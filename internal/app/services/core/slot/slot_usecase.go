@@ -10,12 +10,12 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
 	bundleSvc "konsulin-service/internal/app/services/fhir_spark/bundle"
-	"slices"
 
 	"go.uber.org/zap"
 )
@@ -107,7 +107,6 @@ func (s *SlotUsecase) HandleSetUnavailabilityForMultiplePractitionerRoles(ctx co
 		PRIDs: &[]string{},
 	}
 	out, err := s.processRoleWindows(ctx, roles, resolved, input, unavailableReason, state)
-
 	if err != nil {
 		return nil, err
 	}
@@ -1292,24 +1291,35 @@ func (s *SlotUsecase) dayTargetsForMultiple(windows []lockWindow) []dayLockTarge
 	for _, w := range windows {
 		ts := s.dayTargetsForWindow(w.ScheduleID, w.Location, w.Start, w.End)
 		for _, t := range ts {
-			key := fmt.Sprintf("%s|%04d-%02d-%02d|%s", t.ScheduleID, t.Day.Year(), int(t.Day.Month()), t.Day.Day(), t.Location.String())
-			if _, ok := seen[key]; ok {
-				continue
-			}
-			seen[key] = struct{}{}
-			out = append(out, t)
+			out = dedupeDayTargets(seen, out, t)
 		}
 	}
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].ScheduleID != out[j].ScheduleID {
-			return out[i].ScheduleID < out[j].ScheduleID
-		}
-		if !out[i].Day.Equal(out[j].Day) {
-			return out[i].Day.Before(out[j].Day)
-		}
-		return out[i].Location.String() < out[j].Location.String()
-	})
+	sortDayTargets(out)
 	return out
+}
+
+// sortDayTargets orders targets deterministically by schedule, day, and location.
+func sortDayTargets(targets []dayLockTarget) {
+	sort.SliceStable(targets, func(i, j int) bool {
+		if targets[i].ScheduleID != targets[j].ScheduleID {
+			return targets[i].ScheduleID < targets[j].ScheduleID
+		}
+		if !targets[i].Day.Equal(targets[j].Day) {
+			return targets[i].Day.Before(targets[j].Day)
+		}
+		return targets[i].Location.String() < targets[j].Location.String()
+	})
+}
+
+// dedupeDayTargets appends t to out unless a target with the same schedule,
+// day, and location was already seen.
+func dedupeDayTargets(seen map[string]struct{}, out []dayLockTarget, t dayLockTarget) []dayLockTarget {
+	key := fmt.Sprintf("%s|%04d-%02d-%02d|%s", t.ScheduleID, t.Day.Year(), int(t.Day.Month()), t.Day.Day(), t.Location.String())
+	if _, ok := seen[key]; ok {
+		return out
+	}
+	seen[key] = struct{}{}
+	return append(out, t)
 }
 
 // acquireDayLocksOrdered acquires locks in deterministic order and returns a release closure
@@ -1373,23 +1383,11 @@ func (s *SlotUsecase) AcquireLocksForAppointment(
 	seen := make(map[string]struct{})
 	var uniqueTargets []dayLockTarget
 	for _, t := range allTargets {
-		key := fmt.Sprintf("%s|%04d-%02d-%02d|%s", t.ScheduleID, t.Day.Year(), int(t.Day.Month()), t.Day.Day(), t.Location.String())
-		if _, ok := seen[key]; !ok {
-			seen[key] = struct{}{}
-			uniqueTargets = append(uniqueTargets, t)
-		}
+		uniqueTargets = dedupeDayTargets(seen, uniqueTargets, t)
 	}
 
 	// Sort for deterministic ordering
-	sort.SliceStable(uniqueTargets, func(i, j int) bool {
-		if uniqueTargets[i].ScheduleID != uniqueTargets[j].ScheduleID {
-			return uniqueTargets[i].ScheduleID < uniqueTargets[j].ScheduleID
-		}
-		if !uniqueTargets[i].Day.Equal(uniqueTargets[j].Day) {
-			return uniqueTargets[i].Day.Before(uniqueTargets[j].Day)
-		}
-		return uniqueTargets[i].Location.String() < uniqueTargets[j].Location.String()
-	})
+	sortDayTargets(uniqueTargets)
 
 	// Acquire locks in order
 	return s.acquireDayLocksOrdered(ctx, uniqueTargets, ttl)

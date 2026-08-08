@@ -1,0 +1,78 @@
+info:
+  name: "Patient: Create Journal"
+  type: http
+  seq: 10
+  tags: [record]
+
+http:
+  method: POST
+  url: "{{process.env.APP_BASE_URL}}/fhir/Observation"
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "Observation",
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "34117-2",
+              "display": "Patient journal"
+            }
+          ],
+          "text": "Journal"
+        },
+        "subject": {
+          "reference": "Patient/{{patientId}}"
+        },
+        "issued": "{{now}}",
+        "valueString": "Today I felt more energized after a morning walk."
+      }
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        bru.setVar("activeRole", "Patient");
+        bru.setVar("now", new Date().toISOString());
+        await bru.sendRequest({
+          method: "POST",
+          url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
+          headers: {
+            "content-type": "application/json",
+            "Authorization": "Bearer " + bru.getVar("sessionToken")
+          },
+          data: JSON.stringify({ role: bru.getVar("activeRole") })
+        }, function(err, res) {
+          if (err) {
+            console.error("role switch failed: " + err.message);
+          } else if (res && res.headers) {
+            // the active-role response carries the regenerated access token;
+            // capture it so the following request sees the new active role
+            var newToken = res.headers["st-access-token"] || res.headers["front-token"];
+            if (newToken) { bru.setVar("sessionToken", newToken); }
+          }
+        });
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        bru.setVar("journalId", body.id);
+        bru.runner.setNextRequest("Patient: Update Journal");
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "201"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Creates a journal entry (Observation) owned by the session patient. Captures
+  `journalId`. Pre-request switches to Patient and stamps `now`.

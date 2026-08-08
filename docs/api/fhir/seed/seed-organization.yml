@@ -1,0 +1,60 @@
+info:
+  name: Seed Organization
+  type: http
+  seq: 1
+  tags: [clinic, utility]
+
+http:
+  method: POST
+  url: "{{process.env.APP_BASE_URL}}/fhir/Organization"
+  headers:
+    - name: X-API-Key
+      value: "{{process.env.SUPERADMIN_API_KEY}}"
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "Organization",
+        "active": true,
+        "name": "Konsulin Demo Clinic",
+        "type": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/organization-type",
+                "code": "prov",
+                "display": "Healthcare Provider"
+              }
+            ]
+          }
+        ],
+        "address": [
+          {
+            "city": "Jakarta",
+            "country": "ID"
+          }
+        ]
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        bru.setVar("organizationId", body.id);
+        bru.runner.setNextRequest("Seed Location");
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "201"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Seeds the clinic Organization as superadmin (X-API-Key). Captures
+  `organizationId` and chains to "Seed Location". Organization POST is
+  Superadmin-only in the RBAC policy, which is why seeding runs with the API key.

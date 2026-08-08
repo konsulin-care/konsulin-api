@@ -1,0 +1,64 @@
+info:
+  name: fhir
+  type: folder
+  seq: 2
+
+request:
+  headers:
+    - name: Content-Type
+      value: application/fhir+json
+  scripts:
+    - type: tests
+      code: |-
+        test("fhir responses are well-formed", function() {
+          if (res.status >= 200 && res.status < 300 && res.headers['content-type']) {
+            expect(res.headers['content-type']).to.include('application/fhir+json');
+          }
+          expect(res.responseTime).to.be.lessThan(5000);
+        });
+
+docs: |
+  FHIR collection for the Konsulin API. All requests proxy through
+  `GET|POST|PUT|DELETE /fhir/*` to the Blaze FHIR server with RBAC filtering.
+
+  ## Auth modes
+  - **Session (bearer)** — patient/practitioner journeys send an explicit
+    `Authorization: Bearer {{sessionToken}}` header on every request (folder
+    auth cannot interpolate runtime variables). The active SuperTokens role
+    (see below) decides which FHIR identity the proxy resolves and filters by.
+  - **Superadmin (X-API-Key)** — seed/, admin/ and cleanup/delete-organization
+    override auth with `X-API-Key: {{process.env.SUPERADMIN_API_KEY}}`; the
+    presence of a valid key short-circuits session handling and sets the
+    superadmin role.
+
+  ## Role switching
+  Every journey request sets the role in its pre-request script and switches it
+  inline by calling the active-role endpoint via `bru.sendRequest` (the
+  `bru.runner.runNext` helper is not available in pre-request scripts on all
+  Bruno versions). SuperTokens regenerates the access token on the active-role
+  merge and returns it in the response headers, so the script captures the new
+  token into `sessionToken` — without it, subsequent requests would still see
+  the old role:
+
+      bru.setVar("activeRole", "Patient");
+      await bru.sendRequest({... url: APP_BASE_URL + "/api/v1/auth/active-role" ...}, function(err, res) {
+        var newToken = res.headers["st-access-token"] || res.headers["front-token"];
+        if (newToken) { bru.setVar("sessionToken", newToken); }
+      });
+
+  The active role drives `resolveUserRoles` in the /fhir Auth middleware, which
+  determines the caller's FHIR identity (Patient/{id} or Practitioner/{id}).
+  That identity gates RBAC policies, write-body ownership validation, and
+  response ownership filtering — so switching roles changes what FHIR data the
+  same session can read and write. "Switch Active Role" remains available as a
+  manual helper request.
+
+  ## Chain overview
+  auth (magiclink → … → Set Active Role) → seed (9 superadmin creates) →
+  patient (17 requests) → practitioner (9 requests) → admin (2 requests) →
+  cleanup (3 deletions) → Sign Out. Each request chains to the next via
+  `bru.runner.setNextRequest("<next>")`; chaining works across subfolders.
+
+  ## Cleanup
+  RBAC only permits deleting Patient, Practitioner and Organization via the API.
+  All other resources need direct Blaze cleanup (see cleanup/folder.yml).

@@ -1,0 +1,54 @@
+info:
+  name: "Admin: Update Questionnaire"
+  type: http
+  seq: 2
+  tags: [assessment]
+
+http:
+  method: PUT
+  url: "{{process.env.APP_BASE_URL}}/fhir/Questionnaire/{{draftQuestionnaireId}}"
+  headers:
+    - name: X-API-Key
+      value: "{{process.env.SUPERADMIN_API_KEY}}"
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "Questionnaire",
+        "id": "{{draftQuestionnaireId}}",
+        "status": "active",
+        "title": "Mood Tracking Assessment",
+        "description": "A draft assessment prepared by the clinic, now published.",
+        "subjectType": ["Patient"],
+        "item": [
+          {
+            "linkId": "mood",
+            "text": "How is your mood today?",
+            "type": "choice",
+            "answerOption": [
+              {"valueCoding": {"code": "1", "display": "Low"}},
+              {"valueCoding": {"code": "2", "display": "Balanced"}},
+              {"valueCoding": {"code": "3", "display": "High"}}
+            ]
+          }
+        ]
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Cleanup: Purge Journey Resources");'
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Publishes the draft questionnaire by full-resource PUT (status
+  `draft` → `active`). Superadmin X-API-Key. Hand-off to the cleanup phase.

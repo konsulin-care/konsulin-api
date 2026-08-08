@@ -1,0 +1,72 @@
+info:
+  name: "Patient: Check Practitioner Availability"
+  type: http
+  seq: 13
+  tags: [appointment]
+
+http:
+  method: GET
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  url: "{{process.env.APP_BASE_URL}}/fhir/Slot?schedule.actor=PractitionerRole/{{practitionerRoleId}}&start=ge{{todayStart}}&start=le{{todayEnd}}&_include=Slot:schedule"
+  params:
+    - name: schedule.actor
+      value: "PractitionerRole/{{practitionerRoleId}}"
+      type: query
+    - name: start
+      value: "ge{{todayStart}}"
+      type: query
+    - name: start
+      value: "le{{todayEnd}}"
+      type: query
+    - name: _include
+      value: Slot:schedule
+      type: query
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        bru.setVar("activeRole", "Patient");
+        var dayStart = new Date();
+        dayStart.setUTCHours(0, 0, 0, 0);
+        var dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+        bru.setVar("todayStart", dayStart.toISOString());
+        bru.setVar("todayEnd", dayEnd.toISOString());
+        await bru.sendRequest({
+          method: "POST",
+          url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
+          headers: {
+            "content-type": "application/json",
+            "Authorization": "Bearer " + bru.getVar("sessionToken")
+          },
+          data: JSON.stringify({ role: bru.getVar("activeRole") })
+        }, function(err, res) {
+          if (err) {
+            console.error("role switch failed: " + err.message);
+          } else if (res && res.headers) {
+            // the active-role response carries the regenerated access token;
+            // capture it so the following request sees the new active role
+            var newToken = res.headers["st-access-token"] || res.headers["front-token"];
+            if (newToken) { bru.setVar("sessionToken", newToken); }
+          }
+        });
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Patient: Book Appointment");'
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Lists the practitioner's slots for a day (with schedule include). The
+  availability model is dynamic: the backend stores no free slots — clients
+  compute free time as `PractitionerRole.availableTime` minus slots with status
+  `busy`, `busy-tentative` or `busy-unavailable`, sized by the
+  HealthcareService `appointment-duration` extension. On a clean backend this
+  query returns an empty bundle, which means every window inside
+  `availableTime` is free — the next step books one. Pre-request switches to
+  Patient and stamps the UTC day bounds.

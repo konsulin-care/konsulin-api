@@ -1,0 +1,11 @@
+info:
+  name: admin
+  type: folder
+  seq: 4
+
+request: {}
+
+docs: |
+  Questionnaire administration as superadmin (`X-API-Key:
+  {{process.env.SUPERADMIN_API_KEY}}`): create a draft questionnaire and update
+  an existing one. Runs after the practitioner journey.

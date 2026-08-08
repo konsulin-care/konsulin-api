@@ -1,0 +1,108 @@
+info:
+  name: Xendit Invoice Callback
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{process.env.APP_BASE_URL}}/api/v1/pay/callback/xendit/invoice"
+  headers:
+    - name: content-type
+      value: application/json
+    - name: X-Callback-Token
+      value: "{{process.env.XENDIT_CALLBACK_TOKEN}}"
+    - name: Webhook-Id
+      value: wh_abc123
+  body:
+    type: json
+    data: |-
+      {
+        "id": "inv_abc123",
+        "external_id": "INV-001",
+        "status": "PAID",
+        "amount": 50000,
+        "currency": "IDR",
+        "created": "2026-07-09T10:00:00Z",
+        "updated": "2026-07-09T10:05:00Z"
+      }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples:
+  - name: Payment succeeded
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/pay/callback/xendit/invoice"
+      method: POST
+      headers:
+        - name: content-type
+          value: application/json
+        - name: X-Callback-Token
+          value: "{{process.env.XENDIT_CALLBACK_TOKEN}}"
+        - name: Webhook-Id
+          value: wh_abc123
+      body:
+        type: json
+        data: '{"id":"inv_abc123","external_id":"INV-001","status":"PAID","amount":50000,"currency":"IDR"}'
+    response:
+      status: 200
+      body:
+        type: json
+        data: '{"success":true,"message":"Xendit invoice callback processed successfully","data":"PAID"}'
+  - name: Payment expired
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/pay/callback/xendit/invoice"
+      method: POST
+      headers:
+        - name: content-type
+          value: application/json
+        - name: X-Callback-Token
+          value: "{{process.env.XENDIT_CALLBACK_TOKEN}}"
+        - name: Webhook-Id
+          value: wh_def456
+      body:
+        type: json
+        data: '{"id":"inv_def456","external_id":"INV-002","status":"EXPIRED","amount":50000,"currency":"IDR"}'
+    response:
+      status: 200
+      body:
+        type: json
+        data: '{"success":true,"message":"Xendit invoice callback processed successfully","data":"EXPIRED"}'
+  - name: Missing callback token
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/pay/callback/xendit/invoice"
+      method: POST
+      headers:
+        - name: content-type
+          value: application/json
+        - name: Webhook-Id
+          value: wh_ghi789
+      body:
+        type: json
+        data: '{"id":"inv_ghi789","external_id":"INV-003","status":"PAID"}'
+    response:
+      status: 400
+      body:
+        type: json
+        data: '{"success":false,"message":"Missing x-callback-token header","status_code":400}'
+
+docs: |
+  Processes Xendit invoice webhook callbacks. This endpoint is called by Xendit when an invoice status changes (PAID, EXPIRED, SETTLED).
+
+  ### Required Headers
+  - `X-Callback-Token`: Xendit callback verification token.
+  - `Webhook-Id`: Xendit webhook event identifier.
+
+  ### Request Body
+  - `id`: Xendit invoice ID.
+  - `external_id`: Partner transaction ID (mapped to application invoice).
+  - `status`: One of `PENDING`, `PAID`, `EXPIRED`, `SETTLED`.
+  - `amount`, `currency`, `created`, `updated`: optional metadata.
+
+  ### Responses
+  - **200 OK**: Callback processed successfully. Body: `{ "success": true, "message": "Xendit invoice callback processed successfully", "data": "PAID" }`.
+  - **400 Bad Request**: Missing `X-Callback-Token` or `Webhook-Id` header, or invalid JSON body. Body: `{ "success": false, "message": "...", "status_code": 400 }`.
+  - **500 Internal Server Error**: Processing failure or timeout. Body: `{ "success": false, "message": "...", "status_code": 500 }`.

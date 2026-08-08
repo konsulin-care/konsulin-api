@@ -20,13 +20,13 @@ type whatsAppService struct {
 }
 
 var (
-	whatsAppServiceInstance contracts.WhatsAppService
-	onceWhatsAppService     sync.Once
+	whatsAppServiceInstance contracts.WhatsAppSender
+	onceWhatsAppSender      sync.Once
 	whatsAppServiceError    error
 )
 
-func NewWhatsAppService(rabbitMQConnection *amqp091.Connection, logger *zap.Logger, queue string) (contracts.WhatsAppService, error) {
-	onceWhatsAppService.Do(func() {
+func NewWhatsAppSender(rabbitMQConnection *amqp091.Connection, logger *zap.Logger, queue string) (contracts.WhatsAppSender, error) {
+	onceWhatsAppSender.Do(func() {
 		channel, err := rabbitMQConnection.Channel()
 		if err != nil {
 			whatsAppServiceError = err
@@ -41,6 +41,7 @@ func NewWhatsAppService(rabbitMQConnection *amqp091.Connection, logger *zap.Logg
 	})
 	return whatsAppServiceInstance, whatsAppServiceError
 }
+
 func (s *whatsAppService) SendWhatsAppMessage(ctx context.Context, request *requests.WhatsAppMessage) error {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 

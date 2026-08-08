@@ -43,6 +43,7 @@ func SanitizeRegisterViaWhatsAppRequest(input *requests.RegisterViaWhatsApp) {
 func SanitizeLoginViaWhatsAppRequest(input *requests.LoginViaWhatsApp) {
 	input.To = strings.TrimSpace(input.To)
 }
+
 func SanitizeVerifyRegisterWhatsAppOTP(input *requests.VerivyRegisterWhatsAppOTP) {
 	input.To = strings.TrimSpace(input.To)
 	input.OTP = strings.TrimSpace(input.OTP)

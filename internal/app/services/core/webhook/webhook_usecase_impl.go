@@ -17,6 +17,7 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -24,8 +25,6 @@ import (
 	"github.com/casbin/casbin/v2"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
-
-	"slices"
 
 	"go.uber.org/zap"
 )
@@ -40,6 +39,10 @@ type Usecase interface {
 	GetAsyncServiceResult(ctx context.Context, id string) (*GetAsyncServiceResultOutput, error)
 	// HandleSynchronousWebhookService forwards synchronous webhook services with RBAC and validation.
 	HandleSynchronousWebhookService(ctx context.Context, in *HandleSynchronousWebhookServiceInput) (*HandleSynchronousWebhookServiceOutput, error)
+	// ForwardSynchronousInternal forwards a synchronous webhook request to the external service,
+	// skipping authentication, authorization, and rate limiting.
+	// Intended for in-process callers that are already trusted.
+	ForwardSynchronousInternal(ctx context.Context, service, method string, body []byte, contentType string) (*HandleSynchronousWebhookServiceOutput, error)
 }
 
 type usecase struct {
@@ -613,6 +616,40 @@ func (u *usecase) validateSynchronousBody(ctx context.Context, roles []string, u
 	return u.validateContactByRole(ctx, role, userIdentifierId, email, phone, chatwoot)
 }
 
+// ForwardSynchronousInternal is the in-process, transport-only forwarder for
+// trusted internal callers — send-magiclink (passwordless login, invoked on
+// context.Background from the SuperTokens email override) and modify-profile
+// (omnichannel profile sync). It is wired explicitly at bootstrap and is never
+// reachable from an HTTP client, so the HTTP route's caller-identity checks
+// (evaluateWebhookAuth, authorizeSynchronous, validateSynchronousBody) and its
+// HOOK_SYNC_SERVICE_NAMES allowlist are intentionally skipped: there is no
+// external identity to evaluate, and imposing the operator-facing allowlist on
+// an internal relay would break e.g. magic-link delivery when the config list
+// does not mention send-magiclink. The HTTP route /hook/synchronous/{service}
+// keeps its own allowlist independently. This path still applies the same input
+// validation sanity as the HTTP handler and routes forward failures through the
+// shared failure policy (WEBHOOK_SYNC_FAILURE_POLICY_RETURN_ERROR / enqueue
+// fallback), so an upstream relay outage behaves identically to the loopback.
+func (u *usecase) ForwardSynchronousInternal(ctx context.Context, service, method string, body []byte, contentType string) (*HandleSynchronousWebhookServiceOutput, error) {
+	service = strings.ToLower(strings.TrimSpace(service))
+
+	in := &HandleSynchronousWebhookServiceInput{
+		ServiceName: service,
+		Method:      method,
+		Body:        body,
+		ContentType: contentType,
+	}
+	if err := validator.New().Struct(in); err != nil {
+		return nil, exceptions.ErrInputValidation(err)
+	}
+
+	out, err := u.forwardSynchronous(ctx, service, method, body, contentType)
+	if err != nil {
+		return u.applySynchronousFailurePolicy(ctx, service, in)
+	}
+	return out, nil
+}
+
 func (u *usecase) forwardSynchronous(ctx context.Context, service, method string, body []byte, contentType string) (*HandleSynchronousWebhookServiceOutput, error) {
 	url := fmt.Sprintf("%s/%s", strings.TrimRight(u.cfg.Webhook.URL, "/"), service)
 	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
@@ -631,7 +668,7 @@ func (u *usecase) forwardSynchronous(ctx context.Context, service, method string
 	if err != nil {
 		return nil, exceptions.ErrSendHTTPRequest(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respContentType := resp.Header.Get(constvars.HeaderContentType)
 

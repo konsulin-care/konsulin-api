@@ -60,7 +60,6 @@ func loadInternalConfigWithYAML() *InternalConfig {
 func loadInternalConfigWithEnv() (*InternalConfig, error) {
 	cfg := &InternalConfig{
 		App: App{
-
 			// General App Settings with Defaults
 			Env:            utils.GetEnvString("APP_ENV", constvars.EnvLocal),
 			Port:           utils.GetEnvString("APP_PORT", "3200"),
@@ -238,6 +237,7 @@ func NewDriverConfig() *DriverConfig {
 func GetInternalConfig() *InternalConfig {
 	return internalCfg
 }
+
 func GetDriverConfig() *DriverConfig {
 	return driverCfg
 }

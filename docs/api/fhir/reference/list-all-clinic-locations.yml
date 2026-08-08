@@ -1,0 +1,33 @@
+info:
+  name: List All Clinic Locations
+  type: http
+  seq: 2
+  tags: [clinic]
+
+http:
+  method: GET
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  url: "{{process.env.APP_BASE_URL}}/fhir/Location"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |
+        bru.runner.setNextRequest("List Practitioners in a Clinic");
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Lists all clinic Locations (public read). Chains to "List Practitioners in a
+  Clinic", which demos the seeded PractitionerRole at the seeded location.
+  `locationId` comes from the seed phase and is never overwritten here.

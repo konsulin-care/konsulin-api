@@ -1,0 +1,18 @@
+info:
+  name: seed
+  type: folder
+  seq: 1
+
+request: {}
+
+docs: |
+  Seeds a clean backend with the FHIR resources the journeys depend on.
+  All requests authenticate as superadmin via `X-API-Key:
+  {{process.env.SUPERADMIN_API_KEY}}` (no session bearer needed) and chain
+  linearly: Organization → Location → HealthcareService → PractitionerRole →
+  Schedule → Questionnaire → SOAP Questionnaire → PlanDefinition → ResearchStudy.
+
+  The Patient/Practitioner/Person identities are NOT seeded here — they are
+  auto-created by the auth magic-link flow and captured later by the profile
+  lookups. Slots are intentionally NOT seeded: free time is computed
+  dynamically by clients (availableTime minus busy slots).

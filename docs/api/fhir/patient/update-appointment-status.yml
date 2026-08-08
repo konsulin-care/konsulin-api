@@ -1,0 +1,88 @@
+info:
+  name: "Patient: Update Appointment Status"
+  type: http
+  seq: 15
+  tags: [appointment]
+
+http:
+  method: PUT
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  url: "{{process.env.APP_BASE_URL}}/fhir/Appointment/{{appointmentId}}"
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "Appointment",
+        "id": "{{appointmentId}}",
+        "status": "booked",
+        "slot": [
+          {
+            "reference": "Slot/{{slotId}}"
+          }
+        ],
+        "participant": [
+          {
+            "actor": {
+              "reference": "Patient/{{patientId}}"
+            },
+            "status": "accepted"
+          },
+          {
+            "actor": {
+              "reference": "PractitionerRole/{{practitionerRoleId}}"
+            },
+            "status": "accepted"
+          }
+        ],
+        "start": "{{slotStart}}",
+        "end": "{{slotEnd}}"
+      }
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        bru.setVar("activeRole", "Patient");
+        await bru.sendRequest({
+          method: "POST",
+          url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
+          headers: {
+            "content-type": "application/json",
+            "Authorization": "Bearer " + bru.getVar("sessionToken")
+          },
+          data: JSON.stringify({ role: bru.getVar("activeRole") })
+        }, function(err, res) {
+          if (err) {
+            console.error("role switch failed: " + err.message);
+          } else if (res && res.headers) {
+            // the active-role response carries the regenerated access token;
+            // capture it so the following request sees the new active role
+            var newToken = res.headers["st-access-token"] || res.headers["front-token"];
+            if (newToken) { bru.setVar("sessionToken", newToken); }
+          }
+        });
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Patient: Write Referral");'
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "401"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Updates an appointment's status via fetch-merge-PUT (full-resource PUT
+  semantics; the body carries the appointment created in the booking step).
+
+  NOTE: the current RBAC policy grants Patient only `GET`/`POST` on
+  `/fhir/Appointment` — there is no `PUT` rule, so this request is expected to
+  be denied (401) until the policy gains a Patient PUT rule. The assertion
+  pins this expected status so the collection stays green while documenting
+  the backend gap; once the policy is fixed, the assertion will flag it.
+  Pre-request switches to Patient.

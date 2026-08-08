@@ -87,11 +87,11 @@ func (uc *paymentUsecase) buildAppointmentPaymentBundle(
 		Amount: *precond.Invoice.TotalNet,
 	}
 	entries = append(entries, map[string]any{
-		"request": map[string]any{
-			"method": "PUT",
-			"url":    constvars.ResourcePaymentNotice + "/" + paymentNoticeID,
+		constvars.FhirFieldRequest: map[string]any{
+			constvars.FhirFieldMethod: constvars.FhirBundleMethodPut,
+			constvars.FhirFieldURL:    constvars.ResourcePaymentNotice + "/" + paymentNoticeID,
 		},
-		"resource": paymentNotice,
+		constvars.FhirFieldResource: paymentNotice,
 	})
 
 	if strings.TrimSpace(req.Condition) != "" {
@@ -118,11 +118,11 @@ func (uc *paymentUsecase) buildAppointmentPaymentBundle(
 			},
 		}
 		entries = append(entries, map[string]any{
-			"request": map[string]any{
-				"method": "PUT",
-				"url":    constvars.ResourceCondition + "/" + conditionID,
+			constvars.FhirFieldRequest: map[string]any{
+				constvars.FhirFieldMethod: constvars.FhirBundleMethodPut,
+				constvars.FhirFieldURL:    constvars.ResourceCondition + "/" + conditionID,
 			},
-			"resource": condition,
+			constvars.FhirFieldResource: condition,
 		})
 	}
 
@@ -173,11 +173,11 @@ func (uc *paymentUsecase) buildAppointmentPaymentBundle(
 	}
 
 	entries = append(entries, map[string]any{
-		"request": map[string]any{
-			"method": "PUT",
-			"url":    constvars.ResourceAppointment + "/" + appointmentID,
+		constvars.FhirFieldRequest: map[string]any{
+			constvars.FhirFieldMethod: constvars.FhirBundleMethodPut,
+			constvars.FhirFieldURL:    constvars.ResourceAppointment + "/" + appointmentID,
 		},
-		"resource": appointment,
+		constvars.FhirFieldResource: appointment,
 	})
 
 	slotEntries, err := uc.buildSlotAdjustmentEntries(ctx, precond, allPractitionerRoles)
@@ -265,21 +265,21 @@ func (uc *paymentUsecase) buildDayAdjustmentEntries(
 			continue
 		}
 		entries = append(entries, map[string]any{
-			"request": map[string]any{
-				"method": "DELETE",
-				"url":    constvars.ResourceSlot + "/" + slotID,
+			constvars.FhirFieldRequest: map[string]any{
+				constvars.FhirFieldMethod: "DELETE",
+				constvars.FhirFieldURL:    constvars.ResourceSlot + "/" + slotID,
 			},
 		})
 	}
 
 	for _, newSlot := range toCreate {
 		entries = append(entries, map[string]any{
-			"request": map[string]any{
-				"method": "POST",
-				"url":    constvars.ResourceSlot,
+			constvars.FhirFieldRequest: map[string]any{
+				constvars.FhirFieldMethod: "POST",
+				constvars.FhirFieldURL:    constvars.ResourceSlot,
 			},
-			"resource": map[string]any{
-				"resourceType": constvars.ResourceSlot,
+			constvars.FhirFieldResource: map[string]any{
+				constvars.FhirFieldResourceType: constvars.ResourceSlot,
 				"schedule": map[string]any{
 					"reference": "Schedule/" + schedule.ID,
 				},
@@ -425,7 +425,7 @@ func (uc *paymentUsecase) notifyProviderAsync(
 		)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, err := io.ReadAll(resp.Body)

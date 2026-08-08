@@ -1,0 +1,85 @@
+info:
+  name: Claim Anonymous Resources
+  type: http
+  seq: 5
+  tags: [auth]
+
+http:
+  method: PATCH
+  url: "{{process.env.APP_BASE_URL}}/api/v1/auth/anonymous/claim"
+  headers:
+    - name: content-type
+      value: application/json
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  body:
+    type: json
+    data: "{}"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: bru.runner.setNextRequest("Set Active Role");
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.success
+      operator: eq
+      value: "true"
+    - expression: res.body.data.claimed
+      operator: eq
+      value: "true"
+    - expression: res.responseTime
+      operator: lt
+      value: "5000"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples:
+  - name: Success
+    request:
+      url: "{{process.env.APP_BASE_URL}}/api/v1/auth/anonymous/claim"
+      method: PATCH
+      headers:
+        - name: content-type
+          value: application/json
+        - name: Authorization
+          value: Bearer {{sessionToken}}
+    response:
+      status: 200
+      body:
+        type: json
+        data: '{"success":true,"message":"Anonymous resources claimed successfully","data":{"claimed":true,"count":3,"referenceList":["QuestionnaireResponse/1","Observation/2"]}}'
+  - name: No anonymous cookie
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/auth/anonymous/claim"
+      method: PATCH
+      headers:
+        - name: content-type
+          value: application/json
+        - name: Authorization
+          value: Bearer {{sessionToken}}
+    response:
+      status: 204
+      body:
+        type: json
+        data: ""
+
+docs: |
+  Transfers resources created during an anonymous session to the currently
+  authenticated SuperTokens user. Requires a valid SuperTokens session
+  (`Authorization: Bearer {{sessionToken}}`) and an existing anonymous session
+  cookie (set by "Create Anonymous Session").
+
+  On completion, chains to "Set Active Role".
+
+  ### Responses
+  - **200 OK**: Resources claimed successfully. Body: `{ "success": true, "message": "Anonymous resources claimed successfully", "data": { "claimed": true, "count": 3, "referenceList": [...] } }`.
+  - **204 No Content**: No anonymous session cookie present — nothing to claim.
+  - **400 Bad Request**: Missing or anonymous user in context. Body: `{ "success": false, "message": "Session not found", "status_code": 400 }`.
+  - **500 Internal Server Error**: Server failure.

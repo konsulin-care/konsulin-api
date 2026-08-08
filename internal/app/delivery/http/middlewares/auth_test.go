@@ -2,10 +2,12 @@ package middlewares
 
 import (
 	"context"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/fhir_dto"
+	"net/http"
 	"net/url"
 	"testing"
+
+	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/fhir_dto"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -248,6 +250,124 @@ func TestResolveFHIRIdentity_ActiveRolePatient_NoPatientResource(t *testing.T) {
 	assert.Equal(t, "prac-1", id)
 }
 
+func TestOwnsPostBody(t *testing.T) {
+	tests := []struct {
+		name         string
+		fhirID       string
+		role         string
+		resourceType string
+		body         string
+		want         bool
+	}{
+		{
+			name:         "Patient consents for self",
+			fhirID:       "pat-1",
+			role:         constvars.KonsulinRolePatient,
+			resourceType: constvars.ResourceConsent,
+			body:         `{"resourceType":"Consent","status":"active","patient":{"reference":"Patient/pat-1"}}`,
+			want:         true,
+		},
+		{
+			name:         "Patient consenting for another patient is denied",
+			fhirID:       "pat-1",
+			role:         constvars.KonsulinRolePatient,
+			resourceType: constvars.ResourceConsent,
+			body:         `{"resourceType":"Consent","status":"active","patient":{"reference":"Patient/pat-2"}}`,
+			want:         false,
+		},
+		{
+			name:         "Patient ResearchSubject for self",
+			fhirID:       "pat-1",
+			role:         constvars.KonsulinRolePatient,
+			resourceType: constvars.ResourceResearchSubject,
+			body:         `{"resourceType":"ResearchSubject","status":"active","individual":{"reference":"Patient/pat-1"}}`,
+			want:         true,
+		},
+		{
+			name:         "Patient ResearchSubject for another patient is denied",
+			fhirID:       "pat-1",
+			role:         constvars.KonsulinRolePatient,
+			resourceType: constvars.ResourceResearchSubject,
+			body:         `{"resourceType":"ResearchSubject","status":"active","individual":{"reference":"Patient/pat-2"}}`,
+			want:         false,
+		},
+		{
+			name:         "Missing patient field is lenient",
+			fhirID:       "pat-1",
+			role:         constvars.KonsulinRolePatient,
+			resourceType: constvars.ResourceConsent,
+			body:         `{"resourceType":"Consent","status":"active"}`,
+			want:         true,
+		},
+		{
+			name:         "Missing individual field is lenient",
+			fhirID:       "pat-1",
+			role:         constvars.KonsulinRolePatient,
+			resourceType: constvars.ResourceResearchSubject,
+			body:         `{"resourceType":"ResearchSubject","status":"active"}`,
+			want:         true,
+		},
+		{
+			name:         "Non-Patient reference prefix in patient field is denied",
+			fhirID:       "pat-1",
+			role:         constvars.KonsulinRolePatient,
+			resourceType: constvars.ResourceConsent,
+			body:         `{"resourceType":"Consent","status":"active","patient":{"reference":"Practitioner/prac-1"}}`,
+			want:         false,
+		},
+		{
+			name:         "Non-Patient role is allowed",
+			fhirID:       "prac-1",
+			role:         constvars.KonsulinRolePractitioner,
+			resourceType: constvars.ResourceConsent,
+			body:         `{"resourceType":"Consent","status":"active","patient":{"reference":"Patient/pat-2"}}`,
+			want:         true,
+		},
+		{
+			name:         "Unrelated resource type is allowed",
+			fhirID:       "pat-1",
+			role:         constvars.KonsulinRolePatient,
+			resourceType: constvars.ResourceObservation,
+			body:         `{"resourceType":"Observation","subject":{"reference":"Patient/pat-2"}}`,
+			want:         true,
+		},
+		{
+			name:         "Empty body is allowed",
+			fhirID:       "pat-1",
+			role:         constvars.KonsulinRolePatient,
+			resourceType: constvars.ResourceConsent,
+			body:         ``,
+			want:         true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ownsPostBody(tt.fhirID, tt.role, tt.resourceType, []byte(tt.body))
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestOwnsResource_PostConsentOwnership(t *testing.T) {
+	// A Patient may POST a Consent only when patient.reference is their own id.
+	got := ownsResource(context.Background(), "pat-1", "/fhir/Consent", constvars.KonsulinRolePatient, constvars.MethodPost, rbacClients{},
+		[]byte(`{"resourceType":"Consent","status":"active","patient":{"reference":"Patient/pat-1"}}`))
+	assert.True(t, got, "Patient should own Consent POST referencing themselves")
+
+	got = ownsResource(context.Background(), "pat-1", "/fhir/Consent", constvars.KonsulinRolePatient, constvars.MethodPost, rbacClients{},
+		[]byte(`{"resourceType":"Consent","status":"active","patient":{"reference":"Patient/pat-2"}}`))
+	assert.False(t, got, "Patient must not POST a Consent for another patient")
+}
+
+func TestCheckPatientRefs_ResearchSubjectIndividual(t *testing.T) {
+	// PUT ownership for ResearchSubject relies on individual.reference.
+	assert.True(t, checkPatientRefs(`{"resourceType":"ResearchSubject","status":"active","individual":{"reference":"Patient/pat-1"}}`, "pat-1"),
+		"patient should own a ResearchSubject referencing themselves via individual")
+	assert.False(t, checkPatientRefs(`{"resourceType":"ResearchSubject","status":"active","individual":{"reference":"Patient/pat-2"}}`, "pat-1"),
+		"patient must not own a ResearchSubject referencing another patient")
+}
+
 func TestExtractPathResourceID(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -324,4 +444,120 @@ func TestExtractPathResourceID(t *testing.T) {
 			assert.Equal(t, tt.wantID, id)
 		})
 	}
+}
+
+func TestValidateCommunicationSenderInBody(t *testing.T) {
+	t.Run("own sender passes", func(t *testing.T) {
+		body := `{"resourceType":"Communication","status":"completed","sender":{"reference":"Patient/pat-1"},"recipient":[{"reference":"Patient/pat-2"}]}`
+		assert.NoError(t, validateCommunicationSenderInBody([]byte(body), "pat-1"))
+	})
+
+	t.Run("other patient sender rejected", func(t *testing.T) {
+		body := `{"resourceType":"Communication","status":"completed","sender":{"reference":"Patient/pat-2"}}`
+		err := validateCommunicationSenderInBody([]byte(body), "pat-1")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "pat-2")
+	})
+
+	t.Run("missing sender is lenient", func(t *testing.T) {
+		body := `{"resourceType":"Communication","status":"completed","recipient":[{"reference":"Patient/pat-2"}]}`
+		assert.NoError(t, validateCommunicationSenderInBody([]byte(body), "pat-1"))
+	})
+
+	t.Run("non-patient sender rejected", func(t *testing.T) {
+		body := `{"resourceType":"Communication","status":"completed","sender":{"reference":"Practitioner/prac-1"}}`
+		err := validateCommunicationSenderInBody([]byte(body), "pat-1")
+		assert.Error(t, err)
+	})
+}
+
+func TestValidatePatientCommunicationSender(t *testing.T) {
+	t.Run("own sender passes", func(t *testing.T) {
+		body := `{"resourceType":"Communication","status":"completed","sender":{"reference":"Patient/pat-1"},"recipient":[{"reference":"Patient/pat-2"}]}`
+		assert.True(t, validatePatientCommunicationSender(body, "pat-1"))
+	})
+
+	t.Run("other patient sender rejected", func(t *testing.T) {
+		body := `{"resourceType":"Communication","status":"completed","sender":{"reference":"Patient/pat-2"}}`
+		assert.False(t, validatePatientCommunicationSender(body, "pat-1"))
+	})
+
+	t.Run("missing sender rejected", func(t *testing.T) {
+		body := `{"resourceType":"Communication","status":"completed","recipient":[{"reference":"Patient/pat-2"}]}`
+		assert.False(t, validatePatientCommunicationSender(body, "pat-1"))
+	})
+
+	t.Run("non-patient sender rejected", func(t *testing.T) {
+		body := `{"resourceType":"Communication","status":"completed","sender":{"reference":"Practitioner/prac-1"}}`
+		assert.False(t, validatePatientCommunicationSender(body, "pat-1"))
+	})
+}
+
+func TestCheckScopedEntryRead(t *testing.T) {
+	const patientID = "pat-1"
+	tests := []struct {
+		name         string
+		method       string
+		resourceType string
+		roles        []string
+		fhirID       string
+		rawURL       string
+		wantErr      bool
+	}{
+		{
+			name:         "patient scoped communication read allowed",
+			method:       http.MethodGet,
+			resourceType: constvars.ResourceCommunication,
+			roles:        []string{constvars.KonsulinRolePatient},
+			fhirID:       patientID,
+			rawURL:       "http://blaze/fhir/Communication?sender=Patient/pat-1",
+		},
+		{
+			name:         "patient unscoped communication read denied",
+			method:       http.MethodGet,
+			resourceType: constvars.ResourceCommunication,
+			roles:        []string{constvars.KonsulinRolePatient},
+			fhirID:       patientID,
+			rawURL:       "http://blaze/fhir/Communication?status=completed",
+			wantErr:      true,
+		},
+		{
+			name:         "aggregate count stays public",
+			method:       http.MethodGet,
+			resourceType: constvars.ResourceQuestionnaireResponse,
+			roles:        []string{constvars.KonsulinRolePatient},
+			fhirID:       patientID,
+			rawURL:       "http://blaze/fhir/QuestionnaireResponse?_summary=count",
+		},
+		{
+			name:         "non-GET exempt",
+			method:       http.MethodPost,
+			resourceType: constvars.ResourceCommunication,
+			rawURL:       "http://blaze/fhir/Communication",
+		},
+		{
+			name:         "non-scoped resource exempt",
+			method:       http.MethodGet,
+			resourceType: constvars.ResourcePatient,
+			rawURL:       "http://blaze/fhir/Patient",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkScopedEntryRead(tt.method, tt.resourceType, tt.roles, tt.fhirID, tt.rawURL)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestIsReferralCommunicationPut(t *testing.T) {
+	assert.True(t, isReferralCommunicationPut(http.MethodPut, constvars.ResourceCommunication, "/fhir/Communication/referral-abc123"))
+	assert.False(t, isReferralCommunicationPut(http.MethodPost, constvars.ResourceCommunication, "/fhir/Communication/referral-abc123"))
+	assert.False(t, isReferralCommunicationPut(http.MethodPut, constvars.ResourceObservation, "/fhir/Observation/referral-abc123"))
+	assert.False(t, isReferralCommunicationPut(http.MethodPut, constvars.ResourceCommunication, "/fhir/Communication/comm-1"))
+	assert.False(t, isReferralCommunicationPut(http.MethodPut, constvars.ResourceCommunication, "/fhir/Communication"))
 }

@@ -3,6 +3,7 @@ package middlewares
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"konsulin-service/internal/app/contracts"
@@ -13,74 +14,11 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
-
-func (m *Middlewares) OptionalAuthenticate(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get(constvars.HeaderAuthorization)
-		if authHeader == "" {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		token := strings.TrimPrefix(authHeader, "Bearer ")
-		sessionID, err := utils.ParseJWT(token, m.InternalConfig.JWT.Secret)
-		if err != nil {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-		defer cancel()
-
-		sessionData, err := m.SessionService.GetSessionData(ctx, sessionID)
-		if err != nil {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		ctx = context.WithValue(r.Context(), constvars.CONTEXT_SESSION_DATA_KEY, sessionData)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
-func (m *Middlewares) Authenticate(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get(constvars.HeaderAuthorization)
-		if authHeader == "" {
-			utils.BuildErrorResponse(m.Log, w, exceptions.ErrTokenMissing(nil))
-			return
-		}
-
-		token := strings.TrimPrefix(authHeader, "Bearer ")
-		sessionID, err := utils.ParseJWT(token, m.InternalConfig.JWT.Secret)
-		if err != nil {
-			utils.BuildErrorResponse(m.Log, w, exceptions.ErrTokenInvalidOrExpired(err))
-			return
-		}
-
-		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-		defer cancel()
-
-		sessionData, err := m.SessionService.GetSessionData(ctx, sessionID)
-		if err != nil {
-			if err == context.DeadlineExceeded {
-				utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerDeadlineExceeded(err))
-				return
-			}
-			utils.BuildErrorResponse(m.Log, w, err)
-			return
-		}
-
-		ctx = context.WithValue(r.Context(), constvars.CONTEXT_SESSION_DATA_KEY, sessionData)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
 
 // handleAuthPostBody reads and validates the POST request body, restoring it for downstream use.
 func (m *Middlewares) handleAuthPostBody(ctxIface context.Context, r *http.Request, fhirRole, fhirID string) error {
@@ -103,7 +41,7 @@ func (m *Middlewares) handleAuthBundle(ctxIface context.Context, r *http.Request
 	body, _ := io.ReadAll(r.Body)
 	_ = r.Body.Close()
 
-	if err := scanBundle(ctxIface, m.Enforcer, body, roles, ctxIface.Value(keyFHIRID).(string), m.PatientFhirClient, m.PractitionerFhirClient, m.PractitionerRoleFhirClient, m.ScheduleFhirClient, m.QuestionnaireResponseFhirClient); err != nil {
+	if err := scanBundle(ctxIface, m.Enforcer, body, roles, ctxIface.Value(keyFHIRID).(string), m.rbacClients()); err != nil {
 		return true, err
 	}
 	r.Body = io.NopCloser(bytes.NewReader(body))
@@ -113,6 +51,7 @@ func (m *Middlewares) handleAuthBundle(ctxIface context.Context, r *http.Request
 // handleAuthSingleResource validates a single FHIR resource request.
 func (m *Middlewares) handleAuthSingleResource(ctxIface context.Context, r *http.Request, roles []string) error {
 	fullURL := r.URL.RequestURI()
+	fhirID, _ := ctxIface.Value(keyFHIRID).(string)
 
 	var resourceBody []byte
 	if r.Method == constvars.MethodPut || r.Method == constvars.MethodPost {
@@ -122,7 +61,28 @@ func (m *Middlewares) handleAuthSingleResource(ctxIface context.Context, r *http
 		r.Body = io.NopCloser(bytes.NewReader(body))
 	}
 
-	return checkSingle(ctxIface, m.Enforcer, r.Method, fullURL, roles, ctxIface.Value(keyFHIRID).(string), m.PatientFhirClient, m.PractitionerFhirClient, m.PractitionerRoleFhirClient, m.ScheduleFhirClient, m.QuestionnaireResponseFhirClient, resourceBody)
+	// B3: referral Communications are PUT-only, deterministic resources. A POST
+	// create carrying a referral- id would let a caller forge an edge id.
+	if err := rejectReferralPOST(r.Method, gjson.GetBytes(resourceBody, "id").String()); err != nil {
+		return err
+	}
+
+	// B3: validate referral Communication PUTs before any RBAC/ownership dispatch.
+	if r.Method == constvars.MethodPut {
+		if res, id := extractPathResourceID(fullURL); res == constvars.ResourceCommunication && isReferralID(id) {
+			if err := m.validateReferralCommunication(ctxIface, roles, fhirID, id, resourceBody); err != nil {
+				return err
+			}
+		}
+	}
+
+	return checkSingle(ctxIface, m.Enforcer, rbacRequest{
+		method:         r.Method,
+		normalizedPath: normalizePath(fullURL),
+		fhirID:         ctxIface.Value(keyFHIRID).(string),
+		url:            fullURL,
+		resource:       resourceBody,
+	}, roles, m.rbacClients())
 }
 
 func (m *Middlewares) Auth(next http.Handler) http.Handler {
@@ -131,7 +91,7 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 		roles, _ := ctxIface.Value(keyRoles).([]string)
 		uid, _ := ctxIface.Value(keyUID).(string)
 
-		fhirRole, fhirID, err := m.resolveUserRoles(ctxIface, roles, uid)
+		fhirRole, fhirID, err := m.ResolveUserRoles(ctxIface, roles, uid)
 		if err != nil {
 			m.Log.Error("Auth.resolveUserRoles", zap.Error(err))
 			utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
@@ -158,6 +118,13 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 		}
 
 		if err := m.handleAuthSingleResource(ctxIface, r, roles); err != nil {
+			// Referral validation rejections are client-forbidden (403); all other
+			// authorization failures keep the default unauthorized (401) mapping.
+			var rfErr *referralForbiddenError
+			if errors.As(err, &rfErr) {
+				utils.BuildErrorResponse(m.Log, w, exceptions.BuildNewCustomError(err, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, "forbidden"))
+				return
+			}
 			utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
 			return
 		}
@@ -185,9 +152,11 @@ func needsFHIRResolution(roles []string) bool {
 	return false
 }
 
-// resolveUserRoles determines the FHIR role and ID to use for authorization.
+// ResolveUserRoles determines the FHIR role and ID to use for authorization.
 // Returns (fhirRole, fhirID, error). For Guest and non-FHIR roles, fhirID is empty.
-func (m *Middlewares) resolveUserRoles(ctx context.Context, roles []string, uid string) (string, string, error) {
+// Backend routes outside the /fhir proxy mount (e.g. the purge endpoint) use
+// it to resolve the caller's FHIR identity from the session context values.
+func (m *Middlewares) ResolveUserRoles(ctx context.Context, roles []string, uid string) (string, string, error) {
 	if len(roles) == 1 && roles[0] == constvars.KonsulinRoleSuperadmin && uid == "api-key-superadmin" {
 		return constvars.KonsulinRoleSuperadmin, "", nil
 	}
@@ -221,6 +190,12 @@ func (m *Middlewares) validatePostRequestBody(ctx context.Context, body []byte, 
 
 	resourceTypeFromPath := utils.ExtractResourceTypeFromPath("/fhir/" + resourceType)
 
+	// Communication sender must be the patient themselves; a patient must not
+	// create a Communication impersonating another sender.
+	if resourceTypeFromPath == constvars.ResourceCommunication && fhirRole == constvars.KonsulinRolePatient {
+		return validateCommunicationSenderInBody(body, fhirID)
+	}
+
 	if utils.RequiresPatientOwnership(resourceTypeFromPath) && fhirRole == constvars.KonsulinRolePatient {
 		return m.validatePatientOwnershipInBody(body, fhirID)
 	}
@@ -230,6 +205,22 @@ func (m *Middlewares) validatePostRequestBody(ctx context.Context, body []byte, 
 	}
 
 	return nil
+}
+
+// validateCommunicationSenderInBody enforces that a Communication POST body's
+// sender references the caller's own Patient ID. A missing sender is lenient
+// (nil); a malformed reference or a mismatched patient is an error.
+func validateCommunicationSenderInBody(body []byte, patientID string) error {
+	return validateBodyFieldRef(body, "sender", patientID, constvars.ResourcePatient)
+}
+
+// validatePatientCommunicationSender reports whether a Communication resource
+// is owned by the given patient via its sender reference. Missing or mismatched
+// senders are not owned.
+func validatePatientCommunicationSender(resourceStr, fhirID string) bool {
+	senderRef := gjson.Get(resourceStr, "sender.reference").String()
+	return strings.HasPrefix(senderRef, constvars.FHIRRefPrefixPatient) &&
+		strings.TrimPrefix(senderRef, constvars.FHIRRefPrefixPatient) == fhirID
 }
 
 func (m *Middlewares) validatePatientOwnershipInBody(body []byte, patientID string) error {
@@ -256,6 +247,44 @@ func validateBodySubjectRef(body []byte, id, prefix string) error {
 		return fmt.Errorf("%s %s is trying to create resource for different %s %s", prefix, id, prefix, subjectID)
 	}
 	return nil
+}
+
+// validateBodyFieldRef checks that a JSON reference field matches the given prefix and ID.
+// A missing field is lenient (nil); a malformed format or a mismatched ID is an error.
+func validateBodyFieldRef(body []byte, field, id, prefix string) error {
+	ref := gjson.GetBytes(body, field+".reference").String()
+	if ref == "" {
+		return nil
+	}
+	if !strings.HasPrefix(ref, prefix+"/") {
+		return fmt.Errorf("invalid %s reference format: %s", field, ref)
+	}
+	refID := strings.TrimPrefix(ref, prefix+"/")
+	if refID != id {
+		return fmt.Errorf("%s %s is trying to create resource for different %s %s", prefix, id, prefix, refID)
+	}
+	return nil
+}
+
+// ownsPostBody validates POST create bodies for patient-scoped resources.
+// Consent (patient.reference) and ResearchSubject (individual.reference) must
+// point at the caller's own Patient ID so a patient cannot consent on behalf
+// of another patient. Non-patient roles, unrelated resource types, empty
+// bodies, and missing reference fields stay lenient.
+func ownsPostBody(fhirID, role, resourceType string, resource []byte) bool {
+	if role != constvars.KonsulinRolePatient || len(resource) == 0 {
+		return true
+	}
+	var field string
+	switch resourceType {
+	case constvars.ResourceConsent:
+		field = constvars.FhirFieldPatient
+	case constvars.ResourceResearchSubject:
+		field = "individual"
+	default:
+		return true
+	}
+	return validateBodyFieldRef(resource, field, fhirID, constvars.ResourcePatient) == nil
 }
 
 // validateBodyArrayRefs checks that all references in a JSON array field match the given prefix and ID.
@@ -339,7 +368,6 @@ func (m *Middlewares) resolveFHIRIdentity(ctx context.Context, uid string) (role
 		constvars.FhirSupertokenSystemIdentifier,
 		uid,
 	)
-
 	if err != nil {
 		return "", "", err
 	}
@@ -379,7 +407,36 @@ func resolveIdentifierToPatientID(ctx context.Context, identifier string, patien
 	return patients[0].ID, nil
 }
 
-func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []string, uid string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient, practitionerRoleClient contracts.PractitionerRoleFhirClient, scheduleClient contracts.ScheduleFhirClient, questionnaireResponseClient contracts.QuestionnaireResponseFhirClient) error {
+// rbacClients bundles the FHIR clients needed for RBAC ownership checks.
+type rbacClients struct {
+	patient               contracts.PatientFhirClient
+	practitioner          contracts.PractitionerFhirClient
+	practitionerRole      contracts.PractitionerRoleFhirClient
+	schedule              contracts.ScheduleFhirClient
+	questionnaireResponse contracts.QuestionnaireResponseFhirClient
+}
+
+// rbacRequest bundles the request data needed for RBAC and ownership checks.
+type rbacRequest struct {
+	method         string
+	normalizedPath string
+	fhirID         string
+	url            string
+	resource       []byte
+}
+
+// rbacClients returns the middleware's FHIR clients bundled for RBAC checks.
+func (m *Middlewares) rbacClients() rbacClients {
+	return rbacClients{
+		patient:               m.PatientFhirClient,
+		practitioner:          m.PractitionerFhirClient,
+		practitionerRole:      m.PractitionerRoleFhirClient,
+		schedule:              m.ScheduleFhirClient,
+		questionnaireResponse: m.QuestionnaireResponseFhirClient,
+	}
+}
+
+func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []string, uid string, clients rbacClients) error {
 	if gjson.GetBytes(raw, "resourceType").String() != "Bundle" {
 		return fmt.Errorf("invalid bundle")
 	}
@@ -388,28 +445,82 @@ func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []str
 		method := entry.Get("request.method").String()
 		url := entry.Get("request.url").String()
 		resource := entry.Get("resource").Raw
-		if err := checkSingle(ctx, e, method, url, roles, uid, patientClient, practitionerClient, practitionerRoleClient, scheduleClient, questionnaireResponseClient, []byte(resource)); err != nil {
+		req := rbacRequest{
+			method:         method,
+			normalizedPath: normalizePath(url),
+			fhirID:         uid,
+			url:            url,
+			resource:       []byte(resource),
+		}
+		if err := checkSingle(ctx, e, req, roles, clients); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, roles []string, fhirID string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient, practitionerRoleClient contracts.PractitionerRoleFhirClient, scheduleClient contracts.ScheduleFhirClient, questionnaireResponseClient contracts.QuestionnaireResponseFhirClient, resource []byte) error {
-	normalizedPath := normalizePath(url)
-	resourceType := utils.ExtractResourceTypeFromPath(normalizedPath)
+func checkSingle(ctx context.Context, e *casbin.Enforcer, req rbacRequest, roles []string, clients rbacClients) error {
+	resourceType := utils.ExtractResourceTypeFromPath(req.normalizedPath)
 
-	// direct request to public resource is allowed to bypass RBAC checks
-	// but only for GET requests to avoid unwanted modifications
-	if utils.IsPublicResource(resourceType) && method == http.MethodGet {
+	// C3: entry-level QuestionnaireResponse / Communication GET reads must carry
+	// an identity scope (aggregate _summary=count stays public). Closes the
+	// open-endpoint hole where a bare query returned every response.
+	if err := checkScopedEntryRead(req.method, resourceType, roles, req.fhirID, req.url); err != nil {
+		return err
+	}
+
+	// B3: referral Communication PUTs are fully validated in
+	// handleAuthSingleResource (deterministic body + live sender/batch checks,
+	// patient-only). Allow them through the RBAC/ownership dispatch — the policy
+	// grants nobody a PUT on Communication, and non-referral Communication
+	// writes stay rejected below.
+	if isReferralCommunicationPut(req.method, resourceType, req.normalizedPath) {
 		return nil
 	}
 
+	// direct request to public resource is allowed to bypass RBAC checks
+	// but only for GET requests to avoid unwanted modifications
+	if utils.IsPublicResource(resourceType) && req.method == http.MethodGet {
+		return nil
+	}
+
+	return enforceRBAC(ctx, e, req, roles, clients)
+}
+
+// checkScopedEntryRead enforces that entry-level QuestionnaireResponse /
+// Communication GET reads carry an identity scope. Aggregate _summary=count
+// queries and single-resource reads stay public; see allowScopedEntryRead for
+// the full rules. Returns nil when the request needs no scope or satisfies it.
+func checkScopedEntryRead(method, resourceType string, roles []string, fhirID, url string) error {
+	if method != http.MethodGet || !isScopedEntryResource(resourceType) {
+		return nil
+	}
+	if allowScopedEntryRead(roles, fhirID, url, resourceType) {
+		return nil
+	}
+	return fmt.Errorf("forbidden: entry-level %s read requires an identity scope", resourceType)
+}
+
+// isReferralCommunicationPut reports whether the request is a referral
+// Communication PUT, which bypasses the RBAC/ownership dispatch (it is fully
+// validated in handleAuthSingleResource instead).
+func isReferralCommunicationPut(method, resourceType, normalizedPath string) bool {
+	if method != constvars.MethodPut || resourceType != constvars.ResourceCommunication {
+		return false
+	}
+	_, id := extractPathResourceID(normalizedPath)
+	return isReferralID(id)
+}
+
+// enforceRBAC applies the Casbin policy for each session role and, for
+// Patient/Practitioner roles, the ownership check on the target resource.
+// Returns an error when no role authorizes the request.
+func enforceRBAC(ctx context.Context, e *casbin.Enforcer, req rbacRequest, roles []string, clients rbacClients) error {
 	for _, role := range roles {
-		if allowed(e, role, method, normalizedPath) {
+		if allowed(e, role, req.method, req.normalizedPath) {
 
 			if role == constvars.KonsulinRolePatient || role == constvars.KonsulinRolePractitioner {
-				ok := ownsResource(ctx, fhirID, url, role, method, patientClient, practitionerClient, practitionerRoleClient, scheduleClient, questionnaireResponseClient, resource)
+				ok := ownsResource(ctx, req.fhirID, req.url, role, req.method, clients, req.resource)
 				if ok {
 					return nil
 				}
@@ -429,9 +540,93 @@ func allowed(e *casbin.Enforcer, role, method, path string) bool {
 	return ok
 }
 
+// isScopedEntryResource reports whether the resource type is one whose
+// entry-level (search) GET reads must carry an identity scope.
+func isScopedEntryResource(resourceType string) bool {
+	return resourceType == constvars.ResourceQuestionnaireResponse ||
+		resourceType == constvars.ResourceCommunication
+}
+
+// queryHasOwnRef reports whether any of the given query params reference the
+// provided FHIR id, tolerating the "Patient/" prefix. Every value of a param
+// is scanned, including comma-separated FHIR reference lists.
+func queryHasOwnRef(q url.Values, fhirID string, params ...string) bool {
+	for _, key := range params {
+		for _, val := range q[key] {
+			for _, v := range strings.Split(val, ",") {
+				v = strings.TrimPrefix(v, constvars.FHIRRefPrefixPatient)
+				if v == fhirID {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// allowScopedEntryRead enforces that entry-level QuestionnaireResponse /
+// Communication GET reads carry an identity scope. Aggregate `_summary=count`
+// queries stay public (social-proof counts). Practitioners keep their existing
+// authz, and single-resource reads (no query) are untouched. Patients must
+// scope QR reads to their own author/patient/subject and Communication reads
+// to their own sender; guests may read QRs only via an anonymous identifier.
+func allowScopedEntryRead(roles []string, fhirID, rawURL, resourceType string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+
+	// No query -> not an entry-level search (single-resource read) -> exempt.
+	if u.RawQuery == "" {
+		return true
+	}
+
+	// Aggregate counts are public social-proof data.
+	if u.Query().Get("_summary") == "count" {
+		return true
+	}
+
+	// Practitioners keep their existing (stricter) practitioner authz.
+	if hasRole(roles, constvars.KonsulinRolePractitioner) {
+		return true
+	}
+
+	switch resourceType {
+	case constvars.ResourceQuestionnaireResponse:
+		if fhirID != "" {
+			return queryHasOwnRef(u.Query(), fhirID, "author", constvars.FhirFieldPatient, "subject")
+		}
+		// Guest / anonymous reads must present an identifier scope.
+		return u.Query().Get("identifier") != ""
+	case constvars.ResourceCommunication:
+		// Patients may read their own referral Communications, scoped to their
+		// own sender or recipient id (referral writes anchor the session
+		// patient as recipient).
+		if fhirID != "" {
+			return queryHasOwnRef(u.Query(), fhirID, "sender") ||
+				queryHasOwnRef(u.Query(), fhirID, "recipient")
+		}
+		// Researchers must anchor their read to referral data (sender,
+		// recipient, topic, or subject); a bare query is denied.
+		if hasRole(roles, constvars.KonsulinRoleResearcher) {
+			q := u.Query()
+			return q.Get("sender") != "" || q.Get("recipient") != "" ||
+				q.Get("topic") != "" || q.Get("subject") != ""
+		}
+		// Superadmin may read unscoped; the response field filter (proxy.go)
+		// is the abuse guard for that role.
+		if hasRole(roles, constvars.KonsulinRoleSuperadmin) {
+			return true
+		}
+		return false
+	}
+	return true
+}
+
 func normalizePath(rawURL string) string {
 	return utils.NormalizePath(rawURL)
 }
+
 func firstSeg(raw string) string {
 	path := strings.SplitN(raw, "?", 2)[0]
 
@@ -445,6 +640,7 @@ func firstSeg(raw string) string {
 	}
 	return ""
 }
+
 func validateResourceOwnership(ctx context.Context, fhirID, role, resourceType string, resource []byte, practitionerRoleClient contracts.PractitionerRoleFhirClient, scheduleClient contracts.ScheduleFhirClient, questionnaireResponseClient contracts.QuestionnaireResponseFhirClient) bool {
 	if role == constvars.KonsulinRolePatient {
 		return validatePatientResourceOwnership(ctx, fhirID, resourceType, resource, questionnaireResponseClient)
@@ -466,6 +662,8 @@ func validatePatientResourceOwnership(ctx context.Context, fhirID, resourceType 
 		return validatePatientSlotResource(resourceStr)
 	case constvars.ResourceQuestionnaireResponse:
 		return validateQuestionnaireResponseOwner(ctx, fhirID, resourceStr, questionnaireResponseClient)
+	case constvars.ResourceCommunication:
+		return validatePatientCommunicationSender(resourceStr, fhirID)
 	case constvars.ResourcePatient:
 		return gjson.Get(resourceStr, "id").String() == fhirID
 	default:
@@ -498,6 +696,7 @@ func checkPatientRefs(resourceStr, fhirID string) bool {
 		gjson.Get(resourceStr, constvars.FhirGJSONPathSubjectRef).String(),
 		gjson.Get(resourceStr, "patient.reference").String(),
 		gjson.Get(resourceStr, "actor.reference").String(),
+		gjson.Get(resourceStr, "individual.reference").String(),
 	} {
 		if strings.HasPrefix(ref, constvars.FHIRRefPrefixPatient) && strings.TrimPrefix(ref, constvars.FHIRRefPrefixPatient) == fhirID {
 			return true
@@ -604,7 +803,7 @@ func validateScheduleOwnership(ctx context.Context, fhirID, resourceStr string, 
 	return scheduleActorOwnedByPractitioner(ctx, schedules[0].Actor, fhirID, practitionerRoleClient)
 }
 
-func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient, practitionerRoleClient contracts.PractitionerRoleFhirClient, scheduleClient contracts.ScheduleFhirClient, questionnaireResponseClient contracts.QuestionnaireResponseFhirClient, resource []byte) bool {
+func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, clients rbacClients, resource []byte) bool {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return false
@@ -619,19 +818,19 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 	}
 
 	if method == constvars.MethodPost {
-		return true
+		return ownsPostBody(fhirID, role, resourceType, resource)
 	}
 
 	if method == constvars.MethodPut && len(resource) > 0 {
-		return validateResourceOwnership(ctx, fhirID, role, resourceType, resource, practitionerRoleClient, scheduleClient, questionnaireResponseClient)
+		return validateResourceOwnership(ctx, fhirID, role, resourceType, resource, clients.practitionerRole, clients.schedule, clients.questionnaireResponse)
 	}
 
 	if role == constvars.KonsulinRolePatient {
-		return ownsPatientQuery(ctx, fhirID, u, resourceType, patientClient, practitionerClient)
+		return ownsPatientQuery(ctx, fhirID, u, resourceType, clients.patient, clients.practitioner)
 	}
 
 	if role == constvars.KonsulinRolePractitioner {
-		return ownsPractitionerQuery(ctx, fhirID, u, resourceType, patientClient, practitionerClient)
+		return ownsPractitionerQuery(ctx, fhirID, u, resourceType, clients.patient, clients.practitioner)
 	}
 
 	return false
@@ -688,7 +887,7 @@ func ownsPatientQuery(ctx context.Context, fhirID string, u *url.URL, resourceTy
 
 // checkPatientQueryRefs checks common patient query parameters for ownership.
 func checkPatientQueryRefs(q url.Values, resourceType, fhirID string) bool {
-	for _, param := range []string{"patient", "subject", "actor"} {
+	for _, param := range []string{constvars.FhirFieldPatient, "subject", "actor"} {
 		if val := q.Get(param); val != "" && strings.TrimPrefix(val, constvars.FHIRRefPrefixPatient) == fhirID {
 			return true
 		}
@@ -874,7 +1073,7 @@ func checkPractitionerQueryParams(fhirID string, q url.Values) bool {
 	if a := q.Get("actor"); a != "" && strings.TrimPrefix(a, constvars.FHIRRefPrefixPractitioner) == fhirID {
 		return true
 	}
-	return q.Get("patient") != "" || strings.HasPrefix(q.Get("subject"), constvars.FHIRRefPrefixPatient)
+	return q.Get(constvars.FhirFieldPatient) != "" || strings.HasPrefix(q.Get("subject"), constvars.FHIRRefPrefixPatient)
 }
 
 func checkPractitionerHasQuery(fhirID string, q url.Values) bool {
@@ -950,7 +1149,7 @@ func checkPractitionerQueryOwnership(q url.Values, resourceType, fhirID string) 
 	if a := q.Get("actor"); a != "" && strings.TrimPrefix(a, constvars.FHIRRefPrefixPractitioner) == fhirID {
 		return true
 	}
-	if q.Get("patient") != "" || strings.HasPrefix(q.Get("subject"), constvars.FHIRRefPrefixPatient) {
+	if q.Get(constvars.FhirFieldPatient) != "" || strings.HasPrefix(q.Get("subject"), constvars.FHIRRefPrefixPatient) {
 		return true
 	}
 	if participant := q.Get("participant"); participant != "" {

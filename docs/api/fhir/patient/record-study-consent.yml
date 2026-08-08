@@ -1,0 +1,135 @@
+info:
+  name: "Patient: Record Study Consent"
+  type: http
+  seq: 3
+  tags: [research]
+
+http:
+  method: POST
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  url: "{{process.env.APP_BASE_URL}}/fhir"
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "Bundle",
+        "type": "transaction",
+        "entry": [
+          {
+            "request": {
+              "method": "POST",
+              "url": "Consent"
+            },
+            "resource": {
+              "resourceType": "Consent",
+              "status": "active",
+              "scope": {
+                "coding": [
+                  {
+                    "system": "http://terminology.hl7.org/CodeSystem/consentscope",
+                    "code": "research"
+                  }
+                ]
+              },
+              "category": [
+                {
+                  "coding": [
+                    {
+                      "system": "http://terminology.hl7.org/CodeSystem/consentcategorycodes",
+                      "code": "research"
+                    }
+                  ]
+                }
+              ],
+              "patient": {
+                "reference": "Patient/{{patientId}}"
+              },
+              "performer": [
+                {
+                  "reference": "Patient/{{patientId}}"
+                }
+              ],
+              "policy": [
+                {
+                  "authority": "https://konsulin.care",
+                  "uri": "https://konsulin.care/privacy"
+                }
+              ]
+            }
+          },
+          {
+            "request": {
+              "method": "POST",
+              "url": "ResearchSubject"
+            },
+            "resource": {
+              "resourceType": "ResearchSubject",
+              "status": "on-study",
+              "study": {
+                "reference": "ResearchStudy/{{researchStudyId}}"
+              },
+              "individual": {
+                "reference": "Patient/{{patientId}}"
+              }
+            }
+          }
+        ]
+      }
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        bru.setVar("activeRole", "Patient");
+        await bru.sendRequest({
+          method: "POST",
+          url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
+          headers: {
+            "content-type": "application/json",
+            "Authorization": "Bearer " + bru.getVar("sessionToken")
+          },
+          data: JSON.stringify({ role: bru.getVar("activeRole") })
+        }, function(err, res) {
+          if (err) {
+            console.error("role switch failed: " + err.message);
+          } else if (res && res.headers) {
+            // the active-role response carries the regenerated access token;
+            // capture it so the following request sees the new active role
+            var newToken = res.headers["st-access-token"] || res.headers["front-token"];
+            if (newToken) { bru.setVar("sessionToken", newToken); }
+          }
+        });
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        if (body.entry) {
+          // Blaze transaction responses carry created ids in response.location.
+          for (const e of body.entry) {
+            const loc = (e.response && e.response.location) || "";
+            const parts = loc.split("/");
+            const type = parts[parts.length - 4];
+            const id = parts[parts.length - 3];
+            if (type === "Consent") { bru.setVar("consentId", id); }
+            if (type === "ResearchSubject") { bru.setVar("researchSubjectId", id); }
+          }
+        }
+        bru.runner.setNextRequest("Patient: Get Research Progress");
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Records the patient's consent to the seeded study in one transaction:
+  Consent (patient-scoped) + ResearchSubject (`individual` = the session
+  patient, `status=on-study`). The Auth middleware validates that both
+  resources reference the caller's own Patient id. Pre-request switches to
+  Patient.

@@ -62,7 +62,6 @@ func buildSessionAuth(sess sessmodels.SessionContainer) (uid string, roles []str
 
 func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
 		if apiKeyAuth, ok := r.Context().Value(ContextAPIKeyAuth).(bool); ok && apiKeyAuth {
 			next.ServeHTTP(w, r)
 			return
@@ -102,7 +101,6 @@ func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
 
 func (m *Middlewares) CreateAnonymousSessionIfNeeded(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
 		if apiKeyAuth, ok := r.Context().Value(ContextAPIKeyAuth).(bool); ok && apiKeyAuth {
 
 			next.ServeHTTP(w, r)
@@ -113,7 +111,6 @@ func (m *Middlewares) CreateAnonymousSessionIfNeeded(next http.Handler) http.Han
 		sess, _ := session.GetSession(r, w, &sessmodels.VerifySessionOptions{SessionRequired: &sessRequired})
 
 		if sess == nil {
-
 			m.Log.Info("Creating anonymous session for request",
 				zap.String("ip", r.RemoteAddr),
 				zap.String("endpoint", r.URL.Path),
@@ -127,7 +124,6 @@ func (m *Middlewares) CreateAnonymousSessionIfNeeded(next http.Handler) http.Han
 
 func (m *Middlewares) EnsureAnonymousSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
 		if apiKeyAuth, ok := r.Context().Value(ContextAPIKeyAuth).(bool); ok && apiKeyAuth {
 
 			next.ServeHTTP(w, r)

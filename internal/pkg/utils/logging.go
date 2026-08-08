@@ -2,9 +2,8 @@ package utils
 
 import (
 	"context"
-	"time"
-
 	"konsulin-service/internal/pkg/constvars"
+	"time"
 
 	"go.uber.org/zap"
 )

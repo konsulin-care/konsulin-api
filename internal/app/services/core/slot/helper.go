@@ -566,7 +566,7 @@ func buildOverrideSlotsTransactionBundle(scheduleID string, deleteIDs []string, 
 		entries = append(entries, map[string]any{
 			"request": map[string]any{
 				"method": "POST",
-				"url":    "Slot",
+				"url":    constvars.ResourceSlot,
 				// this parameter ifNoneExist is not working as expected
 				// because it will actually collides when there exists a Slot
 				// that matches the same schedule and start time
@@ -577,7 +577,7 @@ func buildOverrideSlotsTransactionBundle(scheduleID string, deleteIDs []string, 
 				//"ifNoneExist": "schedule=Schedule/" + scheduleID + "&start=" + url.QueryEscape(startISO),
 			},
 			"resource": map[string]any{
-				"resourceType":              "Slot",
+				"resourceType":              constvars.ResourceSlot,
 				constvars.FhirFieldSchedule: map[string]any{"reference": constvars.FHIRRefPrefixSchedule + scheduleID},
 				"status":                    string(s.Status),
 				"start":                     startISO,
@@ -699,7 +699,7 @@ func buildBusyUnavailableOverlaps(appointedStart, appointedEnd time.Time, baseWi
 			}
 		}
 		slots = append(slots, fhir_dto.Slot{
-			ResourceType: "Slot",
+			ResourceType: constvars.ResourceSlot,
 			Schedule:     fhir_dto.Reference{Reference: constvars.FHIRRefPrefixSchedule + scheduleID, Type: "Schedule"},
 			Status:       fhir_dto.SlotStatusBusyUnavailable,
 			Start:        ov.Start,

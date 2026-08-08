@@ -1,0 +1,22 @@
+info:
+  name: cleanup
+  type: folder
+  seq: 5
+
+request: {}
+
+docs: |
+  Tears down the resources the journey created.
+
+  1. **Purge Journey Resources** — one transaction bundle of DELETE entries
+     sent directly to Blaze (`{{blazeBaseUrl}}`, default http://localhost:8080).
+     The RBAC policies grant no DELETE on the journey resources, and Blaze
+     enforces referential integrity, so this direct purge is the only teardown
+     path; children are deleted before parents to keep every DELETE green.
+  2. **API deletions** — Organization (Superadmin), Practitioner
+     (Practitioner role), Patient (Patient role) — succeed with 200 once the
+     referencing resources are gone.
+  3. Chain terminates at Sign Out.
+
+  Run the whole journey on a clean backend (purge Blaze or start fresh) so the
+  seed phase starts from a known state.

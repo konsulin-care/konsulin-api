@@ -1,0 +1,52 @@
+info:
+  name: "Patient: Get Questionnaire Detail"
+  type: http
+  seq: 7
+  tags: [assessment]
+
+http:
+  method: GET
+  url: "{{process.env.APP_BASE_URL}}/fhir/Questionnaire/{{questionnaireId}}?_elements=title,extension,item"
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  params:
+    - name: _elements
+      value: title,extension,item
+      type: query
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        bru.setVar("activeRole", "Patient");
+        await bru.sendRequest({
+          method: "POST",
+          url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
+          headers: {
+            "content-type": "application/json",
+            "Authorization": "Bearer " + bru.getVar("sessionToken")
+          },
+          data: JSON.stringify({ role: bru.getVar("activeRole") })
+        }, function(err, res) {
+          if (err) {
+            console.error("role switch failed: " + err.message);
+          } else if (res && res.headers) {
+            // the active-role response carries the regenerated access token;
+            // capture it so the following request sees the new active role
+            var newToken = res.headers["st-access-token"] || res.headers["front-token"];
+            if (newToken) { bru.setVar("sessionToken", newToken); }
+          }
+        });
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Patient: Submit Questionnaire Response");'
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Fetches the full questionnaire (title, fee/duration extensions, items) for
+  the assessment detail view. Pre-request switches to Patient.

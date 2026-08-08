@@ -7,6 +7,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"konsulin-service/internal/app/config"
+	"konsulin-service/internal/app/contracts"
+	"konsulin-service/internal/app/services/core/webhook"
+	"konsulin-service/internal/app/services/shared/jwtmanager"
+	"konsulin-service/internal/app/services/shared/storage"
+	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/dto/requests"
+	"konsulin-service/internal/pkg/dto/responses"
+	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/fhir_dto"
+	"konsulin-service/internal/pkg/fhir_http_client"
 	"math"
 	"net/http"
 	"net/url"
@@ -17,18 +28,7 @@ import (
 	"sync"
 	"time"
 
-	"konsulin-service/internal/app/config"
-	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/app/services/core/webhook"
 	bundleSvc "konsulin-service/internal/app/services/fhir_spark/bundle"
-	"konsulin-service/internal/app/services/shared/jwtmanager"
-	"konsulin-service/internal/app/services/shared/storage"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/dto/requests"
-	"konsulin-service/internal/pkg/dto/responses"
-	"konsulin-service/internal/pkg/exceptions"
-	"konsulin-service/internal/pkg/fhir_dto"
-	"konsulin-service/internal/pkg/fhir_http_client"
 
 	xendit "github.com/xendit/xendit-go/v7"
 	common "github.com/xendit/xendit-go/v7/common"
@@ -508,18 +508,18 @@ func (uc *paymentUsecase) handleAppointmentPaymentPaid(
 
 	// Include the slot status update in the same transaction bundle for atomicity
 	slotUpdateEntry := map[string]any{
-		"request": map[string]any{
-			"method": "PUT",
-			"url":    constvars.ResourceSlot + "/" + fields.SlotID,
+		constvars.FhirFieldRequest: map[string]any{
+			constvars.FhirFieldMethod: constvars.FhirBundleMethodPut,
+			constvars.FhirFieldURL:    constvars.ResourceSlot + "/" + fields.SlotID,
 		},
-		"resource": slot,
+		constvars.FhirFieldResource: slot,
 	}
 	bundleEntries = append(bundleEntries, slotUpdateEntry)
 
 	bundle := map[string]any{
-		"resourceType": "Bundle",
-		"type":         "transaction",
-		"entry":        bundleEntries,
+		constvars.FhirFieldResourceType: "Bundle",
+		"type":                          "transaction",
+		"entry":                         bundleEntries,
 	}
 	if _, bundleErr := uc.BundleFhirClient.PostTransactionBundle(ctx, bundle); bundleErr != nil {
 		uc.Log.Error("paymentUsecase.handleAppointmentPaymentPaid bundle execution failed",
@@ -574,13 +574,13 @@ func (uc *paymentUsecase) handleAppointmentPaymentExpired(
 
 	// Delete the slot via FHIR transaction bundle (no DeleteSlot method on client)
 	bundle := map[string]any{
-		"resourceType": "Bundle",
-		"type":         "transaction",
+		constvars.FhirFieldResourceType: "Bundle",
+		"type":                          "transaction",
 		"entry": []map[string]any{
 			{
-				"request": map[string]any{
-					"method": "DELETE",
-					"url":    constvars.ResourceSlot + "/" + fields.SlotID,
+				constvars.FhirFieldRequest: map[string]any{
+					constvars.FhirFieldMethod: "DELETE",
+					constvars.FhirFieldURL:    constvars.ResourceSlot + "/" + fields.SlotID,
 				},
 			},
 		},
@@ -1133,7 +1133,7 @@ func (uc *paymentUsecase) callInstantiateURI(ctx context.Context, url string, bo
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusAccepted {
 		b, _ := io.ReadAll(resp.Body)
 		uc.Log.Error("instantiate URI returned non-202",
@@ -1168,35 +1168,32 @@ func (uc *paymentUsecase) determineServiceRequestSubject(service string, patient
 func (uc *paymentUsecase) lookupIdentityByService(ctx context.Context, service string, email string) (string, string, error) {
 	switch service {
 	case string(constvars.ServiceAnalyze):
-		patients, err := uc.PatientFhirClient.FindPatientByEmail(ctx, email)
-		if err != nil {
-			return "", "", err
-		}
-		if len(patients) == 0 {
-			return "", "", exceptions.ErrUserNotExist(fmt.Errorf("no patient found"))
-		}
-		return patients[0].ID, patients[0].FullName(), nil
+		return resolveEmailIdentity(ctx, email, "no patient found", uc.PatientFhirClient.FindPatientByEmail,
+			func(ps []fhir_dto.Patient) (string, string) { return ps[0].ID, ps[0].FullName() })
 	case string(constvars.ServiceReport):
-		practitioners, err := uc.PractitionerFhirClient.FindPractitionerByEmail(ctx, email)
-		if err != nil {
-			return "", "", err
-		}
-		if len(practitioners) == 0 {
-			return "", "", exceptions.ErrUserNotExist(fmt.Errorf("no practitioner found"))
-		}
-		return practitioners[0].ID, practitioners[0].FullName(), nil
+		return resolveEmailIdentity(ctx, email, "no practitioner found", uc.PractitionerFhirClient.FindPractitionerByEmail,
+			func(ps []fhir_dto.Practitioner) (string, string) { return ps[0].ID, ps[0].FullName() })
 	case string(constvars.ServicePerformanceReport), string(constvars.ServiceAccessDataset):
-		people, err := uc.PersonFhirClient.FindPersonByEmail(ctx, email)
-		if err != nil {
-			return "", "", err
-		}
-		if len(people) == 0 {
-			return "", "", exceptions.ErrUserNotExist(fmt.Errorf("no person found"))
-		}
-		return people[0].ID, people[0].FullName(), nil
+		return resolveEmailIdentity(ctx, email, "no person found", uc.PersonFhirClient.FindPersonByEmail,
+			func(ps []fhir_dto.Person) (string, string) { return ps[0].ID, ps[0].FullName() })
 	default:
 		return "", "", exceptions.ErrClientCustomMessage(fmt.Errorf("unsupported service: %s", service))
 	}
+}
+
+// resolveEmailIdentity looks up the FHIR resource matching email via find and
+// returns its ID and display name, or ErrUserNotExist when no match is found.
+// first extracts the identity from the first result.
+func resolveEmailIdentity[T any](ctx context.Context, email, notFoundMsg string, find func(context.Context, string) ([]T, error), first func([]T) (string, string)) (string, string, error) {
+	results, err := find(ctx, email)
+	if err != nil {
+		return "", "", err
+	}
+	if len(results) == 0 {
+		return "", "", exceptions.ErrUserNotExist(errors.New(notFoundMsg))
+	}
+	id, name := first(results)
+	return id, name, nil
 }
 
 // mapServiceToRequesterResourceType returns the FHIR requester resource type for a given service.

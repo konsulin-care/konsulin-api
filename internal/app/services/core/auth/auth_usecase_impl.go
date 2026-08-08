@@ -29,17 +29,16 @@ import (
 
 type authUsecase struct {
 	RedisRepository                 contracts.RedisRepository
-	SessionService                  contracts.SessionService
 	RoleRepository                  contracts.RoleRepository
-	UserUsecase                     contracts.UserUsecase
+	UserFHIRInitializer             contracts.UserFHIRInitializer
 	PatientFhirClient               contracts.PatientFhirClient
 	PractitionerFhirClient          contracts.PractitionerFhirClient
 	QuestionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient
 	BundleFhirClient                bundleSvc.BundleFhirClient
-	MailerService                   contracts.MailerService
-	WhatsAppService                 contracts.WhatsAppService
+	EmailSender                     contracts.EmailSender
+	WhatsAppSender                  contracts.WhatsAppSender
 	MinioStorage                    contracts.Storage
-	MagicLinkDelivery               contracts.MagicLinkDeliveryService
+	MagicLinkDelivery               contracts.MagicLinkSender
 	InternalConfig                  *config.InternalConfig
 	DriverConfig                    *config.DriverConfig
 	Roles                           map[string]*models.Role
@@ -54,14 +53,13 @@ var (
 
 func NewAuthUsecase(
 	redisRepository contracts.RedisRepository,
-	sessionService contracts.SessionService,
 	patientFhirClient contracts.PatientFhirClient,
 	practitionerFhirClient contracts.PractitionerFhirClient,
 	questionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient,
 	bundleFhirClient bundleSvc.BundleFhirClient,
-	userUsecase contracts.UserUsecase,
-	mailerService contracts.MailerService,
-	magicLinkDelivery contracts.MagicLinkDeliveryService,
+	userUsecase contracts.UserFHIRInitializer,
+	mailerService contracts.EmailSender,
+	magicLinkDelivery contracts.MagicLinkSender,
 	internalConfig *config.InternalConfig,
 	driverConfig *config.DriverConfig,
 	logger *zap.Logger,
@@ -69,13 +67,12 @@ func NewAuthUsecase(
 	onceAuthUsecase.Do(func() {
 		instance := &authUsecase{
 			RedisRepository:                 redisRepository,
-			SessionService:                  sessionService,
 			PatientFhirClient:               patientFhirClient,
 			PractitionerFhirClient:          practitionerFhirClient,
 			QuestionnaireResponseFhirClient: questionnaireResponseFhirClient,
 			BundleFhirClient:                bundleFhirClient,
-			UserUsecase:                     userUsecase,
-			MailerService:                   mailerService,
+			UserFHIRInitializer:             userUsecase,
+			EmailSender:                     mailerService,
 			MagicLinkDelivery:               magicLinkDelivery,
 			InternalConfig:                  internalConfig,
 			DriverConfig:                    driverConfig,
@@ -87,28 +84,6 @@ func NewAuthUsecase(
 	})
 
 	return authUsecaseInstance, authUsecaseError
-}
-
-func (uc *authUsecase) LogoutUser(ctx context.Context, sessionData string) error {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	uc.Log.Info("authUsecase.LogoutUser called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-	)
-
-	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
-	if err != nil {
-		return logErrorAndReturn(uc.Log, requestID, "authUsecase.LogoutUser error parsing session data", err)
-	}
-
-	err = uc.RedisRepository.Delete(ctx, session.SessionID)
-	if err != nil {
-		return logErrorAndReturn(uc.Log, requestID, "authUsecase.LogoutUser error deleting session from Redis", err)
-	}
-
-	uc.Log.Info("authUsecase.LogoutUser succeeded",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-	)
-	return nil
 }
 
 func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.SupertokenPasswordlessCreateMagicLink) error {
@@ -295,7 +270,7 @@ func initializeMagicLinkFHIR(ctx context.Context, in initializeMagicLinkFHIRInpu
 	input.ToogleByRoles(in.Roles)
 	initCtx, cancel := context.WithDeadline(ctx, time.Now().Add(10*time.Second))
 	defer cancel()
-	res, err := in.Uc.UserUsecase.InitializeNewUserFHIRResources(initCtx, input)
+	res, err := in.Uc.UserFHIRInitializer.InitializeNewUserFHIRResources(initCtx, input)
 	if err != nil {
 		in.Uc.Log.Error("Failed to initialize FHIR resources during magic link creation",
 			zap.String(constvars.LoggingRequestIDKey, in.RequestID),

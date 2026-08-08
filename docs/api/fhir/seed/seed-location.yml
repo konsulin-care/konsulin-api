@@ -1,0 +1,53 @@
+info:
+  name: Seed Location
+  type: http
+  seq: 2
+  tags: [clinic, utility]
+
+http:
+  method: POST
+  url: "{{process.env.APP_BASE_URL}}/fhir/Location"
+  headers:
+    - name: X-API-Key
+      value: "{{process.env.SUPERADMIN_API_KEY}}"
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "Location",
+        "status": "active",
+        "name": "Konsulin Demo Clinic — Main",
+        "managingOrganization": {
+          "reference": "Organization/{{organizationId}}"
+        },
+        "address": {
+          "city": "Jakarta",
+          "country": "ID"
+        },
+        "position": {
+          "latitude": -6.2088,
+          "longitude": 106.8456
+        }
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        bru.setVar("locationId", body.id);
+        bru.runner.setNextRequest("Seed Healthcare Service");
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "201"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Seeds the clinic Location linked to the seeded Organization. Captures
+  `locationId` and chains to "Seed Healthcare Service". Runs as superadmin.

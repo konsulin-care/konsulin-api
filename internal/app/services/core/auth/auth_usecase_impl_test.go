@@ -8,8 +8,6 @@ import (
 
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/dto/requests"
-	"konsulin-service/internal/pkg/dto/responses"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -59,39 +57,12 @@ func TestLogErrorAndReturn_NilError(t *testing.T) {
 	assert.Equal(t, "nil error test", logs[0].Message)
 }
 
-// MockUserUsecase implements contracts.UserUsecase for testing.
-type MockUserUsecase struct {
+// MockUserFHIRInitializer implements contracts.UserFHIRInitializer for testing.
+type MockUserFHIRInitializer struct {
 	mock.Mock
 }
 
-func (m *MockUserUsecase) GetUserProfileBySession(ctx context.Context, sessionData string) (*responses.UserProfile, error) {
-	args := m.Called(ctx, sessionData)
-	var out *responses.UserProfile
-	if v := args.Get(0); v != nil {
-		out = v.(*responses.UserProfile)
-	}
-	return out, args.Error(1)
-}
-
-func (m *MockUserUsecase) UpdateUserProfileBySession(ctx context.Context, sessionData string, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error) {
-	args := m.Called(ctx, sessionData, request)
-	var out *responses.UpdateUserProfile
-	if v := args.Get(0); v != nil {
-		out = v.(*responses.UpdateUserProfile)
-	}
-	return out, args.Error(1)
-}
-
-func (m *MockUserUsecase) DeleteUserBySession(ctx context.Context, sessionData string) error {
-	args := m.Called(ctx, sessionData)
-	return args.Error(0)
-}
-
-func (m *MockUserUsecase) DeactivateUserBySession(ctx context.Context, sessionData string) error {
-	return m.DeleteUserBySession(ctx, sessionData)
-}
-
-func (m *MockUserUsecase) InitializeNewUserFHIRResources(ctx context.Context, input *contracts.InitializeNewUserFHIRResourcesInput) (*contracts.InitializeNewUserFHIRResourcesOutput, error) {
+func (m *MockUserFHIRInitializer) InitializeNewUserFHIRResources(ctx context.Context, input *contracts.InitializeNewUserFHIRResourcesInput) (*contracts.InitializeNewUserFHIRResourcesOutput, error) {
 	args := m.Called(ctx, input)
 	var out *contracts.InitializeNewUserFHIRResourcesOutput
 	if v := args.Get(0); v != nil {
@@ -105,14 +76,14 @@ func TestInitializeMagicLinkFHIR_LogsError(t *testing.T) {
 	core, observedLogs := observer.New(zapcore.InfoLevel)
 	logger := zap.New(core)
 
-	mockUserUsecase := new(MockUserUsecase)
+	mockUserFHIRInitializer := new(MockUserFHIRInitializer)
 	uc := &authUsecase{
-		UserUsecase: mockUserUsecase,
-		Log:         logger,
+		UserFHIRInitializer: mockUserFHIRInitializer,
+		Log:                 logger,
 	}
 
 	expectedErr := errors.New("FHIR server timeout")
-	mockUserUsecase.On("InitializeNewUserFHIRResources", mock.Anything, mock.AnythingOfType("*contracts.InitializeNewUserFHIRResourcesInput")).
+	mockUserFHIRInitializer.On("InitializeNewUserFHIRResources", mock.Anything, mock.AnythingOfType("*contracts.InitializeNewUserFHIRResourcesInput")).
 		Return(nil, expectedErr)
 
 	start := time.Now()
@@ -131,7 +102,7 @@ func TestInitializeMagicLinkFHIR_LogsError(t *testing.T) {
 	// Assert: error is propagated
 	require.Error(t, err)
 	assert.Equal(t, expectedErr, err)
-	mockUserUsecase.AssertExpectations(t)
+	mockUserFHIRInitializer.AssertExpectations(t)
 
 	// Assert: error was logged with correct fields
 	logs := observedLogs.TakeAll()
@@ -153,10 +124,10 @@ func TestInitializeMagicLinkFHIR_Success(t *testing.T) {
 	core, observedLogs := observer.New(zapcore.InfoLevel)
 	logger := zap.New(core)
 
-	mockUserUsecase := new(MockUserUsecase)
+	mockUserFHIRInitializer := new(MockUserFHIRInitializer)
 	uc := &authUsecase{
-		UserUsecase: mockUserUsecase,
-		Log:         logger,
+		UserFHIRInitializer: mockUserFHIRInitializer,
+		Log:                 logger,
 	}
 
 	expectedOutput := &contracts.InitializeNewUserFHIRResourcesOutput{
@@ -164,7 +135,7 @@ func TestInitializeMagicLinkFHIR_Success(t *testing.T) {
 		PractitionerID: "prac-1",
 		PersonID:       "per-1",
 	}
-	mockUserUsecase.On("InitializeNewUserFHIRResources", mock.Anything, mock.AnythingOfType("*contracts.InitializeNewUserFHIRResourcesInput")).
+	mockUserFHIRInitializer.On("InitializeNewUserFHIRResources", mock.Anything, mock.AnythingOfType("*contracts.InitializeNewUserFHIRResourcesInput")).
 		Return(expectedOutput, nil)
 
 	start := time.Now()
@@ -183,7 +154,7 @@ func TestInitializeMagicLinkFHIR_Success(t *testing.T) {
 	// Assert: no error, output returned
 	require.NoError(t, err)
 	assert.Equal(t, expectedOutput, output)
-	mockUserUsecase.AssertExpectations(t)
+	mockUserFHIRInitializer.AssertExpectations(t)
 
 	// Assert: no error logs were emitted
 	logs := observedLogs.TakeAll()
@@ -195,14 +166,14 @@ func TestInitializeMagicLinkFHIR_PhoneUser(t *testing.T) {
 	core, observedLogs := observer.New(zapcore.InfoLevel)
 	logger := zap.New(core)
 
-	mockUserUsecase := new(MockUserUsecase)
+	mockUserFHIRInitializer := new(MockUserFHIRInitializer)
 	uc := &authUsecase{
-		UserUsecase: mockUserUsecase,
-		Log:         logger,
+		UserFHIRInitializer: mockUserFHIRInitializer,
+		Log:                 logger,
 	}
 
 	expectedErr := errors.New("phone FHIR error")
-	mockUserUsecase.On("InitializeNewUserFHIRResources", mock.Anything, mock.AnythingOfType("*contracts.InitializeNewUserFHIRResourcesInput")).
+	mockUserFHIRInitializer.On("InitializeNewUserFHIRResources", mock.Anything, mock.AnythingOfType("*contracts.InitializeNewUserFHIRResourcesInput")).
 		Return(nil, expectedErr)
 
 	start := time.Now()
@@ -221,7 +192,7 @@ func TestInitializeMagicLinkFHIR_PhoneUser(t *testing.T) {
 	// Assert
 	require.Error(t, err)
 	assert.Equal(t, expectedErr, err)
-	mockUserUsecase.AssertExpectations(t)
+	mockUserFHIRInitializer.AssertExpectations(t)
 
 	// Assert: error logged with phone user context
 	logs := observedLogs.TakeAll()

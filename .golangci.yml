@@ -10,7 +10,7 @@ linters:
     - errcheck
   settings:
     gocognit:
-      min-complexity: 20
+      min-complexity: 15
     goconst:
       min-len: 3
       min-occurrences: 3
@@ -20,3 +20,6 @@ linters:
     paths:
       - ".*_test\\.go$"
       - vendor
+formatters:
+  enable:
+    - gofumpt

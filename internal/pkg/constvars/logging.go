@@ -3,9 +3,7 @@ package constvars
 const (
 	LoggingRequestIDKey      = "request_id"
 	LoggingDataKey           = "data"
-	LoggingSessionDataKey    = "session_data"
 	LoggingSessionIDKey      = "session_id"
-	LoggingRawSessionDataKey = "raw_session_data"
 	LoggingQueryParamsKey    = "query_params"
 	LoggingFhirUrlKey        = "fhir_url"
 	LoggingPreSignedUrlKey   = "pre_signed_url"
@@ -89,6 +87,7 @@ const (
 
 const (
 	LoggingQuestionnaireResponseIDKey    = "questionnaire_response_id"
+	LoggingPlanDefinitionIDKey           = "plan_definition_id"
 	LoggingQuestionnaireResponseCountKey = "questionnaire_response_count"
 )
 
@@ -174,6 +173,7 @@ const (
 	LoggingEducationLevelIDKey    = "education_level_id"
 	LoggingEducationLevelCodeKey  = "education_level_code"
 )
+
 const (
 	LoggingGenderCountKey = "genders_count"
 	LoggingGenderIDKey    = "genders_id"

@@ -1,0 +1,33 @@
+info:
+  name: "Cleanup: Delete Organization"
+  type: http
+  seq: 1
+  tags: [utility]
+
+http:
+  method: DELETE
+  url: "{{process.env.APP_BASE_URL}}/fhir/Organization/{{organizationId}}"
+  headers:
+    - name: X-API-Key
+      value: "{{process.env.SUPERADMIN_API_KEY}}"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Cleanup: Delete Practitioner Profile");'
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "204"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Deletes the seeded Organization as superadmin — the only DELETE the RBAC
+  policy grants on Organization. "Cleanup: Purge Journey Resources" runs
+  first, so no child resources reference the Organization anymore and the
+  DELETE succeeds with 200. Chains to the Practitioner profile deletion.

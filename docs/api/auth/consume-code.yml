@@ -1,0 +1,168 @@
+info:
+  name: Consume Code
+  type: http
+  seq: 4
+  tags: [auth]
+
+http:
+  method: POST
+  url: "{{process.env.APP_BASE_URL}}/api/v1/auth/signinup/code/consume"
+  headers:
+    - name: content-type
+      value: application/json
+    - name: st-auth-mode
+      value: header
+  body:
+    type: json
+    data: |-
+      {
+        "preAuthSessionId": "{{preAuthSessionId}}",
+        "linkCode": "{{linkCode}}"
+      }
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        const org = bru.getProcessEnv("ORGANIZATION");
+
+        await bru.sendRequest(
+          {
+            method: "GET",
+            url: `https://api.mailinator.com/api/v2/domains/public/inboxes/${org}`
+          },
+          function(err, res) {
+            if (err) {
+              console.error("Error: ", err);
+              return;
+            }
+            const retries = parseInt(bru.getVar("mailinator_retry") || "0", 10);
+            const body = res.data;
+            const msgs = body && body.msgs;
+            const newest = msgs.reduce(
+              (a, b) => a.seconds_ago < b.seconds_ago? a : b
+            );
+            bru.setVar("messageId", newest.id)
+         }
+        )
+
+        const messageId = bru.getVar("messageId");
+
+        await bru.sendRequest(
+          {
+            method: "GET",
+            url: `https://api.mailinator.com/api/v2/domains/public/messages/${messageId}/links`,
+          },
+          function(err, res) {
+            if (err) {
+              console.error("Error: ", err);
+              return;
+            }
+            const body = res.data;
+            const links = body && body.links;
+
+            if (links && links.length > 0) {
+              for (var li = 0; li < links.length; li++) {
+                var url = links[li];
+                if (url.indexOf("preAuthSessionId=") !== -1) {
+                  var pashMatch = url.match(/[?&]preAuthSessionId=([^&#]+)/);
+                  var lcMatch = url.match(/#([^#]+)$/);
+                  if (pashMatch && lcMatch) {
+                    bru.setVar("preAuthSessionId", decodeURIComponent(pashMatch[1]));
+                    bru.setVar("linkCode", decodeURIComponent(lcMatch[1]));
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        )
+    - type: after-response
+      code: |-
+        var frontToken = res.getHeader("Front-Token");
+        if (!frontToken) {
+          frontToken = res.headers["st-access-token"];
+        }
+        if (frontToken) {
+          bru.setVar("sessionToken", frontToken);
+          // Decode the JWT payload once to capture the SuperTokens userId (sub).
+          // atob is not available in the QuickJS sandbox, so decode base64url by hand.
+          try {
+            function b64uToStr(b64u) {
+              var b64 = b64u.replace(/-/g, "+").replace(/_/g, "/");
+              var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+              var out = "";
+              for (var i = 0; i < b64.length; i += 4) {
+                if (b64[i] === "=" || b64[i + 1] === "=") { break; }
+                var n = (chars.indexOf(b64[i]) << 18) |
+                        (chars.indexOf(b64[i + 1]) << 12) |
+                        (chars.indexOf(b64[i + 2]) << 6) |
+                        chars.indexOf(b64[i + 3]);
+                out += String.fromCharCode((n >>> 16) & 255);
+                if (b64[i + 2] !== "=") { out += String.fromCharCode((n >>> 8) & 255); }
+                if (b64[i + 3] !== "=") { out += String.fromCharCode(n & 255); }
+              }
+              return out;
+            }
+            var payload = JSON.parse(b64uToStr(frontToken.split(".")[1]));
+            if (payload && payload.sub) {
+              bru.setVar("userId", payload.sub);
+            }
+          } catch (e) {
+            console.log("userId extraction skipped: " + e.message);
+          }
+          bru.runner.setNextRequest("Claim Anonymous Resources");
+        } else {
+          bru.runner.setNextRequest(null);
+        }
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.responseTime
+      operator: lt
+      value: "5000"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples:
+  - name: Success
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/auth/signinup/code/consume"
+      method: POST
+      headers:
+        - name: content-type
+          value: application/json
+      body:
+        type: json
+        data: '{"preAuthSessionId":"pash_abc123","linkCode":"lc_abc123"}'
+    response:
+      status: 200
+      body:
+        type: json
+        data: '{"status":"OK"}'
+
+docs: |
+  Consumes the magic link code to authenticate the user and create a SuperTokens session.
+  The `preAuthSessionId` and `linkCode` are injected from the runtime variables set
+  by the "Get Magic Link" request (fetched from Mailinator).
+
+  On success, the after-response script reads the `St-Access-Token` response header
+  and saves it as `sessionToken` for subsequent authenticated requests. The JWT
+  payload is decoded once to capture the SuperTokens `userId` (`sub` claim), which
+  the FHIR profile lookups use to map the session to Patient/Practitioner resources.
+
+  On completion, chains to "Claim Anonymous Resources".
+
+  ### Request Fields
+  - `preAuthSessionId`: (required) from the magic link URL query parameter.
+  - `linkCode`: (required) from the magic link URL fragment.
+
+  ### Responses
+  - **200 OK**: Code consumed, session created. Sets `St-Access-Token` header.
+  - **400 Bad Request**: Invalid or expired code. Body: `{ "success": false, "message": "Invalid code", "status_code": 400 }`.
+  - **500 Internal Server Error**: Server failure.

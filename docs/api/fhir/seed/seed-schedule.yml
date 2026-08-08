@@ -1,0 +1,52 @@
+info:
+  name: Seed Schedule
+  type: http
+  seq: 5
+  tags: [appointment, utility]
+
+http:
+  method: POST
+  url: "{{process.env.APP_BASE_URL}}/fhir/Schedule"
+  headers:
+    - name: X-API-Key
+      value: "{{process.env.SUPERADMIN_API_KEY}}"
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "Schedule",
+        "active": true,
+        "actor": [
+          {
+            "reference": "PractitionerRole/{{practitionerRoleId}}"
+          }
+        ],
+        "planningHorizon": {
+          "start": "2026-01-01",
+          "end": "2026-12-31"
+        }
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        bru.setVar("scheduleId", body.id);
+        bru.runner.setNextRequest("Seed Questionnaire");
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "201"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Seeds the Schedule for the practitioner's role. Clients fetch it
+  (`GET /fhir/Schedule/{id}` and `GET /fhir/Schedule?actor=PractitionerRole/{id}`)
+  for booking context. No slots are seeded: free time is computed dynamically.
+  Captures `scheduleId` and chains to "Seed Questionnaire". Superadmin.

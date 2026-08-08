@@ -1,0 +1,90 @@
+info:
+  name: Create Service Payment
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{process.env.APP_BASE_URL}}/api/v1/pay/service"
+  headers:
+    - name: content-type
+      value: application/json
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  body:
+    type: json
+    data: |-
+      {
+        "total_item": 1,
+        "service": "consultation",
+        "body": {
+          "practitionerRoleId": "PractitionerRole/ref",
+          "slotId": "Slot/ref",
+          "patientId": "Patient/ref"
+        }
+      }
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.success
+      operator: eq
+      value: "true"
+    - expression: res.body.data.trx_id
+      operator: isDefined
+    - expression: res.responseTime
+      operator: lt
+      value: "10000"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples:
+  - name: Success
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/pay/service"
+      method: POST
+      headers:
+        - name: content-type
+          value: application/json
+        - name: Authorization
+          value: Bearer {{sessionToken}}
+      body:
+        type: json
+        data: '{"total_item":1,"service":"consultation","body":{"practitionerRoleId":"PractitionerRole/ref","slotId":"Slot/ref","patientId":"Patient/ref"}}'
+    response:
+      status: 200
+      body:
+        type: json
+        data: '{"success":true,"message":"success","data":{"payment_checkout_url":"https://checkout.oy.co.id/invoice/abc123","partner_trx_id":"INV-001","trx_id":"TRX-001","amount":50000}}'
+  - name: Unauthorized
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/pay/service"
+      method: POST
+      headers:
+        - name: content-type
+          value: application/json
+    response:
+      status: 401
+      body:
+        type: json
+        data: '{"success":false,"message":"Unauthenticated","status_code":401}'
+
+docs: |
+  Creates a payment transaction via OY! Indonesia routing. Requires an authenticated session.
+
+  ### Request Fields
+  - `total_item`: (required) item count, min 1.
+  - `service`: (required) service type identifier (e.g. `consultation`).
+  - `body`: (required) service-specific payload as raw JSON — typically includes `practitionerRoleId`, `slotId`, `patientId`.
+
+  ### Responses
+  - **200 OK**: Payment created. Body: `{ "success": true, "message": "success", "data": { "payment_checkout_url": "...", "partner_trx_id": "...", "trx_id": "...", "amount": 50000 } }`.
+  - **400 Bad Request**: Invalid or missing request fields. Body: `{ "success": false, "message": "...", "status_code": 400 }`.
+  - **401 Unauthorized**: Missing or invalid authentication token. Body: `{ "success": false, "message": "...", "status_code": 401 }`.
+  - **500 Internal Server Error**: Server timeout or unexpected failure. Body: `{ "success": false, "message": "...", "status_code": 500 }`.

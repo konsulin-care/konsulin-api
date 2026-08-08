@@ -45,57 +45,10 @@ func NewAuthController(logger *zap.Logger, authUsecase contracts.AuthUsecase, in
 	return authControllerInstance
 }
 
-func (ctrl *AuthController) Logout(w http.ResponseWriter, r *http.Request) {
-	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	if !ok || requestID == "" {
-		ctrl.Log.Error("AuthController.Logout requestID not found in context")
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingRequestID(nil))
-		return
-	}
-	ctrl.Log.Info("AuthController.Logout called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-	)
-
-	sessionData, ok := r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string)
-	if !ok || sessionData == "" {
-		ctrl.Log.Error("AuthController.Logout sessionData not found in context",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-		)
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingSessionData(nil))
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	if err := ctrl.AuthUsecase.LogoutUser(ctx, sessionData); err != nil {
-		ctrl.Log.Error("AuthController.Logout error from usecase",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		if err == context.DeadlineExceeded {
-			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
-			return
-		}
-		utils.BuildErrorResponse(ctrl.Log, w, err)
-		return
-	}
-	ctrl.Log.Info("AuthController.Logout succeeded",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-	)
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.LogoutSuccessMessage, nil)
-}
-
 func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
-	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	if !ok || requestID == "" {
-		ctrl.Log.Error("Request ID missing from context",
-			zap.String(constvars.LoggingEndpointKey, r.URL.Path),
-			zap.String(constvars.LoggingMethodKey, r.Method),
-			zap.String(constvars.LoggingRemoteAddrKey, r.RemoteAddr),
-		)
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingRequestID(nil))
+	requestID, ok := requireRequestID(ctrl.Log, w, r)
+	if !ok {
 		return
 	}
 
@@ -106,79 +59,24 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 	)
 
 	request := new(requests.SupertokenPasswordlessCreateMagicLink)
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		ctrl.Log.Error("Failed to parse request body",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingErrorTypeKey, "JSON parsing"),
-			zap.Error(err),
-		)
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+	if !decodeJSONBody(ctrl.Log, w, r, requestID, &request, "Failed to parse request body", true) {
 		return
 	}
 
 	utils.SanitizeCreateMagicLinkRequest(request)
 
-	if request.RedirectToPath != "" {
-		if err := utils.ValidateRedirectPath(request.RedirectToPath); err != nil {
-			ctrl.Log.Warn("magic link creation rejected: invalid redirectToPath",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.String("redirect_to_path", request.RedirectToPath),
-				zap.Error(err),
-			)
-			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
-			return
-		}
-		ctrl.Log.Info("magic link redirect path requested",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("redirect_to_path", request.RedirectToPath),
-		)
+	_, err := ctrl.normalizeAndValidateMagicLinkRequest(request, requestID)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
 	}
-
-	// Enforce mutually-exclusive email or phone (exactly one must be set).
 	hasEmail := strings.TrimSpace(request.Email) != ""
-	phoneDigits := ""
-	if strings.TrimSpace(request.Phone) != "" {
-		// Normalize phone to digits-only format (remove all non-digit characters).
-		phoneDigits = utils.NormalizePhoneDigits(request.Phone)
-	}
-	hasPhone := strings.TrimSpace(phoneDigits) != ""
-	if hasEmail && hasPhone {
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(fmt.Errorf("email and phone are mutually exclusive")))
-		return
-	}
-	if !hasEmail && !hasPhone {
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(fmt.Errorf("either email or phone is required")))
-		return
-	}
-	if hasPhone {
-		if err := utils.ValidateInternationalPhoneDigits(phoneDigits); err != nil {
-			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
-			return
-		}
-	}
-
-	// Persist normalized phone for downstream use (repo expects digits-only without '+').
-	request.Phone = phoneDigits
-
-	// Struct tag validation (email format, roles).
-	if err := utils.ValidateStruct(request); err != nil {
-		ctrl.Log.Error("Request validation failed",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingEmailKey, request.Email),
-			zap.String("phone", request.Phone),
-			zap.String(constvars.LoggingErrorTypeKey, "input validation"),
-			zap.Error(err),
-		)
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
-		return
-	}
 
 	// Check if user exists to determine if roles are required
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
 	var userExistsOutput *contracts.CheckUserExistsOutput
-	var err error
 	if hasEmail {
 		userExistsOutput, err = ctrl.AuthUsecase.CheckUserExists(ctx, request.Email)
 	} else {
@@ -209,20 +107,9 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 	}
 
 	// If roles are provided, validate them
-	if len(request.Roles) > 0 {
-		// Validate each role individually
-		for _, role := range request.Roles {
-			if role != constvars.KonsulinRolePatient && role != constvars.KonsulinRolePractitioner && role != constvars.KonsulinRoleClinicAdmin && role != constvars.KonsulinRoleResearcher {
-				ctrl.Log.Error("Invalid role provided",
-					zap.String(constvars.LoggingRequestIDKey, requestID),
-					zap.String(constvars.LoggingEmailKey, request.Email),
-					zap.String("invalid_role", role),
-					zap.String(constvars.LoggingErrorTypeKey, "role validation"),
-				)
-				utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(fmt.Errorf("invalid role: %s", role)))
-				return
-			}
-		}
+	if err := ctrl.validateMagicLinkRoles(requestID, request.Email, request.Roles); err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
 	}
 
 	ctx, cancel = context.WithTimeout(r.Context(), 10*time.Second)
@@ -255,6 +142,93 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.MagicLinkSuccessMessage, nil)
 }
 
+// normalizeAndValidateMagicLinkRequest validates a magic-link creation request:
+// the optional redirect path, email/phone exclusivity, phone digits normalization
+// and international validation, and struct-tag validation. On success it persists
+// the digits-only phone on request.Phone and returns the normalized digits.
+func (ctrl *AuthController) normalizeAndValidateMagicLinkRequest(request *requests.SupertokenPasswordlessCreateMagicLink, requestID string) (string, error) {
+	if request.RedirectToPath != "" {
+		if err := utils.ValidateRedirectPath(request.RedirectToPath); err != nil {
+			ctrl.Log.Warn("magic link creation rejected: invalid redirectToPath",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.String("redirect_to_path", request.RedirectToPath),
+				zap.Error(err),
+			)
+			return "", exceptions.ErrInputValidation(err)
+		}
+		ctrl.Log.Info("magic link redirect path requested",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("redirect_to_path", request.RedirectToPath),
+		)
+	}
+
+	// Enforce mutually-exclusive email or phone (exactly one must be set).
+	hasEmail := strings.TrimSpace(request.Email) != ""
+	phoneDigits := ""
+	if strings.TrimSpace(request.Phone) != "" {
+		// Normalize phone to digits-only format (remove all non-digit characters).
+		phoneDigits = utils.NormalizePhoneDigits(request.Phone)
+	}
+	hasPhone := strings.TrimSpace(phoneDigits) != ""
+	if hasEmail && hasPhone {
+		return "", exceptions.ErrInputValidation(fmt.Errorf("email and phone are mutually exclusive"))
+	}
+	if !hasEmail && !hasPhone {
+		return "", exceptions.ErrInputValidation(fmt.Errorf("either email or phone is required"))
+	}
+	if hasPhone {
+		if err := utils.ValidateInternationalPhoneDigits(phoneDigits); err != nil {
+			return "", exceptions.ErrInputValidation(err)
+		}
+	}
+
+	// Persist normalized phone for downstream use (repo expects digits-only without '+').
+	request.Phone = phoneDigits
+
+	// Struct tag validation (email format, roles).
+	if err := utils.ValidateStruct(request); err != nil {
+		ctrl.Log.Error("Request validation failed",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingEmailKey, request.Email),
+			zap.String("phone", request.Phone),
+			zap.String(constvars.LoggingErrorTypeKey, "input validation"),
+			zap.Error(err),
+		)
+		return "", exceptions.ErrInputValidation(err)
+	}
+	return phoneDigits, nil
+}
+
+// writeUsecaseError logs a usecase failure and writes the error response,
+// mapping context deadline errors to the dedicated gateway-timeout response.
+func (ctrl *AuthController) writeUsecaseError(w http.ResponseWriter, requestID, op string, err error) {
+	ctrl.Log.Error(op,
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.Error(err),
+	)
+	if err == context.DeadlineExceeded {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+		return
+	}
+	utils.BuildErrorResponse(ctrl.Log, w, err)
+}
+
+// validateMagicLinkRoles ensures each requested role is a known Konsulin role.
+func (ctrl *AuthController) validateMagicLinkRoles(requestID, email string, roles []string) error {
+	for _, role := range roles {
+		if role != constvars.KonsulinRolePatient && role != constvars.KonsulinRolePractitioner && role != constvars.KonsulinRoleClinicAdmin && role != constvars.KonsulinRoleResearcher {
+			ctrl.Log.Error("Invalid role provided",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.String(constvars.LoggingEmailKey, email),
+				zap.String("invalid_role", role),
+				zap.String(constvars.LoggingErrorTypeKey, "role validation"),
+			)
+			return exceptions.ErrInputValidation(fmt.Errorf("invalid role: %s", role))
+		}
+	}
+	return nil
+}
+
 func (ctrl *AuthController) CreateAnonymousSession(w http.ResponseWriter, r *http.Request) {
 	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	if !ok || requestID == "" {
@@ -278,15 +252,7 @@ func (ctrl *AuthController) CreateAnonymousSession(w http.ResponseWriter, r *htt
 
 	result, err := ctrl.AuthUsecase.CreateAnonymousSession(ctx, existingToken, forceNew)
 	if err != nil {
-		ctrl.Log.Error("AuthController.CreateAnonymousSession error from usecase",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		if err == context.DeadlineExceeded {
-			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
-			return
-		}
-		utils.BuildErrorResponse(ctrl.Log, w, err)
+		ctrl.writeUsecaseError(w, requestID, "AuthController.CreateAnonymousSession error from usecase", err)
 		return
 	}
 
@@ -360,15 +326,7 @@ func (ctrl *AuthController) ClaimAnonymousResources(w http.ResponseWriter, r *ht
 
 	result, err := ctrl.AuthUsecase.ClaimAnonymousResources(ctx, supertokensUserID, roles, anonToken)
 	if err != nil {
-		ctrl.Log.Error("AuthController.ClaimAnonymousResources error from usecase",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		if err == context.DeadlineExceeded {
-			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
-			return
-		}
-		utils.BuildErrorResponse(ctrl.Log, w, err)
+		ctrl.writeUsecaseError(w, requestID, "AuthController.ClaimAnonymousResources error from usecase", err)
 		return
 	}
 
@@ -582,5 +540,5 @@ func (ctrl *AuthController) PasswordlessEmailExists(w http.ResponseWriter, r *ht
 
 	w.Header().Set(constvars.HeaderContentType, constvars.MIMEApplicationJSON)
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }

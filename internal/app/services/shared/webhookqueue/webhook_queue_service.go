@@ -142,102 +142,39 @@ type AckMessageOutput struct{}
 
 // Enqueue publishes a message to the standard queue with persistence and waits for confirm.
 func (s *Service) Enqueue(ctx context.Context, in *EnqueueToWebhookServiceQueueInput) (*EnqueueToWebhookServiceQueueOutput, error) {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	s.log.Info("WebhookQueue.Enqueue called", zap.String(constvars.LoggingRequestIDKey, requestID))
-
-	body, err := json.Marshal(in.Message)
-	if err != nil {
-		return nil, exceptions.ErrCannotMarshalJSON(err)
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	msg := amqp.Publishing{
-		ContentType:  constvars.MIMEApplicationJSON,
-		Body:         body,
-		DeliveryMode: amqp.Persistent,
-	}
-
-	if err := s.ch.PublishWithContext(ctx, "", StandardQueueName, false, false, msg); err != nil {
-		return nil, exceptions.ErrRabbitMQPublishMessage(err, StandardQueueName)
-	}
-
-	select {
-	case confirmed := <-s.confirms:
-		if !confirmed.Ack {
-			return nil, exceptions.ErrRabbitMQPublishMessage(fmt.Errorf("message not confirmed"), StandardQueueName)
-		}
-	case <-ctx.Done():
-		return nil, exceptions.ErrRabbitMQPublishMessage(ctx.Err(), StandardQueueName)
-	}
-	return &EnqueueToWebhookServiceQueueOutput{}, nil
+	return enqueueResult[EnqueueToWebhookServiceQueueOutput](ctx, s, StandardQueueName, "Enqueue", in.Message)
 }
 
 // Reenqueue publishes the (possibly modified) message to the tail of the standard queue and confirms.
 func (s *Service) Reenqueue(ctx context.Context, in *ReenqueueInput) (*ReenqueueOutput, error) {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	s.log.Info("WebhookQueue.Reenqueue called", zap.String(constvars.LoggingRequestIDKey, requestID))
-
-	body, err := json.Marshal(in.Message)
-	if err != nil {
-		return nil, exceptions.ErrCannotMarshalJSON(err)
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	msg := amqp.Publishing{
-		ContentType:  constvars.MIMEApplicationJSON,
-		Body:         body,
-		DeliveryMode: amqp.Persistent,
-	}
-
-	if err := s.ch.PublishWithContext(ctx, "", StandardQueueName, false, false, msg); err != nil {
-		return nil, exceptions.ErrRabbitMQPublishMessage(err, StandardQueueName)
-	}
-	select {
-	case confirmed := <-s.confirms:
-		if !confirmed.Ack {
-			return nil, exceptions.ErrRabbitMQPublishMessage(fmt.Errorf("message not confirmed"), StandardQueueName)
-		}
-	case <-ctx.Done():
-		return nil, exceptions.ErrRabbitMQPublishMessage(ctx.Err(), StandardQueueName)
-	}
-	return &ReenqueueOutput{}, nil
+	return enqueueResult[ReenqueueOutput](ctx, s, StandardQueueName, "Reenqueue", in.Message)
 }
 
 // EnqueueToDeadQueue publishes the message to DLQ and confirms.
 func (s *Service) EnqueueToDeadQueue(ctx context.Context, in *EnqueueToDLQInput) (*EnqueueToDLQOutput, error) {
+	return enqueueResult[EnqueueToDLQOutput](ctx, s, DeadLetterQueueName, "EnqueueToDeadQueue", in.Message)
+}
+
+// enqueueResult publishes message to queueName and returns a typed empty
+// output, or nil and the error when publishing fails.
+func enqueueResult[O any](ctx context.Context, s *Service, queueName, opName string, message any) (*O, error) {
+	if err := s.publish(ctx, queueName, opName, message); err != nil {
+		return nil, err
+	}
+	return new(O), nil
+}
+
+// publish marshals message and publishes it to queue with persistence and
+// publisher-confirm waiting, logging the operation under opName.
+func (s *Service) publish(ctx context.Context, queueName, opName string, message any) error {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	s.log.Info("WebhookQueue.EnqueueToDeadQueue called", zap.String(constvars.LoggingRequestIDKey, requestID))
+	s.log.Info("WebhookQueue."+opName+" called", zap.String(constvars.LoggingRequestIDKey, requestID))
 
-	body, err := json.Marshal(in.Message)
+	body, err := json.Marshal(message)
 	if err != nil {
-		return nil, exceptions.ErrCannotMarshalJSON(err)
+		return exceptions.ErrCannotMarshalJSON(err)
 	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	msg := amqp.Publishing{
-		ContentType:  constvars.MIMEApplicationJSON,
-		Body:         body,
-		DeliveryMode: amqp.Persistent,
-	}
-
-	if err := s.ch.PublishWithContext(ctx, "", DeadLetterQueueName, false, false, msg); err != nil {
-		return nil, exceptions.ErrRabbitMQPublishMessage(err, DeadLetterQueueName)
-	}
-	select {
-	case confirmed := <-s.confirms:
-		if !confirmed.Ack {
-			return nil, exceptions.ErrRabbitMQPublishMessage(fmt.Errorf("message not confirmed"), DeadLetterQueueName)
-		}
-	case <-ctx.Done():
-		return nil, exceptions.ErrRabbitMQPublishMessage(ctx.Err(), DeadLetterQueueName)
-	}
-	return &EnqueueToDLQOutput{}, nil
+	return s.publishRaw(ctx, queueName, body)
 }
 
 // FetchN retrieves up to N messages using basic.get without auto-ack.

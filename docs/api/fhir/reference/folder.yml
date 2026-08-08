@@ -1,0 +1,12 @@
+info:
+  name: reference
+  type: folder
+  seq: 6
+
+request: {}
+
+docs: |
+  Read-only reference chain: FHIR server metadata, clinic locations, and
+  practitioner/service details. Deterministic demo of the seeded clinic data —
+  run after the seed phase (or the full journey). Uses the seeded
+  `locationId`/`practitionerRoleId` and never overwrites them.

@@ -1,0 +1,63 @@
+info:
+  name: "Patient: List Upcoming Appointments"
+  type: http
+  seq: 12
+  tags: [appointment]
+
+http:
+  method: GET
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  url: "{{process.env.APP_BASE_URL}}/fhir/Appointment?actor=Patient/{{patientId}}&slot.start=ge{{nowIso}}&_include=Appointment:participant&_include=Appointment:slot"
+  params:
+    - name: actor
+      value: "Patient/{{patientId}}"
+      type: query
+    - name: slot.start
+      value: "ge{{nowIso}}"
+      type: query
+    - name: _include
+      value: Appointment:participant
+      type: query
+    - name: _include
+      value: Appointment:slot
+      type: query
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        bru.setVar("activeRole", "Patient");
+        bru.setVar("nowIso", new Date().toISOString());
+        await bru.sendRequest({
+          method: "POST",
+          url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
+          headers: {
+            "content-type": "application/json",
+            "Authorization": "Bearer " + bru.getVar("sessionToken")
+          },
+          data: JSON.stringify({ role: bru.getVar("activeRole") })
+        }, function(err, res) {
+          if (err) {
+            console.error("role switch failed: " + err.message);
+          } else if (res && res.headers) {
+            // the active-role response carries the regenerated access token;
+            // capture it so the following request sees the new active role
+            var newToken = res.headers["st-access-token"] || res.headers["front-token"];
+            if (newToken) { bru.setVar("sessionToken", newToken); }
+          }
+        });
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Patient: Check Practitioner Availability");'
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Upcoming appointments for the patient from now onward (`slot.start=ge{now}`)
+  with participant and slot includes. Empty until the booking step runs.
+  Pre-request switches to Patient and stamps `nowIso`.

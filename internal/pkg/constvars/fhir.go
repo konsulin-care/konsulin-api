@@ -25,6 +25,8 @@ const (
 	ResourceQuestionnaire            = "Questionnaire"
 	ResourceQuestionnaireResponse    = "QuestionnaireResponse"
 	ResourceResearchStudy            = "ResearchStudy"
+	ResourceResearchSubject          = "ResearchSubject"
+	ResourceConsent                  = "Consent"
 	ResourceDevice                   = "Device"
 	ResourceLocation                 = "Location"
 	ResourceHealthcareService        = "HealthcareService"
@@ -34,6 +36,8 @@ const (
 	ResourcePaymentNotice            = "PaymentNotice"
 	ResourceMedicationRequest        = "MedicationRequest"
 	ResourceMedicationAdministration = "MedicationAdministration"
+	ResourceCommunication            = "Communication"
+	ResourcePlanDefinition           = "PlanDefinition"
 )
 
 const (

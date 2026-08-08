@@ -1,0 +1,82 @@
+info:
+  name: Send Magic Link
+  type: http
+  seq: 1
+  tags: [auth]
+
+http:
+  method: POST
+  url: "{{process.env.APP_BASE_URL}}/api/v1/auth/magiclink"
+  headers:
+    - name: content-type
+      value: application/json
+    - name: X-API-Key
+      value: "{{process.env.SUPERADMIN_API_KEY}}"
+  body:
+    type: json
+    data: |-
+      {
+        "email": "{{process.env.ORGANIZATION}}@mailinator.com",
+        "roles": ["Patient", "Practitioner", "Clinic Admin", "Researcher"]
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        bru.sleep(10000);
+        bru.runner.setNextRequest("Check Email Exists");
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.success
+      operator: eq
+      value: "true"
+    - expression: res.body.message
+      operator: eq
+      value: magic link successfully generated
+    - expression: res.responseTime
+      operator: lt
+      value: "10000"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples:
+  - name: Success
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/auth/magiclink"
+      method: POST
+      headers:
+        - name: content-type
+          value: application/json
+        - name: X-API-Key
+          value: "{{process.env.SUPERADMIN_API_KEY}}"
+      body:
+        type: json
+        data: '{"email":"address@domain.tld","roles":["Patient","Practitioner","Clinic Admin","Researcher"]}'
+    response:
+      status: 200
+      body:
+        type: json
+        data: '{"success":true,"message":"magic link successfully generated"}'
+
+docs: |
+  Initiates a passwordless magic link flow via SuperTokens for the given email address.
+  The link is sent to the Mailinator public inbox. After the request completes, the
+  chain proceeds to "Check Email Exists" (no-op check while the email is in transit),
+  then "Create Anonymous Session", then "Mailinator Poll Inbox" which polls
+  Mailinator and extracts the magic URL params for the subsequent "Consume Code" step.
+
+  ### Request Fields
+  - `email`: Mailinator public inbox for automated retrieval for testing purpose. In production, any email address can be used.
+  - `roles`: All four roles are assigned to enable testing across RBAC scenarios.
+
+  ### Responses
+  - **200 OK**: Magic link generated. Body: `{ "success": true, "message": "magic link successfully generated" }`.
+  - **400 Bad Request**: Validation error. Body: `{ "success": false, "message": "...", "status_code": 400 }`.
+  - **500 Internal Server Error**: Server failure. Body: `{ "success": false, "message": "...", "status_code": 500 }`.

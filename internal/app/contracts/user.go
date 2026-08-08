@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/dto/requests"
-	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/utils"
 	"regexp"
 	"strings"
@@ -70,8 +68,7 @@ func (i *InitializeNewUserFHIRResourcesInput) ToogleByRoles(roles []string) {
 	}
 }
 
-// Resource translate to what resource should be created
-// based on the toogle values.
+// Resources translates the toggle values into the FHIR resources that should be created.
 func (i *InitializeNewUserFHIRResourcesInput) Resources() []string {
 	resources := []string{}
 	if i.PractitionerRolesExists {
@@ -94,11 +91,7 @@ type InitializeNewUserFHIRResourcesOutput struct {
 	PersonID       string
 }
 
-type UserUsecase interface {
-	GetUserProfileBySession(ctx context.Context, sessionData string) (*responses.UserProfile, error)
-	UpdateUserProfileBySession(ctx context.Context, sessionData string, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error)
-	DeleteUserBySession(ctx context.Context, sessionData string) error
-	DeactivateUserBySession(ctx context.Context, sessionData string) error
+type UserFHIRInitializer interface {
 	InitializeNewUserFHIRResources(ctx context.Context, input *InitializeNewUserFHIRResourcesInput) (*InitializeNewUserFHIRResourcesOutput, error)
 }
 

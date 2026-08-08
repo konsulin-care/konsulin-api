@@ -15,13 +15,13 @@ type SendMagicLinkInput struct {
 	Phone string
 }
 
-// MagicLinkDeliveryService sends passwordless magic links via the internal webhook service.
+// MagicLinkSender sends passwordless magic links via the internal webhook service.
 //
 // SECURITY NOTE:
 // This service is meant to be used internally by backend components (e.g. SuperTokens delivery overrides).
 // Do NOT expose this as a public HTTP endpoint unless there is an explicit feature request and proper
 // authorization, rate limiting, and abuse prevention are implemented. This is a sensitive capability
 // that can be used to spam users if exposed.
-type MagicLinkDeliveryService interface {
+type MagicLinkSender interface {
 	SendMagicLink(ctx context.Context, in SendMagicLinkInput) error
 }
