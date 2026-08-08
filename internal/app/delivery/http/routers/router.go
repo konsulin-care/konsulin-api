@@ -34,7 +34,7 @@ func SetupRoutes(
 	// route cannot bypass the mux's own middleware stack. The chain is benign
 	// for a keyless GET /health (API key and session middlewares pass through).
 	corsOptions := cors.Options{
-		AllowOriginFunc: func(r *http.Request, origin string) bool {
+		AllowOriginFunc: func(_ *http.Request, origin string) bool {
 			if strings.HasPrefix(origin, "http://localhost:") || strings.HasPrefix(origin, "http://127.0.0.1:") {
 				return true
 			}
@@ -85,7 +85,7 @@ func SetupRoutes(
 			attachScheduleRouter(r, middlewares, scheduleController)
 			attachWebhookRouter(r, middlewares, webhookController)
 			attachOrganizationRoutes(r, middlewares, organizationController)
-			attachPrivacyRouter(r, middlewares, purgeController)
+			attachPrivacyRouter(r, purgeController)
 
 			r.Mount("/tx", middlewares.TxProxy(internalConfig.FHIR.TerminologyServerBaseUrl))
 		})
