@@ -142,22 +142,22 @@ type AckMessageOutput struct{}
 
 // Enqueue publishes a message to the standard queue with persistence and waits for confirm.
 func (s *Service) Enqueue(ctx context.Context, in *EnqueueToWebhookServiceQueueInput) (*EnqueueToWebhookServiceQueueOutput, error) {
-	return enqueueResult[EnqueueToWebhookServiceQueueOutput](s, ctx, StandardQueueName, "Enqueue", in.Message)
+	return enqueueResult[EnqueueToWebhookServiceQueueOutput](ctx, s, StandardQueueName, "Enqueue", in.Message)
 }
 
 // Reenqueue publishes the (possibly modified) message to the tail of the standard queue and confirms.
 func (s *Service) Reenqueue(ctx context.Context, in *ReenqueueInput) (*ReenqueueOutput, error) {
-	return enqueueResult[ReenqueueOutput](s, ctx, StandardQueueName, "Reenqueue", in.Message)
+	return enqueueResult[ReenqueueOutput](ctx, s, StandardQueueName, "Reenqueue", in.Message)
 }
 
 // EnqueueToDeadQueue publishes the message to DLQ and confirms.
 func (s *Service) EnqueueToDeadQueue(ctx context.Context, in *EnqueueToDLQInput) (*EnqueueToDLQOutput, error) {
-	return enqueueResult[EnqueueToDLQOutput](s, ctx, DeadLetterQueueName, "EnqueueToDeadQueue", in.Message)
+	return enqueueResult[EnqueueToDLQOutput](ctx, s, DeadLetterQueueName, "EnqueueToDeadQueue", in.Message)
 }
 
 // enqueueResult publishes message to queueName and returns a typed empty
 // output, or nil and the error when publishing fails.
-func enqueueResult[O any](s *Service, ctx context.Context, queueName, opName string, message any) (*O, error) {
+func enqueueResult[O any](ctx context.Context, s *Service, queueName, opName string, message any) (*O, error) {
 	if err := s.publish(ctx, queueName, opName, message); err != nil {
 		return nil, err
 	}
