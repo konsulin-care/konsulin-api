@@ -38,15 +38,11 @@ func envNumeric[T ~int64 | ~uint64](key string, defaultValue T, bitSize int, par
 }
 
 func envInt64(key string, defaultValue int64, bitSize int) int64 {
-	return envNumeric(key, defaultValue, bitSize, func(s string, base, bits int) (int64, error) {
-		return strconv.ParseInt(s, base, bits)
-	})
+	return envNumeric(key, defaultValue, bitSize, strconv.ParseInt)
 }
 
 func envUint64(key string, defaultValue uint64, bitSize int) uint64 {
-	return envNumeric(key, defaultValue, bitSize, func(s string, base, bits int) (uint64, error) {
-		return strconv.ParseUint(s, base, bits)
-	})
+	return envNumeric(key, defaultValue, bitSize, strconv.ParseUint)
 }
 
 func GetEnvString(key, defaultValue string) string {
