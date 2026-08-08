@@ -14,19 +14,8 @@ http:
 runtime:
   scripts:
     - type: after-response
-      code: |-
-        const body = res.getBody();
-        const ids = body.entry.map(e => e.resource.id);
-
-        // Pick a random ID
-        const randomId = ids[Math.floor(Math.random() * ids.length)];
-
-        // Save to a variable for use in subsequent requests
-        bru.setVar("locationId", randomId);
-        bru.setNextRequest("List Practitioners in a Clinic")
-
-        console.log("Available IDs:", ids);
-        console.log("Selected ID:", randomId);
+      code: |
+        bru.runner.setNextRequest("List Practitioners in a Clinic");
   assertions:
     - expression: res.status
       operator: eq
@@ -39,5 +28,6 @@ settings:
   maxRedirects: 5
 
 docs: |
-  Lists all clinic Locations (public read). Picks a random Location id, stores
-  it as `locationId`, and chains to "List Practitioners in a Clinic".
+  Lists all clinic Locations (public read). Chains to "List Practitioners in a
+  Clinic", which demos the seeded PractitionerRole at the seeded location.
+  `locationId` comes from the seed phase and is never overwritten here.

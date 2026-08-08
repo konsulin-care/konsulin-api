@@ -33,19 +33,8 @@ http:
 runtime:
   scripts:
     - type: after-response
-      code: |-
-        const body = res.getBody();
-        const ids = body.entry.map(e => e.resource.id);
-
-        // Pick a random ID
-        const randomId = ids[Math.floor(Math.random() * ids.length)];
-
-        // Save to a variable for use in subsequent requests
-        bru.setVar("practitionerRoleId", randomId);
-        bru.setNextRequest("View Healthcare Service Provided by a Practitioner in a Clinic")
-
-        console.log("Available IDs:", ids);
-        console.log("Selected ID:", randomId);
+      code: |
+        bru.runner.setNextRequest("View Healthcare Service Provided by a Practitioner in a Clinic");
 
 settings:
   encodeUrl: true
@@ -54,7 +43,9 @@ settings:
   maxRedirects: 5
 
 docs: |
-  Lists PractitionerRoles working at the selected Location (active, with
-  practitioner/service/organization/location includes). Picks a random
-  PractitionerRole id, stores it as `practitionerRoleId`, and chains to
-  "View Healthcare Service Provided by a Practitioner in a Clinic".
+  Lists PractitionerRoles working at the seeded Location (`{{locationId}}` from
+  the seed phase, active, with practitioner/service/organization/location
+  includes). Because the seeded PractitionerRole references that Location, this
+  deterministically returns the seeded role. Does not overwrite
+  `practitionerRoleId`. Chains to "View Healthcare Service Provided by a
+  Practitioner in a Clinic".
