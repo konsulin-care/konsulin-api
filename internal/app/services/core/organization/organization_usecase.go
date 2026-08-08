@@ -13,10 +13,9 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
-
-	"slices"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -294,7 +293,7 @@ func (uc *Usecase) callMagicLink(ctx context.Context, email string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("magiclink request failed with status %d", resp.StatusCode)

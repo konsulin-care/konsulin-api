@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
@@ -16,7 +15,8 @@ import (
 // CreateResource marshals resource, POSTs to baseUrl, unmarshals the response, and returns the created resource.
 // It logs entry/error/success using the provided logger and resourceName.
 func CreateResource[T any](ctx context.Context, log *zap.Logger, client *FHIRHTTPClient,
-	baseUrl string, resource *T, resourceName, idLogKey string) (*T, error) {
+	baseUrl string, resource *T, resourceName, idLogKey string,
+) (*T, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	log.Info("crud.CreateResource called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -70,7 +70,8 @@ func CreateResource[T any](ctx context.Context, log *zap.Logger, client *FHIRHTT
 
 // GetResource GETs {baseUrl}/{id}, unmarshals the response, and returns the resource.
 func GetResource[T any](ctx context.Context, log *zap.Logger, client *FHIRHTTPClient,
-	baseUrl, id, resourceName, idLogKey string) (*T, error) {
+	baseUrl, id, resourceName, idLogKey string,
+) (*T, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	log.Info("crud.GetResource called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -163,7 +164,8 @@ func WriteResource[T any](input WriteResourceInput[T]) (*T, error) {
 
 // DeleteResource DELETEs {baseUrl}/{id}. Returns nil on success.
 func DeleteResource(ctx context.Context, log *zap.Logger, client *FHIRHTTPClient,
-	baseUrl, id, resourceName string) error {
+	baseUrl, id, resourceName string,
+) error {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	log.Info("crud.DeleteResource called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -187,7 +189,8 @@ func DeleteResource(ctx context.Context, log *zap.Logger, client *FHIRHTTPClient
 
 // SearchResources GETs urlStr, decodes the FHIR bundle entries into []T, and returns them.
 func SearchResources[T any](ctx context.Context, log *zap.Logger, client *FHIRHTTPClient,
-	urlStr, resourceName string) ([]T, error) {
+	urlStr, resourceName string,
+) ([]T, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	log.Info("crud.SearchResources called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),

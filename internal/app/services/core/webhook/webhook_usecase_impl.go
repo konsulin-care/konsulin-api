@@ -668,7 +668,7 @@ func (u *usecase) forwardSynchronous(ctx context.Context, service, method string
 	if err != nil {
 		return nil, exceptions.ErrSendHTTPRequest(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respContentType := resp.Header.Get(constvars.HeaderContentType)
 

@@ -30,6 +30,11 @@ const (
 	FhirBundleFieldType = "type"
 )
 
+// FHIR bundle request method constants.
+const (
+	FhirBundleMethodPut = "PUT"
+)
+
 // FHIR gjson path constants used when extracting fields from FHIR JSON bodies.
 const (
 	FhirGJSONPathSubjectRef = "subject.reference"

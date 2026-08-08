@@ -19,15 +19,12 @@ type Patient struct {
 
 // FullName returns a best-effort display name for the patient.
 // Preference: official > usual > first; prefer Text, else Prefix+Given+Family.
+// Falls back to the email local part when no name is present.
 func (p Patient) FullName() string {
 	if len(p.Name) == 0 {
 		return p.emailFallbackFullName()
 	}
-	chosen := preferredName(p.Name)
-	if s := strings.TrimSpace(chosen.Text); s != "" {
-		return s
-	}
-	return formatHumanName(chosen)
+	return fullName(p.Name)
 }
 
 // preferredName selects the best HumanName from a slice.
@@ -77,28 +74,10 @@ func (p Patient) emailFallbackFullName() string {
 
 // GetEmailAddresses returns all email values from Telecom where system == email.
 func (p Patient) GetEmailAddresses() []string {
-	if len(p.Telecom) == 0 {
-		return nil
-	}
-	emails := make([]string, 0, len(p.Telecom))
-	for _, tp := range p.Telecom {
-		if tp.System == ContactPointSystemEmail && tp.Value != "" {
-			emails = append(emails, tp.Value)
-		}
-	}
-	return emails
+	return emailsFromTelecom(p.Telecom)
 }
 
 // GetPhoneNumbers returns all phone values from Telecom where system == phone.
 func (p Patient) GetPhoneNumbers() []string {
-	if len(p.Telecom) == 0 {
-		return nil
-	}
-	phones := make([]string, 0, len(p.Telecom))
-	for _, tp := range p.Telecom {
-		if tp.System == ContactPointSystemPhone && tp.Value != "" {
-			phones = append(phones, tp.Value)
-		}
-	}
-	return phones
+	return phonesFromTelecom(p.Telecom)
 }

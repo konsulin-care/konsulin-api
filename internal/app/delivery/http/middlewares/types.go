@@ -21,18 +21,28 @@ func newEnforcer(logger *zap.Logger) *casbin.Enforcer {
 	}
 
 	enforcer.AddFunction("pathMatch", func(args ...interface{}) (interface{}, error) {
-		if len(args) != 2 {
-			return false, nil
-		}
-		requestPath, ok1 := args[0].(string)
-		policyPath, ok2 := args[1].(string)
-		if !ok1 || !ok2 {
+		requestPath, policyPath, ok := matchPathArgs(args...)
+		if !ok {
 			return false, nil
 		}
 		return utils.PathMatch(requestPath, policyPath), nil
 	})
 
 	return enforcer
+}
+
+// matchPathArgs extracts the two pathMatch arguments, returning false when the
+// argument shape is invalid.
+func matchPathArgs(args ...interface{}) (requestPath, policyPath string, ok bool) {
+	if len(args) != 2 {
+		return "", "", false
+	}
+	requestPath, ok1 := args[0].(string)
+	policyPath, ok2 := args[1].(string)
+	if !ok1 || !ok2 {
+		return "", "", false
+	}
+	return requestPath, policyPath, true
 }
 
 // handlePolicyEvent processes a single fsnotify event.

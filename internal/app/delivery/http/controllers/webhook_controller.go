@@ -3,7 +3,6 @@ package controllers
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/services/core/webhook"
@@ -107,19 +106,12 @@ func (ctrl *WebhookController) HandleSynchronousWebHook(w http.ResponseWriter, r
 			WindowDurationSec: limiterCfg.SynchronousServiceWindowSeconds,
 			MaxQuota:          limiterCfg.SynchronousServiceRateLimit,
 		})
-
 		if err != nil {
 			utils.BuildErrorResponse(ctrl.Log, w, err)
 			return
 		}
 
-		if err == nil && eval != nil && !eval.Allowed {
-			retryAfter := eval.RetryAfterSecs
-			if retryAfter < 0 {
-				retryAfter = 0
-			}
-			w.Header().Set(constvars.HeaderRetryAfter, fmt.Sprintf("%d", retryAfter))
-			utils.BuildErrorResponse(ctrl.Log, w, exceptions.BuildNewCustomError(nil, constvars.StatusTooManyRequests, "Too many requests", "WEBHOOK_SYNC_RATE_LIMITED"))
+		if eval != nil && rejectRateLimited(ctrl.Log, w, eval.Allowed, eval.RetryAfterSecs, "WEBHOOK_SYNC_RATE_LIMITED") {
 			return
 		}
 	}
@@ -178,13 +170,7 @@ func (ctrl *WebhookController) HandleEnqueueWebHook(w http.ResponseWriter, r *ht
 		utils.BuildErrorResponse(ctrl.Log, w, evalErr)
 		return
 	}
-	if !eval.Allowed {
-		retryAfter := eval.RetryAfterSecs
-		if retryAfter < 0 {
-			retryAfter = 0
-		}
-		w.Header().Set(constvars.HeaderRetryAfter, fmt.Sprintf("%d", retryAfter))
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.BuildNewCustomError(nil, constvars.StatusTooManyRequests, "Too many requests", "WEBHOOK_RATE_LIMITED"))
+	if rejectRateLimited(ctrl.Log, w, eval.Allowed, eval.RetryAfterSecs, "WEBHOOK_RATE_LIMITED") {
 		return
 	}
 

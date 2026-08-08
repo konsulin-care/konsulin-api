@@ -47,14 +47,8 @@ func NewAuthController(logger *zap.Logger, authUsecase contracts.AuthUsecase, in
 
 func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
-	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	if !ok || requestID == "" {
-		ctrl.Log.Error("Request ID missing from context",
-			zap.String(constvars.LoggingEndpointKey, r.URL.Path),
-			zap.String(constvars.LoggingMethodKey, r.Method),
-			zap.String(constvars.LoggingRemoteAddrKey, r.RemoteAddr),
-		)
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingRequestID(nil))
+	requestID, ok := requireRequestID(ctrl.Log, w, r)
+	if !ok {
 		return
 	}
 
@@ -65,13 +59,7 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 	)
 
 	request := new(requests.SupertokenPasswordlessCreateMagicLink)
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		ctrl.Log.Error("Failed to parse request body",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingErrorTypeKey, "JSON parsing"),
-			zap.Error(err),
-		)
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+	if !decodeJSONBody(ctrl.Log, w, r, requestID, &request, "Failed to parse request body", true) {
 		return
 	}
 

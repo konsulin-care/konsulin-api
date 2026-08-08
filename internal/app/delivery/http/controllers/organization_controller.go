@@ -1,7 +1,6 @@
 package controllers
 
 import (
-	"encoding/json"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
@@ -60,12 +59,7 @@ func (ctrl *OrganizationController) RegisterPractitionerRole(w http.ResponseWrit
 	}
 
 	var req registerPractitionerRoleRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		ctrl.Log.Error("OrganizationController.RegisterPractitionerRole error decoding JSON",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+	if !decodeJSONBody(ctrl.Log, w, r, requestID, &req, "OrganizationController.RegisterPractitionerRole error decoding JSON", false) {
 		return
 	}
 

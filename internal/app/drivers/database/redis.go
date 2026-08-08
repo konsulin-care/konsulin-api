@@ -10,7 +10,7 @@ import (
 )
 
 func NewRedisClient(driverConfig *config.DriverConfig) *redis.Client {
-	var ctx = context.Background()
+	ctx := context.Background()
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%s", driverConfig.Redis.Host, driverConfig.Redis.Port),
 		Password: driverConfig.Redis.Password,

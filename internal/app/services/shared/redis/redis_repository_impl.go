@@ -7,7 +7,6 @@ import (
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"sync"
-
 	"time"
 
 	"github.com/goccy/go-json"
@@ -37,32 +36,11 @@ func NewRedisRepository(Client *redis.Client, Logger *zap.Logger) contracts.Redi
 }
 
 func (r *redisRepository) Delete(ctx context.Context, key string) error {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	r.Log.Info("redisRepository.Delete called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingRedisKey, key))
-
-	err := r.Client.Del(ctx, key).Err()
-	if err != nil {
-		r.Log.Error("redisRepository.Delete error",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingRedisKey, key),
-			zap.Error(err))
-		return exceptions.ErrRedisDelete(err)
-	}
-
-	r.Log.Info("redisRepository.Delete succeeded",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingRedisKey, key))
-	return err
+	return r.executeRedis(ctx, key, "Delete", nil, r.del, exceptions.ErrRedisDelete)
 }
 
 func (r *redisRepository) Set(ctx context.Context, key string, value interface{}, exp time.Duration) error {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	r.Log.Info("redisRepository.Set called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingRedisKey, key),
-		zap.Duration(constvars.LoggingRedisExpirationTimeKey, exp))
+	requestID := r.logCalled(ctx, key, "Set", zap.Duration(constvars.LoggingRedisExpirationTimeKey, exp))
 
 	jsonValue, err := json.Marshal(value)
 	if err != nil {
@@ -89,10 +67,7 @@ func (r *redisRepository) Set(ctx context.Context, key string, value interface{}
 }
 
 func (r *redisRepository) Get(ctx context.Context, key string) (string, error) {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	r.Log.Info("redisRepository.Get called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingRedisKey, key))
+	requestID := r.logCalled(ctx, key, "Get")
 
 	data, err := r.Client.Get(ctx, key).Result()
 	if err == redis.Nil {
@@ -116,33 +91,12 @@ func (r *redisRepository) Get(ctx context.Context, key string) (string, error) {
 }
 
 func (r *redisRepository) Increment(ctx context.Context, key string) error {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	r.Log.Info("redisRepository.Increment called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingRedisKey, key))
-
-	err := r.Client.Incr(ctx, key).Err()
-	if err != nil {
-		r.Log.Error("redisRepository.Increment error",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingRedisKey, key),
-			zap.Error(err))
-		return exceptions.ErrRedisIncrement(err)
-	}
-
-	r.Log.Info("redisRepository.Increment succeeded",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingRedisKey, key))
-	return err
+	return r.executeRedis(ctx, key, "Increment", nil, r.incr, exceptions.ErrRedisIncrement)
 }
 
 // IncrementWithTTL atomically increments the key and sets TTL when first created.
 func (r *redisRepository) IncrementWithTTL(ctx context.Context, key string, exp time.Duration) (int, error) {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	r.Log.Info("redisRepository.IncrementWithTTL called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingRedisKey, key),
-		zap.Duration(constvars.LoggingRedisExpirationTimeKey, exp))
+	requestID := r.logCalled(ctx, key, "IncrementWithTTL", zap.Duration(constvars.LoggingRedisExpirationTimeKey, exp))
 
 	script := redis.NewScript(`
 		local v = redis.call("INCR", KEYS[1])
@@ -178,75 +132,87 @@ func (r *redisRepository) IncrementWithTTL(ctx context.Context, key string, exp 
 }
 
 func (r *redisRepository) PushToList(ctx context.Context, key string, values ...interface{}) error {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	r.Log.Info("redisRepository.PushToList called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingRedisKey, key),
-		zap.Any(constvars.LoggingRedisValuesKey, values))
-
-	err := r.Client.RPush(ctx, key, values...).Err()
-	if err != nil {
-		r.Log.Error("redisRepository.PushToList error",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingRedisKey, key),
-			zap.Error(err))
-		return exceptions.ErrRedisPushToList(err)
-	}
-
-	r.Log.Info("redisRepository.PushToList succeeded",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingRedisKey, key))
-	return err
+	return r.executeRedis(ctx, key, "PushToList", values, r.rpush, exceptions.ErrRedisPushToList)
 }
 
 func (r *redisRepository) PopFromList(ctx context.Context, key string) error {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	r.Log.Info("redisRepository.PopFromList called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingRedisKey, key))
-
-	err := r.Client.LPop(ctx, key).Err()
-	if err != nil {
-		r.Log.Error("redisRepository.PopFromList error",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingRedisKey, key),
-			zap.Error(err))
-		return exceptions.ErrRedisPopFromList(err)
-	}
-
-	r.Log.Info("redisRepository.PopFromList succeeded",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingRedisKey, key))
-	return err
+	return r.executeRedis(ctx, key, "PopFromList", nil, r.lpop, exceptions.ErrRedisPopFromList)
 }
 
 func (r *redisRepository) AddToSet(ctx context.Context, key string, values ...interface{}) error {
+	return r.executeRedis(ctx, key, "AddToSet", values, r.sadd, exceptions.ErrRedisAddToSet)
+}
+
+// logCalled logs the start of a redis operation with the request ID, key, and
+// any extra fields, returning the request ID for later log entries.
+func (r *redisRepository) logCalled(ctx context.Context, key, opName string, extra ...zap.Field) string {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	r.Log.Info("redisRepository.AddToSet called",
+	fields := []zap.Field{
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String(constvars.LoggingRedisKey, key),
-		zap.Any(constvars.LoggingRedisValuesKey, values))
+	}
+	fields = append(fields, extra...)
+	r.Log.Info("redisRepository."+opName+" called", fields...)
+	return requestID
+}
 
-	err := r.Client.SAdd(ctx, key, values...).Err()
+// executeRedis runs a single redis command with consistent request-ID and key
+// logging, mapping command errors through errFactory. opName names the
+// operation in the log entries; values is included in the "called" entry when
+// non-nil.
+func (r *redisRepository) executeRedis(ctx context.Context, key, opName string, values []interface{}, do func(context.Context, string, ...interface{}) error, errFactory func(error) *exceptions.CustomError) error {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	calledFields := []zap.Field{
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String(constvars.LoggingRedisKey, key),
+	}
+	if values != nil {
+		calledFields = append(calledFields, zap.Any(constvars.LoggingRedisValuesKey, values))
+	}
+	r.Log.Info("redisRepository."+opName+" called", calledFields...)
+
+	err := do(ctx, key, values...)
 	if err != nil {
-		r.Log.Error("redisRepository.AddToSet error",
+		r.Log.Error("redisRepository."+opName+" error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String(constvars.LoggingRedisKey, key),
 			zap.Error(err))
-		return exceptions.ErrRedisAddToSet(err)
+		return errFactory(err)
 	}
 
-	r.Log.Info("redisRepository.AddToSet succeeded",
+	r.Log.Info("redisRepository."+opName+" succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String(constvars.LoggingRedisKey, key))
 	return err
 }
 
+// del runs the DEL command, ignoring the variadic values adapter.
+func (r *redisRepository) del(ctx context.Context, key string, _ ...interface{}) error {
+	return r.Client.Del(ctx, key).Err()
+}
+
+// incr runs the INCR command, ignoring the variadic values adapter.
+func (r *redisRepository) incr(ctx context.Context, key string, _ ...interface{}) error {
+	return r.Client.Incr(ctx, key).Err()
+}
+
+// lpop runs the LPOP command, ignoring the variadic values adapter.
+func (r *redisRepository) lpop(ctx context.Context, key string, _ ...interface{}) error {
+	return r.Client.LPop(ctx, key).Err()
+}
+
+// rpush runs the RPUSH command with the given values.
+func (r *redisRepository) rpush(ctx context.Context, key string, values ...interface{}) error {
+	return r.Client.RPush(ctx, key, values...).Err()
+}
+
+// sadd runs the SADD command with the given values.
+func (r *redisRepository) sadd(ctx context.Context, key string, values ...interface{}) error {
+	return r.Client.SAdd(ctx, key, values...).Err()
+}
+
 func (r *redisRepository) GetSetMembers(ctx context.Context, key string) ([]string, error) {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	r.Log.Info("redisRepository.GetSetMembers called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingRedisKey, key))
+	requestID := r.logCalled(ctx, key, "GetSetMembers")
 
 	setMembers, err := r.Client.SMembers(ctx, key).Result()
 	if err != nil {
@@ -265,11 +231,7 @@ func (r *redisRepository) GetSetMembers(ctx context.Context, key string) ([]stri
 }
 
 func (r *redisRepository) TrySetNX(ctx context.Context, key string, value interface{}, exp time.Duration) (bool, error) {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	r.Log.Info("redisRepository.TrySetNX called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingRedisKey, key),
-		zap.Duration(constvars.LoggingRedisExpirationTimeKey, exp))
+	requestID := r.logCalled(ctx, key, "TrySetNX", zap.Duration(constvars.LoggingRedisExpirationTimeKey, exp))
 
 	jsonValue, err := json.Marshal(value)
 	if err != nil {

@@ -53,19 +53,21 @@ func ParseDashSeparatedToSlashSeparated(input string) string {
 	return fmt.Sprintf("%s/%s", typePart, idPart)
 }
 
-func BuildPatientProfileResponse(patientFhir *fhir_dto.Patient) *responses.UserProfile {
-	fullname := GetFullName(patientFhir.Name)
-	email, whatsAppNumber := GetEmailAndWhatsapp(patientFhir.Telecom)
-	age := CalculateAge(patientFhir.BirthDate)
-	educations := GetEducationFromExtensions(patientFhir.Extension)
-	formattedAddress := GetHomeAddress(patientFhir.Address)
-	formattedBirthDate := FormatBirthDate(patientFhir.BirthDate)
+// buildUserProfile assembles a UserProfile response from FHIR demographic
+// fields, using addressFormatter to render the address (home vs work).
+func buildUserProfile(name []fhir_dto.HumanName, telecom []fhir_dto.ContactPoint, birthDate, gender string, extensions []fhir_dto.Extension, address []fhir_dto.Address, addressFormatter func([]fhir_dto.Address) string) *responses.UserProfile {
+	fullname := GetFullName(name)
+	email, whatsAppNumber := GetEmailAndWhatsapp(telecom)
+	age := CalculateAge(birthDate)
+	educations := GetEducationFromExtensions(extensions)
+	formattedAddress := addressFormatter(address)
+	formattedBirthDate := FormatBirthDate(birthDate)
 
 	return &responses.UserProfile{
 		Fullname:       fullname,
 		Email:          email,
 		Age:            age,
-		Gender:         patientFhir.Gender,
+		Gender:         gender,
 		Educations:     educations,
 		WhatsAppNumber: whatsAppNumber,
 		Address:        formattedAddress,
@@ -73,24 +75,12 @@ func BuildPatientProfileResponse(patientFhir *fhir_dto.Patient) *responses.UserP
 	}
 }
 
-func BuildPractitionerProfileResponse(practitionerFhir *fhir_dto.Practitioner) *responses.UserProfile {
-	fullname := GetFullName(practitionerFhir.Name)
-	email, whatsAppNumber := GetEmailAndWhatsapp(practitionerFhir.Telecom)
-	age := CalculateAge(practitionerFhir.BirthDate)
-	educations := GetEducationFromExtensions(practitionerFhir.Extension)
-	formattedAddress := GetWorkAddress(practitionerFhir.Address)
-	formattedBirthDate := FormatBirthDate(practitionerFhir.BirthDate)
+func BuildPatientProfileResponse(patientFhir *fhir_dto.Patient) *responses.UserProfile {
+	return buildUserProfile(patientFhir.Name, patientFhir.Telecom, patientFhir.BirthDate, patientFhir.Gender, patientFhir.Extension, patientFhir.Address, GetHomeAddress)
+}
 
-	return &responses.UserProfile{
-		Fullname:       fullname,
-		Email:          email,
-		Age:            age,
-		Gender:         practitionerFhir.Gender,
-		Educations:     educations,
-		WhatsAppNumber: whatsAppNumber,
-		Address:        formattedAddress,
-		BirthDate:      formattedBirthDate,
-	}
+func BuildPractitionerProfileResponse(practitionerFhir *fhir_dto.Practitioner) *responses.UserProfile {
+	return buildUserProfile(practitionerFhir.Name, practitionerFhir.Telecom, practitionerFhir.BirthDate, practitionerFhir.Gender, practitionerFhir.Extension, practitionerFhir.Address, GetWorkAddress)
 }
 
 func ExtractOrganizationIDsFromPractitionerRoles(practitionerRoles []fhir_dto.PractitionerRole) []string {
@@ -267,6 +257,7 @@ func DaysContains(slice []string, item string) bool {
 	}
 	return false
 }
+
 func Contains(slice []string, item string) bool {
 	for _, v := range slice {
 		if v == item {
@@ -297,30 +288,27 @@ func RemoveFromSlice(slice *[]string, item string) {
 	}
 }
 
-func FindPatientIDFromFhirAppointment(ctx context.Context, request fhir_dto.Appointment) (string, error) {
+// findResourceIDFromAppointment returns the ID portion of the first
+// participant actor reference matching resourcePrefix, or a server-process
+// error with notFoundMsg when none matches.
+func findResourceIDFromAppointment(request fhir_dto.Appointment, resourcePrefix, notFoundMsg string) (string, error) {
 	for _, participant := range request.Participant {
-		if strings.Contains(participant.Actor.Reference, "Patient/") {
+		if strings.Contains(participant.Actor.Reference, resourcePrefix) {
 			parts := strings.Split(participant.Actor.Reference, "/")
 			if len(parts) > 1 {
 				return parts[1], nil
 			}
 		}
 	}
-	errResponse := errors.New("patient ID not found in appointment")
-	return "", exceptions.ErrServerProcess(errResponse)
+	return "", exceptions.ErrServerProcess(errors.New(notFoundMsg))
+}
+
+func FindPatientIDFromFhirAppointment(ctx context.Context, request fhir_dto.Appointment) (string, error) {
+	return findResourceIDFromAppointment(request, "Patient/", "patient ID not found in appointment")
 }
 
 func FindPractitionerIDFromFhirAppointment(ctx context.Context, request fhir_dto.Appointment) (string, error) {
-	for _, participant := range request.Participant {
-		if strings.Contains(participant.Actor.Reference, "Practitioner/") {
-			parts := strings.Split(participant.Actor.Reference, "/")
-			if len(parts) > 1 {
-				return parts[1], nil
-			}
-		}
-	}
-	errResponse := errors.New("practitioner ID not found in appointment")
-	return "", exceptions.ErrServerProcess(errResponse)
+	return findResourceIDFromAppointment(request, "Practitioner/", "practitioner ID not found in appointment")
 }
 
 func AddAndGetTime(hoursToAdd, minutesToAdd, secondsToAdd int) string {

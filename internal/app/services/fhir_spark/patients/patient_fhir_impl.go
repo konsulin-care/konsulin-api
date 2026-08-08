@@ -3,14 +3,13 @@ package patients
 import (
 	"context"
 	"fmt"
-	"sync"
-
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/services/fhir_spark/base"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/fhir_http_client"
 	"net/url"
+	"sync"
 
 	"go.uber.org/zap"
 )
@@ -44,35 +43,39 @@ func (c *patientFhirClient) FindPatientByID(ctx context.Context, patientID strin
 }
 
 func (c *patientFhirClient) FindPatientByIdentifier(ctx context.Context, identifier string) ([]fhir_dto.Patient, error) {
-	url := fmt.Sprintf("%s?identifier=%s", c.BaseUrl, url.QueryEscape(identifier))
-	return fhir_http_client.SearchResources[fhir_dto.Patient](ctx, c.Log, c.Client, url,
-		constvars.ResourcePatient)
+	return c.searchByQuery(ctx, fmt.Sprintf("?identifier=%s", url.QueryEscape(identifier)))
 }
 
 func (c *patientFhirClient) UpdatePatient(ctx context.Context, request *fhir_dto.Patient) (*fhir_dto.Patient, error) {
-	return fhir_http_client.WriteResource(fhir_http_client.WriteResourceInput[fhir_dto.Patient]{
-		Ctx: ctx, Log: c.Log, Client: c.Client, Method: constvars.MethodPut,
-		BaseUrl: c.BaseUrl, ID: request.ID, Resource: request,
-		ResourceName: constvars.ResourcePatient, IDLogKey: constvars.LoggingPatientIDKey,
-	})
+	return c.writePatient(ctx, constvars.MethodPut, request)
 }
 
 func (c *patientFhirClient) PatchPatient(ctx context.Context, request *fhir_dto.Patient) (*fhir_dto.Patient, error) {
-	return fhir_http_client.WriteResource(fhir_http_client.WriteResourceInput[fhir_dto.Patient]{
-		Ctx: ctx, Log: c.Log, Client: c.Client, Method: constvars.MethodPatch,
-		BaseUrl: c.BaseUrl, ID: request.ID, Resource: request,
-		ResourceName: constvars.ResourcePatient, IDLogKey: constvars.LoggingPatientIDKey,
-	})
+	return c.writePatient(ctx, constvars.MethodPatch, request)
 }
 
 func (c *patientFhirClient) FindPatientByEmail(ctx context.Context, email string) ([]fhir_dto.Patient, error) {
-	url := fmt.Sprintf("%s?email=%s&_sort=-_lastUpdated", c.BaseUrl, url.QueryEscape(email))
+	return c.searchByQuery(ctx, fmt.Sprintf("?email=%s&_sort=-_lastUpdated", url.QueryEscape(email)))
+}
+
+func (c *patientFhirClient) FindPatientByPhone(ctx context.Context, phone string) ([]fhir_dto.Patient, error) {
+	return c.searchByQuery(ctx, fmt.Sprintf("?phone=%s&_sort=-_lastUpdated", url.QueryEscape(phone)))
+}
+
+// searchByQuery executes a Patient search against c.BaseUrl plus the query
+// suffix.
+func (c *patientFhirClient) searchByQuery(ctx context.Context, query string) ([]fhir_dto.Patient, error) {
+	url := fmt.Sprintf("%s%s", c.BaseUrl, query)
 	return fhir_http_client.SearchResources[fhir_dto.Patient](ctx, c.Log, c.Client, url,
 		constvars.ResourcePatient)
 }
 
-func (c *patientFhirClient) FindPatientByPhone(ctx context.Context, phone string) ([]fhir_dto.Patient, error) {
-	url := fmt.Sprintf("%s?phone=%s&_sort=-_lastUpdated", c.BaseUrl, url.QueryEscape(phone))
-	return fhir_http_client.SearchResources[fhir_dto.Patient](ctx, c.Log, c.Client, url,
-		constvars.ResourcePatient)
+// writePatient writes the patient resource via WriteResource with the given
+// HTTP method.
+func (c *patientFhirClient) writePatient(ctx context.Context, method string, request *fhir_dto.Patient) (*fhir_dto.Patient, error) {
+	return fhir_http_client.WriteResource(fhir_http_client.WriteResourceInput[fhir_dto.Patient]{
+		Ctx: ctx, Log: c.Log, Client: c.Client, Method: method,
+		BaseUrl: c.BaseUrl, ID: request.ID, Resource: request,
+		ResourceName: constvars.ResourcePatient, IDLogKey: constvars.LoggingPatientIDKey,
+	})
 }

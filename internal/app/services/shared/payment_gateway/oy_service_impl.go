@@ -43,6 +43,7 @@ func NewOyService(internalConfig *config.InternalConfig, logger *zap.Logger) con
 
 	return oyServiceInstance
 }
+
 func (c *oyService) CreatePaymentRouting(ctx context.Context, request *requests.PaymentRequestDTO) (*responses.PaymentResponse, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	c.Log.Info("oyService.CreatePaymentRouting called",
@@ -85,7 +86,7 @@ func (c *oyService) CreatePaymentRouting(ctx context.Context, request *requests.
 		)
 		return nil, exceptions.ErrSendHTTPRequest(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	paymentResponse := new(responses.PaymentResponse)
 	err = json.NewDecoder(resp.Body).Decode(&paymentResponse)
@@ -156,7 +157,7 @@ func (c *oyService) CheckPaymentRoutingStatus(ctx context.Context, request *requ
 		)
 		return nil, exceptions.ErrSendHTTPRequest(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {

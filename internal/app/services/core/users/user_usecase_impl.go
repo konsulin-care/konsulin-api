@@ -116,46 +116,41 @@ func (uc *userUsecase) InitializeNewUserFHIRResources(ctx context.Context, input
 }
 
 func (uc *userUsecase) deactivatePractitionerFhirData(ctx context.Context, user *models.User) error {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	uc.Log.Info("userUsecase.deactivatePractitionerFhirData called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingUserIDKey, user.ID),
-	)
-
-	practitionerFhirRequest := user.ConvertToPractitionerFhirDeactivationRequest()
-
-	_, err := uc.PractitionerFhirClient.UpdatePractitioner(ctx, practitionerFhirRequest)
-	if err != nil {
-		uc.Log.Error("userUsecase.deactivatePractitionerFhirData error updating practitioner FHIR resource",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return err
-	}
-	uc.Log.Info("userUsecase.deactivatePractitionerFhirData succeeded",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-	)
-	return nil
+	return deactivateFhirData(uc, ctx, user, "deactivatePractitionerFhirData", "practitioner", user.ConvertToPractitionerFhirDeactivationRequest(), uc.updatePractitionerDeactivation)
 }
 
 func (uc *userUsecase) deactivatePatientFhirData(ctx context.Context, user *models.User) error {
+	return deactivateFhirData(uc, ctx, user, "deactivatePatientFhirData", "patient", user.ConvertToPatientFhirDeactivationRequest(), uc.updatePatientDeactivation)
+}
+
+// updatePractitionerDeactivation persists a practitioner deactivation update.
+func (uc *userUsecase) updatePractitionerDeactivation(ctx context.Context, req *fhir_dto.Practitioner) error {
+	_, err := uc.PractitionerFhirClient.UpdatePractitioner(ctx, req)
+	return err
+}
+
+// updatePatientDeactivation persists a patient deactivation update.
+func (uc *userUsecase) updatePatientDeactivation(ctx context.Context, req *fhir_dto.Patient) error {
+	_, err := uc.PatientFhirClient.UpdatePatient(ctx, req)
+	return err
+}
+
+// deactivateFhirData runs a FHIR deactivation update for the given resource,
+// logging start, failure, and success with the operation name.
+func deactivateFhirData[T any](uc *userUsecase, ctx context.Context, user *models.User, opName, resourceName string, request T, update func(context.Context, T) error) error {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	uc.Log.Info("userUsecase.deactivatePatientFhirData called",
+	uc.Log.Info("userUsecase."+opName+" called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String(constvars.LoggingUserIDKey, user.ID),
 	)
-
-	patientFhirRequest := user.ConvertToPatientFhirDeactivationRequest()
-
-	_, err := uc.PatientFhirClient.UpdatePatient(ctx, patientFhirRequest)
-	if err != nil {
-		uc.Log.Error("userUsecase.deactivatePatientFhirData error updating patient FHIR resource",
+	if err := update(ctx, request); err != nil {
+		uc.Log.Error("userUsecase."+opName+" error updating "+resourceName+" FHIR resource",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
 		return err
 	}
-	uc.Log.Info("userUsecase.deactivatePatientFhirData succeeded",
+	uc.Log.Info("userUsecase."+opName+" succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
 	return nil
@@ -637,7 +632,7 @@ func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, in
 	if err != nil {
 		return callWebhookSvcKonsulinOmnichannelOutput{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return callWebhookSvcKonsulinOmnichannelOutput{}, errors.New("failed to call webhook svc konsulin omnichannel")

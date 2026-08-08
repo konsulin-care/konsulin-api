@@ -150,7 +150,7 @@ func (s *magicLinkDeliveryService) sendViaHTTP(ctx context.Context, bodyBytes []
 	if err != nil {
 		return fmt.Errorf("call magiclink webhook: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
 		requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)

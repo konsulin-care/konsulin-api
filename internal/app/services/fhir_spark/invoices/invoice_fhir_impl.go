@@ -70,7 +70,7 @@ func (c *invoiceFhirClient) Search(ctx context.Context, params contracts.Invoice
 		)
 		return nil, exceptions.ErrSendHTTPRequest(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != constvars.StatusOK {
 		bodyBytes, err := io.ReadAll(resp.Body)
