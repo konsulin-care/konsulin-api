@@ -14,6 +14,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// logPrefix namespaces every log entry emitted by this repository.
+const logPrefix = "redisRepository."
+
 var (
 	redisRepositoryInstance contracts.RedisRepository
 	onceRedisRepository     sync.Once
@@ -44,7 +47,7 @@ func (r *redisRepository) Set(ctx context.Context, key string, value interface{}
 
 	jsonValue, err := json.Marshal(value)
 	if err != nil {
-		r.Log.Error("redisRepository.Set error marshaling JSON",
+		r.Log.Error(logPrefix+"Set error marshaling JSON",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String(constvars.LoggingRedisKey, key),
 			zap.Error(err))
@@ -53,14 +56,14 @@ func (r *redisRepository) Set(ctx context.Context, key string, value interface{}
 
 	err = r.Client.Set(ctx, key, jsonValue, exp).Err()
 	if err != nil {
-		r.Log.Error("redisRepository.Set error",
+		r.Log.Error(logPrefix+"Set error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String(constvars.LoggingRedisKey, key),
 			zap.Error(err))
 		return exceptions.ErrRedisSet(err)
 	}
 
-	r.Log.Info("redisRepository.Set succeeded",
+	r.Log.Info(logPrefix+"Set succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String(constvars.LoggingRedisKey, key))
 	return err
@@ -71,19 +74,19 @@ func (r *redisRepository) Get(ctx context.Context, key string) (string, error) {
 
 	data, err := r.Client.Get(ctx, key).Result()
 	if err == redis.Nil {
-		r.Log.Info("redisRepository.Get no data found",
+		r.Log.Info(logPrefix+"Get no data found",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String(constvars.LoggingRedisKey, key))
 		return data, nil
 	} else if err != nil {
-		r.Log.Error("redisRepository.Get error",
+		r.Log.Error(logPrefix+"Get error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String(constvars.LoggingRedisKey, key),
 			zap.Error(err))
 		return data, exceptions.ErrRedisGetNoData(err, key)
 	}
 
-	r.Log.Info("redisRepository.Get succeeded",
+	r.Log.Info(logPrefix+"Get succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String(constvars.LoggingRedisKey, key),
 	)
@@ -108,7 +111,7 @@ func (r *redisRepository) IncrementWithTTL(ctx context.Context, key string, exp 
 
 	res, err := script.Run(ctx, r.Client, []string{key}, exp.Milliseconds()).Result()
 	if err != nil {
-		r.Log.Error("redisRepository.IncrementWithTTL error",
+		r.Log.Error(logPrefix+"IncrementWithTTL error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String(constvars.LoggingRedisKey, key),
 			zap.Error(err))
@@ -117,14 +120,14 @@ func (r *redisRepository) IncrementWithTTL(ctx context.Context, key string, exp 
 
 	val, ok := res.(int64)
 	if !ok {
-		r.Log.Error("redisRepository.IncrementWithTTL unexpected result type",
+		r.Log.Error(logPrefix+"IncrementWithTTL unexpected result type",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String(constvars.LoggingRedisKey, key),
 			zap.Any("result", res))
 		return 0, exceptions.ErrRedisIncrement(fmt.Errorf("unexpected result type %T", res))
 	}
 
-	r.Log.Info("redisRepository.IncrementWithTTL succeeded",
+	r.Log.Info(logPrefix+"IncrementWithTTL succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String(constvars.LoggingRedisKey, key),
 		zap.Int64("new_value", val))
@@ -152,7 +155,7 @@ func (r *redisRepository) logCalled(ctx context.Context, key, opName string, ext
 		zap.String(constvars.LoggingRedisKey, key),
 	}
 	fields = append(fields, extra...)
-	r.Log.Info("redisRepository."+opName+" called", fields...)
+	r.Log.Info(logPrefix+opName+" called", fields...)
 	return requestID
 }
 
@@ -169,18 +172,18 @@ func (r *redisRepository) executeRedis(ctx context.Context, key, opName string, 
 	if values != nil {
 		calledFields = append(calledFields, zap.Any(constvars.LoggingRedisValuesKey, values))
 	}
-	r.Log.Info("redisRepository."+opName+" called", calledFields...)
+	r.Log.Info(logPrefix+opName+" called", calledFields...)
 
 	err := do(ctx, key, values...)
 	if err != nil {
-		r.Log.Error("redisRepository."+opName+" error",
+		r.Log.Error(logPrefix+opName+" error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String(constvars.LoggingRedisKey, key),
 			zap.Error(err))
 		return errFactory(err)
 	}
 
-	r.Log.Info("redisRepository."+opName+" succeeded",
+	r.Log.Info(logPrefix+opName+" succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String(constvars.LoggingRedisKey, key))
 	return err
@@ -216,14 +219,14 @@ func (r *redisRepository) GetSetMembers(ctx context.Context, key string) ([]stri
 
 	setMembers, err := r.Client.SMembers(ctx, key).Result()
 	if err != nil {
-		r.Log.Error("redisRepository.GetSetMembers error",
+		r.Log.Error(logPrefix+"GetSetMembers error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String(constvars.LoggingRedisKey, key),
 			zap.Error(err))
 		return setMembers, exceptions.ErrRedisGetSetMembers(err)
 	}
 
-	r.Log.Info("redisRepository.GetSetMembers succeeded",
+	r.Log.Info(logPrefix+"GetSetMembers succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String(constvars.LoggingRedisKey, key),
 		zap.Int(constvars.LoggingRedisMembersKey, len(setMembers)))
@@ -235,7 +238,7 @@ func (r *redisRepository) TrySetNX(ctx context.Context, key string, value interf
 
 	jsonValue, err := json.Marshal(value)
 	if err != nil {
-		r.Log.Error("redisRepository.TrySetNX error marshaling JSON",
+		r.Log.Error(logPrefix+"TrySetNX error marshaling JSON",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String(constvars.LoggingRedisKey, key),
 			zap.Error(err))
@@ -244,13 +247,13 @@ func (r *redisRepository) TrySetNX(ctx context.Context, key string, value interf
 
 	acquired, err := r.Client.SetNX(ctx, key, jsonValue, exp).Result()
 	if err != nil {
-		r.Log.Error("redisRepository.TrySetNX error",
+		r.Log.Error(logPrefix+"TrySetNX error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String(constvars.LoggingRedisKey, key),
 			zap.Error(err))
 		return false, exceptions.ErrRedisSet(err)
 	}
-	r.Log.Info("redisRepository.TrySetNX succeeded",
+	r.Log.Info(logPrefix+"TrySetNX succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String(constvars.LoggingRedisKey, key),
 		zap.Bool(constvars.LoggingRedisAcquiredKey, acquired))
