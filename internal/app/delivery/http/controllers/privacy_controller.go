@@ -43,8 +43,24 @@ func (c *PurgeController) PurgeData(w http.ResponseWriter, r *http.Request) {
 		utils.BuildErrorResponse(c.Log, w, exceptions.BuildNewCustomError(err, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, "cannot resolve session identity"))
 		return
 	}
-	if fhirRole != constvars.KonsulinRolePatient || fhirID == "" {
+	if fhirID == "" {
 		utils.BuildErrorResponse(c.Log, w, exceptions.BuildNewCustomError(errors.New("patient identity required"), constvars.StatusForbidden, constvars.ErrClientNotAuthorized, "purge requires a patient session"))
+		return
+	}
+	// Authorization decision from the Casbin enforcer + rbac_policy.csv
+	// (p, Patient, DELETE, /privacy/purge), mirroring authorizeSynchronous.
+	// Fail closed: a nil enforcer is treated exactly like a denial.
+	if c.Middlewares.Enforcer == nil {
+		utils.BuildErrorResponse(c.Log, w, exceptions.BuildNewCustomError(nil, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, "authorization service unavailable"))
+		return
+	}
+	ok, err := c.Middlewares.Enforcer.Enforce(fhirRole, http.MethodDelete, "/privacy/purge")
+	if err != nil {
+		utils.BuildErrorResponse(c.Log, w, exceptions.BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, "authorization check failed"))
+		return
+	}
+	if !ok {
+		utils.BuildErrorResponse(c.Log, w, exceptions.BuildNewCustomError(errors.New("role not authorized for purge"), constvars.StatusForbidden, constvars.ErrClientNotAuthorized, "purge requires a patient session"))
 		return
 	}
 

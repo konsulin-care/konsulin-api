@@ -73,6 +73,7 @@ p, Patient, PUT, /fhir/Slot
 p, Patient, PUT, /fhir/Condition
 p, Patient, POST, /hook/synchronous/modify-profile
 p, Patient, POST, /hook/synchronous/update-avatar
+p, Patient, DELETE, /privacy/purge
 p, Practitioner, GET, /fhir/Appointment
 p, Practitioner, GET, /fhir/Condition
 p, Practitioner, GET, /fhir/HealthcareService

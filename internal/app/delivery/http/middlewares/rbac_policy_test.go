@@ -80,3 +80,32 @@ func TestRBACPolicy_Communication(t *testing.T) {
 		})
 	}
 }
+
+// TestRBACPolicy_PrivacyPurge asserts the erasure endpoint matrix: only a
+// resolved Patient session may DELETE /privacy/purge; Guest, Practitioner,
+// Clinic Admin, Researcher, and Superadmin are denied by policy.
+func TestRBACPolicy_PrivacyPurge(t *testing.T) {
+	enf := testEnforcer(t)
+
+	cases := []struct {
+		name   string
+		role   string
+		method string
+		want   bool
+	}{
+		{"patient delete", constvars.KonsulinRolePatient, http.MethodDelete, true},
+		{"guest delete", constvars.KonsulinRoleGuest, http.MethodDelete, false},
+		{"practitioner delete", constvars.KonsulinRolePractitioner, http.MethodDelete, false},
+		{"clinic admin delete", constvars.KonsulinRoleClinicAdmin, http.MethodDelete, false},
+		{"researcher delete", constvars.KonsulinRoleResearcher, http.MethodDelete, false},
+		{"superadmin delete", constvars.KonsulinRoleSuperadmin, http.MethodDelete, false},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ok, err := enf.Enforce(c.role, c.method, "/privacy/purge")
+			assert.NoError(t, err)
+			assert.Equal(t, c.want, ok, "Enforce(%q, %q, /privacy/purge)", c.role, c.method)
+		})
+	}
+}
