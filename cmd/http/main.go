@@ -71,7 +71,10 @@ func main() {
 	log.Printf("Successfully set time base to %s", internalConfig.App.Timezone)
 
 	// Initialize Redis connection
-	redis := database.NewRedisClient(driverConfig)
+	redis, err := database.NewRedisClient(driverConfig)
+	if err != nil {
+		log.Fatalf("Error connecting to Redis: %s", err.Error())
+	}
 
 	// Initialize RabbitMQ connection
 	rabbitMQ := messaging.NewRabbitMQ(driverConfig)
