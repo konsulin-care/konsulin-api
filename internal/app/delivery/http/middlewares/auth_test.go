@@ -351,11 +351,11 @@ func TestOwnsPostBody(t *testing.T) {
 
 func TestOwnsResource_PostConsentOwnership(t *testing.T) {
 	// A Patient may POST a Consent only when patient.reference is their own id.
-	got := ownsResource(context.Background(), "pat-1", "/fhir/Consent", constvars.KonsulinRolePatient, constvars.MethodPost, nil, nil, nil, nil, nil,
+	got := ownsResource(context.Background(), "pat-1", "/fhir/Consent", constvars.KonsulinRolePatient, constvars.MethodPost, rbacClients{},
 		[]byte(`{"resourceType":"Consent","status":"active","patient":{"reference":"Patient/pat-1"}}`))
 	assert.True(t, got, "Patient should own Consent POST referencing themselves")
 
-	got = ownsResource(context.Background(), "pat-1", "/fhir/Consent", constvars.KonsulinRolePatient, constvars.MethodPost, nil, nil, nil, nil, nil,
+	got = ownsResource(context.Background(), "pat-1", "/fhir/Consent", constvars.KonsulinRolePatient, constvars.MethodPost, rbacClients{},
 		[]byte(`{"resourceType":"Consent","status":"active","patient":{"reference":"Patient/pat-2"}}`))
 	assert.False(t, got, "Patient must not POST a Consent for another patient")
 }

@@ -41,7 +41,7 @@ func (m *Middlewares) handleAuthBundle(ctxIface context.Context, r *http.Request
 	body, _ := io.ReadAll(r.Body)
 	_ = r.Body.Close()
 
-	if err := scanBundle(ctxIface, m.Enforcer, body, roles, ctxIface.Value(keyFHIRID).(string), m.PatientFhirClient, m.PractitionerFhirClient, m.PractitionerRoleFhirClient, m.ScheduleFhirClient, m.QuestionnaireResponseFhirClient); err != nil {
+	if err := scanBundle(ctxIface, m.Enforcer, body, roles, ctxIface.Value(keyFHIRID).(string), m.rbacClients()); err != nil {
 		return true, err
 	}
 	r.Body = io.NopCloser(bytes.NewReader(body))
@@ -76,7 +76,13 @@ func (m *Middlewares) handleAuthSingleResource(ctxIface context.Context, r *http
 		}
 	}
 
-	return checkSingle(ctxIface, m.Enforcer, r.Method, fullURL, roles, ctxIface.Value(keyFHIRID).(string), m.PatientFhirClient, m.PractitionerFhirClient, m.PractitionerRoleFhirClient, m.ScheduleFhirClient, m.QuestionnaireResponseFhirClient, resourceBody)
+	return checkSingle(ctxIface, m.Enforcer, rbacRequest{
+		method:         r.Method,
+		normalizedPath: normalizePath(fullURL),
+		fhirID:         ctxIface.Value(keyFHIRID).(string),
+		url:            fullURL,
+		resource:       resourceBody,
+	}, roles, m.rbacClients())
 }
 
 func (m *Middlewares) Auth(next http.Handler) http.Handler {
@@ -401,7 +407,36 @@ func resolveIdentifierToPatientID(ctx context.Context, identifier string, patien
 	return patients[0].ID, nil
 }
 
-func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []string, uid string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient, practitionerRoleClient contracts.PractitionerRoleFhirClient, scheduleClient contracts.ScheduleFhirClient, questionnaireResponseClient contracts.QuestionnaireResponseFhirClient) error {
+// rbacClients bundles the FHIR clients needed for RBAC ownership checks.
+type rbacClients struct {
+	patient               contracts.PatientFhirClient
+	practitioner          contracts.PractitionerFhirClient
+	practitionerRole      contracts.PractitionerRoleFhirClient
+	schedule              contracts.ScheduleFhirClient
+	questionnaireResponse contracts.QuestionnaireResponseFhirClient
+}
+
+// rbacRequest bundles the request data needed for RBAC and ownership checks.
+type rbacRequest struct {
+	method         string
+	normalizedPath string
+	fhirID         string
+	url            string
+	resource       []byte
+}
+
+// rbacClients returns the middleware's FHIR clients bundled for RBAC checks.
+func (m *Middlewares) rbacClients() rbacClients {
+	return rbacClients{
+		patient:               m.PatientFhirClient,
+		practitioner:          m.PractitionerFhirClient,
+		practitionerRole:      m.PractitionerRoleFhirClient,
+		schedule:              m.ScheduleFhirClient,
+		questionnaireResponse: m.QuestionnaireResponseFhirClient,
+	}
+}
+
+func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []string, uid string, clients rbacClients) error {
 	if gjson.GetBytes(raw, "resourceType").String() != "Bundle" {
 		return fmt.Errorf("invalid bundle")
 	}
@@ -410,21 +445,27 @@ func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []str
 		method := entry.Get("request.method").String()
 		url := entry.Get("request.url").String()
 		resource := entry.Get("resource").Raw
-		if err := checkSingle(ctx, e, method, url, roles, uid, patientClient, practitionerClient, practitionerRoleClient, scheduleClient, questionnaireResponseClient, []byte(resource)); err != nil {
+		req := rbacRequest{
+			method:         method,
+			normalizedPath: normalizePath(url),
+			fhirID:         uid,
+			url:            url,
+			resource:       []byte(resource),
+		}
+		if err := checkSingle(ctx, e, req, roles, clients); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, roles []string, fhirID string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient, practitionerRoleClient contracts.PractitionerRoleFhirClient, scheduleClient contracts.ScheduleFhirClient, questionnaireResponseClient contracts.QuestionnaireResponseFhirClient, resource []byte) error {
-	normalizedPath := normalizePath(url)
-	resourceType := utils.ExtractResourceTypeFromPath(normalizedPath)
+func checkSingle(ctx context.Context, e *casbin.Enforcer, req rbacRequest, roles []string, clients rbacClients) error {
+	resourceType := utils.ExtractResourceTypeFromPath(req.normalizedPath)
 
 	// C3: entry-level QuestionnaireResponse / Communication GET reads must carry
 	// an identity scope (aggregate _summary=count stays public). Closes the
 	// open-endpoint hole where a bare query returned every response.
-	if err := checkScopedEntryRead(method, resourceType, roles, fhirID, url); err != nil {
+	if err := checkScopedEntryRead(req.method, resourceType, roles, req.fhirID, req.url); err != nil {
 		return err
 	}
 
@@ -433,17 +474,17 @@ func checkSingle(ctx context.Context, e *casbin.Enforcer, method, url string, ro
 	// patient-only). Allow them through the RBAC/ownership dispatch — the policy
 	// grants nobody a PUT on Communication, and non-referral Communication
 	// writes stay rejected below.
-	if isReferralCommunicationPut(method, resourceType, normalizedPath) {
+	if isReferralCommunicationPut(req.method, resourceType, req.normalizedPath) {
 		return nil
 	}
 
 	// direct request to public resource is allowed to bypass RBAC checks
 	// but only for GET requests to avoid unwanted modifications
-	if utils.IsPublicResource(resourceType) && method == http.MethodGet {
+	if utils.IsPublicResource(resourceType) && req.method == http.MethodGet {
 		return nil
 	}
 
-	return enforceRBAC(ctx, e, method, normalizedPath, roles, fhirID, url, patientClient, practitionerClient, practitionerRoleClient, scheduleClient, questionnaireResponseClient, resource)
+	return enforceRBAC(ctx, e, req, roles, clients)
 }
 
 // checkScopedEntryRead enforces that entry-level QuestionnaireResponse /
@@ -474,12 +515,12 @@ func isReferralCommunicationPut(method, resourceType, normalizedPath string) boo
 // enforceRBAC applies the Casbin policy for each session role and, for
 // Patient/Practitioner roles, the ownership check on the target resource.
 // Returns an error when no role authorizes the request.
-func enforceRBAC(ctx context.Context, e *casbin.Enforcer, method, normalizedPath string, roles []string, fhirID, url string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient, practitionerRoleClient contracts.PractitionerRoleFhirClient, scheduleClient contracts.ScheduleFhirClient, questionnaireResponseClient contracts.QuestionnaireResponseFhirClient, resource []byte) error {
+func enforceRBAC(ctx context.Context, e *casbin.Enforcer, req rbacRequest, roles []string, clients rbacClients) error {
 	for _, role := range roles {
-		if allowed(e, role, method, normalizedPath) {
+		if allowed(e, role, req.method, req.normalizedPath) {
 
 			if role == constvars.KonsulinRolePatient || role == constvars.KonsulinRolePractitioner {
-				ok := ownsResource(ctx, fhirID, url, role, method, patientClient, practitionerClient, practitionerRoleClient, scheduleClient, questionnaireResponseClient, resource)
+				ok := ownsResource(ctx, req.fhirID, req.url, role, req.method, clients, req.resource)
 				if ok {
 					return nil
 				}
@@ -762,7 +803,7 @@ func validateScheduleOwnership(ctx context.Context, fhirID, resourceStr string, 
 	return scheduleActorOwnedByPractitioner(ctx, schedules[0].Actor, fhirID, practitionerRoleClient)
 }
 
-func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, patientClient contracts.PatientFhirClient, practitionerClient contracts.PractitionerFhirClient, practitionerRoleClient contracts.PractitionerRoleFhirClient, scheduleClient contracts.ScheduleFhirClient, questionnaireResponseClient contracts.QuestionnaireResponseFhirClient, resource []byte) bool {
+func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, clients rbacClients, resource []byte) bool {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return false
@@ -781,15 +822,15 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, pati
 	}
 
 	if method == constvars.MethodPut && len(resource) > 0 {
-		return validateResourceOwnership(ctx, fhirID, role, resourceType, resource, practitionerRoleClient, scheduleClient, questionnaireResponseClient)
+		return validateResourceOwnership(ctx, fhirID, role, resourceType, resource, clients.practitionerRole, clients.schedule, clients.questionnaireResponse)
 	}
 
 	if role == constvars.KonsulinRolePatient {
-		return ownsPatientQuery(ctx, fhirID, u, resourceType, patientClient, practitionerClient)
+		return ownsPatientQuery(ctx, fhirID, u, resourceType, clients.patient, clients.practitioner)
 	}
 
 	if role == constvars.KonsulinRolePractitioner {
-		return ownsPractitionerQuery(ctx, fhirID, u, resourceType, patientClient, practitionerClient)
+		return ownsPractitionerQuery(ctx, fhirID, u, resourceType, clients.patient, clients.practitioner)
 	}
 
 	return false
