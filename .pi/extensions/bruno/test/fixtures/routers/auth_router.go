@@ -1,9 +1,10 @@
 package routers
 
 import (
-	"github.com/go-chi/chi/v5"
 	"konsulin-service/internal/app/delivery/http/controllers"
 	"konsulin-service/internal/app/delivery/http/middlewares"
+
+	"github.com/go-chi/chi/v5"
 )
 
 func attachAuthRoutes(router chi.Router, m *middlewares.Middlewares, authController *controllers.AuthController) {

@@ -77,7 +77,7 @@ func RequiresPatientOwnership(resourceType string) bool {
 		"Account":                  true,
 		"ChargeItem":               true,
 		"Invoice":                  true,
-		"Consent":                  true,
+		constvars.ResourceConsent:  true,
 		"ResearchSubject":          true,
 		"Communication":            true,
 	}

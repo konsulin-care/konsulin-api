@@ -2,13 +2,12 @@ package controllers
 
 import (
 	"errors"
-	"net/http"
-
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/delivery/http/middlewares"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
+	"net/http"
 
 	"go.uber.org/zap"
 )

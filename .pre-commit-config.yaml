@@ -1,12 +1,4 @@
 repos:
-  - repo: https://github.com/golangci/golangci-lint
-    rev: v2.12.2
-    hooks:
-      - id: golangci-lint
-        args: [--timeout=5m]
-
-
-
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
@@ -24,6 +16,17 @@ repos:
 
   - repo: local
     hooks:
+      # Pre-commit: golangci-lint on the current change only. Uses the same
+      # --new-from-patch semantics as CI's only-new-issues gate, so the commit
+      # gate and the CI gate can never disagree. No --fix: formatting problems
+      # are reported, not silently rewritten and left unstaged.
+      - id: golangci-lint
+        name: golangci-lint (new vs HEAD)
+        entry: bash -c 'export PATH="$HOME/.local/bin:$PATH"; p=$(mktemp); git diff HEAD -- . ":(exclude).pi/sandbox.json" > "$p"; CGO_ENABLED=0 mise exec golangci-lint -- golangci-lint run --new-from-patch="$p" --timeout=5m'
+        language: system
+        types: [go]
+        pass_filenames: false
+
       # Pre-commit: run tests only on packages with staged .go files
       - id: go-test
         name: go test (changed packages)
@@ -64,3 +67,31 @@ repos:
         language: system
         pass_filenames: false
         stages: [pre-push]
+
+      # Pre-push: golangci-lint over the whole branch diff vs the base.
+      # Replicates CI's only-new-issues gate and catches whole-branch debt:
+      # files committed before config tightening, bot-pushed commits, and
+      # anything the per-commit hook missed.
+      - id: golangci-lint-branch
+        name: golangci-lint (new vs develop)
+        entry: bash -c 'export PATH="$HOME/.local/bin:$PATH"; base=$(git merge-base HEAD origin/develop 2>/dev/null || echo HEAD); p=$(mktemp); git diff "$base" -- . ":(exclude).pi/sandbox.json" > "$p"; CGO_ENABLED=0 mise exec golangci-lint -- golangci-lint run --new-from-patch="$p" --timeout=5m'
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      # Lint-config hygiene: validate .golangci.yml and re-scan the whole module
+      # when it changes so tightened rules immediately resurface existing debt
+      # instead of leaking to CI.
+      - id: golangci-lint-config-verify
+        name: golangci-lint config verify
+        entry: bash -c 'export PATH="$HOME/.local/bin:$PATH"; mise exec golangci-lint -- golangci-lint config verify'
+        language: system
+        files: '\.golangci\.(yml|yaml)$'
+        pass_filenames: false
+
+      - id: golangci-lint-on-config-change
+        name: golangci-lint (full, config changed)
+        entry: bash -c 'export PATH="$HOME/.local/bin:$PATH"; CGO_ENABLED=0 mise exec golangci-lint -- golangci-lint run --timeout=5m'
+        language: system
+        files: '\.golangci\.(yml|yaml)$'
+        pass_filenames: false

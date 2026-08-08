@@ -173,6 +173,7 @@ const (
 	LoggingEducationLevelIDKey    = "education_level_id"
 	LoggingEducationLevelCodeKey  = "education_level_code"
 )
+
 const (
 	LoggingGenderCountKey = "genders_count"
 	LoggingGenderIDKey    = "genders_id"

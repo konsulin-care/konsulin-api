@@ -8,20 +8,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/utils"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/exceptions"
-	"konsulin-service/internal/pkg/utils"
-
 	"github.com/casbin/casbin/v2"
 	"go.uber.org/zap"
-
-	"slices"
 
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
@@ -513,7 +511,6 @@ func determineFilteringRole(roles []string) string {
 }
 
 func (m *Middlewares) filterResponseResourceAgainstRBAC(body []byte, roles []string) ([]byte, int, error) {
-
 	shouldFilter := false
 	for _, role := range roles {
 		if strings.EqualFold(role, constvars.KonsulinRoleSuperadmin) {
@@ -985,7 +982,7 @@ func genericOwnershipPatterns(raw json.RawMessage, oc *ownershipContext) (bool, 
 	}
 
 	// Check well-known reference fields first.
-	for _, field := range []string{"subject", "patient", "recipient", "actor"} {
+	for _, field := range []string{"subject", constvars.FhirFieldPatient, "recipient", "actor"} {
 		if ref := extractReference(res[field]); ref != "" && matchesOwnedRef(ref, oc) {
 			return true, nil
 		}

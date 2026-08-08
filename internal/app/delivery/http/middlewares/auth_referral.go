@@ -5,10 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"konsulin-service/internal/pkg/constvars"
 	"net/http"
 	"strings"
-
-	"konsulin-service/internal/pkg/constvars"
 
 	"github.com/tidwall/gjson"
 )

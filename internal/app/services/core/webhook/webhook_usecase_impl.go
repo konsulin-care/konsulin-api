@@ -17,6 +17,7 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -24,8 +25,6 @@ import (
 	"github.com/casbin/casbin/v2"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
-
-	"slices"
 
 	"go.uber.org/zap"
 )

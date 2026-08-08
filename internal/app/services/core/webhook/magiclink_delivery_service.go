@@ -5,14 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"strings"
-	"time"
-
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/services/shared/jwtmanager"
 	"konsulin-service/internal/pkg/constvars"
+	"net/http"
+	"strings"
+	"time"
 
 	"go.uber.org/zap"
 )

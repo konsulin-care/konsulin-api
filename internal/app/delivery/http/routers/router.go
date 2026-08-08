@@ -138,5 +138,4 @@ func isAllowedOrigin(allowedDomain, origin string) bool {
 		return true
 	}
 	return false
-
 }

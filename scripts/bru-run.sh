@@ -19,8 +19,12 @@ COLLECTION_DIR="${BRU_COLLECTION_DIR:-docs/api}"
 ENV_FILE="${COLLECTION_DIR}/.env"
 
 if [[ ! -f "${ENV_FILE}" ]]; then
-  echo "ERROR: ${ENV_FILE} not found — copy docs/api/.env.example to docs/api/.env" >&2
-  exit 1
+  if [[ "${REQUIRED}" -eq 1 ]]; then
+    echo "ERROR: ${ENV_FILE} not found — copy docs/api/.env.example to docs/api/.env" >&2
+    exit 1
+  fi
+  echo "SKIP: ${ENV_FILE} not found (copy docs/api/.env.example to docs/api/.env to run Bruno tests)"
+  exit 0
 fi
 
 # Load collection env vars (APP_BASE_URL, SUPERADMIN_API_KEY, ORGANIZATION)

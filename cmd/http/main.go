@@ -257,28 +257,8 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 
 	// Wire in-process forwarders for internal callers (magic link delivery, omnichannel)
 	// to skip the HTTP loopback and call ForwardSynchronousInternal directly.
-	if f, ok := magicLinkDelivery.(interface {
-		SetWebhookForwarder(fn func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error))
-	}); ok {
-		f.SetWebhookForwarder(func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
-			out, err := webhookUsecase.ForwardSynchronousInternal(ctx, service, method, body, contentType)
-			if err != nil {
-				return 0, nil, err
-			}
-			return out.StatusCode, out.Body, nil
-		})
-	}
-	if f, ok := userUsecase.(interface {
-		SetWebhookForwarder(fn func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error))
-	}); ok {
-		f.SetWebhookForwarder(func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
-			out, err := webhookUsecase.ForwardSynchronousInternal(ctx, service, method, body, contentType)
-			if err != nil {
-				return 0, nil, err
-			}
-			return out.StatusCode, out.Body, nil
-		})
-	}
+	wireWebhookForwarder(magicLinkDelivery, webhookUsecase.ForwardSynchronousInternal)
+	wireWebhookForwarder(userUsecase, webhookUsecase.ForwardSynchronousInternal)
 
 	webhookController := controllers.NewWebhookController(bootstrap.Logger, webhookUsecase, webhookLimiter, resourceLimiter, bootstrap.InternalConfig)
 	// Initialize payment usecase and controller (inject JWT manager)
@@ -358,4 +338,23 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	)
 
 	return nil
+}
+
+// wireWebhookForwarder connects an in-process caller (magic link delivery,
+// omnichannel) to the synchronous webhook service, skipping the HTTP loopback.
+// Targets that do not implement SetWebhookForwarder are left untouched.
+func wireWebhookForwarder(target any, forward func(ctx context.Context, service, method string, body []byte, contentType string) (*webhook.HandleSynchronousWebhookServiceOutput, error)) {
+	f, ok := target.(interface {
+		SetWebhookForwarder(fn func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error))
+	})
+	if !ok {
+		return
+	}
+	f.SetWebhookForwarder(func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
+		out, err := forward(ctx, service, method, body, contentType)
+		if err != nil {
+			return 0, nil, err
+		}
+		return out.StatusCode, out.Body, nil
+	})
 }

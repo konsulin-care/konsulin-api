@@ -278,7 +278,7 @@ func ownsPostBody(fhirID, role, resourceType string, resource []byte) bool {
 	var field string
 	switch resourceType {
 	case constvars.ResourceConsent:
-		field = "patient"
+		field = constvars.FhirFieldPatient
 	case constvars.ResourceResearchSubject:
 		field = "individual"
 	default:
@@ -368,7 +368,6 @@ func (m *Middlewares) resolveFHIRIdentity(ctx context.Context, uid string) (role
 		constvars.FhirSupertokenSystemIdentifier,
 		uid,
 	)
-
 	if err != nil {
 		return "", "", err
 	}
@@ -560,7 +559,7 @@ func allowScopedEntryRead(roles []string, fhirID, rawURL, resourceType string) b
 	switch resourceType {
 	case constvars.ResourceQuestionnaireResponse:
 		if fhirID != "" {
-			return queryHasOwnRef(u.Query(), fhirID, "author", "patient", "subject")
+			return queryHasOwnRef(u.Query(), fhirID, "author", constvars.FhirFieldPatient, "subject")
 		}
 		// Guest / anonymous reads must present an identifier scope.
 		return u.Query().Get("identifier") != ""
@@ -592,6 +591,7 @@ func allowScopedEntryRead(roles []string, fhirID, rawURL, resourceType string) b
 func normalizePath(rawURL string) string {
 	return utils.NormalizePath(rawURL)
 }
+
 func firstSeg(raw string) string {
 	path := strings.SplitN(raw, "?", 2)[0]
 
@@ -605,6 +605,7 @@ func firstSeg(raw string) string {
 	}
 	return ""
 }
+
 func validateResourceOwnership(ctx context.Context, fhirID, role, resourceType string, resource []byte, practitionerRoleClient contracts.PractitionerRoleFhirClient, scheduleClient contracts.ScheduleFhirClient, questionnaireResponseClient contracts.QuestionnaireResponseFhirClient) bool {
 	if role == constvars.KonsulinRolePatient {
 		return validatePatientResourceOwnership(ctx, fhirID, resourceType, resource, questionnaireResponseClient)
@@ -851,7 +852,7 @@ func ownsPatientQuery(ctx context.Context, fhirID string, u *url.URL, resourceTy
 
 // checkPatientQueryRefs checks common patient query parameters for ownership.
 func checkPatientQueryRefs(q url.Values, resourceType, fhirID string) bool {
-	for _, param := range []string{"patient", "subject", "actor"} {
+	for _, param := range []string{constvars.FhirFieldPatient, "subject", "actor"} {
 		if val := q.Get(param); val != "" && strings.TrimPrefix(val, constvars.FHIRRefPrefixPatient) == fhirID {
 			return true
 		}
@@ -1037,7 +1038,7 @@ func checkPractitionerQueryParams(fhirID string, q url.Values) bool {
 	if a := q.Get("actor"); a != "" && strings.TrimPrefix(a, constvars.FHIRRefPrefixPractitioner) == fhirID {
 		return true
 	}
-	return q.Get("patient") != "" || strings.HasPrefix(q.Get("subject"), constvars.FHIRRefPrefixPatient)
+	return q.Get(constvars.FhirFieldPatient) != "" || strings.HasPrefix(q.Get("subject"), constvars.FHIRRefPrefixPatient)
 }
 
 func checkPractitionerHasQuery(fhirID string, q url.Values) bool {
@@ -1113,7 +1114,7 @@ func checkPractitionerQueryOwnership(q url.Values, resourceType, fhirID string) 
 	if a := q.Get("actor"); a != "" && strings.TrimPrefix(a, constvars.FHIRRefPrefixPractitioner) == fhirID {
 		return true
 	}
-	if q.Get("patient") != "" || strings.HasPrefix(q.Get("subject"), constvars.FHIRRefPrefixPatient) {
+	if q.Get(constvars.FhirFieldPatient) != "" || strings.HasPrefix(q.Get("subject"), constvars.FHIRRefPrefixPatient) {
 		return true
 	}
 	if participant := q.Get("participant"); participant != "" {

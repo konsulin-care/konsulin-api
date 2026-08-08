@@ -2,7 +2,6 @@ package users
 
 import (
 	"context"
-
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 

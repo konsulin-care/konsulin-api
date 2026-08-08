@@ -286,7 +286,6 @@ func (uc *authUsecase) resolveRolesForConsumeCode(userID string) ([]string, erro
 			constvars.KonsulinRolePatient,
 			nil,
 		)
-
 		if err != nil {
 			uc.Log.Error("authUsecase.SupertokenConsumeCode error adding role to user",
 				zap.Error(err),

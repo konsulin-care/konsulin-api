@@ -17,6 +17,7 @@ const (
 	FhirFieldCode         = "code"
 	FhirFieldTag          = "tag"
 	FhirFieldSchedule     = "schedule"
+	FhirFieldPatient      = "patient"
 )
 
 // FHIR bundle type constants.
