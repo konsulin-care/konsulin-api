@@ -16,6 +16,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// logPrefix namespaces every log entry emitted by this FHIR client.
+const logPrefix = "serviceRequestFhirClient."
+
 var (
 	serviceRequestFhirClientInstance contracts.ServiceRequestFhirClient
 	onceServiceRequestFhirClient     sync.Once
@@ -39,13 +42,13 @@ func NewServiceRequestFhirClient(baseUrl string, logger *zap.Logger) contracts.S
 
 func (c *serviceRequestFhirClient) CreateServiceRequest(ctx context.Context, request *fhir_dto.CreateServiceRequestInput) (*fhir_dto.CreateServiceRequestOutput, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	c.Log.Info("serviceRequestFhirClient.CreateServiceRequest called",
+	c.Log.Info(logPrefix+"CreateServiceRequest called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
 
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
-		c.Log.Error("serviceRequestFhirClient.CreateServiceRequest error marshaling JSON",
+		c.Log.Error(logPrefix+"CreateServiceRequest error marshaling JSON",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
@@ -72,7 +75,7 @@ func (c *serviceRequestFhirClient) CreateServiceRequest(ctx context.Context, req
 		return nil, err
 	}
 
-	c.Log.Info("serviceRequestFhirClient.CreateServiceRequest succeeded",
+	c.Log.Info(logPrefix+"CreateServiceRequest succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String("service_request_id", serviceRequest.ID),
 	)
@@ -81,7 +84,7 @@ func (c *serviceRequestFhirClient) CreateServiceRequest(ctx context.Context, req
 
 func (c *serviceRequestFhirClient) GetServiceRequestByIDAndVersion(ctx context.Context, id string, version string) (*fhir_dto.GetServiceRequestOutput, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	c.Log.Info("serviceRequestFhirClient.GetServiceRequestVersion called",
+	c.Log.Info(logPrefix+"GetServiceRequestVersion called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String("id", id),
 		zap.String("version", version),
@@ -108,7 +111,7 @@ func (c *serviceRequestFhirClient) GetServiceRequestByIDAndVersion(ctx context.C
 		return nil, err
 	}
 
-	c.Log.Info("serviceRequestFhirClient.GetServiceRequestVersion succeeded",
+	c.Log.Info(logPrefix+"GetServiceRequestVersion succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String("service_request_id", out.ID),
 		zap.String("version", out.Meta.VersionId),
@@ -119,7 +122,7 @@ func (c *serviceRequestFhirClient) GetServiceRequestByIDAndVersion(ctx context.C
 // Search queries ServiceRequest resources by search parameters and returns an array of results.
 func (c *serviceRequestFhirClient) Search(ctx context.Context, input *fhir_dto.SearchServiceRequestInput) ([]fhir_dto.GetServiceRequestOutput, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	c.Log.Info("serviceRequestFhirClient.Search called",
+	c.Log.Info(logPrefix+"Search called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String("id", input.ID),
 	)
@@ -140,7 +143,7 @@ func (c *serviceRequestFhirClient) Search(ctx context.Context, input *fhir_dto.S
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != constvars.StatusOK {
-		c.Log.Error("serviceRequestFhirClient.Search received non-OK status",
+		c.Log.Error(logPrefix+"Search received non-OK status",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Int("status_code", resp.StatusCode),
 		)
@@ -158,7 +161,7 @@ func (c *serviceRequestFhirClient) Search(ctx context.Context, input *fhir_dto.S
 		results = append(results, entry.Resource)
 	}
 
-	c.Log.Info("serviceRequestFhirClient.Search succeeded",
+	c.Log.Info(logPrefix+"Search succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.Int("result_count", len(results)),
 	)
@@ -168,14 +171,14 @@ func (c *serviceRequestFhirClient) Search(ctx context.Context, input *fhir_dto.S
 // Update performs a PUT request to update an existing ServiceRequest resource.
 func (c *serviceRequestFhirClient) Update(ctx context.Context, id string, input *fhir_dto.UpdateServiceRequestInput) (*fhir_dto.GetServiceRequestOutput, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	c.Log.Info("serviceRequestFhirClient.Update called",
+	c.Log.Info(logPrefix+"Update called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String("id", id),
 	)
 
 	requestJSON, err := json.Marshal(input)
 	if err != nil {
-		c.Log.Error("serviceRequestFhirClient.Update error marshaling JSON",
+		c.Log.Error(logPrefix+"Update error marshaling JSON",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
@@ -195,7 +198,7 @@ func (c *serviceRequestFhirClient) Update(ctx context.Context, id string, input 
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != constvars.StatusOK && resp.StatusCode != constvars.StatusCreated {
-		c.Log.Error("serviceRequestFhirClient.Update received error status",
+		c.Log.Error(logPrefix+"Update received error status",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Int("status_code", resp.StatusCode),
 		)
@@ -207,7 +210,7 @@ func (c *serviceRequestFhirClient) Update(ctx context.Context, id string, input 
 		return nil, err
 	}
 
-	c.Log.Info("serviceRequestFhirClient.Update succeeded",
+	c.Log.Info(logPrefix+"Update succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String("service_request_id", out.ID),
 	)
@@ -217,7 +220,7 @@ func (c *serviceRequestFhirClient) Update(ctx context.Context, id string, input 
 // EnsureGroupExists checks if Group/{groupID} exists; if not, it creates it via PUT.
 func (c *serviceRequestFhirClient) ensureGroupExists(ctx context.Context, groupID string) error {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	c.Log.Info("serviceRequestFhirClient.EnsureGroupExists called",
+	c.Log.Info(logPrefix+"EnsureGroupExists called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String("group_id", groupID),
 	)
@@ -305,7 +308,7 @@ func (c *serviceRequestFhirClient) newRequest(ctx context.Context, method, url, 
 	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
 		requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-		c.Log.Error("serviceRequestFhirClient."+opName+" error creating HTTP request",
+		c.Log.Error(logPrefix+opName+" error creating HTTP request",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
@@ -321,7 +324,7 @@ func (c *serviceRequestFhirClient) sendRequest(req *http.Request, opName string)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		c.Log.Error("serviceRequestFhirClient."+opName+" error sending HTTP request",
+		c.Log.Error(logPrefix+opName+" error sending HTTP request",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
@@ -335,7 +338,7 @@ func (c *serviceRequestFhirClient) sendRequest(req *http.Request, opName string)
 func (c *serviceRequestFhirClient) decodeResponse(ctx context.Context, resp *http.Response, out any, opName string) error {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
-		c.Log.Error("serviceRequestFhirClient."+opName+" error decoding response",
+		c.Log.Error(logPrefix+opName+" error decoding response",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
