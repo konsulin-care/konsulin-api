@@ -242,186 +242,125 @@ func ownsResource(fhirID, rawURL, role, method string) bool {
 		return false
 	}
 
-	resourceType := utils.ExtractResourceTypeFromPath(u.Path)
-
 	if method == "POST" {
 		return true
 	}
 
-	if role == constvars.KonsulinRolePatient {
+	switch role {
+	case constvars.KonsulinRolePatient:
+		return ownsPatientTestResource(fhirID, u)
+	case constvars.KonsulinRolePractitioner:
+		return ownsPractitionerTestResource(fhirID, u)
+	}
+	return false
+}
 
-		if utils.IsPublicResource(resourceType) {
+// ownsPatientTestResource mirrors the patient ownership matrix: public
+// resources are owned, resources outside patient ownership are not, and
+// Patient/<id> paths plus patient/subject/actor/questionnaire query params
+// must reference the caller's own id.
+func ownsPatientTestResource(fhirID string, u *url.URL) bool {
+	resourceType := utils.ExtractResourceTypeFromPath(u.Path)
+	if utils.IsPublicResource(resourceType) {
+		return true
+	}
+	if !utils.RequiresPatientOwnership(resourceType) {
+		return false
+	}
+
+	if res, id := resourceIDFromTestPath(u.Path); res == "Patient" && id == fhirID {
+		return true
+	}
+
+	q := u.Query()
+	for _, param := range []string{"patient", "subject", "actor"} {
+		if v := q.Get(param); v != "" && strings.TrimPrefix(v, "Patient/") == fhirID {
 			return true
 		}
-
-		if utils.RequiresPatientOwnership(resourceType) {
-
-			parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
-			if len(parts) >= 2 {
-				var res, id string
-
-				if strings.EqualFold(parts[0], "fhir") {
-					if len(parts) >= 3 {
-						res, id = parts[1], parts[2]
-					}
-				} else {
-					res, id = parts[0], parts[1]
-				}
-
-				if res == "Patient" && id == fhirID {
-					return true
-				}
-			}
-
-			q := u.Query()
-
-			if p := q.Get("patient"); p != "" {
-				id := strings.TrimPrefix(p, "Patient/")
-				return id == fhirID
-			}
-
-			if s := q.Get("subject"); s != "" {
-				id := strings.TrimPrefix(s, "Patient/")
-				return id == fhirID
-			}
-
-			if a := q.Get("actor"); a != "" {
-				id := strings.TrimPrefix(a, "Patient/")
-				return id == fhirID
-			}
-
-			if qr := q.Get("questionnaire"); qr != "" {
-				return true
-			}
-
-			return false
-		}
-
-		return false
 	}
+	// questionnaire is always allowed for patients
+	return q.Get("questionnaire") != ""
+}
 
-	if role == constvars.KonsulinRolePractitioner {
+// ownsPractitionerTestResource mirrors the practitioner ownership matrix:
+// public resources are owned unless they carry practitioner/actor/_has
+// ownership params; practitioner-owned resources and Appointments must
+// reference the caller's own id.
+func ownsPractitionerTestResource(fhirID string, u *url.URL) bool {
+	resourceType := utils.ExtractResourceTypeFromPath(u.Path)
+	q := u.Query()
 
-		if utils.IsPublicResource(resourceType) {
-
-			q := u.Query()
-			hasOwnershipParams := false
-
-			if q.Get("practitioner") != "" || q.Get("actor") != "" {
+	hasOwnershipParams := q.Get("practitioner") != "" || q.Get("actor") != ""
+	if !hasOwnershipParams {
+		for key := range q {
+			if strings.HasPrefix(key, "_has") && strings.Contains(key, "practitioner") {
 				hasOwnershipParams = true
+				break
 			}
-
-			for key := range q {
-				if strings.HasPrefix(key, "_has") && strings.Contains(key, "practitioner") {
-					hasOwnershipParams = true
-					break
-				}
-			}
-
-			if !hasOwnershipParams {
-				return true
-			}
-
-			parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
-			if len(parts) >= 2 {
-				var res, id string
-				if strings.EqualFold(parts[0], "fhir") {
-					if len(parts) >= 3 {
-						res, id = parts[1], parts[2]
-					}
-				} else {
-					res, id = parts[0], parts[1]
-				}
-
-				if res == "Practitioner" && id == fhirID {
-					return true
-				}
-			}
-
-			if p := q.Get("practitioner"); p != "" {
-				id := strings.TrimPrefix(p, "Practitioner/")
-				return id == fhirID
-			}
-
-			if a := q.Get("actor"); a != "" {
-				id := strings.TrimPrefix(a, "Practitioner/")
-				return id == fhirID
-			}
-
-			for key, values := range q {
-				if strings.HasPrefix(key, "_has") && strings.Contains(key, "practitioner") {
-					for _, value := range values {
-						if value == fhirID {
-							return true
-						}
-					}
-				}
-			}
-
-			return false
 		}
-
-		if utils.RequiresPractitionerOwnership(resourceType) {
-
-			parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
-			if len(parts) >= 2 {
-				var res, id string
-				if strings.EqualFold(parts[0], "fhir") {
-					if len(parts) >= 3 {
-						res, id = parts[1], parts[2]
-					}
-				} else {
-					res, id = parts[0], parts[1]
-				}
-
-				if res == "Practitioner" && id == fhirID {
-					return true
-				}
-			}
-
-			q := u.Query()
-
-			if p := q.Get("practitioner"); p != "" {
-				id := strings.TrimPrefix(p, "Practitioner/")
-				return id == fhirID
-			}
-
-			if a := q.Get("actor"); a != "" {
-				id := strings.TrimPrefix(a, "Practitioner/")
-				return id == fhirID
-			}
-
-			for key, values := range q {
-				if strings.HasPrefix(key, "_has") && strings.Contains(key, "practitioner") {
-					for _, value := range values {
-						if value == fhirID {
-							return true
-						}
-					}
-				}
-			}
-
-			return false
-		}
-
-		if resourceType == "Appointment" {
-			q := u.Query()
-
-			if p := q.Get("practitioner"); p != "" {
-				id := strings.TrimPrefix(p, "Practitioner/")
-				return id == fhirID
-			}
-
-			if a := q.Get("actor"); a != "" {
-				id := strings.TrimPrefix(a, "Practitioner/")
-				return id == fhirID
-			}
-
-			return false
-		}
-
-		return false
 	}
 
+	if utils.IsPublicResource(resourceType) {
+		if !hasOwnershipParams {
+			return true
+		}
+		return ownsPractitionerQueryTestResource(fhirID, u)
+	}
+	if utils.RequiresPractitionerOwnership(resourceType) {
+		return ownsPractitionerQueryTestResource(fhirID, u)
+	}
+
+	if resourceType == "Appointment" {
+		if p := q.Get("practitioner"); p != "" && strings.TrimPrefix(p, "Practitioner/") == fhirID {
+			return true
+		}
+		if a := q.Get("actor"); a != "" && strings.TrimPrefix(a, "Practitioner/") == fhirID {
+			return true
+		}
+	}
 	return false
+}
+
+// ownsPractitionerQueryTestResource matches a Practitioner/<id> path or
+// practitioner/actor/_has query params against the caller's own id. It is the
+// shared query-match block for public-with-params and practitioner-scoped
+// resources.
+func ownsPractitionerQueryTestResource(fhirID string, u *url.URL) bool {
+	if res, id := resourceIDFromTestPath(u.Path); res == "Practitioner" && id == fhirID {
+		return true
+	}
+
+	q := u.Query()
+	if p := q.Get("practitioner"); p != "" && strings.TrimPrefix(p, "Practitioner/") == fhirID {
+		return true
+	}
+	if a := q.Get("actor"); a != "" && strings.TrimPrefix(a, "Practitioner/") == fhirID {
+		return true
+	}
+	for key, values := range q {
+		if strings.HasPrefix(key, "_has") && strings.Contains(key, "practitioner") {
+			for _, value := range values {
+				if value == fhirID {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// resourceIDFromTestPath parses a URL path into resource type and id,
+// handling both /fhir/{resource}/{id} and /{resource}/{id} patterns.
+func resourceIDFromTestPath(path string) (res, id string) {
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	if len(parts) >= 2 {
+		if strings.EqualFold(parts[0], "fhir") {
+			if len(parts) >= 3 {
+				return parts[1], parts[2]
+			}
+			return "", ""
+		}
+		return parts[0], parts[1]
+	}
+	return "", ""
 }
