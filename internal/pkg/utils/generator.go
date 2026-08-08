@@ -11,7 +11,7 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 )
 
-// GenerateResponseID creates a unique transaction ID.
+// GenerateRequestID creates a unique transaction ID.
 //
 // The ID is generated using the current time in nanoseconds
 // since the Unix epoch, ensuring high precision and uniqueness

@@ -68,8 +68,7 @@ func (i *InitializeNewUserFHIRResourcesInput) ToogleByRoles(roles []string) {
 	}
 }
 
-// Resource translate to what resource should be created
-// based on the toogle values.
+// Resources translates the toggle values into the FHIR resources that should be created.
 func (i *InitializeNewUserFHIRResourcesInput) Resources() []string {
 	resources := []string{}
 	if i.PractitionerRolesExists {
