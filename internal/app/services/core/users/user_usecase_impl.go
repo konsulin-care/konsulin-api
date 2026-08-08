@@ -9,7 +9,6 @@ import (
 	"io"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/app/services/shared/jwtmanager"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
@@ -113,47 +112,6 @@ func (uc *userUsecase) InitializeNewUserFHIRResources(ctx context.Context, input
 		}
 	}
 	return output, nil
-}
-
-func (uc *userUsecase) deactivatePractitionerFhirData(ctx context.Context, user *models.User) error {
-	return deactivateFhirData(uc, ctx, user, "deactivatePractitionerFhirData", "practitioner", user.ConvertToPractitionerFhirDeactivationRequest(), uc.updatePractitionerDeactivation)
-}
-
-func (uc *userUsecase) deactivatePatientFhirData(ctx context.Context, user *models.User) error {
-	return deactivateFhirData(uc, ctx, user, "deactivatePatientFhirData", "patient", user.ConvertToPatientFhirDeactivationRequest(), uc.updatePatientDeactivation)
-}
-
-// updatePractitionerDeactivation persists a practitioner deactivation update.
-func (uc *userUsecase) updatePractitionerDeactivation(ctx context.Context, req *fhir_dto.Practitioner) error {
-	_, err := uc.PractitionerFhirClient.UpdatePractitioner(ctx, req)
-	return err
-}
-
-// updatePatientDeactivation persists a patient deactivation update.
-func (uc *userUsecase) updatePatientDeactivation(ctx context.Context, req *fhir_dto.Patient) error {
-	_, err := uc.PatientFhirClient.UpdatePatient(ctx, req)
-	return err
-}
-
-// deactivateFhirData runs a FHIR deactivation update for the given resource,
-// logging start, failure, and success with the operation name.
-func deactivateFhirData[T any](uc *userUsecase, ctx context.Context, user *models.User, opName, resourceName string, request T, update func(context.Context, T) error) error {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	uc.Log.Info("userUsecase."+opName+" called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingUserIDKey, user.ID),
-	)
-	if err := update(ctx, request); err != nil {
-		uc.Log.Error("userUsecase."+opName+" error updating "+resourceName+" FHIR resource",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return err
-	}
-	uc.Log.Info("userUsecase."+opName+" succeeded",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-	)
-	return nil
 }
 
 // identifierScanResult holds the result of scanning identifiers for supertoken and Chatwoot IDs.
