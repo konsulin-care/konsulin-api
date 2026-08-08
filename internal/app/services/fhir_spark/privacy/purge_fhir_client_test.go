@@ -124,6 +124,8 @@ func TestFindActivelyOwnedResources_FollowsNextLink(t *testing.T) {
 		case "/Observation", "/Observation/page2":
 			page++
 			if r.URL.Path == "/Observation" {
+				// Mock FHIR bundle served by the httptest server — no user input, no HTML.
+				// nosemgrep: no-printf-in-responsewriter, no-direct-write-to-responsewriter
 				_, _ = w.Write([]byte(fmt.Sprintf(`{
 				"resourceType":"Bundle","type":"searchset",
 				"link":[
@@ -134,6 +136,8 @@ func TestFindActivelyOwnedResources_FollowsNextLink(t *testing.T) {
 			}`, server.URL, server.URL)))
 				return
 			}
+			// Mock FHIR bundle served by the httptest server — no user input, no HTML.
+			// nosemgrep: no-printf-in-responsewriter, no-direct-write-to-responsewriter
 			_, _ = w.Write([]byte(fmt.Sprintf(`{
 				"resourceType":"Bundle","type":"searchset",
 				"link":[{"relation":"self","url":"%s/Observation/page2"}],

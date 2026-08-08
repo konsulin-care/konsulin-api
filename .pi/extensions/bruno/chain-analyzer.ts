@@ -28,26 +28,22 @@ export interface ChainDiagnostic {
 
 /** Extract the body of a Go handler function by name. */
 export function extractHandlerSource(source: string, handlerName: string): string | null {
-  const funcRegex = new RegExp(
-    `func\\s+\\(\\w+\\s+\\*?\\w+\\)\\s+${escapeRegex(handlerName)}\\s*\\([^)]*\\)\\s*\\{`,
-  );
-  const match = funcRegex.exec(source);
-  if (!match) return null;
-
-  const start = match.index + match[0].length;
-  let depth = 1;
-  let pos = start;
-  while (pos < source.length && depth > 0) {
-    const ch = source[pos];
-    if (ch === '{') depth++;
-    else if (ch === '}') depth--;
-    pos++;
+  const funcRegex = /func\s+\(\w+\s+\*?\w+\)\s+(\w+)\s*\([^)]*\)\s*\{/g;
+  let match: RegExpExecArray | null;
+  while ((match = funcRegex.exec(source)) !== null) {
+    if (match[1] !== handlerName) continue;
+    const start = match.index + match[0].length;
+    let depth = 1;
+    let pos = start;
+    while (pos < source.length && depth > 0) {
+      const ch = source[pos];
+      if (ch === '{') depth++;
+      else if (ch === '}') depth--;
+      pos++;
+    }
+    return source.slice(start, pos - 1).trim();
   }
-  return source.slice(start, pos - 1).trim();
-}
-
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return null;
 }
 
 /** Extract usecase method calls: ctrl.AuthUsecase.CreateMagicLink(...) */

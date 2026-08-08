@@ -62,6 +62,30 @@ await describe('chain-analyzer', async () => {
       assert.ok(body.includes('CreateAnonymousSession'));
       assert.ok(!body.includes('CreateMagicLink'));
     });
+
+    await it('matches handler names exactly, not by prefix', () => {
+      const source = `
+        func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Request) {
+          return
+        }
+      `;
+      assert.equal(extractHandlerSource(source, 'Create'), null);
+    });
+
+    await it('extracts the exact handler when names share a prefix', () => {
+      const source = `
+        func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Request) {
+          return linkResult
+        }
+        func (ctrl *AuthController) Create(w http.ResponseWriter, r *http.Request) {
+          return createResult
+        }
+      `;
+      const body = extractHandlerSource(source, 'Create');
+      assert.ok(body, 'expected the exact handler to be extracted');
+      assert.ok(body.includes('createResult'));
+      assert.ok(!body.includes('linkResult'));
+    });
   });
 
   await describe('extractUsecaseCalls', async () => {
