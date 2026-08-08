@@ -27,11 +27,26 @@ if [[ ! -f "${ENV_FILE}" ]]; then
   exit 0
 fi
 
-# Load collection env vars (APP_BASE_URL, SUPERADMIN_API_KEY, ORGANIZATION)
-set -a
-# shellcheck disable=SC1091
-source "${ENV_FILE}"
-set +a
+# Refuse to load a tracked .env — a committed/force-added env file must never
+# be trusted (or executed) by hooks.
+if git ls-files --error-unmatch "${ENV_FILE}" >/dev/null 2>&1; then
+  echo "ERROR: ${ENV_FILE} is tracked by git — refusing to load a tracked .env" >&2
+  exit 1
+fi
+
+# Load collection env vars (APP_BASE_URL, SUPERADMIN_API_KEY, ORGANIZATION).
+# Non-evaluating parse: only valid KEY=value lines are exported (one layer of
+# surrounding quotes stripped); blanks, comments, and any line that is not a
+# plain KEY=value assignment are ignored. Nothing is ever executed as shell.
+while IFS='=' read -r key value; do
+  case "$key" in
+    ''|'#'*) continue ;;
+  esac
+  [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+  value="${value#\"}"; value="${value%\"}"
+  value="${value#\'}"; value="${value%\'}"
+  export "$key=$value"
+done < "${ENV_FILE}"
 
 APP_BASE_URL="${APP_BASE_URL//\"/}" # strip surrounding quotes if present
 if [[ -z "${APP_BASE_URL}" ]]; then
