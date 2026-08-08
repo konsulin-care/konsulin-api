@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"konsulin-service/internal/pkg/constvars"
@@ -303,11 +302,11 @@ func findResourceIDFromAppointment(request fhir_dto.Appointment, resourcePrefix,
 	return "", exceptions.ErrServerProcess(errors.New(notFoundMsg))
 }
 
-func FindPatientIDFromFhirAppointment(ctx context.Context, request fhir_dto.Appointment) (string, error) {
+func FindPatientIDFromFhirAppointment(request fhir_dto.Appointment) (string, error) {
 	return findResourceIDFromAppointment(request, "Patient/", "patient ID not found in appointment")
 }
 
-func FindPractitionerIDFromFhirAppointment(ctx context.Context, request fhir_dto.Appointment) (string, error) {
+func FindPractitionerIDFromFhirAppointment(request fhir_dto.Appointment) (string, error) {
 	return findResourceIDFromAppointment(request, "Practitioner/", "practitioner ID not found in appointment")
 }
 
