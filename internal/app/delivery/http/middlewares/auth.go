@@ -85,7 +85,7 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 		roles, _ := ctxIface.Value(keyRoles).([]string)
 		uid, _ := ctxIface.Value(keyUID).(string)
 
-		fhirRole, fhirID, err := m.resolveUserRoles(ctxIface, roles, uid)
+		fhirRole, fhirID, err := m.ResolveUserRoles(ctxIface, roles, uid)
 		if err != nil {
 			m.Log.Error("Auth.resolveUserRoles", zap.Error(err))
 			utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
@@ -146,9 +146,11 @@ func needsFHIRResolution(roles []string) bool {
 	return false
 }
 
-// resolveUserRoles determines the FHIR role and ID to use for authorization.
+// ResolveUserRoles determines the FHIR role and ID to use for authorization.
 // Returns (fhirRole, fhirID, error). For Guest and non-FHIR roles, fhirID is empty.
-func (m *Middlewares) resolveUserRoles(ctx context.Context, roles []string, uid string) (string, string, error) {
+// Backend routes outside the /fhir proxy mount (e.g. the purge endpoint) use
+// it to resolve the caller's FHIR identity from the session context values.
+func (m *Middlewares) ResolveUserRoles(ctx context.Context, roles []string, uid string) (string, string, error) {
 	if len(roles) == 1 && roles[0] == constvars.KonsulinRoleSuperadmin && uid == "api-key-superadmin" {
 		return constvars.KonsulinRoleSuperadmin, "", nil
 	}
@@ -168,14 +170,6 @@ func (m *Middlewares) resolveUserRoles(ctx context.Context, roles []string, uid 
 		return constvars.KonsulinRoleGuest, "", nil
 	}
 	return constvars.KonsulinRoleGuest, "", nil
-}
-
-// ResolveUserRoles returns the FHIR role and FHIR resource id for a session,
-// mirroring the Auth middleware's identity resolution. Backend routes outside
-// the /fhir proxy mount (e.g. the purge endpoint) use it to resolve the
-// caller's FHIR identity from the session context values.
-func (m *Middlewares) ResolveUserRoles(ctx context.Context, roles []string, uid string) (string, string, error) {
-	return m.resolveUserRoles(ctx, roles, uid)
 }
 
 func (m *Middlewares) validatePostRequestBody(ctx context.Context, body []byte, fhirRole, fhirID string) error {
