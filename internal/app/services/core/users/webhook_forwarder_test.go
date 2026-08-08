@@ -33,11 +33,10 @@ func TestUserFHIRInitializer_WebhookForwardFn_Called_WhenSet(t *testing.T) {
 	var recordedService, recordedMethod string
 	var recordedContentType string
 
-	forwardFn := func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
+	forwardFn := func(_ context.Context, service, method string, _ []byte, contentType string) (int, []byte, error) {
 		recordedService = service
 		recordedMethod = method
 		recordedContentType = contentType
-		_ = body
 
 		raw := []callWebhookSvcKonsulinOmnichannelRawOutput{
 			{ChatwootID: 42, Email: "test@test.com", PhoneNumber: strPtr("+6281234567890")},
@@ -62,7 +61,7 @@ func TestUserFHIRInitializer_WebhookForwardFn_Called_WhenSet(t *testing.T) {
 }
 
 func TestUserFHIRInitializer_WebhookForwardFn_Error_Propagates(t *testing.T) {
-	forwardFn := func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
+	forwardFn := func(_ context.Context, _, _ string, _ []byte, _ string) (int, []byte, error) {
 		return 0, nil, errors.New("forwarder error")
 	}
 
@@ -75,7 +74,7 @@ func TestUserFHIRInitializer_WebhookForwardFn_Error_Propagates(t *testing.T) {
 }
 
 func TestUserFHIRInitializer_WebhookForwardFn_NonOKStatus_ReturnsError(t *testing.T) {
-	forwardFn := func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
+	forwardFn := func(_ context.Context, _, _ string, _ []byte, _ string) (int, []byte, error) {
 		return http.StatusForbidden, []byte("Forbidden"), nil
 	}
 
@@ -88,7 +87,7 @@ func TestUserFHIRInitializer_WebhookForwardFn_NonOKStatus_ReturnsError(t *testin
 }
 
 func TestUserFHIRInitializer_WebhookForwardFn_EmptyResponse_ReturnsError(t *testing.T) {
-	forwardFn := func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
+	forwardFn := func(_ context.Context, _, _ string, _ []byte, _ string) (int, []byte, error) {
 		return http.StatusOK, []byte("[]"), nil
 	}
 
@@ -107,7 +106,7 @@ func strPtr(s string) *string {
 func TestUserFHIRInitializer_SetWebhookForwarder_SetsField(t *testing.T) {
 	uc := &userUsecase{Log: zap.NewNop()}
 	called := false
-	fn := func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
+	fn := func(_ context.Context, _, _ string, _ []byte, _ string) (int, []byte, error) {
 		called = true
 		return http.StatusOK, nil, nil
 	}
