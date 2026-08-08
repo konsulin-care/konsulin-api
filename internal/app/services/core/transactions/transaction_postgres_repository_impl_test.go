@@ -43,7 +43,7 @@ type fakeStmt struct {
 	fail bool
 }
 
-func (fakeStmt) Close() error { return nil }
+func (fakeStmt) Close() error  { return nil }
 func (fakeStmt) NumInput() int { return -1 }
 func (fakeStmt) Exec([]driver.Value) (driver.Result, error) {
 	return nil, errors.New("not supported")
