@@ -23,7 +23,7 @@ func (t *fakeForwarderTarget) SetWebhookForwarder(fn func(ctx context.Context, s
 // (int, []byte) pair expected by in-process callers.
 func TestWireWebhookForwarder_SetsForwarder(t *testing.T) {
 	target := &fakeForwarderTarget{}
-	forward := func(ctx context.Context, service, method string, body []byte, contentType string) (*webhook.HandleSynchronousWebhookServiceOutput, error) {
+	forward := func(_ context.Context, _, _ string, _ []byte, _ string) (*webhook.HandleSynchronousWebhookServiceOutput, error) {
 		return &webhook.HandleSynchronousWebhookServiceOutput{StatusCode: 201, Body: []byte("created")}, nil
 	}
 	wireWebhookForwarder(target, forward)
@@ -45,7 +45,7 @@ func TestWireWebhookForwarder_SetsForwarder(t *testing.T) {
 func TestWireWebhookForwarder_PropagatesError(t *testing.T) {
 	target := &fakeForwarderTarget{}
 	boom := errors.New("boom")
-	forward := func(ctx context.Context, service, method string, body []byte, contentType string) (*webhook.HandleSynchronousWebhookServiceOutput, error) {
+	forward := func(_ context.Context, _, _ string, _ []byte, _ string) (*webhook.HandleSynchronousWebhookServiceOutput, error) {
 		return nil, boom
 	}
 	wireWebhookForwarder(target, forward)
@@ -61,8 +61,8 @@ func TestWireWebhookForwarder_PropagatesError(t *testing.T) {
 
 // TestWireWebhookForwarder_NoopWithoutSetter verifies targets that do not
 // implement SetWebhookForwarder are left untouched (no panic, no wiring).
-func TestWireWebhookForwarder_NoopWithoutSetter(t *testing.T) {
-	wireWebhookForwarder(struct{}{}, func(ctx context.Context, service, method string, body []byte, contentType string) (*webhook.HandleSynchronousWebhookServiceOutput, error) {
+func TestWireWebhookForwarder_NoopWithoutSetter(_ *testing.T) {
+	wireWebhookForwarder(struct{}{}, func(_ context.Context, _, _ string, _ []byte, _ string) (*webhook.HandleSynchronousWebhookServiceOutput, error) {
 		return nil, nil
 	})
 }
