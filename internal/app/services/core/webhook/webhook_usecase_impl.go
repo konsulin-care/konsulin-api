@@ -616,8 +616,38 @@ func (u *usecase) validateSynchronousBody(ctx context.Context, roles []string, u
 	return u.validateContactByRole(ctx, role, userIdentifierId, email, phone, chatwoot)
 }
 
+// ForwardSynchronousInternal is the in-process, transport-only forwarder for
+// trusted internal callers — send-magiclink (passwordless login, invoked on
+// context.Background from the SuperTokens email override) and modify-profile
+// (omnichannel profile sync). It is wired explicitly at bootstrap and is never
+// reachable from an HTTP client, so the HTTP route's caller-identity checks
+// (evaluateWebhookAuth, authorizeSynchronous, validateSynchronousBody) and its
+// HOOK_SYNC_SERVICE_NAMES allowlist are intentionally skipped: there is no
+// external identity to evaluate, and imposing the operator-facing allowlist on
+// an internal relay would break e.g. magic-link delivery when the config list
+// does not mention send-magiclink. The HTTP route /hook/synchronous/{service}
+// keeps its own allowlist independently. This path still applies the same input
+// validation sanity as the HTTP handler and routes forward failures through the
+// shared failure policy (WEBHOOK_SYNC_FAILURE_POLICY_RETURN_ERROR / enqueue
+// fallback), so an upstream relay outage behaves identically to the loopback.
 func (u *usecase) ForwardSynchronousInternal(ctx context.Context, service, method string, body []byte, contentType string) (*HandleSynchronousWebhookServiceOutput, error) {
-	return u.forwardSynchronous(ctx, service, method, body, contentType)
+	service = strings.ToLower(strings.TrimSpace(service))
+
+	in := &HandleSynchronousWebhookServiceInput{
+		ServiceName: service,
+		Method:      method,
+		Body:        body,
+		ContentType: contentType,
+	}
+	if err := validator.New().Struct(in); err != nil {
+		return nil, exceptions.ErrInputValidation(err)
+	}
+
+	out, err := u.forwardSynchronous(ctx, service, method, body, contentType)
+	if err != nil {
+		return u.applySynchronousFailurePolicy(ctx, service, in)
+	}
+	return out, nil
 }
 
 func (u *usecase) forwardSynchronous(ctx context.Context, service, method string, body []byte, contentType string) (*HandleSynchronousWebhookServiceOutput, error) {

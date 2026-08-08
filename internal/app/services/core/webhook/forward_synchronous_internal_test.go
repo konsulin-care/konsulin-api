@@ -7,13 +7,17 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/services/shared/jwtmanager"
+	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/exceptions"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -90,4 +94,43 @@ func TestForwardSynchronousInternal_ContextCancelled(t *testing.T) {
 	)
 	require.Error(t, err, "should propagate cancellation")
 	assert.Nil(t, out)
+}
+
+// TestForwardSynchronousInternal_EmptyInput: the same input validation as the
+// HTTP path must reject an empty/whitespace service name before any transport
+// attempt. NO allowlist gate is imposed on this internal path.
+func TestForwardSynchronousInternal_EmptyInput(t *testing.T) {
+	u := newTestUsecase()
+	out, err := u.ForwardSynchronousInternal(
+		context.Background(), "   ", "POST", []byte(`{}`), "application/json",
+	)
+	require.Error(t, err, "empty service must be rejected by input validation")
+	assert.Nil(t, out)
+
+	var ce *exceptions.CustomError
+	require.True(t, errors.As(err, &ce), "err must be a CustomError")
+	assert.Equal(t, constvars.StatusBadRequest, ce.StatusCode)
+	assert.True(t, strings.Contains(ce.DevMessage, constvars.ErrDevValidationFailed),
+		"validation marker expected, got: %s", ce.DevMessage)
+}
+
+// TestForwardSynchronousInternal_FailurePolicyReturnError: with the default
+// return_error failure policy, an unreachable upstream surfaces the same
+// failure-policy error as the HTTP synchronous path. The enqueue_request
+// branch is not exercised here because it requires a queue stub.
+func TestForwardSynchronousInternal_FailurePolicyReturnError(t *testing.T) {
+	u := newTestUsecase()
+	u.cfg.Webhook.URL = "http://127.0.0.1:1" // unreachable upstream
+	u.failurePolicy = SyncFailurePolicyReturnError
+
+	out, err := u.ForwardSynchronousInternal(
+		context.Background(), "test-svc", "POST", []byte(`{}`), "application/json",
+	)
+	require.Error(t, err, "upstream failure must surface an error under return_error")
+	assert.Nil(t, out)
+
+	var ce *exceptions.CustomError
+	require.True(t, errors.As(err, &ce), "custom must be a CustomError")
+	assert.True(t, strings.Contains(ce.DevMessage, "WEBHOOK_SYNC_FAILURE_POLICY_RETURN_ERROR"),
+		"failure policy error marker expected, got: %s", ce.DevMessage)
 }
