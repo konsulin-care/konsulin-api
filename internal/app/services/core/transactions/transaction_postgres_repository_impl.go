@@ -13,6 +13,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// logPrefix namespaces every log entry emitted by this repository.
+const logPrefix = "transactionPostgresRepository."
+
 type transactionPostgresRepository struct {
 	DB  *sql.DB
 	Log *zap.Logger
@@ -36,14 +39,14 @@ func NewTransactionPostgresRepository(db *sql.DB, logger *zap.Logger) contracts.
 
 func (repo *transactionPostgresRepository) FindAll(ctx context.Context) ([]models.Transaction, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	repo.Log.Info("transactionPostgresRepository.FindAll called",
+	repo.Log.Info(logPrefix+"FindAll called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
 
 	query := queries.GetAllTransactions
 	rows, err := repo.DB.QueryContext(ctx, query)
 	if err != nil {
-		repo.Log.Error("transactionPostgresRepository.FindAll error executing query",
+		repo.Log.Error(logPrefix+"FindAll error executing query",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
@@ -55,7 +58,7 @@ func (repo *transactionPostgresRepository) FindAll(ctx context.Context) ([]model
 	for rows.Next() {
 		model, err := scanTransaction(rows)
 		if err != nil {
-			repo.Log.Error("transactionPostgresRepository.FindAll error scanning row",
+			repo.Log.Error(logPrefix+"FindAll error scanning row",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(err),
 			)
@@ -65,14 +68,14 @@ func (repo *transactionPostgresRepository) FindAll(ctx context.Context) ([]model
 	}
 
 	if err := rows.Err(); err != nil {
-		repo.Log.Error("transactionPostgresRepository.FindAll rows iteration error",
+		repo.Log.Error(logPrefix+"FindAll rows iteration error",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
 		return nil, exceptions.ErrPostgresDBFindData(err)
 	}
 
-	repo.Log.Info("transactionPostgresRepository.FindAll succeeded",
+	repo.Log.Info(logPrefix+"FindAll succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.Int(constvars.LoggingTransactionCountKey, len(transactions)),
 	)
@@ -81,7 +84,7 @@ func (repo *transactionPostgresRepository) FindAll(ctx context.Context) ([]model
 
 func (repo *transactionPostgresRepository) FindByID(ctx context.Context, transactionID string) (*models.Transaction, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	repo.Log.Info("transactionPostgresRepository.FindByID called",
+	repo.Log.Info(logPrefix+"FindByID called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String(constvars.LoggingTransactionIDKey, transactionID),
 	)
@@ -89,13 +92,13 @@ func (repo *transactionPostgresRepository) FindByID(ctx context.Context, transac
 	query := queries.GetTransactionByID
 	transaction, err := scanTransaction(repo.DB.QueryRowContext(ctx, query, transactionID))
 	if err == sql.ErrNoRows {
-		repo.Log.Warn("transactionPostgresRepository.FindByID no rows found",
+		repo.Log.Warn(logPrefix+"FindByID no rows found",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String(constvars.LoggingTransactionIDKey, transactionID),
 		)
 		return nil, nil
 	} else if err != nil {
-		repo.Log.Error("transactionPostgresRepository.FindByID error executing query",
+		repo.Log.Error(logPrefix+"FindByID error executing query",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.String(constvars.LoggingTransactionIDKey, transactionID),
 			zap.Error(err),
@@ -103,7 +106,7 @@ func (repo *transactionPostgresRepository) FindByID(ctx context.Context, transac
 		return nil, exceptions.ErrPostgresDBFindData(err)
 	}
 
-	repo.Log.Info("transactionPostgresRepository.FindByID succeeded",
+	repo.Log.Info(logPrefix+"FindByID succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String(constvars.LoggingTransactionIDKey, transaction.ID),
 	)
@@ -139,16 +142,16 @@ func updateTransactionArgs(t *models.Transaction) []any {
 func (repo *transactionPostgresRepository) scanTransactionRow(ctx context.Context, query string, opName, errMsg string, errFactory func(error) *exceptions.CustomError, calledFields, errFields []zap.Field, args ...any) (*models.Transaction, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	called := append([]zap.Field{zap.String(constvars.LoggingRequestIDKey, requestID)}, calledFields...)
-	repo.Log.Info("transactionPostgresRepository."+opName+" called", called...)
+	repo.Log.Info(logPrefix+opName+" called", called...)
 
 	tx, err := scanTransaction(repo.DB.QueryRowContext(ctx, query, args...))
 	if err != nil {
 		errLog := append([]zap.Field{zap.String(constvars.LoggingRequestIDKey, requestID)}, errFields...)
 		errLog = append(errLog, zap.Error(err))
-		repo.Log.Error("transactionPostgresRepository."+opName+" "+errMsg, errLog...)
+		repo.Log.Error(logPrefix+opName+" "+errMsg, errLog...)
 		return nil, errFactory(err)
 	}
-	repo.Log.Info("transactionPostgresRepository."+opName+" succeeded",
+	repo.Log.Info(logPrefix+opName+" succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String(constvars.LoggingTransactionIDKey, tx.ID),
 	)
@@ -177,7 +180,7 @@ func scanTransaction(row rowScanner) (*models.Transaction, error) {
 
 func (repo *transactionPostgresRepository) DeleteTransaction(ctx context.Context, transactionID int) error {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	repo.Log.Info("transactionPostgresRepository.DeleteTransaction called",
+	repo.Log.Info(logPrefix+"DeleteTransaction called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.Int(constvars.LoggingTransactionIDKey, transactionID),
 	)
@@ -185,7 +188,7 @@ func (repo *transactionPostgresRepository) DeleteTransaction(ctx context.Context
 	query := queries.DeleteTransaction
 	_, err := repo.DB.ExecContext(ctx, query, transactionID)
 	if err != nil {
-		repo.Log.Error("transactionPostgresRepository.DeleteTransaction error executing delete",
+		repo.Log.Error(logPrefix+"DeleteTransaction error executing delete",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Int(constvars.LoggingTransactionIDKey, transactionID),
 			zap.Error(err),
@@ -193,7 +196,7 @@ func (repo *transactionPostgresRepository) DeleteTransaction(ctx context.Context
 		return exceptions.ErrPostgresDBDeleteData(err)
 	}
 
-	repo.Log.Info("transactionPostgresRepository.DeleteTransaction succeeded",
+	repo.Log.Info(logPrefix+"DeleteTransaction succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.Int(constvars.LoggingTransactionIDKey, transactionID),
 	)
