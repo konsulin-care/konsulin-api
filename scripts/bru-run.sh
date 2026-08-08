@@ -41,6 +41,7 @@ fi
 while IFS='=' read -r key value; do
   case "$key" in
     ''|'#'*) continue ;;
+    *) : ;; # fall through: validate and export below
   esac
   [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
   value="${value#\"}"; value="${value%\"}"
