@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"konsulin-service/internal/pkg/constvars"
-	"net/http"
 	"strings"
 
 	"github.com/tidwall/gjson"
@@ -52,7 +51,7 @@ func referralForbidden(format string, args ...any) error {
 // Communications are PUT-only, deterministic resources; a POST create with a
 // referral- id would let a caller forge an edge id (the hash would be ignored
 // by Blaze and the id would pass through unvalidated).
-func rejectReferralPOST(method string, body []byte, bodyID string) error {
+func rejectReferralPOST(method string, bodyID string) error {
 	if method == constvars.MethodPost && isReferralID(bodyID) {
 		return referralForbidden("forbidden: referral Communications cannot be created via POST")
 	}
@@ -67,7 +66,7 @@ func rejectReferralPOST(method string, body []byte, bodyID string) error {
 // patient id; the sender must resolve to a registered Patient; and the batch
 // extension must reference an existing PlanDefinition. Any failure returns an
 // error, which the Auth middleware turns into a 403.
-func (m *Middlewares) validateReferralCommunication(ctx context.Context, r *http.Request, roles []string, fhirID, urlID string, body []byte) error {
+func (m *Middlewares) validateReferralCommunication(ctx context.Context, roles []string, fhirID, urlID string, body []byte) error {
 	if !isReferralID(urlID) {
 		return referralForbidden("forbidden: non-referral- ids are not validated as referral Communications")
 	}

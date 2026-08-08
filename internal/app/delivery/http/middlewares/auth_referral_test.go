@@ -156,7 +156,7 @@ func validReferralBody() (id, body string) {
 func TestValidateReferralCommunication_ValidPatientToPatient(t *testing.T) {
 	mw := newReferralTestMW()
 	id, body := validReferralBody()
-	err := mw.validateReferralCommunication(context.Background(), nil, []string{constvars.KonsulinRolePatient}, "referee-1", id, []byte(body))
+	err := mw.validateReferralCommunication(context.Background(), []string{constvars.KonsulinRolePatient}, "referee-1", id, []byte(body))
 	assert.NoError(t, err)
 }
 
@@ -174,32 +174,32 @@ func TestValidateReferralCommunication_RejectionsAreForbidden(t *testing.T) {
 	mw := newReferralTestMW()
 	t.Run("guest", func(t *testing.T) {
 		id, body := validReferralBody()
-		rejectionError(t, mw.validateReferralCommunication(context.Background(), nil, []string{constvars.KonsulinRoleGuest}, "", id, []byte(body)))
+		rejectionError(t, mw.validateReferralCommunication(context.Background(), []string{constvars.KonsulinRoleGuest}, "", id, []byte(body)))
 	})
 	t.Run("practitioner", func(t *testing.T) {
 		id, body := validReferralBody()
-		rejectionError(t, mw.validateReferralCommunication(context.Background(), nil, []string{constvars.KonsulinRolePractitioner}, "prac-1", id, []byte(body)))
+		rejectionError(t, mw.validateReferralCommunication(context.Background(), []string{constvars.KonsulinRolePractitioner}, "prac-1", id, []byte(body)))
 	})
 	t.Run("forged hash", func(t *testing.T) {
 		urlID := "referral-" + "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
 		body := referralCommJSON(urlID, "Patient/DG3F3STPYZ6HX25A", "Patient/referee-1", "PlanDefinition/batch-1", "research-referral")
-		rejectionError(t, mw.validateReferralCommunication(context.Background(), nil, []string{constvars.KonsulinRolePatient}, "referee-1", urlID, []byte(body)))
+		rejectionError(t, mw.validateReferralCommunication(context.Background(), []string{constvars.KonsulinRolePatient}, "referee-1", urlID, []byte(body)))
 	})
 	t.Run("unknown batch", func(t *testing.T) {
 		mw2 := newReferralTestMW()
 		mw2.PlanDefinitionFinder = &mockPlanDefinitionClient{batchExists: false}
 		id, body := validReferralBody()
-		rejectionError(t, mw2.validateReferralCommunication(context.Background(), nil, []string{constvars.KonsulinRolePatient}, "referee-1", id, []byte(body)))
+		rejectionError(t, mw2.validateReferralCommunication(context.Background(), []string{constvars.KonsulinRolePatient}, "referee-1", id, []byte(body)))
 	})
 	t.Run("non-referral id", func(t *testing.T) {
 		body := referralCommJSON("some-other-id", "Patient/DG3F3STPYZ6HX25A", "Patient/referee-1", "PlanDefinition/batch-1", "research-referral")
-		rejectionError(t, mw.validateReferralCommunication(context.Background(), nil, []string{constvars.KonsulinRolePatient}, "referee-1", "some-other-id", []byte(body)))
+		rejectionError(t, mw.validateReferralCommunication(context.Background(), []string{constvars.KonsulinRolePatient}, "referee-1", "some-other-id", []byte(body)))
 	})
 }
 
 func TestRejectReferralPOST_RejectionIsForbidden(t *testing.T) {
-	id, body := validReferralBody()
-	rejectionError(t, rejectReferralPOST(constvars.MethodPost, []byte(body), id))
+	id, _ := validReferralBody()
+	rejectionError(t, rejectReferralPOST(constvars.MethodPost, id))
 }
 
 // --- B3 wiring: handleAuthSingleResource end-to-end through the gate ---
@@ -265,14 +265,14 @@ func TestHandleAuthSingleResource_NonReferralCommunicationPUTStillForbidden(t *t
 func TestValidateReferralCommunication_GuestRejected(t *testing.T) {
 	mw := newReferralTestMW()
 	id, body := validReferralBody()
-	err := mw.validateReferralCommunication(context.Background(), nil, []string{constvars.KonsulinRoleGuest}, "", id, []byte(body))
+	err := mw.validateReferralCommunication(context.Background(), []string{constvars.KonsulinRoleGuest}, "", id, []byte(body))
 	assert.Error(t, err)
 }
 
 func TestValidateReferralCommunication_PractitionerRejected(t *testing.T) {
 	mw := newReferralTestMW()
 	id, body := validReferralBody()
-	err := mw.validateReferralCommunication(context.Background(), nil, []string{constvars.KonsulinRolePractitioner}, "prac-1", id, []byte(body))
+	err := mw.validateReferralCommunication(context.Background(), []string{constvars.KonsulinRolePractitioner}, "prac-1", id, []byte(body))
 	assert.Error(t, err)
 }
 
@@ -281,7 +281,7 @@ func TestValidateReferralCommunication_ForgedHashRejected(t *testing.T) {
 	// A referral- prefixed urlID whose hash does not match the body content.
 	urlID := "referral-" + "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
 	body := referralCommJSON(urlID, "Patient/DG3F3STPYZ6HX25A", "Patient/referee-1", "PlanDefinition/batch-1", "research-referral")
-	err := mw.validateReferralCommunication(context.Background(), nil, []string{constvars.KonsulinRolePatient}, "referee-1", urlID, []byte(body))
+	err := mw.validateReferralCommunication(context.Background(), []string{constvars.KonsulinRolePatient}, "referee-1", urlID, []byte(body))
 	assert.Error(t, err)
 }
 
@@ -289,7 +289,7 @@ func TestValidateReferralCommunication_WrongTopicRejected(t *testing.T) {
 	mw := newReferralTestMW()
 	id, _ := validReferralBody()
 	body := referralCommJSON(id, "Patient/DG3F3STPYZ6HX25A", "Patient/referee-1", "PlanDefinition/batch-1", "general")
-	err := mw.validateReferralCommunication(context.Background(), nil, []string{constvars.KonsulinRolePatient}, "referee-1", id, []byte(body))
+	err := mw.validateReferralCommunication(context.Background(), []string{constvars.KonsulinRolePatient}, "referee-1", id, []byte(body))
 	assert.Error(t, err)
 }
 
@@ -297,7 +297,7 @@ func TestValidateReferralCommunication_MissingBatchExtensionRejected(t *testing.
 	mw := newReferralTestMW()
 	id, _ := validReferralBody()
 	body := referralCommJSON(id, "Patient/DG3F3STPYZ6HX25A", "Patient/referee-1", "", "research-referral")
-	err := mw.validateReferralCommunication(context.Background(), nil, []string{constvars.KonsulinRolePatient}, "referee-1", id, []byte(body))
+	err := mw.validateReferralCommunication(context.Background(), []string{constvars.KonsulinRolePatient}, "referee-1", id, []byte(body))
 	assert.Error(t, err)
 }
 
@@ -305,7 +305,7 @@ func TestValidateReferralCommunication_RecipientMismatchRejected(t *testing.T) {
 	mw := newReferralTestMW()
 	id, _ := validReferralBody()
 	body := referralCommJSON(id, "Patient/DG3F3STPYZ6HX25A", "Patient/other", "PlanDefinition/batch-1", "research-referral")
-	err := mw.validateReferralCommunication(context.Background(), nil, []string{constvars.KonsulinRolePatient}, "referee-1", id, []byte(body))
+	err := mw.validateReferralCommunication(context.Background(), []string{constvars.KonsulinRolePatient}, "referee-1", id, []byte(body))
 	assert.Error(t, err)
 }
 
@@ -313,7 +313,7 @@ func TestValidateReferralCommunication_SenderNotPatientRejected(t *testing.T) {
 	mw := newReferralTestMW()
 	id, _ := validReferralBody()
 	body := referralCommJSON(id, "Practitioner/prac-1", "Patient/referee-1", "PlanDefinition/batch-1", "research-referral")
-	err := mw.validateReferralCommunication(context.Background(), nil, []string{constvars.KonsulinRolePatient}, "referee-1", id, []byte(body))
+	err := mw.validateReferralCommunication(context.Background(), []string{constvars.KonsulinRolePatient}, "referee-1", id, []byte(body))
 	assert.Error(t, err)
 }
 
@@ -324,7 +324,7 @@ func TestValidateReferralCommunication_SenderNotRegisteredRejected(t *testing.T)
 		patientExists:     false,
 	}
 	id, body := validReferralBody()
-	err := mw.validateReferralCommunication(context.Background(), nil, []string{constvars.KonsulinRolePatient}, "referee-1", id, []byte(body))
+	err := mw.validateReferralCommunication(context.Background(), []string{constvars.KonsulinRolePatient}, "referee-1", id, []byte(body))
 	assert.Error(t, err)
 }
 
@@ -332,32 +332,31 @@ func TestValidateReferralCommunication_BatchNotFoundRejected(t *testing.T) {
 	mw := newReferralTestMW()
 	mw.PlanDefinitionFinder = &mockPlanDefinitionClient{batchExists: false}
 	id, body := validReferralBody()
-	err := mw.validateReferralCommunication(context.Background(), nil, []string{constvars.KonsulinRolePatient}, "referee-1", id, []byte(body))
+	err := mw.validateReferralCommunication(context.Background(), []string{constvars.KonsulinRolePatient}, "referee-1", id, []byte(body))
 	assert.Error(t, err)
 }
 
 func TestValidateReferralCommunication_NonReferralIDRejected(t *testing.T) {
 	mw := newReferralTestMW()
 	body := referralCommJSON("some-other-id", "Patient/DG3F3STPYZ6HX25A", "Patient/referee-1", "PlanDefinition/batch-1", "research-referral")
-	err := mw.validateReferralCommunication(context.Background(), nil, []string{constvars.KonsulinRolePatient}, "referee-1", "some-other-id", []byte(body))
+	err := mw.validateReferralCommunication(context.Background(), []string{constvars.KonsulinRolePatient}, "referee-1", "some-other-id", []byte(body))
 	assert.Error(t, err, "non-referral- ids must not pass the referral validator")
 }
 
 // --- B3: POST creates carrying a referral- id must be rejected (no forging via create) ---
 
 func TestRejectReferralPOST_RejectsReferralID(t *testing.T) {
-	id, body := validReferralBody()
-	assert.Error(t, rejectReferralPOST(constvars.MethodPost, []byte(body), id))
+	id, _ := validReferralBody()
+	assert.Error(t, rejectReferralPOST(constvars.MethodPost, id))
 }
 
 func TestRejectReferralPOST_AllowsNonReferralID(t *testing.T) {
-	body := `{"resourceType":"QuestionnaireResponse","id":"qr-123","status":"completed"}`
-	assert.NoError(t, rejectReferralPOST(constvars.MethodPost, []byte(body), "qr-123"))
+	assert.NoError(t, rejectReferralPOST(constvars.MethodPost, "qr-123"))
 }
 
 func TestRejectReferralPOST_AllowsPUT(t *testing.T) {
-	id, body := validReferralBody()
-	assert.NoError(t, rejectReferralPOST(constvars.MethodPut, []byte(body), id))
+	id, _ := validReferralBody()
+	assert.NoError(t, rejectReferralPOST(constvars.MethodPut, id))
 }
 
 func TestIsReferralID(t *testing.T) {

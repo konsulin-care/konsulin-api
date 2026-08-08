@@ -63,14 +63,14 @@ func (m *Middlewares) handleAuthSingleResource(ctxIface context.Context, r *http
 
 	// B3: referral Communications are PUT-only, deterministic resources. A POST
 	// create carrying a referral- id would let a caller forge an edge id.
-	if err := rejectReferralPOST(r.Method, resourceBody, gjson.GetBytes(resourceBody, "id").String()); err != nil {
+	if err := rejectReferralPOST(r.Method, gjson.GetBytes(resourceBody, "id").String()); err != nil {
 		return err
 	}
 
 	// B3: validate referral Communication PUTs before any RBAC/ownership dispatch.
 	if r.Method == constvars.MethodPut {
 		if res, id := extractPathResourceID(fullURL); res == constvars.ResourceCommunication && isReferralID(id) {
-			if err := m.validateReferralCommunication(ctxIface, r, roles, fhirID, id, resourceBody); err != nil {
+			if err := m.validateReferralCommunication(ctxIface, roles, fhirID, id, resourceBody); err != nil {
 				return err
 			}
 		}
@@ -187,7 +187,7 @@ func (m *Middlewares) validatePostRequestBody(ctx context.Context, body []byte, 
 	// Communication sender must be the patient themselves; a patient must not
 	// create a Communication impersonating another sender.
 	if resourceTypeFromPath == constvars.ResourceCommunication && fhirRole == constvars.KonsulinRolePatient {
-		return m.validateCommunicationSenderInBody(body, fhirID)
+		return validateCommunicationSenderInBody(body, fhirID)
 	}
 
 	if utils.RequiresPatientOwnership(resourceTypeFromPath) && fhirRole == constvars.KonsulinRolePatient {
@@ -204,7 +204,7 @@ func (m *Middlewares) validatePostRequestBody(ctx context.Context, body []byte, 
 // validateCommunicationSenderInBody enforces that a Communication POST body's
 // sender references the caller's own Patient ID. A missing sender is lenient
 // (nil); a malformed reference or a mismatched patient is an error.
-func (m *Middlewares) validateCommunicationSenderInBody(body []byte, patientID string) error {
+func validateCommunicationSenderInBody(body []byte, patientID string) error {
 	return validateBodyFieldRef(body, "sender", patientID, constvars.ResourcePatient)
 }
 
