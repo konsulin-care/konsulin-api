@@ -79,7 +79,7 @@ func TestInitializeMagicLinkFHIR_LogsError(t *testing.T) {
 	mockUserFHIRInitializer := new(MockUserFHIRInitializer)
 	uc := &authUsecase{
 		UserFHIRInitializer: mockUserFHIRInitializer,
-		Log:         logger,
+		Log:                 logger,
 	}
 
 	expectedErr := errors.New("FHIR server timeout")
@@ -127,7 +127,7 @@ func TestInitializeMagicLinkFHIR_Success(t *testing.T) {
 	mockUserFHIRInitializer := new(MockUserFHIRInitializer)
 	uc := &authUsecase{
 		UserFHIRInitializer: mockUserFHIRInitializer,
-		Log:         logger,
+		Log:                 logger,
 	}
 
 	expectedOutput := &contracts.InitializeNewUserFHIRResourcesOutput{
@@ -169,7 +169,7 @@ func TestInitializeMagicLinkFHIR_PhoneUser(t *testing.T) {
 	mockUserFHIRInitializer := new(MockUserFHIRInitializer)
 	uc := &authUsecase{
 		UserFHIRInitializer: mockUserFHIRInitializer,
-		Log:         logger,
+		Log:                 logger,
 	}
 
 	expectedErr := errors.New("phone FHIR error")

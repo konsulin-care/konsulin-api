@@ -125,8 +125,8 @@ func controllerTestEnforcer(t testing.TB) *casbin.Enforcer {
 
 func newPurgeTestController(t testing.TB, usecase contracts.PatientDataPurger) *PurgeController {
 	mw := &middlewares.Middlewares{
-		Enforcer:             controllerTestEnforcer(t),
-		PatientFhirClient:    &ctrlMockPatientClient{
+		Enforcer: controllerTestEnforcer(t),
+		PatientFhirClient: &ctrlMockPatientClient{
 			patients: []fhir_dto.Patient{{ID: "pat-1"}},
 		},
 		PractitionerFhirClient: &ctrlMockPractitionerClient{},
@@ -138,8 +138,8 @@ func newPurgeTestController(t testing.TB, usecase contracts.PatientDataPurger) *
 // FHIR identity (practitioner-first resolution wins).
 func newPurgeTestControllerWithPractitioner(t testing.TB, usecase contracts.PatientDataPurger) *PurgeController {
 	mw := &middlewares.Middlewares{
-		Enforcer:             controllerTestEnforcer(t),
-		PatientFhirClient:    &ctrlMockPatientClient{
+		Enforcer: controllerTestEnforcer(t),
+		PatientFhirClient: &ctrlMockPatientClient{
 			patients: []fhir_dto.Patient{{ID: "pat-1"}},
 		},
 		PractitionerFhirClient: &ctrlMockPractitionerClient{
