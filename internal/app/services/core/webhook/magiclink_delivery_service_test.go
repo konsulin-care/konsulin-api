@@ -63,7 +63,7 @@ func TestMagicLinkDelivery_ForwardFnUsed_WhenSet(t *testing.T) {
 	var recordedBody []byte
 	var recordedContentType string
 
-	forwardFn := func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
+	forwardFn := func(_ context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
 		recordedService = service
 		recordedMethod = method
 		recordedBody = body
@@ -86,7 +86,7 @@ func TestMagicLinkDelivery_ForwardFnUsed_WhenSet(t *testing.T) {
 }
 
 func TestMagicLinkDelivery_ForwardFn_ReturnsError_WhenForwarderFails(t *testing.T) {
-	forwardFn := func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
+	forwardFn := func(_ context.Context, _, _ string, _ []byte, _ string) (int, []byte, error) {
 		return 0, nil, errors.New("forwarder error")
 	}
 	s := newTestMagicLinkDelivery(forwardFn)
@@ -104,7 +104,7 @@ func TestMagicLinkDelivery_ForwardFn_ReturnsError_WhenForwarderFails(t *testing.
 // received the request and dispatched the message, so SendMagicLink logs and
 // returns nil instead of failing createCode.
 func TestMagicLinkDelivery_ForwardFn_5xx_TreatedAsDelivered(t *testing.T) {
-	forwardFn := func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
+	forwardFn := func(_ context.Context, _, _ string, _ []byte, _ string) (int, []byte, error) {
 		return http.StatusInternalServerError, []byte("upstream exploded after dispatch"), nil
 	}
 	s := newTestMagicLinkDelivery(forwardFn)
@@ -119,7 +119,7 @@ func TestMagicLinkDelivery_ForwardFn_5xx_TreatedAsDelivered(t *testing.T) {
 // TestMagicLinkDelivery_ForwardFn_4xx_ReturnsError verifies that a 4xx response
 // is a definitive non-dispatch (misconfig/payload bug) and must stay loud.
 func TestMagicLinkDelivery_ForwardFn_4xx_ReturnsError(t *testing.T) {
-	forwardFn := func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
+	forwardFn := func(_ context.Context, _, _ string, _ []byte, _ string) (int, []byte, error) {
 		return http.StatusBadRequest, []byte("bad payload"), nil
 	}
 	s := newTestMagicLinkDelivery(forwardFn)
@@ -136,7 +136,7 @@ func TestMagicLinkDelivery_ForwardFn_4xx_ReturnsError(t *testing.T) {
 // (forwardFn nil) applies the same post-dispatch classification: a 5xx response
 // is logged but does not fail delivery.
 func TestMagicLinkDelivery_HTTP_5xx_TreatedAsDelivered(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
@@ -155,7 +155,7 @@ func TestMagicLinkDelivery_HTTP_5xx_TreatedAsDelivered(t *testing.T) {
 // TestMagicLinkDelivery_HTTP_4xx_ReturnsError verifies the HTTP path keeps 4xx
 // responses as hard errors.
 func TestMagicLinkDelivery_HTTP_4xx_ReturnsError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 	}))
 	defer srv.Close()
@@ -173,7 +173,7 @@ func TestMagicLinkDelivery_HTTP_4xx_ReturnsError(t *testing.T) {
 }
 
 func TestMagicLinkDelivery_ForwardFn_ReturnsError_OnNonOKStatusCode(t *testing.T) {
-	forwardFn := func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
+	forwardFn := func(_ context.Context, _, _ string, _ []byte, _ string) (int, []byte, error) {
 		return http.StatusForbidden, []byte("Forbidden"), nil
 	}
 	s := newTestMagicLinkDelivery(forwardFn)
@@ -202,7 +202,7 @@ func TestMagicLinkDelivery_ForwardFn_5xx_LogsDispatchFailure(t *testing.T) {
 		cfg:        cfg,
 		jwtManager: jwtMgr,
 		httpClient: &http.Client{},
-		forwardFn: func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
+		forwardFn: func(_ context.Context, _, _ string, _ []byte, _ string) (int, []byte, error) {
 			return http.StatusInternalServerError, nil, nil
 		},
 	}
