@@ -65,7 +65,7 @@ Model in [`resources/rbac_model.conf`](../resources/rbac_model.conf).
 | Payments | OY! Indonesia + Xendit |
 | Messaging | RabbitMQ (mailer, WhatsApp queues) |
 | Logging | Zap (structured) |
-| Config | Viper + godotenv |
+| Config | godotenv (.env) |
 | Container | Docker multi-stage (Alpine) |
 | Deployment | Coolify (deploy triggered by .github/workflows) |
 
@@ -77,7 +77,7 @@ Model in [`resources/rbac_model.conf`](../resources/rbac_model.conf).
 - `github.com/rabbitmq/amqp091-go` — Messaging
 - `github.com/xendit/xendit-go/v7` — Payments
 - `go.uber.org/zap` — Logging
-- `github.com/spf13/viper` — Config
+- `github.com/joho/godotenv` — Config (.env loading)
 - `github.com/robfig/cron/v3` — Scheduled tasks (slot generation)
 
 ## Deployment
