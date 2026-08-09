@@ -64,7 +64,10 @@ func main() {
 	internalConfig := config.NewInternalConfig()
 
 	// Initialize the logger
-	logger := logger.NewZapLogger(driverConfig, internalConfig)
+	logger, err := logger.NewZapLogger(driverConfig, internalConfig)
+	if err != nil {
+		log.Fatalf("Error initializing zap logger: %v", err)
+	}
 
 	// Set the application's timezone
 	location, err := time.LoadLocation(internalConfig.App.Timezone)
@@ -81,7 +84,10 @@ func main() {
 	}
 
 	// Initialize RabbitMQ connection
-	rabbitMQ := messaging.NewRabbitMQ(driverConfig)
+	rabbitMQ, err := messaging.NewRabbitMQ(driverConfig)
+	if err != nil {
+		log.Fatalf("Error connecting to RabbitMQ: %v", err)
+	}
 
 	// Create a new router
 	chiRouter := chi.NewRouter()
@@ -236,7 +242,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	// Initialize supertokens
 	err = authUseCase.InitializeSupertoken()
 	if err != nil {
-		log.Fatalf("Error initializing supertokens: %v", err)
+		return fmt.Errorf("error initializing supertokens: %w", err)
 	}
 
 	// Initialize webhook components
@@ -302,7 +308,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	purgeController := controllers.NewPurgeController(purgeUsecase, middlewares, bootstrap.Logger)
 
 	if err := orgUsecase.InitializeKonsulinOrganizationResource(context.Background()); err != nil {
-		log.Fatalf("Error initializing Konsulin organization resource: %v", err)
+		return fmt.Errorf("error initializing Konsulin organization resource: %w", err)
 	}
 
 	// Start webhook worker ticker (best-effort lock ensures single execution)
