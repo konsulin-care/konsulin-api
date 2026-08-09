@@ -14,16 +14,6 @@ func cleanWhiteSpaceFromEachStringOfAnArray(input []string) []string {
 	return sanitizedArray
 }
 
-func capitalizeFirstLetter(s string) string {
-	if len(s) == 0 {
-		return s
-	}
-
-	first := string(unicode.ToUpper(rune(s[0])))
-
-	return first + s[1:]
-}
-
 func capitalize(input string) string {
 	if len(input) == 0 {
 		return input
