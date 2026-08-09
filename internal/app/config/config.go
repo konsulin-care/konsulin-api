@@ -74,6 +74,7 @@ func loadInternalConfigWithEnv() (*InternalConfig, error) {
 			MaxRequests:                           utils.GetEnvInt("APP_MAX_REQUESTS", 20),
 			PaymentExpiredTimeInMinutes:           utils.GetEnvInt("APP_PAYMENT_EXPIRED_TIME_IN_MINUTES", 60),
 			PaymentGatewayRequestTimeoutInSeconds: utils.GetEnvInt("APP_PAYMENT_GATEWAY_REQUEST_TIMEOUT_IN_SECONDS", 120),
+			ShutdownTimeoutInSeconds:              utils.GetEnvInt("APP_SHUTDOWN_TIMEOUT_IN_SECONDS", 30),
 
 			// Sensitive / Key Logic
 			SuperadminAPIKey:           utils.GetEnvString("SUPERADMIN_API_KEY", ""), // Sensitive

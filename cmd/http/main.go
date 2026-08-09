@@ -131,11 +131,7 @@ func main() {
 	)
 	defer cancel()
 
-	// Countdown for shutdown
-	for i := internalConfig.App.ShutdownTimeoutInSeconds; i > 0; i-- {
-		time.Sleep(1 * time.Second)
-		log.Printf("Shutting down in %d...", i)
-	}
+	log.Printf("Shutting down server gracefully (timeout: %ds)", internalConfig.App.ShutdownTimeoutInSeconds)
 
 	// Shutdown the HTTP server gracefully
 	err = server.Shutdown(shutdownCtx)
