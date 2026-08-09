@@ -10,7 +10,6 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/robfig/cron/v3"
-	"github.com/spf13/viper"
 )
 
 var (
@@ -39,22 +38,6 @@ func init() {
 	if loadErr != nil {
 		log.Fatal(loadErr.Error())
 	}
-}
-
-func loadViperConfig(env string) error {
-	viper.SetConfigName(fmt.Sprintf("config.%s", env))
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath(".")
-	return viper.ReadInConfig()
-}
-
-func loadInternalConfigWithYAML() *InternalConfig {
-	var config InternalConfig
-	err := viper.UnmarshalKey("internal_config", &config)
-	if err != nil {
-		log.Fatalf("unable to decode into InternalConfig: %s", err)
-	}
-	return &config
 }
 
 func loadInternalConfigWithEnv() (*InternalConfig, error) {
@@ -156,15 +139,6 @@ func normalizeSlotCronSpec(cfg *InternalConfig) {
 		log.Printf("slot worker: invalid cron spec '%s': %v, defaulting to @daily", spec, err)
 		cfg.App.SlotWorkerCronSpec = "@daily"
 	}
-}
-
-func loadDriverConfigWithYAML() *DriverConfig {
-	var config DriverConfig
-	err := viper.UnmarshalKey("driver_config", &config)
-	if err != nil {
-		log.Fatalf("unable to decode into DriverConfig: %s", err)
-	}
-	return &config
 }
 
 func loadDriverConfigWithEnv() (*DriverConfig, error) {
