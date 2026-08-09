@@ -35,60 +35,6 @@ func NewPaymentController(logger *zap.Logger, paymentUsecase contracts.PaymentUs
 	return paymentControllerInstance
 }
 
-func (ctrl *PaymentController) PaymentRoutingCallback(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	requestID, ok := requireRequestID(ctrl.Log, w, r)
-	if !ok {
-		return
-	}
-
-	utils.LogSecurityEvent(ctrl.Log, "payment_callback_received", requestID, "info",
-		zap.String(constvars.LoggingRemoteAddrKey, r.RemoteAddr),
-		zap.String(constvars.LoggingUserAgentKey, r.UserAgent()),
-	)
-
-	ctrl.Log.Debug("Payment callback processing started",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingEndpointKey, r.URL.Path),
-		zap.String(constvars.LoggingMethodKey, r.Method),
-	)
-
-	request := new(requests.PaymentRoutingCallback)
-	if !decodeJSONBody(ctrl.Log, w, r, requestID, &request, "Failed to parse payment callback request", true) {
-		return
-	}
-	ctrl.Log.Debug("Payment callback request parsed successfully",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String("payment_status", request.PaymentStatus),
-	)
-
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-
-	err := ctrl.PaymentUsecase.PaymentRoutingCallback(ctx, request)
-	if err != nil {
-		ctrl.Log.Error("Failed to process payment callback",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("payment_status", request.PaymentStatus),
-			zap.String(constvars.LoggingErrorTypeKey, "usecase error"),
-			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
-			zap.Error(err),
-		)
-		if err == context.DeadlineExceeded {
-			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
-			return
-		}
-		utils.BuildErrorResponse(ctrl.Log, w, err)
-		return
-	}
-
-	utils.LogBusinessEvent(ctrl.Log, "payment_callback_processed", requestID,
-		zap.String("payment_status", request.PaymentStatus),
-		zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
-	)
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.PaymentRoutingCallbackSuccessfullyCalled, request.PaymentStatus)
-}
-
 func (ctrl *PaymentController) XenditInvoiceCallback(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	requestID, ok := requireRequestID(ctrl.Log, w, r)

@@ -35,8 +35,6 @@ type authUsecase struct {
 	PractitionerFhirClient          contracts.PractitionerFhirClient
 	QuestionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient
 	BundleFhirClient                bundleSvc.BundleFhirClient
-	EmailSender                     contracts.EmailSender
-	WhatsAppSender                  contracts.WhatsAppSender
 	MinioStorage                    contracts.Storage
 	MagicLinkDelivery               contracts.MagicLinkSender
 	InternalConfig                  *config.InternalConfig
@@ -58,7 +56,6 @@ func NewAuthUsecase(
 	questionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient,
 	bundleFhirClient bundleSvc.BundleFhirClient,
 	userUsecase contracts.UserFHIRInitializer,
-	mailerService contracts.EmailSender,
 	magicLinkDelivery contracts.MagicLinkSender,
 	internalConfig *config.InternalConfig,
 	driverConfig *config.DriverConfig,
@@ -72,7 +69,6 @@ func NewAuthUsecase(
 			QuestionnaireResponseFhirClient: questionnaireResponseFhirClient,
 			BundleFhirClient:                bundleFhirClient,
 			UserFHIRInitializer:             userUsecase,
-			EmailSender:                     mailerService,
 			MagicLinkDelivery:               magicLinkDelivery,
 			InternalConfig:                  internalConfig,
 			DriverConfig:                    driverConfig,

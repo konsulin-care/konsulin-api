@@ -10,7 +10,6 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/robfig/cron/v3"
-	"github.com/spf13/viper"
 )
 
 var (
@@ -41,22 +40,6 @@ func init() {
 	}
 }
 
-func loadViperConfig(env string) error {
-	viper.SetConfigName(fmt.Sprintf("config.%s", env))
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath(".")
-	return viper.ReadInConfig()
-}
-
-func loadInternalConfigWithYAML() *InternalConfig {
-	var config InternalConfig
-	err := viper.UnmarshalKey("internal_config", &config)
-	if err != nil {
-		log.Fatalf("unable to decode into InternalConfig: %s", err)
-	}
-	return &config
-}
-
 func loadInternalConfigWithEnv() (*InternalConfig, error) {
 	cfg := &InternalConfig{
 		App: App{
@@ -72,11 +55,9 @@ func loadInternalConfigWithEnv() (*InternalConfig, error) {
 
 			// URLs & Timeouts
 			MaxRequests:                           utils.GetEnvInt("APP_MAX_REQUESTS", 20),
-			MaxTimeRequestsPerSeconds:             utils.GetEnvInt("APP_MAX_TIME_REQUESTS_PER_SECONDS", 30),
-			RequestBodyLimitInMegabyte:            utils.GetEnvInt("APP_REQUEST_BODY_LIMIT_IN_MEGABYTE", 30),
 			PaymentExpiredTimeInMinutes:           utils.GetEnvInt("APP_PAYMENT_EXPIRED_TIME_IN_MINUTES", 60),
 			PaymentGatewayRequestTimeoutInSeconds: utils.GetEnvInt("APP_PAYMENT_GATEWAY_REQUEST_TIMEOUT_IN_SECONDS", 120),
-			AccountDeactivationAgeInDays:          utils.GetEnvInt("APP_ACCOUNT_DEACTIVATION_AGE_IN_DAYS", 30),
+			ShutdownTimeoutInSeconds:              utils.GetEnvInt("APP_SHUTDOWN_TIMEOUT_IN_SECONDS", 30),
 
 			// Sensitive / Key Logic
 			SuperadminAPIKey:           utils.GetEnvString("SUPERADMIN_API_KEY", ""), // Sensitive
@@ -96,29 +77,11 @@ func loadInternalConfigWithEnv() (*InternalConfig, error) {
 			TerminologyServerBaseUrl: utils.GetEnvString("APP_TERMINOLOGY_BASE_URL", "https://tx.konsulin.care/fhir"),
 		},
 		JWT: AppJWT{
-			Secret:        utils.GetEnvString("APP_JWT_SECRET", ""),
-			ExpTimeInHour: utils.GetEnvInt("APP_JWT_EXP_TIME_IN_HOUR", 1),
-		},
-		Mailer: AppMailer{
-			EmailSender: utils.GetEnvString("APP_MAILER_EMAIL_SENDER", "konsulin.care@gmail.com"),
-		},
-		Konsulin: AppKonsulin{
-			BankCode:           utils.GetEnvString("APP_KONSULIN_BANK_CODE", "014"),
-			BankAccountNumber:  utils.GetEnvString("APP_KONSULIN_BANK_ACCOUNT_NUMBER", ""),
-			FinanceEmail:       utils.GetEnvString("APP_KONSULIN_FINANCE_EMAIL", ""),
-			PaymentDisplayName: utils.GetEnvString("APP_KONSULIN_PAYMENT_DISPLAY_NAME", "Konsulin"),
+			Secret: utils.GetEnvString("APP_JWT_SECRET", ""),
 		},
 		Supertoken: AppSupertoken{
-			MagiclinkBaseUrl:           utils.GetEnvString("APP_SUPERTOKEN_MAGICLINK_BASE_URL", "http://localhost:3000/auth/verify"),
 			KonsulinTenantID:           utils.GetEnvString("APP_SUPERTOKEN_KONSULIN_TENANT_ID", "public"),
 			KonsulinDasboardAdminEmail: utils.GetEnvString("APP_SUPERTOKEN_KONSULIN_DASHBOARD_ADMIN_EMAIL", ""),
-		},
-		PaymentGateway: AppPaymentGateway{
-			Username:                utils.GetEnvString("APP_PAYMENT_GATEWAY_USERNAME", ""), // Sensitive
-			ApiKey:                  utils.GetEnvString("APP_PAYMENT_GATEWAY_API_KEY", ""),  // Sensitive
-			BaseUrl:                 utils.GetEnvString("APP_PAYMENT_GATEWAY_BASE_URL", ""),
-			ListEnablePaymentMethod: utils.GetEnvString("OY_LIST_ENABLE_PAYMENT_METHOD", "BANK_TRANSFER,QRIS,EWALLET,CARDS"),
-			ListEnableSOF:           utils.GetEnvString("OY_LIST_ENABLE_SOF", "QRIS,dana_ewallet,ovo_ewallet,shopeepay_ewallet,linkaja_ewallet,CC_DC"),
 		},
 		ServicePricing: AppServicePricing{
 			// Default Pricing fallback
@@ -171,15 +134,6 @@ func normalizeSlotCronSpec(cfg *InternalConfig) {
 		log.Printf("slot worker: invalid cron spec '%s': %v, defaulting to @daily", spec, err)
 		cfg.App.SlotWorkerCronSpec = "@daily"
 	}
-}
-
-func loadDriverConfigWithYAML() *DriverConfig {
-	var config DriverConfig
-	err := viper.UnmarshalKey("driver_config", &config)
-	if err != nil {
-		log.Fatalf("unable to decode into DriverConfig: %s", err)
-	}
-	return &config
 }
 
 func loadDriverConfigWithEnv() (*DriverConfig, error) {
@@ -253,14 +207,8 @@ func validateNonDevConfig(cfg *InternalConfig) error {
 	if cfg.Webhook.JWTHookKey == "" {
 		return fmt.Errorf("env var JWT_HOOK_KEY is required in %s environment", cfg.App.Env)
 	}
-	if cfg.PaymentGateway.Username == "" || cfg.PaymentGateway.ApiKey == "" {
-		return fmt.Errorf("payment gateway credentials (APP_PAYMENT_GATEWAY_USERNAME, APP_PAYMENT_GATEWAY_API_KEY) are required in %s environment", cfg.App.Env)
-	}
 	if cfg.Xendit.APIKey == "" {
 		return fmt.Errorf("env var APP_XENDIT_API_KEY is required in %s environment", cfg.App.Env)
-	}
-	if cfg.PaymentGateway.BaseUrl == "" {
-		return fmt.Errorf("env var APP_PAYMENT_GATEWAY_BASE_URL is required in %s environment", cfg.App.Env)
 	}
 	return nil
 }

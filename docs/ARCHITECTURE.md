@@ -2,7 +2,7 @@
 
 ## System Overview
 
-Clients → **API Gateway** (auth → RBAC → routing) → Internal (Blaze FHIR, webhooks) / External (OY! Indonesia, Xendit)
+Clients → **API Gateway** (auth → RBAC → routing) → Internal (Blaze FHIR, webhooks) / External (Xendit)
 
 ## High-Level Architecture
 
@@ -36,7 +36,7 @@ Routes:
 
 ### Payment Flow
 ```
-/pay/* → Auth Middleware → RBAC Filter → Payment Service → OY! / Xendit → Transaction Storage
+/pay/* → Auth Middleware → RBAC Filter → Payment Service → Xendit → Transaction Storage
 ```
 
 ### Auth Flow
@@ -62,12 +62,12 @@ Model in [`resources/rbac_model.conf`](../resources/rbac_model.conf).
 | Authorization | Casbin v2 |
 | FHIR | Blaze (FHIR R4), proxied internally |
 | Session/Cache | Redis |
-| Payments | OY! Indonesia + Xendit |
+| Payments | Xendit |
 | Messaging | RabbitMQ (mailer, WhatsApp queues) |
 | Logging | Zap (structured) |
-| Config | Viper + godotenv |
+| Config | godotenv (.env) |
 | Container | Docker multi-stage (Alpine) |
-| Deployment | Coolify (Ansible playbooks in `deployments/`) |
+| Deployment | Coolify (deploy triggered by .github/workflows) |
 
 ## Key Dependencies
 
@@ -77,7 +77,7 @@ Model in [`resources/rbac_model.conf`](../resources/rbac_model.conf).
 - `github.com/rabbitmq/amqp091-go` — Messaging
 - `github.com/xendit/xendit-go/v7` — Payments
 - `go.uber.org/zap` — Logging
-- `github.com/spf13/viper` — Config
+- `github.com/joho/godotenv` — Config (.env loading)
 - `github.com/robfig/cron/v3` — Scheduled tasks (slot generation)
 
 ## Deployment

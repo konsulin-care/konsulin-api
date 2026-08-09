@@ -45,7 +45,6 @@ type paymentUsecase struct {
 	PractitionerFhirClient     contracts.PractitionerFhirClient
 	PersonFhirClient           contracts.PersonFhirClient
 	Storage                    *storage.ServiceRequestStorage
-	PaymentGateway             contracts.PaymentGatewayService
 	InvoiceFhirClient          contracts.InvoiceFhirClient
 	PractitionerRoleFhirClient contracts.PractitionerRoleFhirClient
 	SlotFhirClient             contracts.SlotFhirClient
@@ -69,7 +68,6 @@ func NewPaymentUsecase(
 	practitionerFhirClient contracts.PractitionerFhirClient,
 	personFhirClient contracts.PersonFhirClient,
 	storageService *storage.ServiceRequestStorage,
-	paymentGateway contracts.PaymentGatewayService,
 	xenditClient *xendit.APIClient,
 	invoiceFhirClient contracts.InvoiceFhirClient,
 	practitionerRoleFhirClient contracts.PractitionerRoleFhirClient,
@@ -89,7 +87,6 @@ func NewPaymentUsecase(
 			PractitionerFhirClient:     practitionerFhirClient,
 			PersonFhirClient:           personFhirClient,
 			Storage:                    storageService,
-			PaymentGateway:             paymentGateway,
 			InvoiceFhirClient:          invoiceFhirClient,
 			PractitionerRoleFhirClient: practitionerRoleFhirClient,
 			SlotFhirClient:             slotFhirClient,
@@ -102,96 +99,6 @@ func NewPaymentUsecase(
 		paymentUsecaseInstance = instance
 	})
 	return paymentUsecaseInstance
-}
-
-func (uc *paymentUsecase) PaymentRoutingCallback(ctx context.Context, request *requests.PaymentRoutingCallback) error {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	uc.Log.Info("paymentUsecase.PaymentRoutingCallback called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.Any(constvars.LoggingRequestKey, request),
-	)
-
-	// 1) Early exit if status is not COMPLETE
-	if constvars.OYPaymentRoutingStatus(request.PaymentStatus) != constvars.OYPaymentRoutingStatusComplete {
-		uc.Log.Info("paymentUsecase.PaymentRoutingCallback non-complete status; ignoring",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("payment_status", request.PaymentStatus),
-		)
-		return nil
-	}
-
-	// 2) Verify with OY (source of truth)
-	verifyReq := &requests.OYCheckPaymentRoutingStatusRequest{PartnerTrxID: request.PartnerTrxID, SendCallback: false}
-	ctxVerify, cancelVerify := context.WithTimeout(ctx, time.Duration(uc.InternalConfig.App.PaymentGatewayRequestTimeoutInSeconds)*time.Second)
-	defer cancelVerify()
-	verifyResp, err := uc.PaymentGateway.CheckPaymentRoutingStatus(ctxVerify, verifyReq)
-	if err != nil {
-		uc.Log.Error("paymentUsecase.PaymentRoutingCallback OY verify failed",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil
-	}
-	if constvars.OYPaymentRoutingStatus(verifyResp.PaymentStatus) != constvars.OYPaymentRoutingStatusComplete {
-		uc.Log.Warn("paymentUsecase.PaymentRoutingCallback OY verify not complete; ignoring",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingOyPaymentStatusKey, verifyResp.PaymentStatus),
-		)
-		return nil
-	}
-
-	// 3) Parse partner_trx_id into id-version
-	id, version, parseErr := parsePartnerTrxID(request.PartnerTrxID)
-	if parseErr != nil {
-		uc.Log.Error("paymentUsecase.PaymentRoutingCallback invalid partner_trx_id format",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("partner_trx_id", request.PartnerTrxID),
-			zap.Error(parseErr),
-		)
-		return nil
-	}
-
-	// 4) Fetch ServiceRequest specific version
-	sr, err := uc.Storage.FhirClient.GetServiceRequestByIDAndVersion(ctx, id, version)
-	if err != nil {
-		uc.Log.Error("paymentUsecase.PaymentRoutingCallback failed fetching ServiceRequest",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil
-	}
-
-	// 5) Parse note.text -> NoteStorage
-	note, err := extractNoteStorage(sr)
-	if err != nil {
-		uc.Log.Error("paymentUsecase.PaymentRoutingCallback failed parsing stored note",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil
-	}
-
-	// 6) Resolve instantiatesUri (prefer FHIR field, fallback to legacy note) and POST with RawBody
-	uri, err := resolveInstantiatesURI(sr, note)
-	if err != nil {
-		uc.Log.Error("paymentUsecase.PaymentRoutingCallback failed resolving instantiatesUri",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil
-	}
-	if err := uc.callInstantiateURI(ctx, uri, note.RawBody); err != nil {
-		uc.Log.Error("paymentUsecase.PaymentRoutingCallback failed calling instantiate URI",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil
-	}
-
-	uc.Log.Info("paymentUsecase.PaymentRoutingCallback completed successfully",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-	)
-	return nil
 }
 
 func (uc *paymentUsecase) XenditInvoiceCallback(ctx context.Context, header *requests.XenditInvoiceCallbackHeader, body *requests.XenditInvoiceCallbackBody) error {
@@ -683,7 +590,7 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 	}
 
 	// 5) Determine ServiceRequest.subject
-	subject := uc.determineServiceRequestSubject(requestedService, resourceID, roles)
+	subject := uc.determineServiceRequestSubject(requestedService, resourceID)
 
 	// 6) Build instantiateUri
 	baseURL := strings.TrimRight(uc.InternalConfig.App.BaseUrl, "/")
@@ -696,7 +603,7 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 	}
 	occurrence := time.Now().Format("2006-01-02T15:04:05-07:00")
 	// Map service to requester resource type via specialized helper
-	requesterResourceType := uc.mapServiceToRequesterResourceType(requestedService)
+	requesterResourceType := mapServiceToRequesterResourceType(requestedService)
 
 	storageOutput, err := uc.Storage.Create(ctx, &requests.CreateServiceRequestStorageInput{
 		UID:             uid,
@@ -894,7 +801,7 @@ func (uc *paymentUsecase) createXenditInvoiceForAppointment(
 	customer := xinvoice.NewCustomerObject()
 	customer.SetGivenNames(patientName)
 
-	preferredNotificationChannel := []xinvoice.NotificationChannel{}
+	var preferredNotificationChannel []xinvoice.NotificationChannel
 
 	if patientEmail != "" {
 		customer.SetEmail(patientEmail)
@@ -1145,9 +1052,9 @@ func (uc *paymentUsecase) callInstantiateURI(ctx context.Context, url string, bo
 	return nil
 }
 
-// determineServiceRequestSubject returns the FHIR subject reference string based on service and roles.
+// determineServiceRequestSubject returns the FHIR subject reference string based on service.
 // For Patient service, it returns "Patient/<patient-id>". For others, it maps to configured Group subjects.
-func (uc *paymentUsecase) determineServiceRequestSubject(service string, patientID string, roles []string) string {
+func (uc *paymentUsecase) determineServiceRequestSubject(service string, patientID string) string {
 	normalized := strings.ToLower(service)
 	switch normalized {
 	case string(constvars.ServiceAnalyze):
@@ -1198,7 +1105,7 @@ func resolveEmailIdentity[T any](ctx context.Context, email, notFoundMsg string,
 
 // mapServiceToRequesterResourceType returns the FHIR requester resource type for a given service.
 // analyze -> Patient, report -> Practitioner, performance-report/access-dataset -> Person, default empty.
-func (uc *paymentUsecase) mapServiceToRequesterResourceType(service string) string {
+func mapServiceToRequesterResourceType(service string) string {
 	switch strings.ToLower(service) {
 	case string(constvars.ServiceAnalyze):
 		return constvars.ResourcePatient
@@ -1215,7 +1122,7 @@ func (uc *paymentUsecase) HandleAppointmentPayment(
 	ctx context.Context,
 	req *requests.AppointmentPaymentRequest,
 ) (*responses.AppointmentPaymentResponse, error) {
-	if !uc.whitelistAccessByRoles(ctx, []string{constvars.KonsulinRolePatient, constvars.KonsulinRoleSuperadmin}) {
+	if !whitelistAccessByRoles(ctx, []string{constvars.KonsulinRolePatient, constvars.KonsulinRoleSuperadmin}) {
 		return nil, exceptions.ErrAuthInvalidRole(errors.New("forbidden access"))
 	}
 
@@ -1483,7 +1390,7 @@ func (uc *paymentUsecase) handleOfflineAppointmentPayment(
 	}, nil
 }
 
-func (uc *paymentUsecase) whitelistAccessByRoles(ctx context.Context, allowedRoles []string) bool {
+func whitelistAccessByRoles(ctx context.Context, allowedRoles []string) bool {
 	roles, _ := ctx.Value(constvars.CONTEXT_FHIR_ROLE).([]string)
 
 	for _, role := range roles {

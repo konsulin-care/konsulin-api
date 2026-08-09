@@ -61,7 +61,7 @@ examples:
       status: 200
       body:
         type: json
-        data: '{"success":true,"message":"success","data":{"payment_checkout_url":"https://checkout.oy.co.id/invoice/abc123","partner_trx_id":"INV-001","trx_id":"TRX-001","amount":50000}}'
+        data: '{"success":true,"message":"success","data":{"payment_checkout_url":"https://checkout.xendit.co/web/abc123","partner_trx_id":"INV-001","trx_id":"TRX-001","amount":50000}}'
   - name: Unauthorized
     request:
       url: "{{process.env.BASE_URL}}/api/v1/pay/service"
@@ -76,7 +76,9 @@ examples:
         data: '{"success":false,"message":"Unauthenticated","status_code":401}'
 
 docs: |
-  Creates a payment transaction via OY! Indonesia routing. Requires an authenticated session.
+  Creates a payment transaction via the Xendit payment gateway. Requires an authenticated session.
+
+  On success, the backend creates a Xendit invoice and returns `payment_checkout_url` (the Xendit invoice checkout page), `trx_id` (the Xendit invoice ID), and `partner_trx_id` (the internal ServiceRequest identifier). Payment status changes are delivered asynchronously to the Xendit invoice callback endpoint.
 
   ### Request Fields
   - `total_item`: (required) item count, min 1.

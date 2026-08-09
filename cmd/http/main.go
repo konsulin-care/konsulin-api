@@ -14,31 +14,16 @@ import (
 	"konsulin-service/internal/app/services/core/auth"
 	"konsulin-service/internal/app/services/core/organization"
 	"konsulin-service/internal/app/services/core/payments"
-	privacy "konsulin-service/internal/app/services/core/privacy"
 	"konsulin-service/internal/app/services/core/slot"
 	"konsulin-service/internal/app/services/core/transactions"
 	"konsulin-service/internal/app/services/core/users"
 	"konsulin-service/internal/app/services/core/webhook"
-	bundle "konsulin-service/internal/app/services/fhir_spark/bundle"
-	invoicesFhir "konsulin-service/internal/app/services/fhir_spark/invoices"
-	organizationsFhir "konsulin-service/internal/app/services/fhir_spark/organizations"
-	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/persons"
-	planDefinitionsFhir "konsulin-service/internal/app/services/fhir_spark/plan_definitions"
-	practitionerRoleFhir "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
-	privacyFhir "konsulin-service/internal/app/services/fhir_spark/privacy"
-	questionnaireResponsesFhir "konsulin-service/internal/app/services/fhir_spark/questionnaire_responses"
-	scheduleFhir "konsulin-service/internal/app/services/fhir_spark/schedules"
 	"konsulin-service/internal/app/services/fhir_spark/service_requests"
-	slotFhir "konsulin-service/internal/app/services/fhir_spark/slots"
 	"konsulin-service/internal/app/services/shared/jwtmanager"
 	"konsulin-service/internal/app/services/shared/locker"
-	"konsulin-service/internal/app/services/shared/mailer"
-	"konsulin-service/internal/app/services/shared/payment_gateway"
 	"konsulin-service/internal/app/services/shared/ratelimiter"
-	redisKonsulin "konsulin-service/internal/app/services/shared/redis"
-	storageKonsulin "konsulin-service/internal/app/services/shared/storage"
 	"konsulin-service/internal/app/services/shared/webhookqueue"
 	"konsulin-service/internal/pkg/buildinfo"
 	"log"
@@ -47,6 +32,25 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	privacy "konsulin-service/internal/app/services/core/privacy"
+
+	bundle "konsulin-service/internal/app/services/fhir_spark/bundle"
+	invoicesFhir "konsulin-service/internal/app/services/fhir_spark/invoices"
+	organizationsFhir "konsulin-service/internal/app/services/fhir_spark/organizations"
+	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
+
+	planDefinitionsFhir "konsulin-service/internal/app/services/fhir_spark/plan_definitions"
+	practitionerRoleFhir "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
+
+	privacyFhir "konsulin-service/internal/app/services/fhir_spark/privacy"
+	questionnaireResponsesFhir "konsulin-service/internal/app/services/fhir_spark/questionnaire_responses"
+	scheduleFhir "konsulin-service/internal/app/services/fhir_spark/schedules"
+
+	slotFhir "konsulin-service/internal/app/services/fhir_spark/slots"
+
+	redisKonsulin "konsulin-service/internal/app/services/shared/redis"
+	storageKonsulin "konsulin-service/internal/app/services/shared/storage"
 
 	"github.com/go-chi/chi/v5"
 	xendit "github.com/xendit/xendit-go/v7"
@@ -60,7 +64,10 @@ func main() {
 	internalConfig := config.NewInternalConfig()
 
 	// Initialize the logger
-	logger := logger.NewZapLogger(driverConfig, internalConfig)
+	logger, err := logger.NewZapLogger(driverConfig, internalConfig)
+	if err != nil {
+		log.Fatalf("Error initializing zap logger: %v", err)
+	}
 
 	// Set the application's timezone
 	location, err := time.LoadLocation(internalConfig.App.Timezone)
@@ -77,7 +84,10 @@ func main() {
 	}
 
 	// Initialize RabbitMQ connection
-	rabbitMQ := messaging.NewRabbitMQ(driverConfig)
+	rabbitMQ, err := messaging.NewRabbitMQ(driverConfig)
+	if err != nil {
+		log.Fatalf("Error connecting to RabbitMQ: %v", err)
+	}
 
 	// Create a new router
 	chiRouter := chi.NewRouter()
@@ -131,11 +141,7 @@ func main() {
 	)
 	defer cancel()
 
-	// Countdown for shutdown
-	for i := internalConfig.App.ShutdownTimeoutInSeconds; i > 0; i-- {
-		time.Sleep(1 * time.Second)
-		log.Printf("Shutting down in %d...", i)
-	}
+	log.Printf("Shutting down server gracefully (timeout: %ds)", internalConfig.App.ShutdownTimeoutInSeconds)
 
 	// Shutdown the HTTP server gracefully
 	err = server.Shutdown(shutdownCtx)
@@ -159,15 +165,6 @@ func main() {
 func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	// Initialize the repository for Redis
 	redisRepository := redisKonsulin.NewRedisRepository(bootstrap.Redis, bootstrap.Logger)
-
-	// Initialize the mailer service with RabbitMQ
-	mailerService, err := mailer.NewEmailSender(bootstrap.RabbitMQ, bootstrap.Logger, bootstrap.InternalConfig.RabbitMQ.MailerQueue)
-	if err != nil {
-		return err
-	}
-
-	// Initialize oy service (kept for backward-compatibility; not used for creation)
-	_ = payment_gateway.NewOyService(bootstrap.InternalConfig, bootstrap.Logger)
 
 	// Initialize Xendit client (reusable)
 	xenditClient := xendit.NewClient(bootstrap.InternalConfig.Xendit.APIKey)
@@ -219,7 +216,6 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		questionnaireResponseFhirClient,
 		bundleClient,
 		userUsecase,
-		mailerService,
 		magicLinkDelivery,
 		bootstrap.InternalConfig,
 		bootstrap.DriverConfig,
@@ -246,7 +242,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	// Initialize supertokens
 	err = authUseCase.InitializeSupertoken()
 	if err != nil {
-		log.Fatalf("Error initializing supertokens: %v", err)
+		return fmt.Errorf("error initializing supertokens: %w", err)
 	}
 
 	// Initialize webhook components
@@ -281,7 +277,6 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		practitionerFhirClient,
 		personFhirClient,
 		serviceRequestStorage,
-		payment_gateway.NewOyService(bootstrap.InternalConfig, bootstrap.Logger),
 		xenditClient,
 		invoiceFhirClient,
 		practitionerRoleClient,
@@ -313,7 +308,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	purgeController := controllers.NewPurgeController(purgeUsecase, middlewares, bootstrap.Logger)
 
 	if err := orgUsecase.InitializeKonsulinOrganizationResource(context.Background()); err != nil {
-		log.Fatalf("Error initializing Konsulin organization resource: %v", err)
+		return fmt.Errorf("error initializing Konsulin organization resource: %w", err)
 	}
 
 	// Start webhook worker ticker (best-effort lock ensures single execution)
