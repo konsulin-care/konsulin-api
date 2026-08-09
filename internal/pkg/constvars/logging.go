@@ -155,10 +155,6 @@ const (
 )
 
 const (
-	LoggingQueueNameKey = "queue_name"
-)
-
-const (
 	LoggingClinicCountKey = "clinics_count"
 	LoggingClinicIDKey    = "clinic_id"
 )

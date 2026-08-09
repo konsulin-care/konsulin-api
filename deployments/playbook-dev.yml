@@ -62,12 +62,6 @@
           6336343039393033310a396539663636646564663863633938666162333935663566323739303339
           66313035346265636131663231343235663236356532633839613839383432633335
         exp_time_in_hour: 1
-      mailer:
-        email_sender: "konsulin.care@gmail.com"
-      
-      rabbitmq:
-        mailer_queue: "dev.email"
-        whatsapp_queue: "dev.whatsapp"
       konsulin:
         bank_code: "014"
         bank_account_number: "1234567890"
@@ -102,7 +96,7 @@
         app_name: "Konsulin"
         api_domain: "https://dev-api.konsulin.care"
         website_domain: "https://dev-app.konsulin.care"
-      
+
       redis:
         host: "37.27.46.214"
         port: 6379
@@ -137,7 +131,7 @@
           3639353339383431350a633065346434303963643738303039386362353066303865623030353965
           32333631623638343664633931383334356365316238616636353538653562636336
 
-      
+
 
   tasks:
     - name: Include deployment tasks

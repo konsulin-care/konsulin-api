@@ -34,7 +34,6 @@ import (
 	slotFhir "konsulin-service/internal/app/services/fhir_spark/slots"
 	"konsulin-service/internal/app/services/shared/jwtmanager"
 	"konsulin-service/internal/app/services/shared/locker"
-	"konsulin-service/internal/app/services/shared/mailer"
 	"konsulin-service/internal/app/services/shared/payment_gateway"
 	"konsulin-service/internal/app/services/shared/ratelimiter"
 	redisKonsulin "konsulin-service/internal/app/services/shared/redis"
@@ -156,12 +155,6 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	// Initialize the repository for Redis
 	redisRepository := redisKonsulin.NewRedisRepository(bootstrap.Redis, bootstrap.Logger)
 
-	// Initialize the mailer service with RabbitMQ
-	mailerService, err := mailer.NewEmailSender(bootstrap.RabbitMQ, bootstrap.Logger, bootstrap.InternalConfig.RabbitMQ.MailerQueue)
-	if err != nil {
-		return err
-	}
-
 	// Initialize oy service (kept for backward-compatibility; not used for creation)
 	_ = payment_gateway.NewOyService(bootstrap.InternalConfig, bootstrap.Logger)
 
@@ -215,7 +208,6 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		questionnaireResponseFhirClient,
 		bundleClient,
 		userUsecase,
-		mailerService,
 		magicLinkDelivery,
 		bootstrap.InternalConfig,
 		bootstrap.DriverConfig,

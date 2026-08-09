@@ -4,7 +4,6 @@ type InternalConfig struct {
 	App            App               `mapstructure:"app"`
 	FHIR           AppFHIR           `mapstructure:"fhir"`
 	JWT            AppJWT            `mapstructure:"jwt"`
-	RabbitMQ       AppRabbitMQ       `mapstructure:"rabbitmq"`
 	Supertoken     AppSupertoken     `mapstructure:"supertoken"`
 	PaymentGateway AppPaymentGateway `mapstructure:"payment_gateway"`
 	ServicePricing AppServicePricing `mapstructure:"service_pricing"`
@@ -13,21 +12,21 @@ type InternalConfig struct {
 }
 
 type App struct {
-	Env                                      string `mapstructure:"env"`
-	Port                                     string `mapstructure:"port"`
-	Version                                  string `mapstructure:"version"`
-	Address                                  string `mapstructure:"address"`
-	BaseUrl                                  string `mapstructure:"base_url"`
-	Timezone                                 string `mapstructure:"timezone"`
-	FrontendDomain                           string `mapstructure:"frontend_domain"`
-	EndpointPrefix                           string `mapstructure:"endpoint_prefix"`
+	Env                                   string `mapstructure:"env"`
+	Port                                  string `mapstructure:"port"`
+	Version                               string `mapstructure:"version"`
+	Address                               string `mapstructure:"address"`
+	BaseUrl                               string `mapstructure:"base_url"`
+	Timezone                              string `mapstructure:"timezone"`
+	FrontendDomain                        string `mapstructure:"frontend_domain"`
+	EndpointPrefix                        string `mapstructure:"endpoint_prefix"`
 	MaxRequests                           int    `mapstructure:"max_requests"`
-	ShutdownTimeoutInSeconds                 int    `mapstructure:"shutdown_timeout_in_seconds"`
-	PaymentExpiredTimeInMinutes              int    `mapstructure:"payment_expired_time_in_minutes"`
-	PaymentGatewayRequestTimeoutInSeconds    int    `mapstructure:"payment_gateway_request_timeout_in_seconds"`
-	SuperadminAPIKey                         string `mapstructure:"superadmin_api_key"`
-	SuperadminAPIKeyRateLimit                int    `mapstructure:"superadmin_api_key_rate_limit"`
-	WebhookInstantiateBasePath               string `mapstructure:"webhook_instantiate_base_path"`
+	ShutdownTimeoutInSeconds              int    `mapstructure:"shutdown_timeout_in_seconds"`
+	PaymentExpiredTimeInMinutes           int    `mapstructure:"payment_expired_time_in_minutes"`
+	PaymentGatewayRequestTimeoutInSeconds int    `mapstructure:"payment_gateway_request_timeout_in_seconds"`
+	SuperadminAPIKey                      string `mapstructure:"superadmin_api_key"`
+	SuperadminAPIKeyRateLimit             int    `mapstructure:"superadmin_api_key_rate_limit"`
+	WebhookInstantiateBasePath            string `mapstructure:"webhook_instantiate_base_path"`
 	// SlotWindowDays controls rolling window days for Slot generation (default 30 if unset)
 	SlotWindowDays int `mapstructure:"slot_window_days"`
 	// SlotWorkerCronSpec defines the cron expression for the slot worker schedule (e.g., "@daily")
@@ -41,10 +40,6 @@ type AppFHIR struct {
 
 type AppJWT struct {
 	Secret string `mapstructure:"secret"`
-}
-
-type AppRabbitMQ struct {
-	MailerQueue string `mapstructure:"mailer_queue"`
 }
 
 type AppSupertoken struct {

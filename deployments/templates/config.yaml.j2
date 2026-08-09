@@ -29,24 +29,17 @@ internal_config:
     secret: {{ internal_config.jwt.secret | default('') }}
     exp_time_in_hour: {{ internal_config.jwt.exp_time_in_hour | default('') }}
 
-  mailer:
-    email_sender: {{ internal_config.mailer.email_sender | default('') }}
-
-  rabbitmq:
-    mailer_queue: {{ internal_config.rabbitmq.mailer_queue | default('') }}
-    whatsapp_queue: {{ internal_config.rabbitmq.whatsapp_queue | default('') }}
-
   konsulin:
     bank_code: {{ internal_config.konsulin.bank_code | default('') }}
     bank_account_number: {{ internal_config.konsulin.bank_account_number | default('') }}
     finance_email: {{ internal_config.konsulin.finance_email | default('') }}
     payment_display_name: {{ internal_config.konsulin.payment_display_name | default('') }}
-  
+
   payment_gateway:
     username: {{ internal_config.payment_gateway.username | default('') }}
     api_key: {{ internal_config.payment_gateway.api_key | default('') }}
     base_url: {{ internal_config.payment_gateway.base_url | default('') }}
-  
+
   supertoken:
     magiclink_base_url: {{ internal_config.supertoken.magiclink_base_url | default('') }}
     konsulin_dashboard_admin_email: {{ internal_config.supertoken.konsulin_dashboard_admin_email | default('') }}
@@ -76,4 +69,3 @@ driver_config:
     host: {{ driver_config.rabbitmq.host | default('') }}
     username: {{ driver_config.rabbitmq.username | default('') }}
     password: {{ driver_config.rabbitmq.password | default('') }}
-

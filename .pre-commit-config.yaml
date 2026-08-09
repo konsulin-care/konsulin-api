@@ -4,6 +4,9 @@ repos:
     hooks:
       - id: check-added-large-files
       - id: check-yaml
+        # --unsafe tolerates custom tags (e.g. Ansible vault's !vault) used in
+        # deployments/playbook-*.yml
+        args: [--unsafe]
       - id: end-of-file-fixer
       - id: trailing-whitespace
 

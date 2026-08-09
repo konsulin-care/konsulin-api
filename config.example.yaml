@@ -1,48 +1,41 @@
 internal_config:
   app:
-    env: 
-    port: 
-    version: 
-    address: 
-    base_url: 
-    timezone: 
-    endpoint_prefix: 
-    reset_password_url: 
-    max_requests: 
-    shutdown_timeout_in_seconds: 
-    max_time_requests_per_seconds: 
-    request_body_limit_in_megabyte: 
-    account_deactivation_age_in_days: 
-    login_session_expired_time_in_hours: 
-    forgot_password_token_expired_time_in_minutes: 
-    questionnaire_guest_response_response_expired_time_in_minutes: 
-    superadmin_api_key: 
-    superadmin_api_key_rate_limit: 
+    env:
+    port:
+    version:
+    address:
+    base_url:
+    timezone:
+    endpoint_prefix:
+    reset_password_url:
+    max_requests:
+    shutdown_timeout_in_seconds:
+    max_time_requests_per_seconds:
+    request_body_limit_in_megabyte:
+    account_deactivation_age_in_days:
+    login_session_expired_time_in_hours:
+    forgot_password_token_expired_time_in_minutes:
+    questionnaire_guest_response_response_expired_time_in_minutes:
+    superadmin_api_key:
+    superadmin_api_key_rate_limit:
 
   fhir:
-    base_url: 
+    base_url:
 
   jwt:
-    secret: 
-    exp_time_in_hour: 
-
-  mailer:
-    email_sender: 
-
-  rabbitmq:
-    mailer_queue: 
-    whatsapp_queue: 
+    secret:
+    exp_time_in_hour:
 
   mongodb:
-    fhir_db_name: 
-    konsulin_db_name: 
+    fhir_db_name:
+    konsulin_db_name:
 
   konsulin:
     bank_code:
     bank_account_number:
     finance_email:
     payment_display_name:
-  
+
   payment_gateway:
     username:
     api_key:
@@ -50,30 +43,30 @@ internal_config:
 
 driver_config:
   postgres:
-    port: 
-    host: 
-    username: 
-    password: 
-    dbname: 
+    port:
+    host:
+    username:
+    password:
+    dbname:
 
   mongodb:
-    port: 
-    host: 
-    username: 
-    password: 
+    port:
+    host:
+    username:
+    password:
 
   redis:
-    host: 
-    port: 
-    password: 
+    host:
+    port:
+    password:
 
   logger:
-    level: 
-    output_file_name: 
-    output_error_file_name: 
+    level:
+    output_file_name:
+    output_error_file_name:
 
   rabbitmq:
-    port: 
-    host: 
-    username: 
-    password: 
+    port:
+    host:
+    username:
+    password:

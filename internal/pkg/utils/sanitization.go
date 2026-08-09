@@ -36,26 +36,6 @@ func capitalize(input string) string {
 	return string(runes)
 }
 
-func SanitizeRegisterViaWhatsAppRequest(input *requests.RegisterViaWhatsApp) {
-	input.To = strings.TrimSpace(input.To)
-}
-
-func SanitizeLoginViaWhatsAppRequest(input *requests.LoginViaWhatsApp) {
-	input.To = strings.TrimSpace(input.To)
-}
-
-func SanitizeVerifyRegisterWhatsAppOTP(input *requests.VerivyRegisterWhatsAppOTP) {
-	input.To = strings.TrimSpace(input.To)
-	input.OTP = strings.TrimSpace(input.OTP)
-	input.Role = strings.TrimSpace(input.Role)
-	input.Role = capitalizeFirstLetter(input.Role)
-}
-
-func SanitizeVerifyLoginWhatsAppOTP(input *requests.VerivyLoginWhatsAppOTP) {
-	input.To = strings.TrimSpace(input.To)
-	input.OTP = strings.TrimSpace(input.OTP)
-}
-
 func SanitizeRegisterUserRequest(input *requests.RegisterUser) {
 	input.Email = strings.TrimSpace(input.Email)
 	input.Username = strings.TrimSpace(input.Username)

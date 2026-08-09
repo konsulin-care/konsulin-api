@@ -58,11 +58,6 @@
           3936643734363933300a313063306338623038366363306134386431323739646435633865613135
           32396462633635646466623864643632613861383163613837313835373436653361
         exp_time_in_hour: 1
-      mailer:
-        email_sender: "funlab.ardihikaru@gmail.com"
-      rabbitmq:
-        mailer_queue: "prod.email"
-        whatsapp_queue: "dev.whatsapp"
     driver_config:
       redis:
         host: "37.27.46.214"
