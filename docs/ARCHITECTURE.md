@@ -67,7 +67,7 @@ Model in [`resources/rbac_model.conf`](../resources/rbac_model.conf).
 | Logging | Zap (structured) |
 | Config | Viper + godotenv |
 | Container | Docker multi-stage (Alpine) |
-| Deployment | Coolify (Ansible playbooks in `deployments/`) |
+| Deployment | Coolify (deploy triggered by .github/workflows) |
 
 ## Key Dependencies
 
