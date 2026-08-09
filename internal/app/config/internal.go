@@ -5,7 +5,6 @@ type InternalConfig struct {
 	FHIR           AppFHIR           `mapstructure:"fhir"`
 	JWT            AppJWT            `mapstructure:"jwt"`
 	Supertoken     AppSupertoken     `mapstructure:"supertoken"`
-	PaymentGateway AppPaymentGateway `mapstructure:"payment_gateway"`
 	ServicePricing AppServicePricing `mapstructure:"service_pricing"`
 	Webhook        AppWebhook        `mapstructure:"webhook"`
 	Xendit         AppXendit         `mapstructure:"xendit"`
@@ -45,12 +44,6 @@ type AppJWT struct {
 type AppSupertoken struct {
 	KonsulinTenantID           string `mapstructure:"konsulin_tenant_id"`
 	KonsulinDasboardAdminEmail string `mapstructure:"konsulin_dashboard_admin_email"`
-}
-
-type AppPaymentGateway struct {
-	Username string `mapstructure:"username"`
-	ApiKey   string `mapstructure:"api_key"`
-	BaseUrl  string `mapstructure:"base_url"`
 }
 
 // AppServicePricing represents per-service base prices for service-based payments.

@@ -22,7 +22,7 @@ The backend aims for a **Clean Architecture** pattern with **API Gateway** desig
 - **FHIR Integration**: Blaze FHIR server for healthcare data storage (FHIR R4 compliant)
 - **Authentication**: SuperTokens with magic link authentication
 - **Authorization**: Role-based access control (RBAC) using Casbin
-- **Payment Processing**: OY! Indonesia payment gateway integration
+- **Payment Processing**: Xendit payment gateway integration
 - **Session Management**: Redis-based session storage
 
 ## Features
@@ -54,7 +54,7 @@ The backend aims for a **Clean Architecture** pattern with **API Gateway** desig
 - **API Keys**: Custom implementation for superadmin access
 
 ### External Integrations
-- **Payment Gateway**: OY! Indonesia
+- **Payment Gateway**: Xendit
 - **Messaging**: RabbitMQ (email, WhatsApp notifications)
 
 ## Prerequisites
@@ -143,7 +143,7 @@ Client Request → API Gateway → Authentication → Authorization → Service 
 ### Route Patterns
 - `/auth/*` - Authentication and user management (SuperTokens)
 - `/fhir/*` - FHIR resources (proxied to Blaze server with RBAC filtering)
-- `/pay/*` - Payment processing (OY! Indonesia integration)
+- `/pay/*` - Payment processing (Xendit integration)
 - `/hook/*` - Webhook handling (internal and external)
 
 ### Authentication & Authorization
@@ -160,7 +160,7 @@ For detailed role permissions, see [`resources/rbac_policy.csv`](resources/rbac_
 
 ## Payment Services
 
-The platform supports service-based pricing through OY! Indonesia payment gateway:
+The platform supports service-based pricing through the Xendit payment gateway:
 
 ### Available Services
 - `analyze`: Patient data analysis (min quantity: 10)

@@ -2,7 +2,7 @@
 
 ## System Overview
 
-Clients → **API Gateway** (auth → RBAC → routing) → Internal (Blaze FHIR, webhooks) / External (OY! Indonesia, Xendit)
+Clients → **API Gateway** (auth → RBAC → routing) → Internal (Blaze FHIR, webhooks) / External (Xendit)
 
 ## High-Level Architecture
 
@@ -36,7 +36,7 @@ Routes:
 
 ### Payment Flow
 ```
-/pay/* → Auth Middleware → RBAC Filter → Payment Service → OY! / Xendit → Transaction Storage
+/pay/* → Auth Middleware → RBAC Filter → Payment Service → Xendit → Transaction Storage
 ```
 
 ### Auth Flow
@@ -62,7 +62,7 @@ Model in [`resources/rbac_model.conf`](../resources/rbac_model.conf).
 | Authorization | Casbin v2 |
 | FHIR | Blaze (FHIR R4), proxied internally |
 | Session/Cache | Redis |
-| Payments | OY! Indonesia + Xendit |
+| Payments | Xendit |
 | Messaging | RabbitMQ (mailer, WhatsApp queues) |
 | Logging | Zap (structured) |
 | Config | godotenv (.env) |

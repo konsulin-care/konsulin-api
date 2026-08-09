@@ -148,13 +148,6 @@ const (
 )
 
 const (
-	LoggingPaymentResponseKey = "payment_response"
-	LoggingOyPaymentID        = "oy_payment_id"
-	LoggingOyPaymentStatusKey = "oy_payment_status"
-	LoggingOyUrlKey           = "oy_url"
-)
-
-const (
 	LoggingClinicCountKey = "clinics_count"
 	LoggingClinicIDKey    = "clinic_id"
 )

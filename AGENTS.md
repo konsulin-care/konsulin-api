@@ -2,14 +2,14 @@
 
 ## Overview
 
-Konsulin is a digital mental health platform API gateway. It routes requests to FHIR (Blaze), authentication (SuperTokens), payment (OY! Indonesia / Xendit), and webhook services. The backend is a **stateless Go API gateway** — it owns auth, authorization (RBAC), and routing but no domain business logic.
+Konsulin is a digital mental health platform API gateway. It routes requests to FHIR (Blaze), authentication (SuperTokens), payment (Xendit), and webhook services. The backend is a **stateless Go API gateway** — it owns auth, authorization (RBAC), and routing but no domain business logic.
 
 ## What This Project Achieves
 
 - Passwordless magic-link authentication via SuperTokens
 - Role-based access control (6 roles: Guest, Patient, Practitioner, Clinic Admin, Researcher, Superadmin)
 - FHIR R4-compliant health record proxying (Blaze server) with role-based filtering
-- Service-based payment processing (dual gateways: OY! Indonesia + Xendit)
+- Service-based payment processing (Xendit gateway)
 - Scheduled slot management with rolling window generation
 - Async webhook forwarding with rate limiting and JWT-signed payloads
 - Background job processing via RabbitMQ (mailer, WhatsApp)
@@ -54,14 +54,14 @@ go run ./cmd/migration
 | Authorization | Casbin RBAC |
 | FHIR | Blaze server (FHIR R4) |
 | Session/Cache | Redis |
-| Payments | OY! Indonesia + Xendit |
+| Payments | Xendit |
 | Messaging | RabbitMQ |
 | Logging | Zap (structured) |
 | Configuration | Viper + godotenv |
 
 ## Architecture in One Sentence
 
-Clients → API Gateway (auth → RBAC → routing) → Internal services (FHIR Blaze, webhooks) / External services (OY! Indonesia, Xendit)
+Clients → API Gateway (auth → RBAC → routing) → Internal services (FHIR Blaze, webhooks) / External services (Xendit)
 
 ## Important Conventions
 

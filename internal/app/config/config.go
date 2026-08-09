@@ -83,11 +83,6 @@ func loadInternalConfigWithEnv() (*InternalConfig, error) {
 			KonsulinTenantID:           utils.GetEnvString("APP_SUPERTOKEN_KONSULIN_TENANT_ID", "public"),
 			KonsulinDasboardAdminEmail: utils.GetEnvString("APP_SUPERTOKEN_KONSULIN_DASHBOARD_ADMIN_EMAIL", ""),
 		},
-		PaymentGateway: AppPaymentGateway{
-			Username: utils.GetEnvString("APP_PAYMENT_GATEWAY_USERNAME", ""), // Sensitive
-			ApiKey:   utils.GetEnvString("APP_PAYMENT_GATEWAY_API_KEY", ""),  // Sensitive
-			BaseUrl:  utils.GetEnvString("APP_PAYMENT_GATEWAY_BASE_URL", ""),
-		},
 		ServicePricing: AppServicePricing{
 			// Default Pricing fallback
 			AnalyzeBasePrice:           utils.GetEnvInt("BASE_PRICE_ANALYZE", 5000),
@@ -212,14 +207,8 @@ func validateNonDevConfig(cfg *InternalConfig) error {
 	if cfg.Webhook.JWTHookKey == "" {
 		return fmt.Errorf("env var JWT_HOOK_KEY is required in %s environment", cfg.App.Env)
 	}
-	if cfg.PaymentGateway.Username == "" || cfg.PaymentGateway.ApiKey == "" {
-		return fmt.Errorf("payment gateway credentials (APP_PAYMENT_GATEWAY_USERNAME, APP_PAYMENT_GATEWAY_API_KEY) are required in %s environment", cfg.App.Env)
-	}
 	if cfg.Xendit.APIKey == "" {
 		return fmt.Errorf("env var APP_XENDIT_API_KEY is required in %s environment", cfg.App.Env)
-	}
-	if cfg.PaymentGateway.BaseUrl == "" {
-		return fmt.Errorf("env var APP_PAYMENT_GATEWAY_BASE_URL is required in %s environment", cfg.App.Env)
 	}
 	return nil
 }

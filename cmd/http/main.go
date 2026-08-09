@@ -14,30 +14,16 @@ import (
 	"konsulin-service/internal/app/services/core/auth"
 	"konsulin-service/internal/app/services/core/organization"
 	"konsulin-service/internal/app/services/core/payments"
-	privacy "konsulin-service/internal/app/services/core/privacy"
 	"konsulin-service/internal/app/services/core/slot"
 	"konsulin-service/internal/app/services/core/transactions"
 	"konsulin-service/internal/app/services/core/users"
 	"konsulin-service/internal/app/services/core/webhook"
-	bundle "konsulin-service/internal/app/services/fhir_spark/bundle"
-	invoicesFhir "konsulin-service/internal/app/services/fhir_spark/invoices"
-	organizationsFhir "konsulin-service/internal/app/services/fhir_spark/organizations"
-	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
 	"konsulin-service/internal/app/services/fhir_spark/persons"
-	planDefinitionsFhir "konsulin-service/internal/app/services/fhir_spark/plan_definitions"
-	practitionerRoleFhir "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
-	privacyFhir "konsulin-service/internal/app/services/fhir_spark/privacy"
-	questionnaireResponsesFhir "konsulin-service/internal/app/services/fhir_spark/questionnaire_responses"
-	scheduleFhir "konsulin-service/internal/app/services/fhir_spark/schedules"
 	"konsulin-service/internal/app/services/fhir_spark/service_requests"
-	slotFhir "konsulin-service/internal/app/services/fhir_spark/slots"
 	"konsulin-service/internal/app/services/shared/jwtmanager"
 	"konsulin-service/internal/app/services/shared/locker"
-	"konsulin-service/internal/app/services/shared/payment_gateway"
 	"konsulin-service/internal/app/services/shared/ratelimiter"
-	redisKonsulin "konsulin-service/internal/app/services/shared/redis"
-	storageKonsulin "konsulin-service/internal/app/services/shared/storage"
 	"konsulin-service/internal/app/services/shared/webhookqueue"
 	"konsulin-service/internal/pkg/buildinfo"
 	"log"
@@ -46,6 +32,25 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	privacy "konsulin-service/internal/app/services/core/privacy"
+
+	bundle "konsulin-service/internal/app/services/fhir_spark/bundle"
+	invoicesFhir "konsulin-service/internal/app/services/fhir_spark/invoices"
+	organizationsFhir "konsulin-service/internal/app/services/fhir_spark/organizations"
+	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
+
+	planDefinitionsFhir "konsulin-service/internal/app/services/fhir_spark/plan_definitions"
+	practitionerRoleFhir "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
+
+	privacyFhir "konsulin-service/internal/app/services/fhir_spark/privacy"
+	questionnaireResponsesFhir "konsulin-service/internal/app/services/fhir_spark/questionnaire_responses"
+	scheduleFhir "konsulin-service/internal/app/services/fhir_spark/schedules"
+
+	slotFhir "konsulin-service/internal/app/services/fhir_spark/slots"
+
+	redisKonsulin "konsulin-service/internal/app/services/shared/redis"
+	storageKonsulin "konsulin-service/internal/app/services/shared/storage"
 
 	"github.com/go-chi/chi/v5"
 	xendit "github.com/xendit/xendit-go/v7"
@@ -154,9 +159,6 @@ func main() {
 func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	// Initialize the repository for Redis
 	redisRepository := redisKonsulin.NewRedisRepository(bootstrap.Redis, bootstrap.Logger)
-
-	// Initialize oy service (kept for backward-compatibility; not used for creation)
-	_ = payment_gateway.NewOyService(bootstrap.InternalConfig, bootstrap.Logger)
 
 	// Initialize Xendit client (reusable)
 	xenditClient := xendit.NewClient(bootstrap.InternalConfig.Xendit.APIKey)
@@ -269,7 +271,6 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		practitionerFhirClient,
 		personFhirClient,
 		serviceRequestStorage,
-		payment_gateway.NewOyService(bootstrap.InternalConfig, bootstrap.Logger),
 		xenditClient,
 		invoiceFhirClient,
 		practitionerRoleClient,
