@@ -49,11 +49,6 @@ konsulin-service/
 ├── build/                     # Docker build files
 │   └── Dockerfile             # Multi-stage Docker build
 │
-├── deployments/               # Ansible deployment
-│   ├── playbook-dev.yml       # Dev deployment
-│   ├── playbook-prod.yml      # Production deployment
-│   └── templates/             # Jinja2 config templates
-│
 ├── scripts/                   # Utility scripts
 ├── _data/                     # Data directory (placeholder)
 │
@@ -66,7 +61,6 @@ konsulin-service/
 │   ├── KNOWN-PITFALLS.md      # Common pitfalls
 │   └── STRUCTURE.md           # This file
 │
-├── config.example.yaml        # Example YAML config
 ├── docker-compose.yml         # Local dev services
 ├── .env.example               # Environment variable template
 ├── build.sh                   # Build script
