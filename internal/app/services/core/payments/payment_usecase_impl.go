@@ -590,7 +590,7 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 	}
 
 	// 5) Determine ServiceRequest.subject
-	subject := uc.determineServiceRequestSubject(requestedService, resourceID, roles)
+	subject := uc.determineServiceRequestSubject(requestedService, resourceID)
 
 	// 6) Build instantiateUri
 	baseURL := strings.TrimRight(uc.InternalConfig.App.BaseUrl, "/")
@@ -603,7 +603,7 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 	}
 	occurrence := time.Now().Format("2006-01-02T15:04:05-07:00")
 	// Map service to requester resource type via specialized helper
-	requesterResourceType := uc.mapServiceToRequesterResourceType(requestedService)
+	requesterResourceType := mapServiceToRequesterResourceType(requestedService)
 
 	storageOutput, err := uc.Storage.Create(ctx, &requests.CreateServiceRequestStorageInput{
 		UID:             uid,
@@ -801,7 +801,7 @@ func (uc *paymentUsecase) createXenditInvoiceForAppointment(
 	customer := xinvoice.NewCustomerObject()
 	customer.SetGivenNames(patientName)
 
-	preferredNotificationChannel := []xinvoice.NotificationChannel{}
+	var preferredNotificationChannel []xinvoice.NotificationChannel
 
 	if patientEmail != "" {
 		customer.SetEmail(patientEmail)
@@ -1052,9 +1052,9 @@ func (uc *paymentUsecase) callInstantiateURI(ctx context.Context, url string, bo
 	return nil
 }
 
-// determineServiceRequestSubject returns the FHIR subject reference string based on service and roles.
+// determineServiceRequestSubject returns the FHIR subject reference string based on service.
 // For Patient service, it returns "Patient/<patient-id>". For others, it maps to configured Group subjects.
-func (uc *paymentUsecase) determineServiceRequestSubject(service string, patientID string, roles []string) string {
+func (uc *paymentUsecase) determineServiceRequestSubject(service string, patientID string) string {
 	normalized := strings.ToLower(service)
 	switch normalized {
 	case string(constvars.ServiceAnalyze):
@@ -1105,7 +1105,7 @@ func resolveEmailIdentity[T any](ctx context.Context, email, notFoundMsg string,
 
 // mapServiceToRequesterResourceType returns the FHIR requester resource type for a given service.
 // analyze -> Patient, report -> Practitioner, performance-report/access-dataset -> Person, default empty.
-func (uc *paymentUsecase) mapServiceToRequesterResourceType(service string) string {
+func mapServiceToRequesterResourceType(service string) string {
 	switch strings.ToLower(service) {
 	case string(constvars.ServiceAnalyze):
 		return constvars.ResourcePatient
@@ -1122,7 +1122,7 @@ func (uc *paymentUsecase) HandleAppointmentPayment(
 	ctx context.Context,
 	req *requests.AppointmentPaymentRequest,
 ) (*responses.AppointmentPaymentResponse, error) {
-	if !uc.whitelistAccessByRoles(ctx, []string{constvars.KonsulinRolePatient, constvars.KonsulinRoleSuperadmin}) {
+	if !whitelistAccessByRoles(ctx, []string{constvars.KonsulinRolePatient, constvars.KonsulinRoleSuperadmin}) {
 		return nil, exceptions.ErrAuthInvalidRole(errors.New("forbidden access"))
 	}
 
@@ -1390,7 +1390,7 @@ func (uc *paymentUsecase) handleOfflineAppointmentPayment(
 	}, nil
 }
 
-func (uc *paymentUsecase) whitelistAccessByRoles(ctx context.Context, allowedRoles []string) bool {
+func whitelistAccessByRoles(ctx context.Context, allowedRoles []string) bool {
 	roles, _ := ctx.Value(constvars.CONTEXT_FHIR_ROLE).([]string)
 
 	for _, role := range roles {
