@@ -41,11 +41,18 @@ func (m *Middlewares) handleAuthBundle(ctxIface context.Context, r *http.Request
 	body, _ := io.ReadAll(r.Body)
 	_ = r.Body.Close()
 
-	if err := scanBundle(ctxIface, m.Enforcer, body, roles, ctxIface.Value(keyFHIRID).(string), m.rbacClients()); err != nil {
-		return true, err
+	fhirID, _ := ctxIface.Value(keyFHIRID).(string)
+	err := scanBundle(ctxIface, m.Enforcer, body, roles, fhirID, nil, m.rbacClients())
+	if err != nil {
+		// Lazy dual-identity retry: only sessions holding both Patient and
+		// Practitioner roles pay for the secondary FHIR lookup, and only when
+		// the single active-role identity could not authorize the bundle.
+		if ids := m.secondaryFHIRIDsByRole(ctxIface, roles); ids != nil {
+			err = scanBundle(ctxIface, m.Enforcer, body, roles, fhirID, ids, m.rbacClients())
+		}
 	}
 	r.Body = io.NopCloser(bytes.NewReader(body))
-	return true, nil
+	return true, err
 }
 
 // handleAuthSingleResource validates a single FHIR resource request.
@@ -76,13 +83,23 @@ func (m *Middlewares) handleAuthSingleResource(ctxIface context.Context, r *http
 		}
 	}
 
-	return checkSingle(ctxIface, m.Enforcer, rbacRequest{
+	req := rbacRequest{
 		method:         r.Method,
 		normalizedPath: normalizePath(fullURL),
-		fhirID:         ctxIface.Value(keyFHIRID).(string),
+		fhirID:         fhirID,
 		url:            fullURL,
 		resource:       resourceBody,
-	}, roles, m.rbacClients())
+	}
+	err := checkSingle(ctxIface, m.Enforcer, req, roles, m.rbacClients())
+	if err != nil {
+		// Lazy dual-identity retry, mirroring handleAuthBundle: the referral
+		// pre-checks above run once; only the RBAC/ownership dispatch retries.
+		if ids := m.secondaryFHIRIDsByRole(ctxIface, roles); ids != nil {
+			req.fhirIDsByRole = ids
+			err = checkSingle(ctxIface, m.Enforcer, req, roles, m.rbacClients())
+		}
+	}
+	return err
 }
 
 func (m *Middlewares) Auth(next http.Handler) http.Handler {
@@ -350,6 +367,67 @@ func (m *Middlewares) lookupPatient(ctx context.Context, uid string) (string, er
 	return "", nil
 }
 
+// holdsDualFHIRRoles returns true when the session holds both the Patient and
+// Practitioner roles, i.e. it may own FHIR identities of both types.
+func holdsDualFHIRRoles(roles []string) bool {
+	return hasRole(roles, constvars.KonsulinRolePatient) &&
+		hasRole(roles, constvars.KonsulinRolePractitioner)
+}
+
+// secondaryRoleFor returns the FHIR role that is NOT the given primary role,
+// or "" when the primary role is not a FHIR identity role.
+func secondaryRoleFor(primaryRole string) string {
+	switch primaryRole {
+	case constvars.KonsulinRolePatient:
+		return constvars.KonsulinRolePractitioner
+	case constvars.KonsulinRolePractitioner:
+		return constvars.KonsulinRolePatient
+	}
+	return ""
+}
+
+// resolveSecondaryFHIRID resolves the FHIR ID of the identity the caller is
+// NOT actively using. With active role Patient it looks up the Practitioner;
+// with active role Practitioner it looks up the Patient. Resolution is
+// lenient: errors, multiple matches, and missing identities all yield "".
+func (m *Middlewares) resolveSecondaryFHIRID(ctx context.Context, uid, primaryRole string) string {
+	switch primaryRole {
+	case constvars.KonsulinRolePatient:
+		pracs, err := m.PractitionerFhirClient.FindPractitionerByIdentifier(
+			ctx,
+			constvars.FhirSupertokenSystemIdentifier,
+			uid,
+		)
+		if err != nil || len(pracs) != 1 {
+			return ""
+		}
+		return pracs[0].ID
+	case constvars.KonsulinRolePractitioner:
+		patID, err := m.lookupPatient(ctx, uid)
+		if err != nil {
+			return ""
+		}
+		return patID
+	}
+	return ""
+}
+
+// secondaryFHIRIDsByRole resolves the non-active FHIR identity for a dual-role
+// session into a per-role ownership map (at most one entry). Returns nil for
+// single-identity sessions so callers keep today's single-ID behavior.
+func (m *Middlewares) secondaryFHIRIDsByRole(ctx context.Context, roles []string) map[string]string {
+	if !holdsDualFHIRRoles(roles) {
+		return nil
+	}
+	uid, _ := ctx.Value(keyUID).(string)
+	fhirRole, _ := ctx.Value(keyFHIRRole).(string)
+	secondary := secondaryRoleFor(fhirRole)
+	if uid == "" || secondary == "" {
+		return nil
+	}
+	return map[string]string{secondary: m.resolveSecondaryFHIRID(ctx, uid, fhirRole)}
+}
+
 func (m *Middlewares) resolveFHIRIdentity(ctx context.Context, uid string) (role, id string, err error) {
 	activeRole, _ := ctx.Value(keyActiveRole).(string)
 
@@ -423,6 +501,21 @@ type rbacRequest struct {
 	fhirID         string
 	url            string
 	resource       []byte
+	// fhirIDsByRole carries a per-role ownership baseline for dual-identity
+	// sessions (Patient AND Practitioner). It is populated lazily, only when
+	// the single active-role identity cannot authorize the request.
+	fhirIDsByRole map[string]string
+}
+
+// fhirIDForRole returns the FHIR ID to use as the ownership baseline for the
+// given role. When the per-role map is present and names the role, that ID
+// wins; otherwise the single active-role fhirID is used (nil map keeps today's
+// behavior for single-identity sessions).
+func (r rbacRequest) fhirIDForRole(role string) string {
+	if id, ok := r.fhirIDsByRole[role]; ok {
+		return id
+	}
+	return r.fhirID
 }
 
 // rbacClients returns the middleware's FHIR clients bundled for RBAC checks.
@@ -436,7 +529,7 @@ func (m *Middlewares) rbacClients() rbacClients {
 	}
 }
 
-func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []string, uid string, clients rbacClients) error {
+func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []string, uid string, fhirIDsByRole map[string]string, clients rbacClients) error {
 	if gjson.GetBytes(raw, "resourceType").String() != "Bundle" {
 		return fmt.Errorf("invalid bundle")
 	}
@@ -449,6 +542,7 @@ func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []str
 			method:         method,
 			normalizedPath: normalizePath(url),
 			fhirID:         uid,
+			fhirIDsByRole:  fhirIDsByRole,
 			url:            url,
 			resource:       []byte(resource),
 		}
@@ -520,7 +614,7 @@ func enforceRBAC(ctx context.Context, e *casbin.Enforcer, req rbacRequest, roles
 		if allowed(e, role, req.method, req.normalizedPath) {
 
 			if role == constvars.KonsulinRolePatient || role == constvars.KonsulinRolePractitioner {
-				ok := ownsResource(ctx, req.fhirID, req.url, role, req.method, clients, req.resource)
+				ok := ownsResource(ctx, req.fhirIDForRole(role), req.url, role, req.method, clients, req.resource)
 				if ok {
 					return nil
 				}

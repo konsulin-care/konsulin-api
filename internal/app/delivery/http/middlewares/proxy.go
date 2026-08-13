@@ -681,6 +681,25 @@ func (m *Middlewares) buildOwnershipContext(
 
 	m.resolvePractitionerPatientIDs(ctx, oc, fhirID)
 
+	// Dual-identity sessions may read resources owned under either identity.
+	// Seed the non-active identity's own resource ID so GET responses pass the
+	// ownership filter under either active role. The secondary lookup runs
+	// only when the other role is actually held (single-role sessions pay
+	// nothing), and it never re-runs the practitioner related-patient/role
+	// resolution above.
+	if uid, _ := ctx.Value(keyUID).(string); uid != "" {
+		if oc.HasPractitionerRole && fhirRole == constvars.KonsulinRolePatient {
+			if pracID := m.resolveSecondaryFHIRID(ctx, uid, fhirRole); pracID != "" {
+				oc.PractitionerIDs[pracID] = struct{}{}
+			}
+		}
+		if oc.HasPatientRole && fhirRole == constvars.KonsulinRolePractitioner {
+			if patID := m.resolveSecondaryFHIRID(ctx, uid, fhirRole); patID != "" {
+				oc.PatientIDs[patID] = struct{}{}
+			}
+		}
+	}
+
 	return oc
 }
 
