@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"konsulin-service/internal/pkg/constvars"
 	"net/url"
 	"strings"
 )
@@ -49,114 +48,15 @@ func NormalizePath(rawURL string) string {
 }
 
 func RequiresPatientOwnership(resourceType string) bool {
-	patientSpecificResources := map[string]bool{
-		constvars.ResourcePatient:     true,
-		"Appointment":                 true,
-		constvars.ResourceObservation: true,
-		"Encounter":                   true,
-		"Condition":                   true,
-		"AllergyIntolerance":          true,
-		"MedicationRequest":           true,
-		"Procedure":                   true,
-		"DiagnosticReport":            true,
-		"ImagingStudy":                true,
-		"DocumentReference":           true,
-		"CarePlan":                    true,
-		"Goal":                        true,
-		"RiskAssessment":              true,
-		"FamilyMemberHistory":         true,
-		"Immunization":                true,
-		"MedicationAdministration":    true,
-		"MedicationDispense":          true,
-		"MedicationStatement":         true,
-		"Coverage":                    true,
-		"Claim":                       true,
-		"ExplanationOfBenefit":        true,
-		"PaymentNotice":               true,
-		"PaymentReconciliation":       true,
-		"Account":                     true,
-		"ChargeItem":                  true,
-		"Invoice":                     true,
-		constvars.ResourceConsent:     true,
-		"ResearchSubject":             true,
-		"Communication":               true,
-	}
-
-	return patientSpecificResources[resourceType]
+	return false
 }
 
 func RequiresPractitionerOwnership(resourceType string) bool {
-	practitionerSpecificResources := map[string]bool{
-		string(constvars.ResourcePractitioner): true,
-		constvars.ResourceSchedule:             true,
-		"Encounter":                            true,
-		constvars.ResourceObservation:          true,
-		"DiagnosticReport":                     true,
-		"Procedure":                            true,
-		"MedicationRequest":                    true,
-		"CarePlan":                             true,
-		"DocumentReference":                    true,
-		"Communication":                        true,
-		"CommunicationRequest":                 true,
-		"Task":                                 true,
-		"Consent":                              true,
-		"Contract":                             true,
-		"CoverageEligibilityRequest":           true,
-		"CoverageEligibilityResponse":          true,
-		"Claim":                                true,
-		"ClaimResponse":                        true,
-		"ExplanationOfBenefit":                 true,
-		"PaymentNotice":                        true,
-		"PaymentReconciliation":                true,
-		"Account":                              true,
-		"ChargeItem":                           true,
-		"Invoice":                              true,
-	}
-
-	return practitionerSpecificResources[resourceType]
+	return false
 }
 
 func IsPublicResource(resourceType string) bool {
-	publicResources := map[string]bool{
-		constvars.ResourcePractitioner: true,
-		"Questionnaire":                true,
-		"ResearchStudy":                true,
-		"Organization":                 true,
-		"Location":                     true,
-		"HealthcareService":            true,
-		"PractitionerRole":             true,
-		"Slot":                         true,
-		"CodeSystem":                   true,
-		"ValueSet":                     true,
-		"ConceptMap":                   true,
-		"StructureDefinition":          true,
-		"OperationDefinition":          true,
-		"SearchParameter":              true,
-		"CompartmentDefinition":        true,
-		"GraphDefinition":              true,
-		"ImplementationGuide":          true,
-		"CapabilityStatement":          true,
-		"MessageDefinition":            true,
-		"ActivityDefinition":           true,
-		"PlanDefinition":               true,
-		constvars.ResourceSchedule:     true,
-		"Library":                      true,
-		"Measure":                      true,
-		"MeasureReport":                true,
-		"TestScript":                   true,
-		"TestReport":                   true,
-		"Subscription":                 true,
-		"SubscriptionTopic":            true,
-		"VerificationResult":           true,
-		"Requirements":                 true,
-		"ExampleScenario":              true,
-		"SpecimenDefinition":           true,
-		"NamingSystem":                 true,
-		"TerminologyCapabilities":      true,
-		"Media":                        true,
-	}
-
-	return publicResources[resourceType]
+	return false
 }
 
 func ExtractResourceTypeFromPath(path string) string {

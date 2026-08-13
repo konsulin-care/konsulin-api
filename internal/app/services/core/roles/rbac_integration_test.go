@@ -3,6 +3,7 @@ package roles
 import (
 	"testing"
 
+	"konsulin-service/internal/pkg/ownership"
 	"konsulin-service/internal/pkg/utils"
 
 	"github.com/casbin/casbin/v2"
@@ -263,53 +264,150 @@ func TestRBACIntegration(t *testing.T) {
 
 	t.Run("Resource Type Classification", func(t *testing.T) {
 
-		publicResources := []string{"Questionnaire", "ResearchStudy", "Organization", "PractitionerRole", "Slot", "Practitioner", "Schedule"}
+		// Ownership classification lives in the declarative spec
+		// (internal/pkg/ownership); the RBAC policy gates paths separately.
+		publicResources := []string{"Questionnaire", "ResearchStudy", "Organization", "PractitionerRole", "Slot", "Schedule"}
 		for _, resource := range publicResources {
 			t.Run("Public_"+resource, func(t *testing.T) {
-				assert.True(t, utils.IsPublicResource(resource), "%s should be classified as public", resource)
-				assert.False(t, utils.RequiresPatientOwnership(resource), "%s should not require patient ownership", resource)
+				rule, ok := ownership.Rule(resource)
+				assert.True(t, ok && rule.Scope == ownership.ScopePublic, "%s should be classified as public", resource)
 			})
 		}
 
-		patientResources := []string{"Patient", "Appointment", "Observation", "Encounter", "Consent", "ResearchSubject"}
-		for _, resource := range patientResources {
-			t.Run("PatientSpecific_"+resource, func(t *testing.T) {
-				assert.False(t, utils.IsPublicResource(resource), "%s should not be classified as public", resource)
-				assert.True(t, utils.RequiresPatientOwnership(resource), "%s should require patient ownership", resource)
+		patientOwned := []string{"Patient", "Appointment", "Observation", "Encounter", "Consent", "ResearchSubject", "Communication"}
+		for _, resource := range patientOwned {
+			t.Run("PatientOwned_"+resource, func(t *testing.T) {
+				rule, ok := ownership.Rule(resource)
+				assert.True(t, ok, "%s should have an ownership rule", resource)
+				assert.True(t, ruleHasRefTarget(rule, "Patient"), "%s should be patient-owned", resource)
 			})
 		}
 
 		testCases := []struct {
 			name     string
 			path     string
-			expected string
+			expected bool
 		}{
 			{
-				name:     "FHIR path",
-				path:     "/fhir/Patient/123",
-				expected: "Patient",
+				name:     "Basic organization access",
+				path:     "/fhir/Organization",
+				expected: true,
 			},
 			{
-				name:     "Direct path",
-				path:     "/Patient/123",
-				expected: "Patient",
-			},
-			{
-				name:     "FHIR path with query",
+				name:     "Organization with elements",
 				path:     "/fhir/Organization?_elements=name,address",
-				expected: "Organization",
+				expected: true,
 			},
 			{
-				name:     "Complex path",
-				path:     "/fhir/Appointment?actor=Patient/123&slot.start=ge2025-01-01",
-				expected: "Appointment",
+				name:     "Organization with different elements",
+				path:     "/fhir/Organization?_elements=title,description",
+				expected: true,
+			},
+			{
+				name:     "Organization with multiple parameters",
+				path:     "/fhir/Organization?_elements=name,address&status=active&_count=10",
+				expected: true,
+			},
+			{
+				name:     "Slot with schedule actor",
+				path:     "/fhir/Slot?schedule.actor=PractitionerRole/123",
+				expected: true,
+			},
+			{
+				name:     "Slot with schedule actor and start date",
+				path:     "/fhir/Slot?schedule.actor=PractitionerRole/123&start=2025-01-01",
+				expected: true,
+			},
+			{
+				name:     "Slot with multiple parameters",
+				path:     "/fhir/Slot?schedule.actor=PractitionerRole/123&start=2025-01-01&status=free&_count=20",
+				expected: true,
 			},
 		}
 
 		for _, tc := range testCases {
-			t.Run("Extract_"+tc.name, func(t *testing.T) {
-				result := utils.ExtractResourceTypeFromPath(tc.path)
-				assert.Equal(t, tc.expected, result, "Path: %s", tc.path)
+			t.Run(tc.name, func(t *testing.T) {
+				allowed, err := enforcer.Enforce("Guest", "GET", tc.path)
+				assert.NoError(t, err)
+				assert.Equal(t, tc.expected, allowed, "Path: %s", tc.path)
+			})
+		}
+	})
+
+	t.Run("PathMatch Function", func(t *testing.T) {
+
+		testCases := []struct {
+			name        string
+			requestPath string
+			policyPath  string
+			expected    bool
+		}{
+			{
+				name:        "Exact match without query",
+				requestPath: "/fhir/Organization",
+				policyPath:  "/fhir/Organization",
+				expected:    true,
+			},
+			{
+				name:        "Base path match with query",
+				requestPath: "/fhir/Organization?_elements=name,address",
+				policyPath:  "/fhir/Organization",
+				expected:    true,
+			},
+			{
+				name:        "Different base paths",
+				requestPath: "/fhir/Patient",
+				policyPath:  "/fhir/Organization",
+				expected:    false,
+			},
+			{
+				name:        "Path with special characters",
+				requestPath: "/fhir/Slot?schedule.actor=PractitionerRole/123&start=2025-01-01",
+				policyPath:  "/fhir/Slot",
+				expected:    true,
+			},
+			{
+				name:        "Resource ID sub-path match",
+				requestPath: "/fhir/PractitionerRole/DGKAVBCXVMWT6UOE",
+				policyPath:  "/fhir/PractitionerRole",
+				expected:    true,
+			},
+			{
+				name:        "Resource ID sub-path match with query",
+				requestPath: "/fhir/PractitionerRole/DGKAVBCXVMWT6UOE?_elements=id,active",
+				policyPath:  "/fhir/PractitionerRole",
+				expected:    true,
+			},
+			{
+				name:        "Patient resource ID sub-path match",
+				requestPath: "/fhir/Patient/ABC123",
+				policyPath:  "/fhir/Patient",
+				expected:    true,
+			},
+			{
+				name:        "False positive prevention - similar prefix",
+				requestPath: "/fhir/PractitionerRoleABC",
+				policyPath:  "/fhir/PractitionerRole",
+				expected:    false,
+			},
+			{
+				name:        "Policy path with trailing slash - exact match required",
+				requestPath: "/fhir/Organization/",
+				policyPath:  "/fhir/Organization/",
+				expected:    true,
+			},
+			{
+				name:        "Policy path with trailing slash - sub-path not allowed",
+				requestPath: "/fhir/Organization/123",
+				policyPath:  "/fhir/Organization/",
+				expected:    false,
+			},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				result := utils.PathMatch(tc.requestPath, tc.policyPath)
+				assert.Equal(t, tc.expected, result, "Request: %s, Policy: %s", tc.requestPath, tc.policyPath)
 			})
 		}
 	})

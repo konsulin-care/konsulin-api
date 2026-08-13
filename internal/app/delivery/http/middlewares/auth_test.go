@@ -125,11 +125,13 @@ func TestNeedsFHIRResolution(t *testing.T) {
 	}{
 		{"Patient role needs resolution", []string{constvars.KonsulinRolePatient}, true},
 		{"Practitioner role needs resolution", []string{constvars.KonsulinRolePractitioner}, true},
-		{"Clinic Admin does not need resolution", []string{constvars.KonsulinRoleClinicAdmin}, false},
-		{"Researcher does not need resolution", []string{constvars.KonsulinRoleResearcher}, false},
+		// Clinic Admin and Researcher resolve as Practitioner identities
+		// (they are practitioners with a specialized PractitionerRole coding).
+		{"Clinic Admin resolves as Practitioner", []string{constvars.KonsulinRoleClinicAdmin}, true},
+		{"Researcher resolves as Practitioner", []string{constvars.KonsulinRoleResearcher}, true},
 		{"Guest does not need resolution", []string{constvars.KonsulinRoleGuest}, false},
 		{"Multiple roles with Patient needs resolution", []string{constvars.KonsulinRoleResearcher, constvars.KonsulinRolePatient}, true},
-		{"Multiple roles without Patient/Practitioner", []string{constvars.KonsulinRoleClinicAdmin, constvars.KonsulinRoleResearcher}, false},
+		{"Multiple FHIR roles need resolution", []string{constvars.KonsulinRoleClinicAdmin, constvars.KonsulinRoleResearcher}, true},
 		{"Empty roles does not need resolution", []string{}, false},
 	}
 
@@ -361,11 +363,14 @@ func TestOwnsResource_PostConsentOwnership(t *testing.T) {
 }
 
 func TestCheckPatientRefs_ResearchSubjectIndividual(t *testing.T) {
-	// PUT ownership for ResearchSubject relies on individual.reference.
-	assert.True(t, checkPatientRefs(`{"resourceType":"ResearchSubject","status":"active","individual":{"reference":"Patient/pat-1"}}`, "pat-1"),
-		"patient should own a ResearchSubject referencing themselves via individual")
-	assert.False(t, checkPatientRefs(`{"resourceType":"ResearchSubject","status":"active","individual":{"reference":"Patient/pat-2"}}`, "pat-1"),
-		"patient must not own a ResearchSubject referencing another patient")
+	// PUT ownership for ResearchSubject relies on individual.reference,
+	// enforced by the ownership engine's WriteRefs (strict semantics).
+	own := validateResourceOwnership(context.Background(), "pat-1", constvars.KonsulinRolePatient, constvars.ResourceResearchSubject,
+		[]byte(`{"resourceType":"ResearchSubject","status":"active","individual":{"reference":"Patient/pat-1"}}`), rbacClients{})
+	assert.True(t, own, "patient should own a ResearchSubject referencing themselves via individual")
+	other := validateResourceOwnership(context.Background(), "pat-1", constvars.KonsulinRolePatient, constvars.ResourceResearchSubject,
+		[]byte(`{"resourceType":"ResearchSubject","status":"active","individual":{"reference":"Patient/pat-2"}}`), rbacClients{})
+	assert.False(t, other, "patient must not own a ResearchSubject referencing another patient")
 }
 
 func TestExtractPathResourceID(t *testing.T) {
@@ -456,7 +461,6 @@ func TestValidateCommunicationSenderInBody(t *testing.T) {
 		body := `{"resourceType":"Communication","status":"completed","sender":{"reference":"Patient/pat-2"}}`
 		err := validateCommunicationSenderInBody([]byte(body), "pat-1")
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "pat-2")
 	})
 
 	t.Run("missing sender is lenient", func(t *testing.T) {
@@ -495,6 +499,9 @@ func TestValidatePatientCommunicationSender(t *testing.T) {
 
 func TestCheckScopedEntryRead(t *testing.T) {
 	const patientID = "pat-1"
+	ctx := func(role string) context.Context {
+		return context.WithValue(context.Background(), keyFHIRRole, role)
+	}
 	tests := []struct {
 		name         string
 		method       string
@@ -502,6 +509,7 @@ func TestCheckScopedEntryRead(t *testing.T) {
 		roles        []string
 		fhirID       string
 		rawURL       string
+		fhirRole     string
 		wantErr      bool
 	}{
 		{
@@ -510,6 +518,7 @@ func TestCheckScopedEntryRead(t *testing.T) {
 			resourceType: constvars.ResourceCommunication,
 			roles:        []string{constvars.KonsulinRolePatient},
 			fhirID:       patientID,
+			fhirRole:     constvars.KonsulinRolePatient,
 			rawURL:       "http://blaze/fhir/Communication?sender=Patient/pat-1",
 		},
 		{
@@ -518,6 +527,7 @@ func TestCheckScopedEntryRead(t *testing.T) {
 			resourceType: constvars.ResourceCommunication,
 			roles:        []string{constvars.KonsulinRolePatient},
 			fhirID:       patientID,
+			fhirRole:     constvars.KonsulinRolePatient,
 			rawURL:       "http://blaze/fhir/Communication?status=completed",
 			wantErr:      true,
 		},
@@ -527,6 +537,7 @@ func TestCheckScopedEntryRead(t *testing.T) {
 			resourceType: constvars.ResourceQuestionnaireResponse,
 			roles:        []string{constvars.KonsulinRolePatient},
 			fhirID:       patientID,
+			fhirRole:     constvars.KonsulinRolePatient,
 			rawURL:       "http://blaze/fhir/QuestionnaireResponse?_summary=count",
 		},
 		{
@@ -544,7 +555,7 @@ func TestCheckScopedEntryRead(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := checkScopedEntryRead(tt.method, tt.resourceType, tt.roles, tt.fhirID, tt.rawURL)
+			err := checkScopedEntryRead(ctx(tt.fhirRole), tt.method, tt.resourceType, tt.roles, tt.fhirID, tt.rawURL)
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {

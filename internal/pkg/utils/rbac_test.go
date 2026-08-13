@@ -2,36 +2,37 @@ package utils
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-// TestRequiresPatientOwnership_Communication asserts Communication is classified
-// as a patient-owned resource so the response ownership filter keeps patient
-// referrals instead of stripping them as practitioner-only.
-func TestRequiresPatientOwnership_Communication(t *testing.T) {
-	if !RequiresPatientOwnership("Communication") {
-		t.Fatal("Communication must require patient ownership")
+// The ownership classification maps (RequiresPatientOwnership /
+// RequiresPractitionerOwnership / IsPublicResource) were removed in favour of
+// the declarative spec in internal/pkg/ownership (single source of truth). The
+// path helpers below remain the contract of this package.
+
+func TestExtractResourceTypeFromPath(t *testing.T) {
+	cases := map[string]string{
+		"/fhir/Patient/123":                   "Patient",
+		"/Patient/123":                        "Patient",
+		"/fhir/Organization?_elements=name":   "Organization",
+		"/fhir/Appointment?actor=Patient/123": "Appointment",
+		"/fhir/Observation":                   "Observation",
+		"/fhir":                               "fhir",
+		"":                                    "",
+	}
+	for path, want := range cases {
+		assert.Equal(t, want, ExtractResourceTypeFromPath(path), "ExtractResourceTypeFromPath(%q)", path)
 	}
 }
 
-// TestRequiresPractitionerOwnership_Communication keeps the existing
-// practitioner classification intact for Communication.
-func TestRequiresPractitionerOwnership_Communication(t *testing.T) {
-	if !RequiresPractitionerOwnership("Communication") {
-		t.Fatal("Communication must require practitioner ownership")
-	}
+func TestNormalizePath(t *testing.T) {
+	assert.Equal(t, "/fhir/Patient/123", NormalizePath("Patient/123"))
+	assert.Equal(t, "/fhir/Patient/123", NormalizePath("/fhir/Patient/123"))
 }
 
-// TestRequiresPatientOwnership_Samples guards representative entries of the
-// patient-owned map from accidental regressions.
-func TestRequiresPatientOwnership_Samples(t *testing.T) {
-	for _, resourceType := range []string{"Patient", "Appointment", "Observation", "Condition", "Consent"} {
-		if !RequiresPatientOwnership(resourceType) {
-			t.Errorf("expected %s to require patient ownership", resourceType)
-		}
-	}
-	for _, resourceType := range []string{"Practitioner", "Schedule", "HealthcareService"} {
-		if RequiresPatientOwnership(resourceType) {
-			t.Errorf("expected %s NOT to require patient ownership", resourceType)
-		}
-	}
+func TestPathMatch(t *testing.T) {
+	assert.True(t, PathMatch("/fhir/Patient/123", "/fhir/Patient"))
+	assert.True(t, PathMatch("/fhir/Patient", "/fhir/Patient"))
+	assert.False(t, PathMatch("/fhir/PatientX", "/fhir/Patient"))
 }
