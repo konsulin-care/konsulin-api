@@ -18,7 +18,6 @@ import (
 	"konsulin-service/internal/app/services/core/transactions"
 	"konsulin-service/internal/app/services/core/users"
 	"konsulin-service/internal/app/services/core/webhook"
-	"konsulin-service/internal/app/services/fhir_spark/persons"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
 	"konsulin-service/internal/app/services/fhir_spark/service_requests"
 	"konsulin-service/internal/app/services/shared/jwtmanager"
@@ -175,7 +174,6 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	patientFhirClient := patientsFhir.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	practitionerRoleClient := practitionerRoleFhir.NewPractitionerRoleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
-	personFhirClient := persons.NewPersonFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	organizationFhirClient := organizationsFhir.NewOrganizationFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	scheduleClient := scheduleFhir.NewScheduleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	slotClient := slotFhir.NewSlotFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
@@ -196,7 +194,6 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	userUsecase := users.NewUserFHIRInitializer(users.UserFHIRInitializerDeps{
 		PatientFhirClient:          patientFhirClient,
 		PractitionerFhirClient:     practitionerFhirClient,
-		PersonFhirClient:           personFhirClient,
 		PractitionerRoleFhirClient: practitionerRoleClient,
 		OrganizationFhirClient:     nil, // not used yet
 		RedisRepository:            redisRepository,
@@ -252,7 +249,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	if err != nil {
 		return err
 	}
-	webhookUsecase := webhook.NewUsecase(bootstrap.Logger, bootstrap.InternalConfig, webhookQueueService, jwtManager, patientFhirClient, practitionerFhirClient, personFhirClient, serviceRequestFhirClient, middlewares.Enforcer)
+	webhookUsecase := webhook.NewUsecase(bootstrap.Logger, bootstrap.InternalConfig, webhookQueueService, jwtManager, patientFhirClient, practitionerFhirClient, serviceRequestFhirClient, middlewares.Enforcer)
 
 	// Wire in-process forwarders for internal callers (magic link delivery, omnichannel)
 	// to skip the HTTP loopback and call ForwardSynchronousInternal directly.
@@ -264,7 +261,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	serviceRequestStorage := storageKonsulin.NewServiceRequestStorage(serviceRequestFhirClient, bootstrap.Logger)
 	invoiceFhirClient := invoicesFhir.NewInvoiceFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 
-	slotUsecase := slot.NewSlotUsecase(scheduleClient, lockService, slotClient, practitionerRoleClient, practitionerFhirClient, personFhirClient, bundleClient, bootstrap.InternalConfig, bootstrap.Logger)
+	slotUsecase := slot.NewSlotUsecase(scheduleClient, lockService, slotClient, practitionerRoleClient, practitionerFhirClient, bundleClient, bootstrap.InternalConfig, bootstrap.Logger)
 
 	// Register post-FHIR-proxy hook for on-demand slot regeneration when PractitionerRole/Schedule are mutated.
 	middlewares.PostFHIRProxyHooks = append(middlewares.PostFHIRProxyHooks, postfhir.NewSlotRegenerationHook(bootstrap.Logger, slotUsecase))
@@ -275,7 +272,6 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		jwtManager,
 		patientFhirClient,
 		practitionerFhirClient,
-		personFhirClient,
 		serviceRequestStorage,
 		xenditClient,
 		invoiceFhirClient,
@@ -293,7 +289,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	// Initialize organization usecase and controller
 	orgUsecase := organization.NewOrganizationUsecase(
 		practitionerFhirClient,
-		personFhirClient,
+		practitionerRoleClient,
 		organizationFhirClient,
 		bundleClient,
 		bootstrap.InternalConfig,

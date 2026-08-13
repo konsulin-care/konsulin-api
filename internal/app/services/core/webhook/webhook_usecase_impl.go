@@ -52,7 +52,6 @@ type usecase struct {
 	jwtManager         *jwtmanager.JWTManager
 	patientFhir        contracts.PatientFhirClient
 	practitionerFhir   contracts.PractitionerFhirClient
-	personFhir         contracts.PersonFhirClient
 	serviceRequestFhir contracts.ServiceRequestFhirClient
 	enforcer           *casbin.Enforcer
 	syncServiceSet     map[string]struct{}
@@ -61,7 +60,7 @@ type usecase struct {
 }
 
 // NewUsecase creates a new webhook usecase instance.
-func NewUsecase(log *zap.Logger, cfg *config.InternalConfig, queue *webhookqueue.Service, jwtMgr *jwtmanager.JWTManager, patient contracts.PatientFhirClient, practitioner contracts.PractitionerFhirClient, person contracts.PersonFhirClient, sr contracts.ServiceRequestFhirClient, enforcer *casbin.Enforcer) Usecase {
+func NewUsecase(log *zap.Logger, cfg *config.InternalConfig, queue *webhookqueue.Service, jwtMgr *jwtmanager.JWTManager, patient contracts.PatientFhirClient, practitioner contracts.PractitionerFhirClient, sr contracts.ServiceRequestFhirClient, enforcer *casbin.Enforcer) Usecase {
 	syncSet := make(map[string]struct{})
 	for _, s := range cfg.Webhook.SynchronousServiceNames {
 		name := strings.ToLower(strings.TrimSpace(s))
@@ -90,7 +89,6 @@ func NewUsecase(log *zap.Logger, cfg *config.InternalConfig, queue *webhookqueue
 		jwtManager:         jwtMgr,
 		patientFhir:        patient,
 		practitionerFhir:   practitioner,
-		personFhir:         person,
 		serviceRequestFhir: sr,
 		enforcer:           enforcer,
 		syncServiceSet:     syncSet,
@@ -772,16 +770,14 @@ func (u *usecase) validatePractitionerContact(ctx context.Context, userIdentifie
 }
 
 func (u *usecase) validateClinicAdminContact(ctx context.Context, userIdentifierId, email, phone, chatwoot string) error {
-	persons, err := u.personFhir.Search(ctx, contracts.PersonSearchInput{
-		Identifier: fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, userIdentifierId),
-	})
+	pracs, err := u.practitionerFhir.FindPractitionerByIdentifier(ctx, constvars.FhirSupertokenSystemIdentifier, userIdentifierId)
 	if err != nil {
 		return err
 	}
-	if len(persons) == 0 {
-		return exceptions.BuildNewCustomError(nil, constvars.StatusNotFound, "person not found", "WEBHOOK_SYNC_USER_NOT_FOUND")
+	if len(pracs) == 0 {
+		return exceptions.BuildNewCustomError(nil, constvars.StatusNotFound, "practitioner not found", "WEBHOOK_SYNC_USER_NOT_FOUND")
 	}
-	return validateContactFields(email, phone, chatwoot, persons[0].GetEmailAddresses(), persons[0].GetPhoneNumbers(), persons[0].Identifier, constvars.ResourcePerson)
+	return validateContactFields(email, phone, chatwoot, pracs[0].GetEmailAddresses(), pracs[0].GetPhoneNumbers(), pracs[0].Identifier, constvars.ResourcePractitioner)
 }
 
 func (u *usecase) validatePatientContact(ctx context.Context, userIdentifierId, email, phone, chatwoot string) error {

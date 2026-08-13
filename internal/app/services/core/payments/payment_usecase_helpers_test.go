@@ -35,7 +35,8 @@ func TestDetermineServiceRequestSubject(t *testing.T) {
 
 // TestMapServiceToRequesterResourceType pins the FHIR requester resource type
 // mapping: analyze -> Patient, report -> Practitioner, performance-report and
-// access-dataset -> Person, unknown -> empty string.
+// access-dataset -> Practitioner (clinic admin / researcher resolve via
+// Practitioner), unknown -> empty string.
 func TestMapServiceToRequesterResourceType(t *testing.T) {
 	tests := []struct {
 		service string
@@ -43,8 +44,8 @@ func TestMapServiceToRequesterResourceType(t *testing.T) {
 	}{
 		{string(constvars.ServiceAnalyze), constvars.ResourcePatient},
 		{string(constvars.ServiceReport), constvars.ResourcePractitioner},
-		{string(constvars.ServicePerformanceReport), constvars.ResourcePerson},
-		{string(constvars.ServiceAccessDataset), constvars.ResourcePerson},
+		{string(constvars.ServicePerformanceReport), constvars.ResourcePractitioner},
+		{string(constvars.ServiceAccessDataset), constvars.ResourcePractitioner},
 		{"unknown", ""},
 	}
 	for _, tt := range tests {

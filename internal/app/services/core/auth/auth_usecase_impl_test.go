@@ -131,9 +131,9 @@ func TestInitializeMagicLinkFHIR_Success(t *testing.T) {
 	}
 
 	expectedOutput := &contracts.InitializeNewUserFHIRResourcesOutput{
-		PatientID:      "pat-1",
-		PractitionerID: "prac-1",
-		PersonID:       "per-1",
+		PatientID:           "pat-1",
+		PractitionerID:      "prac-1",
+		PractitionerRoleIDs: []string{"pr-role-1"},
 	}
 	mockUserFHIRInitializer.On("InitializeNewUserFHIRResources", mock.Anything, mock.AnythingOfType("*contracts.InitializeNewUserFHIRResourcesInput")).
 		Return(expectedOutput, nil)

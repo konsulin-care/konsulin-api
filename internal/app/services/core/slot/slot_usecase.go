@@ -26,7 +26,6 @@ type SlotUsecase struct {
 	slots             contracts.SlotFhirClient
 	practitionerRoles contracts.PractitionerRoleFhirClient
 	practitioner      contracts.PractitionerFhirClient
-	person            contracts.PersonFhirClient
 	bundles           bundleSvc.BundleFhirClient
 	config            *config.InternalConfig
 	logger            *zap.Logger
@@ -38,7 +37,6 @@ func NewSlotUsecase(
 	slots contracts.SlotFhirClient,
 	practitionerRoles contracts.PractitionerRoleFhirClient,
 	practitioner contracts.PractitionerFhirClient,
-	person contracts.PersonFhirClient,
 	bundles bundleSvc.BundleFhirClient,
 	config *config.InternalConfig,
 	logger *zap.Logger,
@@ -49,7 +47,6 @@ func NewSlotUsecase(
 		slots:             slots,
 		practitionerRoles: practitionerRoles,
 		practitioner:      practitioner,
-		person:            person,
 		bundles:           bundles,
 		config:            config,
 		logger:            logger,
@@ -231,39 +228,69 @@ func (s *SlotUsecase) checkRoleOwnership(ctx context.Context, role, uid string, 
 	return "Practitioner/" + practitioner.ID, nil
 }
 
-// verifyClinicAdminScope ensures a Clinic Admin only modifies roles from their managing organization.
+// verifyClinicAdminScope ensures a Clinic Admin only modifies roles from their
+// managing organization. The admin's organization set is derived from their own
+// PractitionerRole resources carrying the administrative staff code.
 func (s *SlotUsecase) verifyClinicAdminScope(ctx context.Context, role, uid string, roles []fhir_dto.PractitionerRole) (string, error) {
 	if role != constvars.KonsulinRoleClinicAdmin {
 		return "", nil
 	}
 
-	identifierToken := fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, uid)
-	people, perr := s.person.Search(ctx, contracts.PersonSearchInput{Identifier: identifierToken})
-	if perr != nil {
-		return "", exceptions.BuildNewCustomError(perr, constvars.StatusInternalServerError, perr.Error(), perr.Error())
+	practitioners, err := s.practitioner.FindPractitionerByIdentifier(ctx, constvars.FhirSupertokenSystemIdentifier, uid)
+	if err != nil {
+		return "", exceptions.BuildNewCustomError(err, constvars.StatusInternalServerError, err.Error(), err.Error())
 	}
-	if len(people) != 1 {
+	if len(practitioners) != 1 {
 		return "", exceptions.BuildNewCustomError(
-			errors.New("multiple persons found on the same identifier or no person found at all"),
+			errors.New("multiple practitioners found on the same identifier or no practitioner found at all"),
 			constvars.StatusBadRequest,
-			"multiple persons found on the same identifier or no person found at all",
-			"multiple persons found on the same identifier or no person found at all",
+			"multiple practitioners found on the same identifier or no practitioner found at all",
+			"multiple practitioners found on the same identifier or no practitioner found at all",
 		)
 	}
-	adminPerson := people[0]
-	adminOrgRef := ""
-	if adminPerson.ManagingOrganization != nil {
-		adminOrgRef = adminPerson.ManagingOrganization.Reference
+	practitionerID := practitioners[0].ID
+
+	adminRoles, err := s.practitionerRoles.FindPractitionerRoleByPractitionerID(ctx, practitionerID)
+	if err != nil {
+		return "", exceptions.BuildNewCustomError(err, constvars.StatusInternalServerError, err.Error(), err.Error())
 	}
-	if adminOrgRef == "" {
-		return "", exceptions.BuildNewCustomError(nil, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, "clinic admin has no managingOrganization configured")
+	adminOrgRefs := adminOrgReferences(adminRoles)
+	if len(adminOrgRefs) == 0 {
+		return "", exceptions.BuildNewCustomError(nil, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, "clinic admin has no org-scoped admin role configured")
 	}
 	for _, pr := range roles {
-		if pr.Organization.Reference != adminOrgRef {
+		if !slices.Contains(adminOrgRefs, pr.Organization.Reference) {
 			return "", exceptions.BuildNewCustomError(nil, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, "clinic admin cannot modify roles from other organization")
 		}
 	}
-	return "Person/" + uid, nil
+	return "Practitioner/" + practitionerID, nil
+}
+
+// adminOrgReferences returns the organization references of the given
+// PractitionerRole resources that carry the administrative staff code.
+func adminOrgReferences(roles []fhir_dto.PractitionerRole) []string {
+	var refs []string
+	for _, r := range roles {
+		if !hasRoleCode(r, constvars.FhirPractitionerRoleCodeAdministrativeStaff) {
+			continue
+		}
+		if r.Organization.Reference != "" {
+			refs = append(refs, r.Organization.Reference)
+		}
+	}
+	return refs
+}
+
+// hasRoleCode reports whether any coding of the role's code element matches code.
+func hasRoleCode(role fhir_dto.PractitionerRole, code string) bool {
+	for _, cc := range role.Code {
+		for _, c := range cc.Coding {
+			if c.Code == code {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // singleRoleResult holds the outcome of processing one PractitionerRole window.

@@ -36,6 +36,9 @@ type SupertokenPasswordlessCreateMagicLink struct {
 	// Phone is an international number without '+' prefix (digits only), e.g. 628111234567.
 	Phone string   `json:"phoneNumber,omitempty"`
 	Roles []string `json:"roles,omitempty" validate:"omitempty,dive,oneof=Patient Practitioner 'Clinic Admin' Researcher"`
+	// OrganizationID is required when Clinic Admin or Researcher is present in
+	// Roles; the created PractitionerRole resources link to this Organization.
+	OrganizationID string `json:"organizationId,omitempty"`
 	// RedirectToPath is an optional internal path the user should be redirected to after
 	// successfully consuming the magic link. Must be a relative path starting with "/" and
 	// must not contain a scheme or protocol-relative prefix. Max 256 characters.

@@ -27,7 +27,10 @@ type PractitionerRoleSearchParams struct {
 	Active         *bool
 	PractitionerID string
 	OrganizationID string
-	Elements       []string
+	// Code is a FHIR token (system|code or bare code) matched against the
+	// PractitionerRole.code element.
+	Code     string
+	Elements []string
 }
 
 // ToQueryParam converts PractitionerRoleSearchParams into URL query parameters.
@@ -45,6 +48,9 @@ func (p PractitionerRoleSearchParams) ToQueryParam() url.Values {
 	}
 	if p.OrganizationID != "" {
 		q.Add("organization", fmt.Sprintf("Organization/%s", p.OrganizationID))
+	}
+	if p.Code != "" {
+		q.Add("code", p.Code)
 	}
 	if len(p.Elements) > 0 {
 		q.Add("_elements", strings.Join(p.Elements, ","))

@@ -17,7 +17,8 @@ http:
     data: |-
       {
         "email": "{{process.env.ORGANIZATION}}@mailinator.com",
-        "roles": ["Patient", "Practitioner", "Clinic Admin", "Researcher"]
+        "roles": ["Patient", "Practitioner", "Clinic Admin", "Researcher"],
+        "organizationId": "{{process.env.ORGANIZATION}}"
       }
 
 runtime:
@@ -58,7 +59,7 @@ examples:
           value: "{{process.env.SUPERADMIN_API_KEY}}"
       body:
         type: json
-        data: '{"email":"address@domain.tld","roles":["Patient","Practitioner","Clinic Admin","Researcher"]}'
+        data: '{"email":"address@domain.tld","roles":["Patient","Practitioner","Clinic Admin","Researcher"],"organizationId":"org-123"}'
     response:
       status: 200
       body:
@@ -75,6 +76,7 @@ docs: |
   ### Request Fields
   - `email`: Mailinator public inbox for automated retrieval for testing purpose. In production, any email address can be used.
   - `roles`: All four roles are assigned to enable testing across RBAC scenarios.
+  - `organizationId`: Optional for Patient/Practitioner-only invites, but **required** when `Clinic Admin` or `Researcher` is in `roles`; the created PractitionerRole resources link to this Organization.
 
   ### Responses
   - **200 OK**: Magic link generated. Body: `{ "success": true, "message": "magic link successfully generated" }`.

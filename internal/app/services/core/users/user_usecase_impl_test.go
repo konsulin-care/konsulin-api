@@ -6,6 +6,7 @@ import (
 
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/fhir_dto"
 
 	"github.com/stretchr/testify/assert"
@@ -104,45 +105,78 @@ func (m *MockPatientFhirClient) FindPatientByPhone(ctx context.Context, phone st
 	return mockSliceResult[fhir_dto.Patient](m.Called(ctx, phone))
 }
 
-type MockPersonFhirClient struct {
+type MockPractitionerRoleFhirClient struct {
 	mock.Mock
 }
 
-func (m *MockPersonFhirClient) FindPersonByEmail(ctx context.Context, email string) ([]fhir_dto.Person, error) {
-	return mockSliceResult[fhir_dto.Person](m.Called(ctx, email))
+func (m *MockPractitionerRoleFhirClient) DeletePractitionerRoleByID(ctx context.Context, practitionerRoleID string) error {
+	return m.Called(ctx, practitionerRoleID).Error(0)
 }
 
-func (m *MockPersonFhirClient) FindPersonByPhone(ctx context.Context, phone string) ([]fhir_dto.Person, error) {
-	return mockSliceResult[fhir_dto.Person](m.Called(ctx, phone))
+func (m *MockPractitionerRoleFhirClient) FindPractitionerRoleByOrganizationID(ctx context.Context, organizationID string) ([]fhir_dto.PractitionerRole, error) {
+	return mockSliceResult[fhir_dto.PractitionerRole](m.Called(ctx, organizationID))
 }
 
-func (m *MockPersonFhirClient) Create(ctx context.Context, person *fhir_dto.Person) (*fhir_dto.Person, error) {
-	return mockResult[fhir_dto.Person](m.Called(ctx, person))
+func (m *MockPractitionerRoleFhirClient) FindPractitionerRoleByCustomRequest(ctx context.Context, request *requests.FindAllCliniciansByClinicID) ([]fhir_dto.PractitionerRole, error) {
+	return mockSliceResult[fhir_dto.PractitionerRole](m.Called(ctx, request))
 }
 
-func (m *MockPersonFhirClient) Search(ctx context.Context, params contracts.PersonSearchInput) ([]fhir_dto.Person, error) {
-	return mockSliceResult[fhir_dto.Person](m.Called(ctx, params))
+func (m *MockPractitionerRoleFhirClient) FindPractitionerRoleByPractitionerID(ctx context.Context, practitionerID string) ([]fhir_dto.PractitionerRole, error) {
+	return mockSliceResult[fhir_dto.PractitionerRole](m.Called(ctx, practitionerID))
 }
 
-func (m *MockPersonFhirClient) Update(ctx context.Context, person *fhir_dto.Person) (*fhir_dto.Person, error) {
-	return mockResult[fhir_dto.Person](m.Called(ctx, person))
+func (m *MockPractitionerRoleFhirClient) FindPractitionerRoleByPractitionerIDAndOrganizationID(ctx context.Context, practitionerID, organizationID string) ([]fhir_dto.PractitionerRole, error) {
+	return mockSliceResult[fhir_dto.PractitionerRole](m.Called(ctx, practitionerID, organizationID))
+}
+
+func (m *MockPractitionerRoleFhirClient) CreatePractitionerRoles(ctx context.Context, request interface{}) error {
+	return m.Called(ctx, request).Error(0)
+}
+
+func (m *MockPractitionerRoleFhirClient) CreatePractitionerRole(ctx context.Context, request *fhir_dto.PractitionerRole) (*fhir_dto.PractitionerRole, error) {
+	return mockResult[fhir_dto.PractitionerRole](m.Called(ctx, request))
+}
+
+func (m *MockPractitionerRoleFhirClient) UpdatePractitionerRole(ctx context.Context, request *fhir_dto.PractitionerRole) (*fhir_dto.PractitionerRole, error) {
+	return mockResult[fhir_dto.PractitionerRole](m.Called(ctx, request))
+}
+
+func (m *MockPractitionerRoleFhirClient) FindPractitionerRoleByPractitionerIDAndName(ctx context.Context, request *requests.FindClinicianByClinicianID) ([]fhir_dto.PractitionerRole, error) {
+	return mockSliceResult[fhir_dto.PractitionerRole](m.Called(ctx, request))
+}
+
+func (m *MockPractitionerRoleFhirClient) FindPractitionerRoleByID(ctx context.Context, practitionerRoleID string) (*fhir_dto.PractitionerRole, error) {
+	return mockResult[fhir_dto.PractitionerRole](m.Called(ctx, practitionerRoleID))
+}
+
+func (m *MockPractitionerRoleFhirClient) Search(ctx context.Context, params contracts.PractitionerRoleSearchParams) ([]fhir_dto.PractitionerRole, error) {
+	return mockSliceResult[fhir_dto.PractitionerRole](m.Called(ctx, params))
 }
 
 // ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
 
-func newTestUsecase(pracClient contracts.PractitionerFhirClient, patClient contracts.PatientFhirClient, personClient contracts.PersonFhirClient) *userUsecase {
+func newTestUsecase(pracClient contracts.PractitionerFhirClient, patClient contracts.PatientFhirClient, prClient contracts.PractitionerRoleFhirClient) *userUsecase {
 	return &userUsecase{
-		PractitionerFhirClient: pracClient,
-		PatientFhirClient:      patClient,
-		PersonFhirClient:       personClient,
-		Log:                    zap.NewNop(),
+		PractitionerFhirClient:     pracClient,
+		PatientFhirClient:          patClient,
+		PractitionerRoleFhirClient: prClient,
+		Log:                        zap.NewNop(),
 	}
 }
 
 func ctx() context.Context {
 	return context.Background()
+}
+
+// stubWebhookForwarder returns a webhookForwardFn that short-circuits the
+// Chatwoot omnichannel call so createNewPractitioner/createNewPatient tests do
+// not need JWTTokenManager or an HTTP server.
+func stubWebhookForwarder() func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
+	return func(context.Context, string, string, []byte, string) (int, []byte, error) {
+		return 200, []byte(`[{"chatwoot_id":123,"email":"test@example.com"}]`), nil
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -414,51 +448,6 @@ func TestEnsurePatientIdentifiers_Mismatch_Updates(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// ensurePersonIdentifiers
-// ---------------------------------------------------------------------------
-
-func TestEnsurePersonIdentifiers_ExactMatch_NoUpdate(t *testing.T) {
-	mockPerson := new(MockPersonFhirClient)
-	uc := newTestUsecase(nil, nil, mockPerson)
-
-	person := &fhir_dto.Person{
-		Identifier: []fhir_dto.Identifier{
-			{System: constvars.FhirSupertokenSystemIdentifier, Value: "st-123"},
-		},
-	}
-
-	result, err := uc.ensurePersonIdentifiers(ctx(), person, "", "", "st-123")
-
-	require.NoError(t, err)
-	assert.Equal(t, person, result)
-	mockPerson.AssertExpectations(t)
-}
-
-func TestEnsurePersonIdentifiers_Mismatch_Updates(t *testing.T) {
-	mockPerson := new(MockPersonFhirClient)
-	uc := newTestUsecase(nil, nil, mockPerson)
-
-	person := &fhir_dto.Person{
-		Identifier: []fhir_dto.Identifier{
-			{System: constvars.FhirSupertokenSystemIdentifier, Value: "st-old"},
-		},
-	}
-	expected := &fhir_dto.Person{
-		Identifier: []fhir_dto.Identifier{
-			{System: constvars.FhirSupertokenSystemIdentifier, Value: "st-123"},
-		},
-	}
-
-	mockPerson.On("Update", ctx(), mock.Anything).Return(expected, nil)
-
-	result, err := uc.ensurePersonIdentifiers(ctx(), person, "", "", "st-123")
-
-	require.NoError(t, err)
-	assert.Equal(t, "st-123", result.Identifier[0].Value)
-	mockPerson.AssertExpectations(t)
-}
-
-// ---------------------------------------------------------------------------
 // createNewPractitioner
 // ---------------------------------------------------------------------------
 
@@ -619,52 +608,225 @@ func TestCreatePatientIfNotExists_NotFound_CreatesNew(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// createPersonIfNotExists (orchestrator)
+// createPractitionerRoleIfNotExists
 // ---------------------------------------------------------------------------
 
-func TestCreatePersonIfNotExists_Found_EnsuresIdentifiers(t *testing.T) {
-	mockPerson := new(MockPersonFhirClient)
-	uc := newTestUsecase(nil, nil, mockPerson)
+func TestCreatePractitionerRoleIfNotExists_FoundByCode_ReturnsExisting(t *testing.T) {
+	mockPR := new(MockPractitionerRoleFhirClient)
+	uc := newTestUsecase(nil, nil, mockPR)
 
-	searchInput := contracts.PersonSearchInput{
-		Identifier: constvars.FhirSupertokenSystemIdentifier + "|" + "st-123",
-	}
-	existing := []fhir_dto.Person{
-		{Identifier: []fhir_dto.Identifier{
-			{System: constvars.FhirSupertokenSystemIdentifier, Value: "st-old"},
-		}},
-	}
-	updated := &fhir_dto.Person{
-		Identifier: []fhir_dto.Identifier{
-			{System: constvars.FhirSupertokenSystemIdentifier, Value: "st-123"},
+	existing := []fhir_dto.PractitionerRole{
+		{
+			ID:     "pr-role-1",
+			Active: true,
+			Code: []fhir_dto.CodeableConcept{{Coding: []fhir_dto.Coding{{
+				System: constvars.FhirPractitionerRoleSystemHL7,
+				Code:   constvars.FhirPractitionerRoleCodeResearcher,
+			}}}},
 		},
 	}
+	searchParams := contracts.PractitionerRoleSearchParams{
+		PractitionerID: "prac-1",
+		Code:           constvars.FhirPractitionerRoleSystemHL7 + "|" + constvars.FhirPractitionerRoleCodeResearcher,
+	}
+	mockPR.On("Search", ctx(), searchParams).Return(existing, nil)
 
-	mockPerson.On("Search", ctx(), searchInput).Return(existing, nil)
-	mockPerson.On("Update", ctx(), mock.Anything).Return(updated, nil)
-
-	result, err := uc.createPersonIfNotExists(ctx(), "", "", "st-123")
+	result, err := uc.createPractitionerRoleIfNotExists(ctx(), "prac-1", "",
+		constvars.FhirPractitionerRoleSystemHL7, constvars.FhirPractitionerRoleCodeResearcher, constvars.FhirPractitionerRoleDisplayResearcher)
 
 	require.NoError(t, err)
-	assert.Equal(t, "st-123", result.Identifier[0].Value)
-	mockPerson.AssertExpectations(t)
+	assert.Equal(t, "pr-role-1", result.ID)
+	mockPR.AssertNotCalled(t, "CreatePractitionerRole", mock.Anything)
+	mockPR.AssertExpectations(t)
 }
 
-func TestCreatePersonIfNotExists_NotFound_CreatesNew(t *testing.T) {
-	mockPerson := new(MockPersonFhirClient)
-	uc := newTestUsecase(nil, nil, mockPerson)
+func TestCreatePractitionerRoleIfNotExists_ExistingRolesWithoutMatchingCode_CreatesNew(t *testing.T) {
+	mockPR := new(MockPractitionerRoleFhirClient)
+	uc := newTestUsecase(nil, nil, mockPR)
 
-	searchInput := contracts.PersonSearchInput{
-		Identifier: constvars.FhirSupertokenSystemIdentifier + "|" + "st-123",
+	// Blaze does not index the code search parameter, so the search returns every
+	// role for the practitioner; the create-if-not-exists must filter client-side.
+	existing := []fhir_dto.PractitionerRole{
+		{ID: "pr-code-less", Active: false, Organization: fhir_dto.Reference{Reference: "Organization/org-1"}},
+		{ID: "pr-other-code", Code: []fhir_dto.CodeableConcept{{Coding: []fhir_dto.Coding{{
+			System: constvars.FhirPractitionerRoleSystemHL7,
+			Code:   "clinician",
+		}}}}},
 	}
-	created := &fhir_dto.Person{ID: "per-new", ResourceType: "Person", Active: true}
+	searchParams := contracts.PractitionerRoleSearchParams{
+		PractitionerID: "prac-1",
+		Code:           constvars.FhirPractitionerRoleSystemHL7 + "|" + constvars.FhirPractitionerRoleCodeResearcher,
+	}
+	mockPR.On("Search", ctx(), searchParams).Return(existing, nil)
 
-	mockPerson.On("Search", ctx(), searchInput).Return([]fhir_dto.Person{}, nil)
-	mockPerson.On("Create", ctx(), mock.Anything).Return(created, nil)
+	created := &fhir_dto.PractitionerRole{ID: "pr-role-new", ResourceType: "PractitionerRole", Active: true}
+	mockPR.On("CreatePractitionerRole", ctx(), mock.MatchedBy(func(r *fhir_dto.PractitionerRole) bool {
+		return r.Active && len(r.Code) == 1 && r.Code[0].Coding[0].Code == constvars.FhirPractitionerRoleCodeResearcher
+	})).Return(created, nil)
 
-	result, err := uc.createPersonIfNotExists(ctx(), "", "", "st-123")
+	result, err := uc.createPractitionerRoleIfNotExists(ctx(), "prac-1", "",
+		constvars.FhirPractitionerRoleSystemHL7, constvars.FhirPractitionerRoleCodeResearcher, constvars.FhirPractitionerRoleDisplayResearcher)
 
 	require.NoError(t, err)
-	assert.Equal(t, "per-new", result.ID)
-	mockPerson.AssertExpectations(t)
+	assert.Equal(t, "pr-role-new", result.ID)
+	mockPR.AssertExpectations(t)
+}
+
+func TestCreatePractitionerRoleIfNotExists_NotFound_CreatesWithCodingAndOrg(t *testing.T) {
+	mockPR := new(MockPractitionerRoleFhirClient)
+	uc := newTestUsecase(nil, nil, mockPR)
+
+	searchParams := contracts.PractitionerRoleSearchParams{
+		PractitionerID: "prac-1",
+		Code:           constvars.FhirPractitionerRoleSystemSnomed + "|" + constvars.FhirPractitionerRoleCodeAdministrativeStaff,
+	}
+	mockPR.On("Search", ctx(), searchParams).Return([]fhir_dto.PractitionerRole{}, nil)
+
+	created := &fhir_dto.PractitionerRole{ID: "pr-role-new", ResourceType: "PractitionerRole", Active: true}
+	mockPR.On("CreatePractitionerRole", ctx(), mock.MatchedBy(func(r *fhir_dto.PractitionerRole) bool {
+		return r.ResourceType == "PractitionerRole" &&
+			r.Active &&
+			r.Practitioner.Reference == "Practitioner/prac-1" &&
+			r.Organization.Reference == "Organization/org-1" &&
+			len(r.Code) == 1 &&
+			len(r.Code[0].Coding) == 1 &&
+			r.Code[0].Coding[0].System == constvars.FhirPractitionerRoleSystemSnomed &&
+			r.Code[0].Coding[0].Code == constvars.FhirPractitionerRoleCodeAdministrativeStaff &&
+			r.Code[0].Coding[0].Display == constvars.FhirPractitionerRoleDisplayAdministrativeStaff
+	})).Return(created, nil)
+
+	result, err := uc.createPractitionerRoleIfNotExists(ctx(), "prac-1", "org-1",
+		constvars.FhirPractitionerRoleSystemSnomed, constvars.FhirPractitionerRoleCodeAdministrativeStaff, constvars.FhirPractitionerRoleDisplayAdministrativeStaff)
+
+	require.NoError(t, err)
+	assert.Equal(t, "pr-role-new", result.ID)
+	mockPR.AssertExpectations(t)
+}
+
+func TestCreatePractitionerRoleIfNotExists_SearchError_Propagates(t *testing.T) {
+	mockPR := new(MockPractitionerRoleFhirClient)
+	uc := newTestUsecase(nil, nil, mockPR)
+
+	mockPR.On("Search", ctx(), mock.Anything).Return(nil, assert.AnError)
+
+	_, err := uc.createPractitionerRoleIfNotExists(ctx(), "prac-1", "",
+		constvars.FhirPractitionerRoleSystemHL7, constvars.FhirPractitionerRoleCodeResearcher, constvars.FhirPractitionerRoleDisplayResearcher)
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, assert.AnError)
+	mockPR.AssertExpectations(t)
+}
+
+// ---------------------------------------------------------------------------
+// InitializeNewUserFHIRResources (plan orchestrator)
+// ---------------------------------------------------------------------------
+
+func TestInitializeNewUserFHIRResources_ResearcherPlan(t *testing.T) {
+	mockPrac := new(MockPractitionerFhirClient)
+	mockPR := new(MockPractitionerRoleFhirClient)
+	uc := newTestUsecase(mockPrac, nil, mockPR)
+	uc.webhookForwardFn = stubWebhookForwarder()
+
+	input := &contracts.InitializeNewUserFHIRResourcesInput{
+		SuperTokenUserID: "st-123",
+		Email:            "doc@test.com",
+	}
+	input.ToogleByRoles([]string{constvars.KonsulinRoleResearcher})
+
+	createdPrac := &fhir_dto.Practitioner{ID: "prac-1", ResourceType: "Practitioner", Active: true}
+	mockPrac.On("FindPractitionerByEmail", ctx(), "doc@test.com").Return([]fhir_dto.Practitioner{}, nil)
+	mockPrac.On("CreatePractitioner", ctx(), mock.Anything).Return(createdPrac, nil)
+
+	searchParams := contracts.PractitionerRoleSearchParams{
+		PractitionerID: "prac-1",
+		Code:           constvars.FhirPractitionerRoleSystemHL7 + "|" + constvars.FhirPractitionerRoleCodeResearcher,
+	}
+	mockPR.On("Search", ctx(), searchParams).Return([]fhir_dto.PractitionerRole{}, nil)
+	createdRole := &fhir_dto.PractitionerRole{ID: "role-1", ResourceType: "PractitionerRole", Active: true}
+	mockPR.On("CreatePractitionerRole", ctx(), mock.Anything).Return(createdRole, nil)
+
+	output, err := uc.InitializeNewUserFHIRResources(ctx(), input)
+
+	require.NoError(t, err)
+	assert.Equal(t, "prac-1", output.PractitionerID)
+	assert.Equal(t, "", output.PatientID)
+	assert.Equal(t, []string{"role-1"}, output.PractitionerRoleIDs)
+	mockPrac.AssertExpectations(t)
+	mockPR.AssertExpectations(t)
+}
+
+func TestInitializeNewUserFHIRResources_ClinicAdminAndResearcher_OrgLinked(t *testing.T) {
+	mockPrac := new(MockPractitionerFhirClient)
+	mockPR := new(MockPractitionerRoleFhirClient)
+	uc := newTestUsecase(mockPrac, nil, mockPR)
+	uc.webhookForwardFn = stubWebhookForwarder()
+
+	input := &contracts.InitializeNewUserFHIRResourcesInput{
+		SuperTokenUserID: "st-123",
+		Email:            "admin@test.com",
+		OrganizationID:   "org-1",
+	}
+	input.ToogleByRoles([]string{constvars.KonsulinRoleClinicAdmin, constvars.KonsulinRoleResearcher})
+
+	createdPrac := &fhir_dto.Practitioner{ID: "prac-1", ResourceType: "Practitioner", Active: true}
+	mockPrac.On("FindPractitionerByEmail", ctx(), "admin@test.com").Return([]fhir_dto.Practitioner{}, nil)
+	mockPrac.On("CreatePractitioner", ctx(), mock.Anything).Return(createdPrac, nil)
+
+	adminParams := contracts.PractitionerRoleSearchParams{
+		PractitionerID: "prac-1",
+		Code:           constvars.FhirPractitionerRoleSystemSnomed + "|" + constvars.FhirPractitionerRoleCodeAdministrativeStaff,
+	}
+	researcherParams := contracts.PractitionerRoleSearchParams{
+		PractitionerID: "prac-1",
+		Code:           constvars.FhirPractitionerRoleSystemHL7 + "|" + constvars.FhirPractitionerRoleCodeResearcher,
+	}
+	mockPR.On("Search", ctx(), adminParams).Return([]fhir_dto.PractitionerRole{}, nil)
+	mockPR.On("Search", ctx(), researcherParams).Return([]fhir_dto.PractitionerRole{}, nil)
+	mockPR.On("CreatePractitionerRole", ctx(), mock.MatchedBy(func(r *fhir_dto.PractitionerRole) bool {
+		return r.Active && r.Organization.Reference == "Organization/org-1"
+	})).Return(
+		&fhir_dto.PractitionerRole{ID: "role-admin", ResourceType: "PractitionerRole"},
+		nil,
+	).Once()
+	mockPR.On("CreatePractitionerRole", ctx(), mock.MatchedBy(func(r *fhir_dto.PractitionerRole) bool {
+		return r.Active && r.Organization.Reference == "Organization/org-1"
+	})).Return(
+		&fhir_dto.PractitionerRole{ID: "role-researcher", ResourceType: "PractitionerRole"},
+		nil,
+	).Once()
+
+	output, err := uc.InitializeNewUserFHIRResources(ctx(), input)
+
+	require.NoError(t, err)
+	assert.Equal(t, "prac-1", output.PractitionerID)
+	assert.ElementsMatch(t, []string{"role-admin", "role-researcher"}, output.PractitionerRoleIDs)
+	mockPrac.AssertExpectations(t)
+	mockPR.AssertExpectations(t)
+}
+
+func TestInitializeNewUserFHIRResources_PatientPlan_NoRoles(t *testing.T) {
+	mockPrac := new(MockPractitionerFhirClient)
+	mockPat := new(MockPatientFhirClient)
+	mockPR := new(MockPractitionerRoleFhirClient)
+	uc := newTestUsecase(mockPrac, mockPat, mockPR)
+	uc.webhookForwardFn = stubWebhookForwarder()
+
+	input := &contracts.InitializeNewUserFHIRResourcesInput{
+		SuperTokenUserID: "st-123",
+		Email:            "pat@test.com",
+	}
+	input.ToogleByRoles([]string{constvars.KonsulinRolePatient})
+
+	createdPat := &fhir_dto.Patient{ID: "pat-1", ResourceType: "Patient", Active: true}
+	mockPat.On("FindPatientByEmail", ctx(), "pat@test.com").Return([]fhir_dto.Patient{}, nil)
+	mockPat.On("CreatePatient", ctx(), mock.Anything).Return(createdPat, nil)
+
+	output, err := uc.InitializeNewUserFHIRResources(ctx(), input)
+
+	require.NoError(t, err)
+	assert.Equal(t, "pat-1", output.PatientID)
+	assert.Equal(t, "", output.PractitionerID)
+	assert.Len(t, output.PractitionerRoleIDs, 0)
+	mockPat.AssertExpectations(t)
+	mockPR.AssertNotCalled(t, "Search", mock.Anything, mock.Anything)
 }
