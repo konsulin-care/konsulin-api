@@ -480,8 +480,9 @@ func checkSingle(ctx context.Context, e *casbin.Enforcer, req rbacRequest, roles
 
 	// C3: entry-level QuestionnaireResponse / Communication GET reads must carry
 	// an identity scope (aggregate _summary=count stays public). Closes the
-	// open-endpoint hole where a bare query returned every response.
-	if err := checkScopedEntryRead(ctx, req.method, resourceType, roles, req.fhirID, req.url); err != nil {
+	// open-endpoint hole where a bare query returned every response. The
+	// per-role map carries the secondary identity for dual-role sessions.
+	if err := checkScopedEntryRead(ctx, req.method, resourceType, roles, req.fhirID, req.url, req.fhirIDsByRole); err != nil {
 		return err
 	}
 
@@ -514,12 +515,22 @@ func isPublicRule(resourceType string) bool {
 // Communication GET reads carry an identity scope, driven by the ownership
 // engine's ValidSearchQuery (rule SearchParams + code-conditioned search
 // allowances). Returns nil when the request needs no scope or satisfies it.
-func checkScopedEntryRead(ctx context.Context, method, resourceType string, roles []string, fhirID, rawURL string) error {
+// For dual-identity sessions the fhirIDsByRole map seeds the non-active
+// identity's own Patient/Practitioner id, mirroring buildOwnershipContext so
+// the pre-request gate accepts the same patient-self scopes the response
+// filter would allow.
+func checkScopedEntryRead(ctx context.Context, method, resourceType string, roles []string, fhirID, rawURL string, fhirIDsByRole map[string]string) error {
 	if method != http.MethodGet || !isScopedEntryResource(resourceType) {
 		return nil
 	}
 	fhirRole, _ := ctx.Value(keyFHIRRole).(string)
 	oc := ownershipContextFromRoles(roles, fhirRole, fhirID)
+	if id, ok := fhirIDsByRole[constvars.KonsulinRolePatient]; ok {
+		oc.AddPatientID(id)
+	}
+	if id, ok := fhirIDsByRole[constvars.KonsulinRolePractitioner]; ok {
+		oc.AddPractitionerID(id)
+	}
 	if ownership.ValidSearchQuery(rawURL, resourceType, oc) {
 		return nil
 	}
@@ -605,12 +616,19 @@ func queryHasOwnRef(q url.Values, fhirID string, params ...string) bool {
 // Communication GET reads carry an identity scope, driven by the ownership
 // engine's ValidSearchQuery (rule SearchParams + code-conditioned search
 // allowances). Aggregate `_summary=count` and single-resource reads stay
-// public; non-scoped resource types are exempt.
-func allowScopedEntryRead(roles []string, fhirID, rawURL, resourceType string) bool {
+// public; non-scoped resource types are exempt. The fhirIDsByRole map seeds
+// the non-active identity for dual-role sessions, mirroring the request path.
+func allowScopedEntryRead(roles []string, fhirID, rawURL, resourceType string, fhirIDsByRole map[string]string) bool {
 	if !isScopedEntryResource(resourceType) {
 		return true
 	}
 	oc := ownershipContextFromRoles(roles, inferredFHIRRole(roles), fhirID)
+	if id, ok := fhirIDsByRole[constvars.KonsulinRolePatient]; ok {
+		oc.AddPatientID(id)
+	}
+	if id, ok := fhirIDsByRole[constvars.KonsulinRolePractitioner]; ok {
+		oc.AddPractitionerID(id)
+	}
 	return ownership.ValidSearchQuery(rawURL, resourceType, oc)
 }
 

@@ -537,14 +537,15 @@ func TestCheckScopedEntryRead(t *testing.T) {
 		return context.WithValue(context.Background(), keyFHIRRole, role)
 	}
 	tests := []struct {
-		name         string
-		method       string
-		resourceType string
-		roles        []string
-		fhirID       string
-		rawURL       string
-		fhirRole     string
-		wantErr      bool
+		name          string
+		method        string
+		resourceType  string
+		roles         []string
+		fhirID        string
+		rawURL        string
+		fhirRole      string
+		fhirIDsByRole map[string]string
+		wantErr       bool
 	}{
 		{
 			name:         "patient scoped communication read allowed",
@@ -554,6 +555,79 @@ func TestCheckScopedEntryRead(t *testing.T) {
 			fhirID:       patientID,
 			fhirRole:     constvars.KonsulinRolePatient,
 			rawURL:       "http://blaze/fhir/Communication?sender=Patient/pat-1",
+		},
+		{
+			// Reported request: dual-identity session active as a
+			// practitioner-family role. The researcher coding makes the scope
+			// gate fail closed unless the caller's own patient id is seeded
+			// from the secondary identity map.
+			name:         "dual-role practitioner-active patient scope allowed",
+			method:       http.MethodGet,
+			resourceType: constvars.ResourceQuestionnaireResponse,
+			roles: []string{
+				constvars.KonsulinRolePatient,
+				constvars.KonsulinRolePractitioner,
+				constvars.KonsulinRoleClinicAdmin,
+				constvars.KonsulinRoleResearcher,
+			},
+			fhirID:        "prac-1",
+			fhirRole:      constvars.KonsulinRolePractitioner,
+			fhirIDsByRole: map[string]string{constvars.KonsulinRolePatient: patientID},
+			rawURL:        "http://blaze/fhir/QuestionnaireResponse?author=Patient/pat-1&status=completed&_elements=questionnaire,authored&_count=500&authored=ge2026-01-01",
+		},
+		{
+			// Seeding proves only the caller's own patient identity: scoping
+			// by a different patient's author must still fail closed.
+			name:         "dual-role other patient scope denied",
+			method:       http.MethodGet,
+			resourceType: constvars.ResourceQuestionnaireResponse,
+			roles: []string{
+				constvars.KonsulinRolePatient,
+				constvars.KonsulinRolePractitioner,
+				constvars.KonsulinRoleClinicAdmin,
+				constvars.KonsulinRoleResearcher,
+			},
+			fhirID:        "prac-1",
+			fhirRole:      constvars.KonsulinRolePractitioner,
+			fhirIDsByRole: map[string]string{constvars.KonsulinRolePatient: patientID},
+			rawURL:        "http://blaze/fhir/QuestionnaireResponse?author=Patient/pat-2&status=completed",
+			wantErr:       true,
+		},
+		{
+			// The lazy first pass carries no secondary map: no patient id to
+			// match and the researcher allowance is unanchored, so the gate
+			// still fails closed until the retry populates the map.
+			name:         "dual-role no secondary map denied",
+			method:       http.MethodGet,
+			resourceType: constvars.ResourceQuestionnaireResponse,
+			roles: []string{
+				constvars.KonsulinRolePatient,
+				constvars.KonsulinRolePractitioner,
+				constvars.KonsulinRoleClinicAdmin,
+				constvars.KonsulinRoleResearcher,
+			},
+			fhirID:   "prac-1",
+			fhirRole: constvars.KonsulinRolePractitioner,
+			rawURL:   "http://blaze/fhir/QuestionnaireResponse?author=Patient/pat-1&status=completed",
+			wantErr:  true,
+		},
+		{
+			// Dual-identity seeding applies to Communication too: a
+			// patient-scoped sender query passes under a practitioner-active
+			// session.
+			name:         "dual-role practitioner-active communication pass",
+			method:       http.MethodGet,
+			resourceType: constvars.ResourceCommunication,
+			roles: []string{
+				constvars.KonsulinRolePatient,
+				constvars.KonsulinRolePractitioner,
+				constvars.KonsulinRoleClinicAdmin,
+				constvars.KonsulinRoleResearcher,
+			},
+			fhirID:        "prac-1",
+			fhirRole:      constvars.KonsulinRolePractitioner,
+			fhirIDsByRole: map[string]string{constvars.KonsulinRolePatient: patientID},
+			rawURL:        "http://blaze/fhir/Communication?sender=Patient/pat-1&topic=research-referral",
 		},
 		{
 			name:         "patient unscoped communication read denied",
@@ -589,7 +663,7 @@ func TestCheckScopedEntryRead(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := checkScopedEntryRead(ctx(tt.fhirRole), tt.method, tt.resourceType, tt.roles, tt.fhirID, tt.rawURL)
+			err := checkScopedEntryRead(ctx(tt.fhirRole), tt.method, tt.resourceType, tt.roles, tt.fhirID, tt.rawURL, tt.fhirIDsByRole)
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
