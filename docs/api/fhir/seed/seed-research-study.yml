@@ -34,7 +34,7 @@ runtime:
       code: |-
         const body = res.getBody();
         bru.setVar("researchStudyId", body.id);
-        bru.runner.setNextRequest("Patient: Get Profile");
+        bru.runner.setNextRequest("Ownership Violation: Seed Other Identities");
   assertions:
     - expression: res.status
       operator: eq
@@ -51,4 +51,6 @@ docs: |
   `GET /fhir/ResearchStudy?status=active&date=ge2026-01-01` returns it; its
   `protocol` reference pulls in the PlanDefinition. No `enrollment` Group is
   set — Blaze enforces referential integrity and rejects dangling references.
-  Captures `researchStudyId` and hands off to the patient journey. Superadmin.
+  Captures `researchStudyId` and hands off to the ownership-violation suite
+  (which seeds foreign identities, runs the 401 scenarios, cleans up, then
+  enters the patient journey). Superadmin.

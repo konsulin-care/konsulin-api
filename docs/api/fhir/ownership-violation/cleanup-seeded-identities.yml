@@ -1,0 +1,62 @@
+info:
+  name: "Ownership Violation: Cleanup Seeded Identities"
+  type: http
+  seq: 14
+  tags: [ownership, utility]
+
+http:
+  method: POST
+  url: "{{blazeBaseUrl}}/fhir"
+  headers:
+    - name: content-type
+      value: application/fhir+json
+    - name: Accept
+      value: application/fhir+json
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "Bundle",
+        "type": "transaction",
+        "entry": [
+          {
+            "request": { "method": "DELETE", "url": "Condition/other-condition-1" }
+          },
+          {
+            "request": { "method": "DELETE", "url": "Appointment/other-appointment-1" }
+          },
+          {
+            "request": { "method": "DELETE", "url": "Invoice/other-invoice-1" }
+          },
+          {
+            "request": { "method": "DELETE", "url": "Person/other-person-1" }
+          },
+          {
+            "request": { "method": "DELETE", "url": "Patient/other-patient-b" }
+          }
+        ]
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Patient: Get Profile");'
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Purges the seeded foreign identities directly against Blaze
+  (`{{blazeBaseUrl}}`, no gateway auth) as one transaction bundle of DELETE
+  entries — children before parents so Blaze referential integrity never
+  blocks a DELETE. The RBAC policies grant the gateway no DELETE on
+  Condition/Appointment/Invoice/Person (and only self-DELETE on Patient), so
+  Blaze-direct is the documented teardown path. Leaves no residue after a
+  successful run. Hands off to the patient journey ("Patient: Get Profile").

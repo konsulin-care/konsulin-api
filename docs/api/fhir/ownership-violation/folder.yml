@@ -1,0 +1,16 @@
+info:
+  name: ownership-violation
+  type: folder
+  seq: 4
+
+request: {}
+
+docs: |
+  Ownership-violation suite: seeds a foreign identity set directly via Blaze
+  (deterministic ids), drives 12 gateway requests that must ALL be denied
+  (401), then purges the seeded resources directly via Blaze. Runs between
+  the seed phase and the patient journey — "Seed Research Study" hands off
+  into "Ownership Violation: Seed Other Identities" and the cleanup exits
+  into "Patient: Get Profile". Deterministic PUTs make repeated pre-push
+  runs idempotent (residue from a failed run is overwritten, never
+  duplicated); cleanup removes every seeded id.

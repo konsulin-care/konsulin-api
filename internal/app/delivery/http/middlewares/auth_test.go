@@ -362,6 +362,21 @@ func TestOwnsResource_PostConsentOwnership(t *testing.T) {
 	assert.False(t, got, "Patient must not POST a Consent for another patient")
 }
 
+func TestValidatePostRequestBody_BundleSkipsSingleResourceCheck(t *testing.T) {
+	// Transaction bundles are authorized per-entry by handleAuthBundle's
+	// scanBundle; the single-resource body check must not reject the Bundle
+	// wrapper itself (the ownership spec carries no "Bundle" rule).
+	mw := &Middlewares{
+		PatientFhirClient: &mockPatientClient{},
+	}
+	ctx := context.WithValue(context.Background(), keyRoles, []string{constvars.KonsulinRolePatient})
+	bundle := `{"resourceType":"Bundle","type":"transaction","entry":[{"request":{"method":"POST","url":"Consent"},"resource":{"resourceType":"Consent","status":"active","patient":{"reference":"Patient/pat-1"}}}]}`
+
+	err := mw.validatePostRequestBody(ctx, []byte(bundle), constvars.KonsulinRolePatient, "pat-1")
+
+	assert.NoError(t, err, "a Bundle POST must pass the single-resource body check; entries are validated per-entry by scanBundle")
+}
+
 func TestCheckPatientRefs_ResearchSubjectIndividual(t *testing.T) {
 	// PUT ownership for ResearchSubject relies on individual.reference,
 	// enforced by the ownership engine's WriteRefs (strict semantics).

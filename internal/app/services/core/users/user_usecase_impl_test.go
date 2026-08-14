@@ -403,6 +403,81 @@ func TestLookupPractitioner_AllEmpty(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// lookupPatient / lookupPractitioner: uid-first priority
+// ---------------------------------------------------------------------------
+
+func TestLookupPatient_IdentifierMatch_SkipsEmail(t *testing.T) {
+	// The supertoken uid identifier is the stable per-user key. When it
+	// matches, the email search must never run: email is not reliably indexed
+	// on Blaze, so an email-first lookup lets duplicate Patients accumulate
+	// under one uid across repeated logins.
+	mockPat := new(MockPatientFhirClient)
+	uc := newTestUsecase(nil, mockPat, nil)
+	expected := []fhir_dto.Patient{{ResourceType: "Patient"}}
+	identifierQuery := constvars.FhirSupertokenSystemIdentifier + "|st-123"
+
+	mockPat.On("FindPatientByIdentifier", ctx(), identifierQuery).Return(expected, nil)
+
+	result, err := uc.lookupPatient(ctx(), "pat@test.com", "", "st-123")
+
+	require.NoError(t, err)
+	assert.Equal(t, expected, result)
+	mockPat.AssertNotCalled(t, "FindPatientByEmail", mock.Anything)
+	mockPat.AssertExpectations(t)
+}
+
+func TestLookupPractitioner_IdentifierMatch_SkipsEmail(t *testing.T) {
+	mockPrac := new(MockPractitionerFhirClient)
+	uc := newTestUsecase(mockPrac, nil, nil)
+	expected := []fhir_dto.Practitioner{{ResourceType: "Practitioner"}}
+
+	mockPrac.On("FindPractitionerByIdentifier", ctx(),
+		constvars.FhirSupertokenSystemIdentifier, "st-123").Return(expected, nil)
+
+	result, err := uc.lookupPractitioner(ctx(), "doc@test.com", "", "st-123")
+
+	require.NoError(t, err)
+	assert.Equal(t, expected, result)
+	mockPrac.AssertNotCalled(t, "FindPractitionerByEmail", mock.Anything)
+	mockPrac.AssertExpectations(t)
+}
+
+func TestLookupPatient_IdentifierMiss_FallsBackToEmail(t *testing.T) {
+	// Legacy resources created before the identifier scheme carry no uid
+	// identifier; the email fallback must still find them so
+	// ensurePatientIdentifiers can attach the uid.
+	mockPat := new(MockPatientFhirClient)
+	uc := newTestUsecase(nil, mockPat, nil)
+	expected := []fhir_dto.Patient{{ResourceType: "Patient"}}
+	identifierQuery := constvars.FhirSupertokenSystemIdentifier + "|st-123"
+
+	mockPat.On("FindPatientByIdentifier", ctx(), identifierQuery).Return([]fhir_dto.Patient{}, nil)
+	mockPat.On("FindPatientByEmail", ctx(), "pat@test.com").Return(expected, nil)
+
+	result, err := uc.lookupPatient(ctx(), "pat@test.com", "", "st-123")
+
+	require.NoError(t, err)
+	assert.Equal(t, expected, result)
+	mockPat.AssertExpectations(t)
+}
+
+func TestLookupPractitioner_IdentifierMiss_FallsBackToEmail(t *testing.T) {
+	mockPrac := new(MockPractitionerFhirClient)
+	uc := newTestUsecase(mockPrac, nil, nil)
+	expected := []fhir_dto.Practitioner{{ResourceType: "Practitioner"}}
+
+	mockPrac.On("FindPractitionerByIdentifier", ctx(),
+		constvars.FhirSupertokenSystemIdentifier, "st-123").Return([]fhir_dto.Practitioner{}, nil)
+	mockPrac.On("FindPractitionerByEmail", ctx(), "doc@test.com").Return(expected, nil)
+
+	result, err := uc.lookupPractitioner(ctx(), "doc@test.com", "", "st-123")
+
+	require.NoError(t, err)
+	assert.Equal(t, expected, result)
+	mockPrac.AssertExpectations(t)
+}
+
+// ---------------------------------------------------------------------------
 // ensurePatientIdentifiers
 // ---------------------------------------------------------------------------
 
@@ -734,6 +809,8 @@ func TestInitializeNewUserFHIRResources_ResearcherPlan(t *testing.T) {
 	input.ToogleByRoles([]string{constvars.KonsulinRoleResearcher})
 
 	createdPrac := &fhir_dto.Practitioner{ID: "prac-1", ResourceType: "Practitioner", Active: true}
+	mockPrac.On("FindPractitionerByIdentifier", ctx(),
+		constvars.FhirSupertokenSystemIdentifier, "st-123").Return([]fhir_dto.Practitioner{}, nil)
 	mockPrac.On("FindPractitionerByEmail", ctx(), "doc@test.com").Return([]fhir_dto.Practitioner{}, nil)
 	mockPrac.On("CreatePractitioner", ctx(), mock.Anything).Return(createdPrac, nil)
 
@@ -769,6 +846,8 @@ func TestInitializeNewUserFHIRResources_ClinicAdminAndResearcher_OrgLinked(t *te
 	input.ToogleByRoles([]string{constvars.KonsulinRoleClinicAdmin, constvars.KonsulinRoleResearcher})
 
 	createdPrac := &fhir_dto.Practitioner{ID: "prac-1", ResourceType: "Practitioner", Active: true}
+	mockPrac.On("FindPractitionerByIdentifier", ctx(),
+		constvars.FhirSupertokenSystemIdentifier, "st-123").Return([]fhir_dto.Practitioner{}, nil)
 	mockPrac.On("FindPractitionerByEmail", ctx(), "admin@test.com").Return([]fhir_dto.Practitioner{}, nil)
 	mockPrac.On("CreatePractitioner", ctx(), mock.Anything).Return(createdPrac, nil)
 
@@ -818,6 +897,7 @@ func TestInitializeNewUserFHIRResources_PatientPlan_NoRoles(t *testing.T) {
 	input.ToogleByRoles([]string{constvars.KonsulinRolePatient})
 
 	createdPat := &fhir_dto.Patient{ID: "pat-1", ResourceType: "Patient", Active: true}
+	mockPat.On("FindPatientByIdentifier", ctx(), constvars.FhirSupertokenSystemIdentifier+"|st-123").Return([]fhir_dto.Patient{}, nil)
 	mockPat.On("FindPatientByEmail", ctx(), "pat@test.com").Return([]fhir_dto.Patient{}, nil)
 	mockPat.On("CreatePatient", ctx(), mock.Anything).Return(createdPat, nil)
 
@@ -829,4 +909,48 @@ func TestInitializeNewUserFHIRResources_PatientPlan_NoRoles(t *testing.T) {
 	assert.Len(t, output.PractitionerRoleIDs, 0)
 	mockPat.AssertExpectations(t)
 	mockPR.AssertNotCalled(t, "Search", mock.Anything, mock.Anything)
+}
+
+func TestInitializeNewUserFHIRResources_DoubleInit_SinglePatient(t *testing.T) {
+	// initializeFHIRForUser runs on every create-code AND consume-code (twice
+	// per login). The uid-first lookup must make the second call converge on
+	// the resource created by the first, never a duplicate Patient.
+	mockPrac := new(MockPractitionerFhirClient)
+	mockPat := new(MockPatientFhirClient)
+	mockPR := new(MockPractitionerRoleFhirClient)
+	uc := newTestUsecase(mockPrac, mockPat, mockPR)
+	uc.webhookForwardFn = stubWebhookForwarder()
+
+	input := &contracts.InitializeNewUserFHIRResourcesInput{
+		SuperTokenUserID: "st-123",
+		Email:            "pat@test.com",
+	}
+	input.ToogleByRoles([]string{constvars.KonsulinRolePatient})
+
+	identifierQuery := constvars.FhirSupertokenSystemIdentifier + "|st-123"
+	createdPat := &fhir_dto.Patient{ID: "pat-1", ResourceType: "Patient", Active: true}
+
+	// First call: no existing resource anywhere -> create once.
+	mockPat.On("FindPatientByIdentifier", ctx(), identifierQuery).Return([]fhir_dto.Patient{}, nil).Once()
+	mockPat.On("FindPatientByEmail", ctx(), "pat@test.com").Return([]fhir_dto.Patient{}, nil).Once()
+	mockPat.On("CreatePatient", ctx(), mock.Anything).Return(createdPat, nil).Once()
+	// Second call: the uid identifier now resolves the existing resource.
+	mockPat.On("FindPatientByIdentifier", ctx(), identifierQuery).Return(
+		[]fhir_dto.Patient{{
+			ID: "pat-1",
+			Identifier: []fhir_dto.Identifier{
+				{System: constvars.FhirSupertokenSystemIdentifier, Value: "st-123"},
+			},
+		}}, nil).Once()
+	mockPat.On("UpdatePatient", ctx(), mock.Anything).Return(createdPat, nil).Once()
+
+	out1, err := uc.InitializeNewUserFHIRResources(ctx(), input)
+	require.NoError(t, err)
+	out2, err := uc.InitializeNewUserFHIRResources(ctx(), input)
+	require.NoError(t, err)
+
+	assert.Equal(t, "pat-1", out1.PatientID)
+	assert.Equal(t, "pat-1", out2.PatientID)
+	mockPat.AssertNumberOfCalls(t, "CreatePatient", 1)
+	mockPat.AssertExpectations(t)
 }

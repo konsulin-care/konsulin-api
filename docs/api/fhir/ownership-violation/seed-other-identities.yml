@@ -1,0 +1,118 @@
+info:
+  name: "Ownership Violation: Seed Other Identities"
+  type: http
+  seq: 1
+  tags: [ownership, utility]
+
+http:
+  method: POST
+  url: "{{blazeBaseUrl}}/fhir"
+  headers:
+    - name: content-type
+      value: application/fhir+json
+    - name: Accept
+      value: application/fhir+json
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "Bundle",
+        "type": "transaction",
+        "entry": [
+          {
+            "request": { "method": "PUT", "url": "Patient/other-patient-b" },
+            "resource": {
+              "resourceType": "Patient",
+              "id": "other-patient-b",
+              "identifier": [
+                {
+                  "system": "https://login.konsulin.care/userid",
+                  "value": "other-patient-b-user"
+                }
+              ],
+              "name": [{ "family": "Other", "given": ["Test"] }],
+              "gender": "unknown",
+              "birthDate": "1990-01-01"
+            }
+          },
+          {
+            "request": { "method": "PUT", "url": "Condition/other-condition-1" },
+            "resource": {
+              "resourceType": "Condition",
+              "id": "other-condition-1",
+              "clinicalStatus": {
+                "coding": [
+                  {
+                    "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+                    "code": "active"
+                  }
+                ]
+              },
+              "code": { "text": "test condition" },
+              "subject": { "reference": "Patient/other-patient-b" }
+            }
+          },
+          {
+            "request": { "method": "PUT", "url": "Appointment/other-appointment-1" },
+            "resource": {
+              "resourceType": "Appointment",
+              "id": "other-appointment-1",
+              "status": "booked",
+              "start": "2030-01-01T09:00:00+07:00",
+              "end": "2030-01-01T09:30:00+07:00",
+              "participant": [
+                {
+                  "actor": { "reference": "Patient/other-patient-b" },
+                  "status": "accepted"
+                }
+              ]
+            }
+          },
+          {
+            "request": { "method": "PUT", "url": "Invoice/other-invoice-1" },
+            "resource": {
+              "resourceType": "Invoice",
+              "id": "other-invoice-1",
+              "status": "draft",
+              "subject": { "reference": "Patient/other-patient-b" }
+            }
+          },
+          {
+            "request": { "method": "PUT", "url": "Person/other-person-1" },
+            "resource": {
+              "resourceType": "Person",
+              "id": "other-person-1",
+              "active": true
+            }
+          }
+        ]
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Ownership Violation: Read Other Patient''s Identity");'
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Seeds the foreign identity set directly against Blaze (`{{blazeBaseUrl}}`,
+  no gateway auth) as one transaction bundle of PUT entries with
+  deterministic ids — idempotent across repeated pre-push runs (PUT
+  overwrites residue in place, never duplicates). Entry order satisfies Blaze
+  referential integrity: Patient first, then the resources referencing it.
+
+  Deliberate seed-body constraints: Patient B carries NO email (a shared
+  email would let `resolveRelatedPatientIDsByEmail` grant the session
+  ownership and break the suite) and a distinct userid identifier; the
+  Condition/Appointment/Invoice reference `Patient/other-patient-b`; the
+  Invoice carries only patient-typed refs so `invoiceChecker` keeps it
+  non-public. Chains into the first violation request.

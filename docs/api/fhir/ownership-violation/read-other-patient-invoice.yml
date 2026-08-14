@@ -1,0 +1,55 @@
+info:
+  name: "Ownership Violation: Read Other Patient's Invoice"
+  type: http
+  seq: 5
+  tags: [ownership]
+
+http:
+  method: GET
+  url: "{{process.env.APP_BASE_URL}}/fhir/Invoice/other-invoice-1"
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        bru.setVar("activeRole", "Patient");
+        await bru.sendRequest({
+          method: "POST",
+          url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
+          headers: {
+            "content-type": "application/json",
+            "Authorization": "Bearer " + bru.getVar("sessionToken")
+          },
+          data: JSON.stringify({ role: bru.getVar("activeRole") })
+        }, function(err, res) {
+          if (err) {
+            console.error("role switch failed: " + err.message);
+          } else if (res && res.headers) {
+            // the active-role response carries the regenerated access token;
+            // capture it so the following request sees the new active role
+            var newToken = res.headers["st-access-token"] || res.headers["front-token"];
+            if (newToken) { bru.setVar("sessionToken", newToken); }
+          }
+        });
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Ownership Violation: Read Other Person");'
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "401"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Expected failure: the session reads Patient B's Invoice by id. RBAC grants
+  Patient GET /fhir/Invoice; `invoiceChecker` refuses to treat it as public
+  because its refs include a Patient (not in the Practitioner/PractitionerRole/
+  Device whitelist), and no rule ref (`subject`/`participant.actor`) names an
+  owned identity — the `OwnedBy` filter denies — 401.

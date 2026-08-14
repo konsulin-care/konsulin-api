@@ -210,6 +210,14 @@ func (m *Middlewares) validatePostRequestBody(ctx context.Context, body []byte, 
 	}
 
 	resourceTypeFromPath := utils.ExtractResourceTypeFromPath("/fhir/" + resourceType)
+
+	// Transaction bundles are authorized per-entry by handleAuthBundle's
+	// scanBundle; the single-resource body check must not reject the Bundle
+	// wrapper itself (the ownership spec carries no "Bundle" rule).
+	if resourceTypeFromPath == constvars.ResourceBundle {
+		return nil
+	}
+
 	roles, _ := ctx.Value(keyRoles).([]string)
 	oc := ownershipContextFromRoles(roles, fhirRole, fhirID)
 	return ownership.ValidateWriteBody(body, resourceTypeFromPath, oc, false)

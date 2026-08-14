@@ -287,31 +287,53 @@ func (uc *userUsecase) ensurePractitionerIdentifiers(ctx context.Context, practi
 
 // lookupPractitioner searches for an existing Practitioner by email, phone, or supertoken identifier.
 func (uc *userUsecase) lookupPractitioner(ctx context.Context, email, phone, superTokenUserID string) ([]fhir_dto.Practitioner, error) {
+	// The supertoken uid identifier is the stable per-user key; match it first
+	// so createPractitionerIfNotExists stays idempotent per user (email-first
+	// lookup accumulates duplicate Practitioners when the email search
+	// parameter is not reliably indexed). Email/phone remain as fallbacks for
+	// legacy resources created before the identifier scheme.
+	if strings.TrimSpace(superTokenUserID) != "" {
+		pracs, err := uc.PractitionerFhirClient.FindPractitionerByIdentifier(ctx, constvars.FhirSupertokenSystemIdentifier, superTokenUserID)
+		if err != nil {
+			return nil, err
+		}
+		if len(pracs) > 0 {
+			return pracs, nil
+		}
+	}
 	if strings.TrimSpace(email) != "" {
 		return uc.PractitionerFhirClient.FindPractitionerByEmail(ctx, email)
 	}
 	if strings.TrimSpace(phone) != "" {
 		return uc.PractitionerFhirClient.FindPractitionerByPhone(ctx, phone)
 	}
-	if strings.TrimSpace(superTokenUserID) != "" {
-		return uc.PractitionerFhirClient.FindPractitionerByIdentifier(ctx, constvars.FhirSupertokenSystemIdentifier, superTokenUserID)
-	}
 	return nil, nil
 }
 
-// lookupPatient searches for an existing Patient by email, phone, or supertoken identifier.
+// lookupPatient searches for an existing Patient by supertoken uid identifier
+// first (the stable per-user key), then falls back to email and phone for
+// legacy resources created before the identifier scheme. The uid-first order
+// keeps createPatientIfNotExists idempotent per user: repeated magic-link
+// create/consume calls converge on one Patient instead of accumulating
+// duplicates when the email search parameter is not reliably indexed.
 func (uc *userUsecase) lookupPatient(ctx context.Context, email, phone, superTokenUserID string) ([]fhir_dto.Patient, error) {
+	if strings.TrimSpace(superTokenUserID) != "" {
+		pats, err := uc.PatientFhirClient.FindPatientByIdentifier(
+			ctx,
+			fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, superTokenUserID),
+		)
+		if err != nil {
+			return nil, err
+		}
+		if len(pats) > 0 {
+			return pats, nil
+		}
+	}
 	if strings.TrimSpace(email) != "" {
 		return uc.PatientFhirClient.FindPatientByEmail(ctx, email)
 	}
 	if strings.TrimSpace(phone) != "" {
 		return uc.PatientFhirClient.FindPatientByPhone(ctx, phone)
-	}
-	if strings.TrimSpace(superTokenUserID) != "" {
-		return uc.PatientFhirClient.FindPatientByIdentifier(
-			ctx,
-			fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, superTokenUserID),
-		)
 	}
 	return nil, nil
 }
