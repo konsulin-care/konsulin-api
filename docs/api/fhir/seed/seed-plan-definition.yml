@@ -5,8 +5,8 @@ info:
   tags: [research, utility]
 
 http:
-  method: POST
-  url: "{{process.env.APP_BASE_URL}}/fhir/PlanDefinition"
+  method: PUT
+  url: "{{process.env.APP_BASE_URL}}/fhir/PlanDefinition/seed-protocol"
   headers:
     - name: X-API-Key
       value: "{{process.env.SUPERADMIN_API_KEY}}"
@@ -15,6 +15,7 @@ http:
     data: |-
       {
         "resourceType": "PlanDefinition",
+        "id": "seed-protocol",
         "status": "active",
         "title": "Wellbeing Check-in Protocol",
         "description": "Weekly wellbeing assessment protocol for the research study.",
@@ -43,7 +44,10 @@ runtime:
         bru.runner.setNextRequest("Seed Research Study");
   assertions:
     - expression: res.status
-      operator: eq
+      operator: gte
+      value: "200"
+    - expression: res.status
+      operator: lte
       value: "201"
 
 settings:
@@ -53,6 +57,7 @@ settings:
   maxRedirects: 5
 
 docs: |
-  Seeds the research protocol PlanDefinition referenced by the ResearchStudy
-  (`_include=ResearchStudy:protocol` pulls it into study listings). Captures
-  `planDefinitionId` and chains to "Seed Research Study". Superadmin.
+  Seeds the research protocol PlanDefinition (fixed id `seed-protocol`,
+  idempotent PUT) referenced by the ResearchStudy (`_include=ResearchStudy:protocol`
+  pulls it into study listings). Captures `planDefinitionId` (equals
+  seed-protocol) and chains to "Seed Research Study". Superadmin.

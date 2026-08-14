@@ -5,8 +5,8 @@ info:
   tags: [assessment, utility]
 
 http:
-  method: POST
-  url: "{{process.env.APP_BASE_URL}}/fhir/Questionnaire"
+  method: PUT
+  url: "{{process.env.APP_BASE_URL}}/fhir/Questionnaire/seed-wellbeing"
   headers:
     - name: X-API-Key
       value: "{{process.env.SUPERADMIN_API_KEY}}"
@@ -15,6 +15,7 @@ http:
     data: |-
       {
         "resourceType": "Questionnaire",
+        "id": "seed-wellbeing",
         "status": "active",
         "title": "Konsulin General Wellbeing Assessment",
         "description": "A short wellbeing check-in used by the assessment catalog.",
@@ -77,7 +78,10 @@ runtime:
         bru.runner.setNextRequest("Seed SOAP Questionnaire");
   assertions:
     - expression: res.status
-      operator: eq
+      operator: gte
+      value: "200"
+    - expression: res.status
+      operator: lte
       value: "201"
 
 settings:
@@ -87,10 +91,10 @@ settings:
   maxRedirects: 5
 
 docs: |
-  Seeds an active catalog questionnaire: catalog placement is expressed via
-  `useContext` with the `assessment-context` code `regular` (the `context`
-  search parameter maps to it) plus the platform's real extension URLs
-  (`questionnaireEstimatedDuration`, `fee`). The catalog queries
-  (`GET /fhir/Questionnaire?context=regular&status=active`) return it.
-  Captures `questionnaireId` and chains to "Seed SOAP Questionnaire".
-  Superadmin.
+  Seeds an active catalog questionnaire (fixed id `seed-wellbeing`, idempotent
+  PUT): catalog placement is expressed via `useContext` with the
+  `assessment-context` code `regular` (the `context` search parameter maps to
+  it) plus the platform's real extension URLs (`questionnaireEstimatedDuration`,
+  `fee`). The catalog queries (`GET /fhir/Questionnaire?context=regular&status=active`)
+  return it. Captures `questionnaireId` (equals seed-wellbeing) and chains to
+  "Seed SOAP Questionnaire". Superadmin.

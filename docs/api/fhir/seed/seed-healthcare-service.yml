@@ -5,8 +5,8 @@ info:
   tags: [clinic, utility]
 
 http:
-  method: POST
-  url: "{{process.env.APP_BASE_URL}}/fhir/HealthcareService"
+  method: PUT
+  url: "{{process.env.APP_BASE_URL}}/fhir/HealthcareService/seed-hs"
   headers:
     - name: X-API-Key
       value: "{{process.env.SUPERADMIN_API_KEY}}"
@@ -15,6 +15,7 @@ http:
     data: |-
       {
         "resourceType": "HealthcareService",
+        "id": "seed-hs",
         "active": true,
         "providedBy": {
           "reference": "Organization/{{organizationId}}"
@@ -65,7 +66,10 @@ runtime:
         bru.runner.setNextRequest("Seed Practitioner Role");
   assertions:
     - expression: res.status
-      operator: eq
+      operator: gte
+      value: "200"
+    - expression: res.status
+      operator: lte
       value: "201"
 
 settings:
@@ -75,7 +79,8 @@ settings:
   maxRedirects: 5
 
 docs: |
-  Seeds the HealthcareService for the clinic. Its `appointment-duration`
-  extension (30 minutes) is what clients use to size slots in the dynamic
-  availability model; the fee extension feeds the payment flow. Captures
-  `healthcareServiceId` and chains to "Seed Practitioner Role". Superadmin.
+  Seeds the HealthcareService (fixed id `seed-hs`, idempotent PUT) for the
+  clinic. Its `appointment-duration` extension (30 minutes) is what clients use
+  to size slots in the dynamic availability model; the fee extension feeds the
+  payment flow. Captures `healthcareServiceId` (equals seed-hs) and chains to
+  "Seed Practitioner Role". Superadmin.

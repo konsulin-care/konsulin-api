@@ -58,6 +58,48 @@ check_code() {
   fi
 }
 
+echo "== static contract: collection seeds fixed ids via PUT =="
+# The cleanup script targets these exact ids; if a seed drifts the cleanup
+# silently stops working, so the collection is pinned to them here.
+while IFS='|' read -r file rtype rid; do
+  if grep -q "method: PUT" "docs/api/fhir/seed/${file}" \
+    && grep -q "url: .*${rtype}/${rid}" "docs/api/fhir/seed/${file}"; then
+    echo "PASS: ${file} PUTs ${rtype}/${rid}"
+  else
+    echo "FAIL: ${file} does not PUT ${rtype}/${rid}"
+    FAILED=1
+  fi
+  if grep -q '"id": "'"${rid}"'"' "docs/api/fhir/seed/${file}"; then
+    :
+  else
+    echo "FAIL: ${file} body lacks id ${rid}"
+    FAILED=1
+  fi
+done <<EOF
+seed-organization.yml|Organization|seed-clinic
+seed-location.yml|Location|seed-location
+seed-healthcare-service.yml|HealthcareService|seed-hs
+seed-practitioner-role.yml|PractitionerRole|seed-role
+seed-schedule.yml|Schedule|seed-schedule
+seed-questionnaire.yml|Questionnaire|seed-wellbeing
+seed-soap-questionnaire.yml|Questionnaire|seed-soap
+seed-plan-definition.yml|PlanDefinition|seed-protocol
+seed-research-study.yml|ResearchStudy|seed-study
+EOF
+# The suite must never write or delete the real Questionnaire/soap: no request
+# URL or body may reference it (doc text may mention it to explain the rule).
+if grep -rnE 'url: ".*Questionnaire/soap"|questionnaire.: ".*Questionnaire/soap"' docs/api --include='*.yml'; then
+  echo "FAIL: a collection request still references Questionnaire/soap"
+  FAILED=1
+else
+  echo "PASS: no collection request references Questionnaire/soap"
+fi
+
+if [ "$FAILED" = "1" ]; then
+  echo "ABORT: static contract broken; fix the collection before running the live checks"
+  exit 1
+fi
+
 echo "== setup fixtures =="
 put Organization/seed-clinic '{"resourceType":"Organization","id":"seed-clinic","active":true,"name":"Konsulin Demo Clinic"}'
 put Location/seed-location '{"resourceType":"Location","id":"seed-location","status":"active","name":"Konsulin Demo Clinic — Main","managingOrganization":{"reference":"Organization/seed-clinic"}}'

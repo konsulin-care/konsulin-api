@@ -5,8 +5,8 @@ info:
   tags: [clinic, utility]
 
 http:
-  method: POST
-  url: "{{process.env.APP_BASE_URL}}/fhir/Location"
+  method: PUT
+  url: "{{process.env.APP_BASE_URL}}/fhir/Location/seed-location"
   headers:
     - name: X-API-Key
       value: "{{process.env.SUPERADMIN_API_KEY}}"
@@ -15,6 +15,7 @@ http:
     data: |-
       {
         "resourceType": "Location",
+        "id": "seed-location",
         "status": "active",
         "name": "Konsulin Demo Clinic — Main",
         "managingOrganization": {
@@ -39,7 +40,10 @@ runtime:
         bru.runner.setNextRequest("Seed Healthcare Service");
   assertions:
     - expression: res.status
-      operator: eq
+      operator: gte
+      value: "200"
+    - expression: res.status
+      operator: lte
       value: "201"
 
 settings:
@@ -49,5 +53,6 @@ settings:
   maxRedirects: 5
 
 docs: |
-  Seeds the clinic Location linked to the seeded Organization. Captures
-  `locationId` and chains to "Seed Healthcare Service". Runs as superadmin.
+  Seeds the clinic Location (fixed id `seed-location`, idempotent PUT) linked
+  to the seeded Organization. Captures `locationId` (equals seed-location) and
+  chains to "Seed Healthcare Service". Runs as superadmin.

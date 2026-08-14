@@ -5,8 +5,8 @@ info:
   tags: [appointment, utility]
 
 http:
-  method: POST
-  url: "{{process.env.APP_BASE_URL}}/fhir/Schedule"
+  method: PUT
+  url: "{{process.env.APP_BASE_URL}}/fhir/Schedule/seed-schedule"
   headers:
     - name: X-API-Key
       value: "{{process.env.SUPERADMIN_API_KEY}}"
@@ -15,6 +15,7 @@ http:
     data: |-
       {
         "resourceType": "Schedule",
+        "id": "seed-schedule",
         "active": true,
         "actor": [
           {
@@ -36,7 +37,10 @@ runtime:
         bru.runner.setNextRequest("Seed Questionnaire");
   assertions:
     - expression: res.status
-      operator: eq
+      operator: gte
+      value: "200"
+    - expression: res.status
+      operator: lte
       value: "201"
 
 settings:
@@ -46,7 +50,8 @@ settings:
   maxRedirects: 5
 
 docs: |
-  Seeds the Schedule for the practitioner's role. Clients fetch it
-  (`GET /fhir/Schedule/{id}` and `GET /fhir/Schedule?actor=PractitionerRole/{id}`)
-  for booking context. No slots are seeded: free time is computed dynamically.
-  Captures `scheduleId` and chains to "Seed Questionnaire". Superadmin.
+  Seeds the Schedule (fixed id `seed-schedule`, idempotent PUT) for the
+  practitioner's role. Clients fetch it (`GET /fhir/Schedule/{id}` and
+  `GET /fhir/Schedule?actor=PractitionerRole/{id}`) for booking context. No
+  slots are seeded: free time is computed dynamically. Captures `scheduleId`
+  (equals seed-schedule) and chains to "Seed Questionnaire". Superadmin.
