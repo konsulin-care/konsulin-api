@@ -9,11 +9,17 @@ set -euo pipefail
 #
 # Environment:
 #   BRU_COLLECTION_DIR  override the collection directory (default: docs/api)
+#   BLAZE_BASE_URL      Blaze base for the post-run litter cleanup (default
+#                       http://localhost:8080; the collection .env may set it)
 
 REQUIRED=0
 if [[ "${1:-}" == "--required" ]]; then
   REQUIRED=1
 fi
+
+# Resolve the script's own directory before any `cd` below, so the decoupled
+# cleanup can always be found regardless of the current working directory.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 COLLECTION_DIR="${BRU_COLLECTION_DIR:-docs/api}"
 ENV_FILE="${COLLECTION_DIR}/.env"
@@ -60,7 +66,15 @@ HEALTH_URL="${APP_BASE_URL%/}/health"
 if RESPONSE="$(curl -sf --max-time 5 "${HEALTH_URL}")"; then
   echo "API healthy at ${HEALTH_URL}: ${RESPONSE}"
   cd "${COLLECTION_DIR}"
-  bru run --bail
+  BRU_RC=0
+  if ! bru run --bail; then
+    BRU_RC=$?
+  fi
+  # Decoupled cleanup: runs after the suite whether it passed or failed, so a
+  # mid-run failure can never leave the fixed-id seed resources behind. The
+  # cleanup is Blaze-direct and non-fatal (see scripts/bru-cleanup.sh).
+  "${SCRIPT_DIR}/bru-cleanup.sh" || true
+  exit "${BRU_RC}"
 else
   if [[ "${REQUIRED}" -eq 1 ]]; then
     echo "FAIL: API server not reachable at ${HEALTH_URL} — refusing to push untested API" >&2
