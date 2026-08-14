@@ -779,9 +779,12 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, clie
 		return validateResourceOwnership(ctx, fhirID, role, resourceType, resource, clients)
 	}
 
-	// DELETE/PATCH: scope via the ownership engine's search-query rules.
+	// DELETE/PATCH: scope via the ownership engine's mutating-query rules.
+	// ValidWriteQuery fails closed: a query that cannot prove ownership of
+	// every scoped identity is denied (the legacy ownsPatientQuery /
+	// ownsPractitionerQuery semantics, hardened).
 	oc := ownershipContextForRole(role, fhirID)
-	return ownership.ValidSearchQuery(rawURL, resourceType, oc)
+	return ownership.ValidWriteQuery(rawURL, resourceType, oc)
 }
 
 // extractPathResourceID parses a URL path to extract resource type and ID.

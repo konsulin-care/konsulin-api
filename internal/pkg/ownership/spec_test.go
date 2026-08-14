@@ -6,14 +6,23 @@ import (
 	"strings"
 	"testing"
 
+	"konsulin-service/internal/pkg/constvars"
+
 	"github.com/stretchr/testify/assert"
 )
 
-// reachableResourceTypes parses resources/rbac_policy.csv and returns the set
-// of FHIR resource types reachable through any policy path.
-func reachableResourceTypes(t *testing.T) map[string]struct{} {
+// rbacPolicyRow is one parsed rbac_policy.csv row.
+type rbacPolicyRow struct {
+	role   string
+	method string
+	path   string
+}
+
+// rbacPolicyRows parses resources/rbac_policy.csv into structured rows,
+// skipping comments and malformed lines.
+func rbacPolicyRows(t *testing.T) []rbacPolicyRow {
 	t.Helper()
-	types := map[string]struct{}{}
+	var rows []rbacPolicyRow
 	f, err := os.Open("../../../resources/rbac_policy.csv")
 	assert.NoError(t, err)
 	defer f.Close()
@@ -27,17 +36,31 @@ func reachableResourceTypes(t *testing.T) map[string]struct{} {
 		if len(parts) < 4 {
 			continue
 		}
-		path := strings.TrimSpace(parts[3])
-		if !strings.HasPrefix(path, "/fhir/") {
+		rows = append(rows, rbacPolicyRow{
+			role:   strings.TrimSpace(parts[1]),
+			method: strings.TrimSpace(parts[2]),
+			path:   strings.TrimSpace(parts[3]),
+		})
+	}
+	assert.NoError(t, sc.Err())
+	return rows
+}
+
+// reachableResourceTypes returns the set of FHIR resource types reachable
+// through any /fhir/ policy path.
+func reachableResourceTypes(t *testing.T) map[string]struct{} {
+	t.Helper()
+	types := map[string]struct{}{}
+	for _, row := range rbacPolicyRows(t) {
+		if !strings.HasPrefix(row.path, "/fhir/") {
 			continue
 		}
-		seg := strings.TrimPrefix(path, "/fhir/")
+		seg := strings.TrimPrefix(row.path, "/fhir/")
 		resourceType := strings.SplitN(seg, "/", 2)[0]
 		if resourceType != "" {
 			types[resourceType] = struct{}{}
 		}
 	}
-	assert.NoError(t, sc.Err())
 	return types
 }
 
@@ -48,6 +71,45 @@ func TestRulesCoverReachableResourceTypes(t *testing.T) {
 	for rt := range reachableResourceTypes(t) {
 		_, ok := Rules[rt]
 		assert.True(t, ok, "resource type %q reachable via rbac_policy.csv has no ownership rule", rt)
+	}
+}
+
+// TestRulesCoverMutatingPolicyRows is the method x path completeness gate: any
+// DELETE/PATCH policy row for a FHIR identity role (the roles that flow through
+// the ownership engine) must target a type whose rule can scope a mutating
+// query — an identity type (Patient/Practitioner, scoped by owned path id or
+// _id) or a rule carrying at least one SearchParam. A future row such as
+// "p, Patient, DELETE, /fhir/Media" fails CI until the engine can scope it.
+// Guest and Superadmin rows are exempt: those roles bypass the ownership
+// engine entirely (no FHIR identity to scope).
+func TestRulesCoverMutatingPolicyRows(t *testing.T) {
+	identityRoles := map[string]struct{}{
+		constvars.KonsulinRolePatient:     {},
+		constvars.KonsulinRolePractitioner: {},
+		constvars.KonsulinRoleResearcher:   {},
+		constvars.KonsulinRoleClinicAdmin:  {},
+	}
+	for _, row := range rbacPolicyRows(t) {
+		if row.method != "DELETE" && row.method != "PATCH" {
+			continue
+		}
+		if _, ok := identityRoles[row.role]; !ok {
+			continue
+		}
+		if !strings.HasPrefix(row.path, "/fhir/") {
+			continue
+		}
+		resourceType := strings.SplitN(strings.TrimPrefix(row.path, "/fhir/"), "/", 2)[0]
+		rule, ok := Rules[resourceType]
+		assert.True(t, ok, "DELETE/PATCH row %q %q targets type %q with no ownership rule", row.role, row.path, resourceType)
+		if !ok {
+			continue
+		}
+		isIdentity := resourceType == constvars.ResourcePatient || resourceType == constvars.ResourcePractitioner
+		scopable := rule.Scope != ScopeInternal && len(rule.SearchParams) > 0
+		assert.True(t, isIdentity || scopable,
+			"DELETE/PATCH row %q %q targets %q which cannot scope a mutating query (identity type or ≥1 SearchParam required)",
+			row.role, row.path, resourceType)
 	}
 }
 

@@ -362,6 +362,25 @@ func TestOwnsResource_PostConsentOwnership(t *testing.T) {
 	assert.False(t, got, "Patient must not POST a Consent for another patient")
 }
 
+func TestOwnsResource_DeleteScopesViaValidWriteQuery(t *testing.T) {
+	// A DELETE on a scoped type must fail closed through the mutating-query
+	// gate (ValidWriteQuery): the query must carry an ownership-scoping param
+	// referencing an owned identity.
+	got := ownsResource(context.Background(), "pat-1", "/fhir/Condition?patient=pat-2", constvars.KonsulinRolePatient, constvars.MethodDelete, rbacClients{}, nil)
+	assert.False(t, got, "DELETE scoped to an unowned patient must be denied")
+
+	got = ownsResource(context.Background(), "pat-1", "/fhir/Condition?patient=pat-1", constvars.KonsulinRolePatient, constvars.MethodDelete, rbacClients{}, nil)
+	assert.True(t, got, "DELETE scoped to the caller's own patient must be allowed")
+
+	got = ownsResource(context.Background(), "pat-1", "/fhir/Condition/cond-123", constvars.KonsulinRolePatient, constvars.MethodDelete, rbacClients{}, nil)
+	assert.False(t, got, "single-resource DELETE without a scoping query must be denied")
+
+	got = ownsResource(context.Background(), "pat-1", "/fhir/Patient/pat-1", constvars.KonsulinRolePatient, constvars.MethodDelete, rbacClients{}, nil)
+	assert.True(t, got, "identity DELETE on the caller's own path id must be allowed")
+	got = ownsResource(context.Background(), "pat-1", "/fhir/Patient/pat-2", constvars.KonsulinRolePatient, constvars.MethodDelete, rbacClients{}, nil)
+	assert.False(t, got, "identity DELETE on another patient's path id must be denied")
+}
+
 func TestValidatePostRequestBody_BundleSkipsSingleResourceCheck(t *testing.T) {
 	// Transaction bundles are authorized per-entry by handleAuthBundle's
 	// scanBundle; the single-resource body check must not reject the Bundle

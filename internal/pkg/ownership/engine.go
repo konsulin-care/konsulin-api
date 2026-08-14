@@ -129,13 +129,7 @@ func ValidSearchQuery(rawURL, resourceType string, oc *OwnershipContext) bool {
 	// Identity resources: a path id must be owned (e.g. DELETE /Patient/{id});
 	// collection deletes must scope via _id.
 	if resourceType == constvars.ResourcePatient || resourceType == constvars.ResourcePractitioner {
-		if id := pathResourceID(u.Path); id != "" {
-			return ownedIDForTarget(resourceType, id, oc)
-		}
-		if u.RawQuery == "" {
-			return false
-		}
-		return ownedIDForTarget(resourceType, u.Query().Get("_id"), oc)
+		return validIdentityTargetQuery(u, resourceType, oc)
 	}
 
 	// Single-resource reads (no query) are exempt; aggregate counts stay public.
@@ -158,6 +152,103 @@ func ValidSearchQuery(rawURL, resourceType string, oc *OwnershipContext) bool {
 		return false
 	}
 	return true
+}
+
+// ValidWriteQuery validates a mutating (DELETE/PATCH) request against the
+// rule's scoping rules. Unlike ValidSearchQuery — whose GET semantics treat the
+// pre-request check as advisory because the response filter (OwnedBy) is the
+// real gate — this function is the only gate for a mutation, so it fails
+// closed: a query that cannot prove ownership of every scoped identity is
+// denied. Semantics:
+//   - identity types (Patient/Practitioner): the path id or _id must be owned;
+//   - public rules with SearchParams: an ownership param must be present and
+//     every value must reference an owned identity;
+//   - QuestionnaireResponse/Communication: an anchored identity scope is
+//     required (patient own-ref, allowance-anchored param, or identifier for
+//     superadmin/QR); the practitioner exemption from the GET path does not
+//     apply;
+//   - other scoped types: an ownership SearchParam must be present and every
+//     value must reference an owned identity;
+//   - unknown types and ScopeInternal are denied.
+func ValidWriteQuery(rawURL, resourceType string, oc *OwnershipContext) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	rule, ok := Rules[resourceType]
+	if !ok {
+		return false
+	}
+
+	// Identity resources: a path id must be owned (DELETE /Patient/{id});
+	// collection deletes must scope via an owned _id.
+	if resourceType == constvars.ResourcePatient || resourceType == constvars.ResourcePractitioner {
+		return validIdentityTargetQuery(u, resourceType, oc)
+	}
+
+	if rule.Scope == ScopeInternal {
+		return false
+	}
+
+	// Entry-level scoped resources require an anchored identity scope; the
+	// practitioner exemption from the GET path does not apply to mutations.
+	if resourceType == constvars.ResourceQuestionnaireResponse || resourceType == constvars.ResourceCommunication {
+		return validScopedWriteSearch(u, rule, resourceType, oc)
+	}
+
+	// Public rules without SearchParams have no scoping model; the RBAC policy
+	// is the gate.
+	if rule.Scope == ScopePublic && len(rule.SearchParams) == 0 {
+		return true
+	}
+
+	// Scoped types (and public types with SearchParams): an ownership param
+	// must be present and every value must reference an owned identity.
+	if len(rule.SearchParams) > 0 {
+		return validPublicSearchQueryStrict(u.Query(), rule, oc)
+	}
+	return false
+}
+
+// validIdentityTargetQuery validates an identity-resource (Patient/Practitioner)
+// request against the caller's owned ids: the path id must be owned, else an
+// owned _id must scope a collection request. Fails closed when neither is
+// present or owned.
+func validIdentityTargetQuery(u *url.URL, resourceType string, oc *OwnershipContext) bool {
+	if id := pathResourceID(u.Path); id != "" {
+		return ownedIDForTarget(resourceType, id, oc)
+	}
+	if u.RawQuery == "" {
+		return false
+	}
+	return ownedIDForTarget(resourceType, u.Query().Get("_id"), oc)
+}
+
+// validScopedWriteSearch is the mutating-query variant of
+// validScopedEntrySearch: an anchored identity scope is required and the
+// practitioner exemption does not apply, so a plain practitioner cannot scope
+// a DELETE/PATCH by an arbitrary query.
+func validScopedWriteSearch(u *url.URL, rule ResourceRule, resourceType string, oc *OwnershipContext) bool {
+	q := u.Query()
+	if oc.HasPatientRole && len(oc.PatientIDs) > 0 &&
+		queryHasOwnRef(q, oc.PatientIDs, rule.SearchParams...) {
+		return true
+	}
+	if held, anchored := searchAllowanceMatched(rule, oc, q); held {
+		return anchored
+	}
+	if oc.HasSuperadminRole {
+		// Superadmin is exempt for Communication; legacy QR behavior keeps the
+		// identifier scope requirement.
+		if resourceType == constvars.ResourceCommunication {
+			return true
+		}
+		return q.Get("identifier") != ""
+	}
+	if resourceType == constvars.ResourceQuestionnaireResponse {
+		return q.Get("identifier") != ""
+	}
+	return false
 }
 
 // validScopedEntrySearch implements the scoped-entry rules: a patient must
@@ -210,6 +301,17 @@ func searchAllowanceMatched(rule ResourceRule, oc *OwnershipContext, q url.Value
 	return true, false
 }
 
+// validPublicSearchQueryStrict is the fail-closed variant of
+// validPublicSearchQuery: it requires an ownership param to be present (the
+// public variant returns true for a bare listing) and validates every value
+// against the caller's owned identities.
+func validPublicSearchQueryStrict(q url.Values, rule ResourceRule, oc *OwnershipContext) bool {
+	if !hasOwnershipParam(q, rule) {
+		return false
+	}
+	return validateOwnershipParamValues(q, rule, oc)
+}
+
 // validPublicSearchQuery implements the legacy public-resource query scoping:
 // when no ownership param is present the listing is public; when an ownership
 // param (or a _has...practitioner param) is present, every value must
@@ -218,6 +320,13 @@ func validPublicSearchQuery(q url.Values, rule ResourceRule, oc *OwnershipContex
 	if !hasOwnershipParam(q, rule) {
 		return true
 	}
+	return validateOwnershipParamValues(q, rule, oc)
+}
+
+// validateOwnershipParamValues checks that every value of every rule
+// SearchParam references an owned identity, and validates _has...practitioner
+// reverse-include params.
+func validateOwnershipParamValues(q url.Values, rule ResourceRule, oc *OwnershipContext) bool {
 	for _, param := range rule.SearchParams {
 		for _, val := range q[param] {
 			if val == "" {
@@ -456,14 +565,18 @@ func holdsAnyCoding(oc *OwnershipContext, codings []string) bool {
 	return false
 }
 
-// pathResourceID extracts "Patient/pat-1" style ids from a URL path, handling
-// both "/fhir/Patient/pat-1" and "/Patient/pat-1" shapes.
+// pathResourceID extracts the id from a URL path, handling both
+// "/fhir/Type/id" and "/Type/id" shapes. Collection paths (no id segment)
+// return "".
 func pathResourceID(path string) string {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
-	if len(parts) >= 2 {
-		if strings.EqualFold(parts[0], "fhir") && len(parts) >= 3 {
+	if len(parts) >= 1 && strings.EqualFold(parts[0], "fhir") {
+		if len(parts) >= 3 {
 			return parts[2]
 		}
+		return ""
+	}
+	if len(parts) >= 2 {
 		return parts[1]
 	}
 	return ""
