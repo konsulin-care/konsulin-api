@@ -145,6 +145,13 @@ Each rule declares:
 - **POST Patient with an explicit `id` is denied for non-owners** (the `id`
   WriteRef, consistent with the referral-id forgery guard). Onboarding uses
   server-assigned ids, so no flow breakage.
+- **Referenced-bundle-keep is strict and practitioner-only**: bundle entries
+  referenced by a caller-owned resource survive only when `OwnedBy` confirms
+  the caller owns them (fail-closed — unknown/internal types drop).
+  Public-scope includes (PractitionerRole, Location, Organization) always
+  survive; a co-worker's scoped Practitioner resource referenced by an owned
+  Appointment is dropped. Ref collection runs only for genuine Practitioner
+  sessions (`HoldsPractitionerRole`), never for Researcher or Clinic Admin.
 - **Conformance**: a test asserts every Patient/Practitioner ref exists in the
   vendored FHIR R4 CompartmentDefinitions
   (`resources/fhir/CompartmentDefinition-{patient,practitioner}.json`), with a

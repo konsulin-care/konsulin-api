@@ -814,7 +814,7 @@ func (m *Middlewares) applyOwnershipFilterToBundle(
 ) int {
 	oc := m.buildOwnershipContext(ctx, roles, fhirRole, fhirID)
 	infos, allowedRefs := m.evaluateBundleOwnership(ctx, bundle, oc)
-	return filterBundleEntries(bundle, infos, allowedRefs, m.Log)
+	return filterBundleEntries(bundle, infos, allowedRefs, oc, m.Log)
 }
 
 // evaluateBundleOwnership determines direct ownership for each bundle entry and collects allowed refs.
@@ -849,8 +849,12 @@ func (m *Middlewares) evaluateBundleOwnership(_ context.Context, bundle *Bundle,
 	return infos, allowedRefs
 }
 
-// filterBundleEntries removes entries that are neither owned nor referenced by owned resources.
-func filterBundleEntries(bundle *Bundle, infos []bundleEntryInfo, allowedRefs map[string]struct{}, log *zap.Logger) int {
+// filterBundleEntries removes entries that are neither owned nor provably kept:
+// referenced entries survive only when OwnedBy confirms the caller owns them
+// (strict referenced-bundle-keep). Public-scope entries are already owned;
+// unknown and internal types fail closed. A co-worker's scoped resource
+// referenced by an owned resource is therefore dropped.
+func filterBundleEntries(bundle *Bundle, infos []bundleEntryInfo, allowedRefs map[string]struct{}, oc *ownership.OwnershipContext, log *zap.Logger) int {
 	removed := 0
 	filtered := make([]BundleEntry, 0, len(bundle.Entry))
 	for i, e := range bundle.Entry {
@@ -861,11 +865,13 @@ func filterBundleEntries(bundle *Bundle, infos []bundleEntryInfo, allowedRefs ma
 		}
 		refKey := fmt.Sprintf("%s/%s", info.resourceType, info.id)
 		if _, isReferenced := allowedRefs[refKey]; isReferenced {
-			filtered = append(filtered, e)
-		} else {
-			log.Info("removing resource from bundle", zap.String("resourceType", info.resourceType), zap.String("resourceID", info.id))
-			removed++
+			if owned, err := ownership.OwnedBy(e.Resource, info.resourceType, oc); err == nil && owned {
+				filtered = append(filtered, e)
+				continue
+			}
 		}
+		log.Info("removing resource from bundle", zap.String("resourceType", info.resourceType), zap.String("resourceID", info.id))
+		removed++
 	}
 	bundle.Entry = filtered
 	return removed
