@@ -84,6 +84,77 @@ http:
               "id": "other-person-1",
               "active": true
             }
+          },
+          {
+            "request": { "method": "PUT", "url": "Practitioner/other-practitioner-x" },
+            "resource": {
+              "resourceType": "Practitioner",
+              "id": "other-practitioner-x",
+              "identifier": [
+                {
+                  "system": "https://login.konsulin.care/userid",
+                  "value": "other-practitioner-x-user"
+                }
+              ],
+              "name": [{ "family": "Other", "given": ["Prac"] }]
+            }
+          },
+          {
+            "request": { "method": "PUT", "url": "Patient/email-shared-patient" },
+            "resource": {
+              "resourceType": "Patient",
+              "id": "email-shared-patient",
+              "identifier": [
+                {
+                  "system": "https://login.konsulin.care/userid",
+                  "value": "email-shared-user"
+                }
+              ],
+              "telecom": [
+                {
+                  "system": "email",
+                  "value": "{{process.env.ORGANIZATION}}@mailinator.com"
+                }
+              ],
+              "name": [{ "family": "Email", "given": ["Shared"] }]
+            }
+          },
+          {
+            "request": { "method": "PUT", "url": "Condition/email-shared-condition" },
+            "resource": {
+              "resourceType": "Condition",
+              "id": "email-shared-condition",
+              "clinicalStatus": {
+                "coding": [
+                  {
+                    "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+                    "code": "active"
+                  }
+                ]
+              },
+              "code": { "text": "shared-email condition" },
+              "subject": { "reference": "Patient/email-shared-patient" }
+            }
+          },
+          {
+            "request": { "method": "PUT", "url": "Appointment/session-prac-appointment-1" },
+            "resource": {
+              "resourceType": "Appointment",
+              "id": "session-prac-appointment-1",
+              "status": "booked",
+              "start": "2030-01-01T11:00:00+07:00",
+              "end": "2030-01-01T11:30:00+07:00",
+              "participant": [
+                {
+                  "actor": { "reference": "Practitioner/{{practitionerId}}" },
+                  "status": "accepted"
+                },
+                {
+                  "actor": { "reference": "Patient/other-patient-b" },
+                  "status": "accepted"
+                }
+              ]
+            }
           }
         ]
       }
@@ -110,9 +181,16 @@ docs: |
   overwrites residue in place, never duplicates). Entry order satisfies Blaze
   referential integrity: Patient first, then the resources referencing it.
 
-  Deliberate seed-body constraints: Patient B carries NO email (a shared
-  email would let `resolveRelatedPatientIDsByEmail` grant the session
-  ownership and break the suite) and a distinct userid identifier; the
-  Condition/Appointment/Invoice reference `Patient/other-patient-b`; the
-  Invoice carries only patient-typed refs so `invoiceChecker` keeps it
-  non-public. Chains into the first violation request.
+  Deliberate seed-body constraints: Patient B stays email-less (original
+  constraint — a shared email would have let the deleted
+  `resolveRelatedPatientIDsByEmail` grant the session ownership) and carries
+  a distinct userid identifier; the Condition/Appointment/Invoice reference
+  `Patient/other-patient-b`; the Invoice carries only patient-typed refs so
+  `invoiceChecker` keeps it non-public.
+
+  The email-widening matcher was removed (79cecaf); `Patient/email-shared-patient`
+  now *deliberately* carries the session's email address as the regression
+  proof — seeding now matches by the supertoken identifier only, so the
+  distinct `email-shared-user` identifier keeps this record out of the
+  session's ownership scope and the read stays denied. Chains into the first
+  violation request.

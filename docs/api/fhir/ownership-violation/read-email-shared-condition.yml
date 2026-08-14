@@ -1,29 +1,21 @@
 info:
-  name: "Ownership Violation: Post Patient With Foreign Id"
+  name: "Ownership Violation: Read Email Shared Condition"
   type: http
-  seq: 12
+  seq: 13
   tags: [ownership]
 
 http:
-  method: POST
-  url: "{{process.env.APP_BASE_URL}}/fhir/Patient"
+  method: GET
+  url: "{{process.env.APP_BASE_URL}}/fhir/Condition/email-shared-condition"
   headers:
     - name: Authorization
       value: Bearer {{sessionToken}}
-  body:
-    type: json
-    data: |-
-      {
-        "resourceType": "Patient",
-        "id": "other-patient-b",
-        "name": [{ "family": "Other", "given": ["Test"] }]
-      }
 
 runtime:
   scripts:
     - type: before-request
       code: |-
-        bru.setVar("activeRole", "Patient");
+        bru.setVar("activeRole", "Practitioner");
         await bru.sendRequest({
           method: "POST",
           url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
@@ -43,7 +35,7 @@ runtime:
           }
         });
     - type: after-response
-      code: 'bru.runner.setNextRequest("Ownership Violation: Read Email Shared Condition");'
+      code: 'bru.runner.setNextRequest("Ownership Violation: Read Appointment Include Drops Stranger");'
   assertions:
     - expression: res.status
       operator: eq
@@ -56,7 +48,11 @@ settings:
   maxRedirects: 5
 
 docs: |
-  Expected failure: the session POSTs a Patient resource carrying Patient B's
-  id — attempting to claim a foreign identity. RBAC grants Patient POST
-  /fhir/Patient; `ValidateWriteBody` rejects the `WriteRefs` id reference
-  (the id must be owned) — 401. No resource is created.
+  Expected failure: the session reads a Condition whose subject is
+  `Patient/email-shared-patient` — a record carrying the session's own email
+  address. 79cecaf deleted `resolveRelatedPatientIDsByEmail`: practitioner
+  seeding now matches the SuperTokens identifier only, so the shared email
+  grants nothing and the read is denied — 401. Before 79cecaf the email
+  matcher would have seeded this patient at full fidelity and the read
+  returned 200. If this ever returns 200, check the practitioner record's
+  telecom email and the `email-shared-patient` supertoken identifier first.

@@ -1,7 +1,7 @@
 info:
   name: "Ownership Violation: Cleanup Seeded Identities"
   type: http
-  seq: 14
+  seq: 18
   tags: [ownership, utility]
 
 http:
@@ -30,6 +30,18 @@ http:
           },
           {
             "request": { "method": "DELETE", "url": "Person/other-person-1" }
+          },
+          {
+            "request": { "method": "DELETE", "url": "Condition/email-shared-condition" }
+          },
+          {
+            "request": { "method": "DELETE", "url": "Appointment/session-prac-appointment-1" }
+          },
+          {
+            "request": { "method": "DELETE", "url": "Practitioner/other-practitioner-x" }
+          },
+          {
+            "request": { "method": "DELETE", "url": "Patient/email-shared-patient" }
           },
           {
             "request": { "method": "DELETE", "url": "Patient/other-patient-b" }

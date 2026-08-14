@@ -1,29 +1,21 @@
 info:
-  name: "Ownership Violation: Post Patient With Foreign Id"
+  name: "Ownership Violation: Delete Other Practitioner"
   type: http
-  seq: 12
+  seq: 16
   tags: [ownership]
 
 http:
-  method: POST
-  url: "{{process.env.APP_BASE_URL}}/fhir/Patient"
+  method: DELETE
+  url: "{{process.env.APP_BASE_URL}}/fhir/Practitioner/other-practitioner-x"
   headers:
     - name: Authorization
       value: Bearer {{sessionToken}}
-  body:
-    type: json
-    data: |-
-      {
-        "resourceType": "Patient",
-        "id": "other-patient-b",
-        "name": [{ "family": "Other", "given": ["Test"] }]
-      }
 
 runtime:
   scripts:
     - type: before-request
       code: |-
-        bru.setVar("activeRole", "Patient");
+        bru.setVar("activeRole", "Practitioner");
         await bru.sendRequest({
           method: "POST",
           url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
@@ -43,7 +35,7 @@ runtime:
           }
         });
     - type: after-response
-      code: 'bru.runner.setNextRequest("Ownership Violation: Read Email Shared Condition");'
+      code: 'bru.runner.setNextRequest("Ownership Violation: Delete Other Patient''s Identity");'
   assertions:
     - expression: res.status
       operator: eq
@@ -56,7 +48,8 @@ settings:
   maxRedirects: 5
 
 docs: |
-  Expected failure: the session POSTs a Patient resource carrying Patient B's
-  id — attempting to claim a foreign identity. RBAC grants Patient POST
-  /fhir/Patient; `ValidateWriteBody` rejects the `WriteRefs` id reference
-  (the id must be owned) — 401. No resource is created.
+  Expected failure: a Practitioner DELETE of another practitioner's identity
+  by path id. RBAC grants Practitioner DELETE /fhir/Practitioner, but the
+  10126d2 mutating-query gate requires the path id to be the caller's own —
+  401. Symmetric identity coverage (the Patient path-id variant is covered by
+  "Delete Other Patient's Identity"); this was 401 before the fix too.

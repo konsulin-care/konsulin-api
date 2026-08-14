@@ -7,10 +7,18 @@ request: {}
 
 docs: |
   Ownership-violation suite: seeds a foreign identity set directly via Blaze
-  (deterministic ids), drives 12 gateway requests that must ALL be denied
-  (401), then purges the seeded resources directly via Blaze. Runs between
-  the seed phase and the patient journey — "Seed Research Study" hands off
-  into "Ownership Violation: Seed Other Identities" and the cleanup exits
-  into "Patient: Get Profile". Deterministic PUTs make repeated pre-push
-  runs idempotent (residue from a failed run is overwritten, never
-  duplicated); cleanup removes every seeded id.
+  (deterministic ids), drives 16 gateway requests — 15 denied (401); the
+  Appointment `_include` read returns 200 with the stranger entry dropped —
+  then purges the seeded resources directly via Blaze. Runs between the seed
+  phase and the patient journey — "Seed Research Study" hands off into
+  "Ownership Violation: Seed Other Identities" and the cleanup exits into
+  "Patient: Get Profile". Deterministic PUTs make repeated pre-push runs
+  idempotent (residue from a failed run is overwritten, never duplicated);
+  the cleanup transaction bundle of DELETEs removes every seeded id.
+
+  Coverage boundary: the session user holds all four roles (magiclink seeds
+  Patient + Practitioner + Clinic Admin + Researcher) and resolves as a
+  Practitioner FHIR identity, so the body-only Invoice/Slot write checkers
+  (d34d8f6) are exercised by unit tests only — a Clinic Admin legitimately
+  bypasses the invoice actor check, and the patient-only slot restriction
+  cannot fire under a Practitioner-resolved session.
