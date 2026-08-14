@@ -109,6 +109,106 @@ func TestIsFHIRIdentityRole(t *testing.T) {
 	}
 }
 
+// emailPractitionerClient returns a Practitioner carrying a telecom email so
+// tests can exercise the legacy email-based patient seeding path.
+type emailPractitionerClient struct {
+	mockPractitionerClient
+}
+
+func (*emailPractitionerClient) FindPractitionerByID(context.Context, string) (*fhir_dto.Practitioner, error) {
+	return &fhir_dto.Practitioner{
+		ID:      "prac-1",
+		Telecom: []fhir_dto.ContactPoint{{System: fhir_dto.ContactPointSystemEmail, Value: "shared@example.com"}},
+	}, nil
+}
+
+// emailOnlyPatientClient returns patients only via the email lookup, never via
+// the SuperTokens identifier: it simulates legacy or directly-created records
+// whose telecom email collides with a practitioner's email.
+type emailOnlyPatientClient struct {
+	mockPatientClient
+}
+
+func (*emailOnlyPatientClient) FindPatientByIdentifier(context.Context, string) ([]fhir_dto.Patient, error) {
+	return nil, nil
+}
+
+func (*emailOnlyPatientClient) FindPatientByEmail(context.Context, string) ([]fhir_dto.Patient, error) {
+	return []fhir_dto.Patient{{ID: "pat-shared-email"}}, nil
+}
+
+func TestOwnershipContextFromRoles_HoldsPractitionerRoleOnlyForGenuinePractitioner(t *testing.T) {
+	// HoldsPractitionerRole marks a session that genuinely holds the Practitioner
+	// role; Researcher and Clinic Admin set HasPractitionerRole (they resolve as
+	// practitioners) but must not be treated as relationship-based practitioners.
+	genuine := ownershipContextFromRoles([]string{constvars.KonsulinRolePractitioner}, constvars.KonsulinRolePractitioner, "prac-1")
+	assert.True(t, genuine.HoldsPractitionerRole)
+	assert.True(t, genuine.HasPractitionerRole)
+
+	researcher := ownershipContextFromRoles([]string{constvars.KonsulinRoleResearcher}, constvars.KonsulinRolePractitioner, "prac-1")
+	assert.False(t, researcher.HoldsPractitionerRole, "researcher must not hold the genuine practitioner flag")
+	assert.True(t, researcher.HasPractitionerRole)
+	assert.True(t, researcher.HoldsCoding(ownership.CodingResearcher))
+
+	admin := ownershipContextFromRoles([]string{constvars.KonsulinRoleClinicAdmin}, constvars.KonsulinRolePractitioner, "prac-1")
+	assert.False(t, admin.HoldsPractitionerRole, "clinic admin must not hold the genuine practitioner flag")
+	assert.True(t, admin.HasPractitionerRole)
+	assert.True(t, admin.HoldsCoding(ownership.CodingClinicAdmin))
+
+	patient := ownershipContextFromRoles([]string{constvars.KonsulinRolePatient}, constvars.KonsulinRolePatient, "pat-1")
+	assert.False(t, patient.HoldsPractitionerRole)
+}
+
+func TestBuildOwnershipContext_ResearcherGetsNoPatientSeeding(t *testing.T) {
+	// A Researcher session resolves as a Practitioner identity but must not
+	// inherit the practitioner relationship seeding: no PatientIDs are seeded,
+	// even when a patient record exists for the same SuperTokens uid.
+	mw := &Middlewares{
+		PatientFhirClient:          &mockPatientClient{patients: []fhir_dto.Patient{{ID: "pat-1"}}},
+		PractitionerFhirClient:     &mockPractitionerClient{practitioners: []fhir_dto.Practitioner{{ID: "prac-1"}}},
+		PractitionerRoleFhirClient: &stubPractitionerRoleClient{},
+	}
+	ctx := context.WithValue(context.Background(), keyUID, "user-123")
+
+	oc := mw.buildOwnershipContext(ctx, []string{constvars.KonsulinRoleResearcher}, constvars.KonsulinRolePractitioner, "prac-1")
+
+	assert.Contains(t, oc.PractitionerIDs, "prac-1")
+	assert.Empty(t, oc.PatientIDs, "researcher session must not seed patient identities")
+	assert.True(t, oc.HoldsCoding(ownership.CodingResearcher))
+}
+
+func TestBuildOwnershipContext_GenuinePractitionerSeedsOwnPatientBySupertoken(t *testing.T) {
+	// The one legitimate related-patient case: a practitioner who is also a
+	// patient (dual identity) reads their own Patient record, matched by the
+	// SuperTokens identifier — not by email.
+	mw := &Middlewares{
+		PatientFhirClient:          &mockPatientClient{patients: []fhir_dto.Patient{{ID: "pat-1"}}},
+		PractitionerFhirClient:     &mockPractitionerClient{practitioners: []fhir_dto.Practitioner{{ID: "prac-1"}}},
+		PractitionerRoleFhirClient: &stubPractitionerRoleClient{},
+	}
+	ctx := context.WithValue(context.Background(), keyUID, "user-123")
+
+	oc := mw.buildOwnershipContext(ctx, []string{constvars.KonsulinRolePractitioner}, constvars.KonsulinRolePractitioner, "prac-1")
+
+	assert.Contains(t, oc.PatientIDs, "pat-1")
+}
+
+func TestBuildOwnershipContext_EmailSharedPatientsNotSeeded(t *testing.T) {
+	// A practitioner whose FHIR record shares an email with an unrelated
+	// patient must not gain access: seeding is by the SuperTokens identifier,
+	// so an email-only match seeds nothing.
+	mw := &Middlewares{
+		PatientFhirClient:          &emailOnlyPatientClient{},
+		PractitionerFhirClient:     &emailPractitionerClient{},
+		PractitionerRoleFhirClient: &stubPractitionerRoleClient{},
+	}
+	ctx := context.WithValue(context.Background(), keyUID, "user-123")
+
+	oc := mw.buildOwnershipContext(ctx, []string{constvars.KonsulinRolePractitioner}, constvars.KonsulinRolePractitioner, "prac-1")
+
+	assert.Empty(t, oc.PatientIDs, "email-shared patients must not be seeded")
+}
+
 func TestBuildOwnershipContext_RoleCodingsFromSession(t *testing.T) {
 	// Session roles map directly to the Phase 1 practitioner-role codings.
 	mw := &Middlewares{

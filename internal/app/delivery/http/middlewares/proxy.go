@@ -662,6 +662,7 @@ func ownershipContextFromRoles(roles []string, fhirRole, fhirID string) *ownersh
 			oc.HasPatientRole = true
 		case strings.EqualFold(r, constvars.KonsulinRolePractitioner):
 			oc.HasPractitionerRole = true
+			oc.HoldsPractitionerRole = true
 		case strings.EqualFold(r, constvars.KonsulinRoleSuperadmin):
 			oc.HasSuperadminRole = true
 		case strings.EqualFold(r, constvars.KonsulinRoleResearcher):
@@ -693,7 +694,14 @@ func (m *Middlewares) buildOwnershipContext(
 ) *ownership.OwnershipContext {
 	oc := ownershipContextFromRoles(roles, fhirRole, fhirID)
 
-	m.resolvePractitionerPatientIDs(ctx, oc, fhirID)
+	// Relationship-based seeding (own Patient record via the SuperTokens
+	// identifier, PractitionerRole ids and codings) runs only for sessions that
+	// genuinely hold the Practitioner role. Researcher and Clinic Admin sessions
+	// resolve as practitioners but never inherit the practitioner↔patient
+	// relationship: their reads are code-conditioned instead.
+	if oc.HoldsPractitionerRole {
+		m.resolvePractitionerPatientIDs(ctx, oc, fhirID)
+	}
 
 	// Dual-identity sessions may read resources owned under either identity.
 	// Seed the non-active identity's own resource ID so GET responses pass the
@@ -717,21 +725,29 @@ func (m *Middlewares) buildOwnershipContext(
 	return oc
 }
 
-// resolvePractitionerPatientIDs populates PatientIDs and PractitionerRoleIDs for a practitioner.
-// resolveRelatedPatientIDsByEmail populates PatientIDs by matching practitioner emails to patients.
-func (m *Middlewares) resolveRelatedPatientIDsByEmail(ctx context.Context, oc *ownership.OwnershipContext, fhirID string) {
-	prac, err := m.PractitionerFhirClient.FindPractitionerByID(ctx, fhirID)
-	if err != nil || prac == nil {
+// resolvePractitionerPatientIDs populates PatientIDs and PractitionerRoleIDs
+// for a practitioner.
+// resolveOwnPatientBySupertoken seeds the caller's own Patient record — the
+// dual-identity case where the same SuperTokens user holds both Patient and
+// Practitioner identities. Matching by the FhirSupertokenSystemIdentifier (the
+// uid) is exact: one uid maps to at most one Patient record, and email
+// collisions cannot widen access.
+func (m *Middlewares) resolveOwnPatientBySupertoken(ctx context.Context, oc *ownership.OwnershipContext) {
+	uid, _ := ctx.Value(keyUID).(string)
+	if uid == "" {
 		return
 	}
-	for _, em := range prac.GetEmailAddresses() {
-		pats, err := m.PatientFhirClient.FindPatientByEmail(ctx, em)
-		if err != nil {
-			continue
-		}
-		for _, p := range pats {
-			oc.AddPatientID(p.ID)
-		}
+	pats, err := m.PatientFhirClient.FindPatientByIdentifier(
+		ctx,
+		fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, uid),
+	)
+	if err != nil {
+		m.Log.Warn("failed to resolve own patient by supertoken identifier; skipping patient seeding",
+			zap.String("uid", uid), zap.Error(err))
+		return
+	}
+	for _, p := range pats {
+		oc.AddPatientID(p.ID)
 	}
 }
 
@@ -757,7 +773,7 @@ func (m *Middlewares) resolvePractitionerPatientIDs(ctx context.Context, oc *own
 	if !oc.HasPractitionerRole || len(oc.PatientIDs) > 0 || fhirID == "" {
 		return
 	}
-	m.resolveRelatedPatientIDsByEmail(ctx, oc, fhirID)
+	m.resolveOwnPatientBySupertoken(ctx, oc)
 	m.resolvePractitionerRoleIDs(ctx, oc, fhirID)
 }
 
@@ -819,7 +835,7 @@ func (m *Middlewares) evaluateBundleOwnership(_ context.Context, bundle *Bundle,
 		owned := m.resourceOwnedByContext(e.Resource, env.ResourceType, env.ID, oc)
 		infos[i] = bundleEntryInfo{idx: i, owned: owned, resourceType: env.ResourceType, id: env.ID}
 
-		if owned && oc.HasPractitionerRole {
+		if owned && oc.HoldsPractitionerRole {
 			var resMap map[string]any
 			if err := json.Unmarshal(e.Resource, &resMap); err == nil {
 				var refs []string

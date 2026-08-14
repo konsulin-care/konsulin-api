@@ -9,10 +9,17 @@ import "konsulin-service/internal/pkg/constvars"
 type OwnershipContext struct {
 	HasPatientRole      bool
 	HasPractitionerRole bool
-	HasSuperadminRole   bool
-	PatientIDs          map[string]struct{}
-	PractitionerIDs     map[string]struct{}
-	PractitionerRoleIDs map[string]struct{}
+	// HoldsPractitionerRole is true only when the session genuinely holds the
+	// Konsulin Practitioner role. It is distinct from HasPractitionerRole,
+	// which Researcher and Clinic Admin sessions also set (they resolve as
+	// practitioners): relationship-based seeding (own Patient record,
+	// PractitionerRole ids) is gated on this flag, never on the synthetic
+	// HasPractitionerRole.
+	HoldsPractitionerRole bool
+	HasSuperadminRole     bool
+	PatientIDs            map[string]struct{}
+	PractitionerIDs       map[string]struct{}
+	PractitionerRoleIDs   map[string]struct{}
 	// PractitionerRoleCodings holds "system|code" pairs, e.g.
 	// "http://terminology.hl7.org/CodeSystem/practitioner-role|researcher".
 	PractitionerRoleCodings map[string]struct{}
