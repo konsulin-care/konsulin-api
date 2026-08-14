@@ -105,7 +105,46 @@ Each rule declares:
   rule.
 - **Reads** are filtered post-response (bundle entries, single resources,
   Communication redaction); GET requests bypass pre-request ownership checks.
-- **Writes** (POST/PUT bodies) are validated pre-request against `WriteRefs`.
+- **Writes** (POST/PUT bodies) are validated pre-request against `WriteRefs`,
+  plus named body-only checkers. The write-validation matrix:
+
+  | Method | WriteRefs | Named write checkers |
+  |---|---|---|
+  | POST | lenient (missing ref tolerated) | body-only: `slot` (patient must set busy/busy-unavailable), `invoice` (participant actor must reference the caller's own practitioner or a PractitionerRole) |
+  | PUT | strict (every ref present and owned) | all named checkers (`schedule`, `slot`, `invoice`, `questionnaire_response`) |
+  | DELETE/PATCH | n/a | `ValidWriteQuery` (below) |
+
+  `schedule` and `questionnaire_response` are PUT-only by design: they verify
+  the canonical stored resource by id, which a create cannot satisfy.
+- **Mutating queries** (DELETE/PATCH) are gated by `ValidWriteQuery`, which
+  fails closed: identity resources (Patient/Practitioner) require an owned path
+  id or `_id`; QR/Communication require an anchored identity scope (patient
+  own-ref, allowance-anchored param, or identifier — no practitioner
+  exemption); scoped and public types require an ownership SearchParam present
+  with every value owned. A completeness test asserts every DELETE/PATCH policy
+  row for a FHIR identity role targets a scoping-capable type (identity or ≥1
+  SearchParam), so a future unvalidated mutating row fails CI.
+- **Practitioner relationship seeding** runs only for sessions that genuinely
+  hold the Practitioner role (`HoldsPractitionerRole`). Researcher and Clinic
+  Admin sessions resolve as practitioners and keep their role codings, but
+  never inherit relationship-based patient identities. A practitioner's own
+  dual-identity Patient record is seeded by the SuperTokens identifier
+  (`https://login.konsulin.care/userid|uid`), never by shared email, so legacy
+  or directly-created records with colliding emails are irrelevant.
+  Consequence: patient-scoped reads for a genuine practitioner match their own
+  record and self-referenced resources; viewing other patients' records must
+  come from an explicit relationship mechanism, not an email heuristic.
+- **PractitionerRole is a public directory** by design: by-id, listing, and
+  search reads are fully public (patients look up which practitioner holds a
+  role at a clinic). The rule's SearchParams scoping is latent — it is
+  exercised only on the mutating path, which the policy does not grant.
+- **Communication `subject.reference` grants the subject patient read
+  ownership**: a referral or clinical note about a patient is readable by that
+  patient even when they are neither sender nor recipient. Intended; writes
+  still require `sender`.
+- **POST Patient with an explicit `id` is denied for non-owners** (the `id`
+  WriteRef, consistent with the referral-id forgery guard). Onboarding uses
+  server-assigned ids, so no flow breakage.
 - **Conformance**: a test asserts every Patient/Practitioner ref exists in the
   vendored FHIR R4 CompartmentDefinitions
   (`resources/fhir/CompartmentDefinition-{patient,practitioner}.json`), with a

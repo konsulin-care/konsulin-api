@@ -220,7 +220,28 @@ func (m *Middlewares) validatePostRequestBody(ctx context.Context, body []byte, 
 
 	roles, _ := ctx.Value(keyRoles).([]string)
 	oc := ownershipContextFromRoles(roles, fhirRole, fhirID)
-	return ownership.ValidateWriteBody(body, resourceTypeFromPath, oc, false)
+	if err := ownership.ValidateWriteBody(body, resourceTypeFromPath, oc, false); err != nil {
+		return err
+	}
+
+	// Body-only named write checkers apply to POST creates too. The
+	// canonical-state checkers (schedule, questionnaire_response) stay PUT-only:
+	// they verify the stored resource by id, which a create cannot satisfy.
+	rule, ok := ownership.Rule(resourceTypeFromPath)
+	if !ok || rule.WriteCheckerName == "" || writeCheckBypassed(oc, rule) {
+		return nil
+	}
+	switch rule.WriteCheckerName {
+	case "slot":
+		if fhirRole == constvars.KonsulinRolePatient && !validatePatientSlotResource(string(body)) {
+			return errors.New("slot POST by patient must have status busy or busy-unavailable")
+		}
+	case "invoice":
+		if !validatePractitionerInvoiceResource(string(body), fhirID) {
+			return errors.New("invoice POST must reference the caller's own practitioner or a PractitionerRole actor")
+		}
+	}
+	return nil
 }
 
 // validateCommunicationSenderInBody enforces that a Communication POST body's
