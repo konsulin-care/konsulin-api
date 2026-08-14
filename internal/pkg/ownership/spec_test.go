@@ -84,7 +84,7 @@ func TestRulesCoverReachableResourceTypes(t *testing.T) {
 // engine entirely (no FHIR identity to scope).
 func TestRulesCoverMutatingPolicyRows(t *testing.T) {
 	identityRoles := map[string]struct{}{
-		constvars.KonsulinRolePatient:     {},
+		constvars.KonsulinRolePatient:      {},
 		constvars.KonsulinRolePractitioner: {},
 		constvars.KonsulinRoleResearcher:   {},
 		constvars.KonsulinRoleClinicAdmin:  {},
