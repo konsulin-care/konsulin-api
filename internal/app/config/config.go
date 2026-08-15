@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/joho/godotenv"
-	"github.com/robfig/cron/v3"
 )
 
 var (
@@ -63,14 +62,6 @@ func loadInternalConfigWithEnv() (*InternalConfig, error) {
 			SuperadminAPIKey:           utils.GetEnvString("SUPERADMIN_API_KEY", ""), // Sensitive
 			SuperadminAPIKeyRateLimit:  utils.GetEnvInt("SUPERADMIN_API_KEY_RATE_LIMIT", 10),
 			WebhookInstantiateBasePath: fmt.Sprintf("/api/%s/%s", utils.GetEnvString("APP_VERSION", "v1"), utils.GetEnvString("APP_WEBHOOK_INSTANTIATE_BASE_PATH", "hook")), // expected format: /api/<app-version>/<hook-base-path>
-			SlotWindowDays: func() int {
-				v := utils.GetEnvInt("SLOT_WINDOW_DAYS", 30)
-				if v <= 0 {
-					return 30
-				}
-				return v
-			}(),
-			SlotWorkerCronSpec: utils.GetEnvString("SLOT_WORKER_CRON_SPEC", "@daily"),
 		},
 		FHIR: AppFHIR{
 			BaseUrl:                  utils.GetEnvString("APP_FHIR_BASE_URL", "http://localhost:8080/fhir/"),
@@ -122,18 +113,8 @@ func loadInternalConfigWithEnv() (*InternalConfig, error) {
 	if err := normalizeWebhookConfig(cfg); err != nil {
 		return nil, err
 	}
-	normalizeSlotCronSpec(cfg)
 
 	return cfg, nil
-}
-
-// normalizeSlotCronSpec validates the slot worker cron spec and defaults to @daily if invalid.
-func normalizeSlotCronSpec(cfg *InternalConfig) {
-	spec := cfg.App.SlotWorkerCronSpec
-	if _, err := cron.ParseStandard(spec); err != nil {
-		log.Printf("slot worker: invalid cron spec '%s': %v, defaulting to @daily", spec, err)
-		cfg.App.SlotWorkerCronSpec = "@daily"
-	}
 }
 
 func loadDriverConfigWithEnv() (*DriverConfig, error) {

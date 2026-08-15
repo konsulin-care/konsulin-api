@@ -57,11 +57,6 @@ type mockSlotUsecase struct {
 	lockEnd          time.Time
 }
 
-func (*mockSlotUsecase) HandleAutomatedSlotGeneration(_ context.Context, _ fhir_dto.PractitionerRole) {
-}
-func (*mockSlotUsecase) HandleOnDemandSlotRegeneration(_ context.Context, _ string) error {
-	return nil
-}
 func (*mockSlotUsecase) HandleSetUnavailabilityForMultiplePractitionerRoles(_ context.Context, _ contracts.SetUnavailabilityForMultiplePractitionerRolesInput) (*contracts.SetUnavailableOutcome, error) {
 	return nil, nil
 }

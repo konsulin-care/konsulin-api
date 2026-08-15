@@ -115,8 +115,6 @@ type SetUnavailableOutcome struct {
 }
 
 type SlotUsecaseIface interface {
-	HandleAutomatedSlotGeneration(ctx context.Context, practitionerRole fhir_dto.PractitionerRole)
-	HandleOnDemandSlotRegeneration(ctx context.Context, practitionerRoleID string) error
 	HandleSetUnavailabilityForMultiplePractitionerRoles(ctx context.Context, input SetUnavailabilityForMultiplePractitionerRolesInput) (*SetUnavailableOutcome, error)
 	// AcquireLocksForPractitionerDay locks the practitioner's local days covered by [start,end),
 	// computed from the window's own location. It is the single serialization unit for all slot

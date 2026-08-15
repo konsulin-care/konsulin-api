@@ -133,22 +133,6 @@ func TestAcquireLocksForPractitionerDayRejectsZeroWindow(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// TestTryAcquirePractitionerDayLock verifies the single-day lock uses the practitioner-day key.
-func TestTryAcquirePractitionerDayLock(t *testing.T) {
-	mockLocker := new(mockLockerService)
-	s := &SlotUsecase{locker: mockLocker}
-	day := time.Date(2026, time.August, 13, 0, 0, 0, 0, time.UTC)
-	key := "slotgen:lock:practitioner:prac-1:2026-08-13"
-
-	mockLocker.On("TryLock", mock.Anything, key, 30*time.Second).Return(true, "tok-1", nil)
-	acquired, k, tok, err := s.tryAcquirePractitionerDayLock(context.Background(), "prac-1", day, 30*time.Second)
-	assert.NoError(t, err)
-	assert.True(t, acquired)
-	assert.Equal(t, key, k)
-	assert.Equal(t, "tok-1", tok)
-	mockLocker.AssertExpectations(t)
-}
-
 // TestAcquirePractitionerDayLocksOrdered verifies ordered acquisition and
 // release-on-failure of the multi-day lock acquisition.
 func TestAcquirePractitionerDayLocksOrdered(t *testing.T) {

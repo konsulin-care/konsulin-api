@@ -574,6 +574,10 @@ func formatMoney(money *fhir_dto.Money) string {
 	return fmt.Sprintf("%s %.0f", money.Currency, money.Value)
 }
 
+// constUnknownResourceType is the fallback resource type label when a concurrent
+// fetch fails without carrying a typed resourceFetchError.
+const constUnknownResourceType = "unknown"
+
 // fetchedResources holds all resources fetched by fetchCommonResources.
 type fetchedResources struct {
 	slot              *fhir_dto.Slot
@@ -659,7 +663,7 @@ func (uc *paymentUsecase) fetchCommonResources(
 	})
 
 	if err := g.Wait(); err != nil {
-		resType := "unknown"
+		resType := constUnknownResourceType
 		if fe, ok := err.(*resourceFetchError); ok {
 			resType = fe.resource
 		}

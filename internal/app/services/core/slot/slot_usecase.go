@@ -124,12 +124,6 @@ type createItem struct {
 	start, end time.Time
 }
 
-// freeCreateItem holds schedule and time window for a system-generated free slot creation.
-type freeCreateItem struct {
-	scheduleID string
-	start, end time.Time
-}
-
 // idempotentState tracks created slot items and practitioner role IDs for idempotency.
 type idempotentState struct {
 	Slots *[]contracts.CreatedSlotItem
@@ -138,20 +132,18 @@ type idempotentState struct {
 
 // resolvedWindows holds per-role schedule data after resolution and lock acquisition.
 type resolvedWindows struct {
-	schedulesByRole       map[string]string
-	scheduleCommentByRole map[string]string
-	startByRole           map[string]time.Time
-	endByRole             map[string]time.Time
-	release               func(context.Context)
+	schedulesByRole map[string]string
+	startByRole     map[string]time.Time
+	endByRole       map[string]time.Time
+	release         func(context.Context)
 }
 
 // resolveAndLockWindows resolves schedules for all roles, builds lock targets, and acquires locks.
 func (s *SlotUsecase) resolveAndLockWindows(ctx context.Context, roles []fhir_dto.PractitionerRole, input contracts.SetUnavailabilityForMultiplePractitionerRolesInput) (*resolvedWindows, error) {
 	res := &resolvedWindows{
-		schedulesByRole:       make(map[string]string, len(roles)),
-		scheduleCommentByRole: make(map[string]string, len(roles)),
-		startByRole:           make(map[string]time.Time),
-		endByRole:             make(map[string]time.Time),
+		schedulesByRole: make(map[string]string, len(roles)),
+		startByRole:     make(map[string]time.Time),
+		endByRole:       make(map[string]time.Time),
 	}
 
 	// All roles belong to one practitioner (ownership is validated by the caller);
@@ -164,37 +156,9 @@ func (s *SlotUsecase) resolveAndLockWindows(ctx context.Context, roles []fhir_dt
 	seen := make(map[string]struct{})
 	var targets []practitionerDayLockTarget
 	for _, pr := range roles {
-		loc, tzErr := pr.GetPreferredTimezone()
-		if tzErr != nil {
-			s.logger.With(zap.Error(tzErr), zap.String("practitioner_role_id", pr.ID)).Error("failed to resolve timezone")
-			return nil, exceptions.BuildNewCustomError(tzErr, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, "failed to resolve timezone")
-		}
-
-		scheds, err := s.schedules.FindScheduleByPractitionerRoleID(ctx, pr.ID)
-		if err != nil || len(scheds) == 0 {
-			s.logger.With(zap.Error(err), zap.String("practitioner_role_id", pr.ID)).Error("failed to resolve schedule")
-			return nil, exceptions.BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, "failed to resolve schedule")
-		}
-		if len(scheds) != 1 {
-			s.logger.With(zap.Int("count", len(scheds)), zap.String("practitioner_role_id", pr.ID)).Error("unexpected schedules count")
-			return nil, exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, "unexpected schedules count")
-		}
-		scheduleID := scheds[0].ID
-		res.scheduleCommentByRole[pr.ID] = scheds[0].Comment
-
-		var winStart, winEnd time.Time
-		if input.AllDay {
-			day, err := time.Parse("2006-01-02", input.AllDayDate)
-			if err != nil {
-				s.logger.With(zap.Error(err)).Error("invalid allDay date format")
-				return nil, exceptions.BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, "invalid allDay date format")
-			}
-			dayLocal := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, loc)
-			winStart = dayLocal
-			winEnd = dayLocal.Add(24 * time.Hour)
-		} else {
-			winStart = input.StartTime
-			winEnd = input.EndTime
+		scheduleID, winStart, winEnd, loc, err := s.resolveRoleScheduleWindow(ctx, pr, input)
+		if err != nil {
+			return nil, err
 		}
 
 		for _, t := range s.practitionerDayTargetsForWindow(practitionerID, loc, winStart, winEnd) {
@@ -316,7 +280,6 @@ type singleRoleResult struct {
 	Conflicts    []contracts.ConflictingSlotItem
 	Deletions    []string
 	CreatedItems []createItem
-	CreatedFree  []freeCreateItem
 	UpdatedRole  fhir_dto.PractitionerRole
 }
 
@@ -330,22 +293,7 @@ type processSingleRoleWindowInput struct {
 	state             *idempotentState
 }
 
-// processDayAdjustmentInput groups parameters for processDayAdjustment.
-type processDayAdjustmentInput struct {
-	td               adjustmentDayTarget
-	winStart, winEnd time.Time
-	slotStatus       fhir_dto.SlotStatus
-	plan             weeklyPlan
-	cfg              ScheduleConfig
-}
-
-// processDayAdjustmentOutput holds the result of processDayAdjustment.
-type processDayAdjustmentOutput struct {
-	deletions  []string
-	createFree []freeCreateItem
-}
-
-// processSingleRoleWindow processes conflict detection, idempotency, day adjustment, and NA update for one role.
+// processSingleRoleWindow processes conflict detection, idempotency, and NA update for one role.
 // Returns nil when the role is idempotent (nothing to change).
 func (s *SlotUsecase) processSingleRoleWindow(ctx context.Context, in processSingleRoleWindowInput) (*singleRoleResult, error) {
 	scheduleID := in.resolved.schedulesByRole[in.pr.ID]
@@ -393,36 +341,10 @@ func (s *SlotUsecase) processSingleRoleWindow(ctx context.Context, in processSin
 		UpdatedRole:  in.pr,
 	}
 
-	cfg, cfgErr := ParseScheduleConfig(in.resolved.scheduleCommentByRole[in.pr.ID])
-	if cfgErr != nil {
-		s.logger.With(zap.Error(cfgErr)).Error("failed to parse schedule config for adjustment")
-		return res, exceptions.BuildNewCustomError(cfgErr, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, "failed to parse schedule config")
-	}
-	plan, planErr := ConvertAvailableTimeToWeeklyPlan(in.pr.AvailableTime)
-	if planErr != nil {
-		s.logger.With(zap.Error(planErr)).Error("failed to convert available time to weekly plan for adjustment")
-		return res, exceptions.BuildNewCustomError(planErr, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, "failed to build weekly plan")
-	}
-
-	roleLoc, _ := in.pr.GetPreferredTimezone()
-	for _, td := range s.adjustmentDayTargetsForWindow(scheduleID, roleLoc, in.winStart, in.winEnd) {
-		adjOut, err := s.processDayAdjustment(ctx, processDayAdjustmentInput{
-			td:       td,
-			winStart: in.winStart, winEnd: in.winEnd,
-			slotStatus: in.input.SlotStatus,
-			plan:       plan, cfg: cfg,
-		})
-		if err != nil {
-			return res, err
-		}
-		res.Deletions = append(res.Deletions, adjOut.deletions...)
-		res.CreatedFree = append(res.CreatedFree, adjOut.createFree...)
-	}
-
 	return res, nil
 }
 
-// processRoleWindows processes all roles: conflict detection, per-day adjustment, bundle building.
+// processRoleWindows processes all roles: conflict detection, bundle building.
 func (s *SlotUsecase) processRoleWindows(
 	ctx context.Context,
 	roles []fhir_dto.PractitionerRole,
@@ -433,7 +355,6 @@ func (s *SlotUsecase) processRoleWindows(
 ) (*contracts.SetUnavailableOutcome, error) {
 	var deletions []string
 	var creations []createItem
-	var createFree []freeCreateItem
 	var updatedRoleBodies []fhir_dto.PractitionerRole
 	out := &contracts.SetUnavailableOutcome{}
 
@@ -459,14 +380,12 @@ func (s *SlotUsecase) processRoleWindows(
 		out.Conflicts = append(out.Conflicts, sr.Conflicts...)
 		deletions = append(deletions, sr.Deletions...)
 		creations = append(creations, sr.CreatedItems...)
-		createFree = append(createFree, sr.CreatedFree...)
 		updatedRoleBodies = append(updatedRoleBodies, sr.UpdatedRole)
 	}
 
 	mutation := &bundleMutation{
 		Deletions:    deletions,
 		Creations:    creations,
-		CreateFree:   createFree,
 		UpdatedRoles: updatedRoleBodies,
 	}
 	return s.postUnavailabilityBundle(ctx, out, mutation, state, input)
@@ -510,23 +429,6 @@ func buildBusySlotEntry(c createItem, slotStatus fhir_dto.SlotStatus, reason str
 	}
 }
 
-// buildFreeSlotEntry builds a bundle entry for creating a free slot.
-func buildFreeSlotEntry(fc freeCreateItem) map[string]any {
-	return map[string]any{
-		constvars.FhirFieldRequest: map[string]any{constvars.FhirFieldMethod: constvars.MethodPost, constvars.FhirFieldURL: constvars.ResourceSlot},
-		constvars.FhirFieldResource: map[string]any{
-			constvars.FhirFieldResourceType: constvars.ResourceSlot,
-			constvars.FhirFieldSchedule:     map[string]any{constvars.FhirFieldReference: constvars.FHIRRefPrefixSchedule + fc.scheduleID},
-			constvars.FhirFieldStatus:       string(fhir_dto.SlotStatusFree),
-			constvars.FhirFieldStart:        fc.start.Format(time.RFC3339),
-			constvars.FhirFieldEnd:          fc.end.Format(time.RFC3339),
-			constvars.FhirFieldMeta: map[string]any{
-				constvars.FhirFieldTag: []map[string]any{{constvars.FhirFieldCode: SlotTagSystemGenerated}},
-			},
-		},
-	}
-}
-
 // buildRoleUpdateEntry builds a bundle entry for updating a practitioner role.
 func buildRoleUpdateEntry(rb fhir_dto.PractitionerRole) map[string]any {
 	return map[string]any{
@@ -539,7 +441,6 @@ func buildRoleUpdateEntry(rb fhir_dto.PractitionerRole) map[string]any {
 type bundleMutation struct {
 	Deletions    []string
 	Creations    []createItem
-	CreateFree   []freeCreateItem
 	UpdatedRoles []fhir_dto.PractitionerRole
 }
 
@@ -577,7 +478,7 @@ func (s *SlotUsecase) postUnavailabilityBundle(
 	state *idempotentState,
 	input contracts.SetUnavailabilityForMultiplePractitionerRolesInput,
 ) (*contracts.SetUnavailableOutcome, error) {
-	noChanges := len(mutation.Deletions) == 0 && len(mutation.Creations) == 0 && len(mutation.UpdatedRoles) == 0 && len(mutation.CreateFree) == 0
+	noChanges := len(mutation.Deletions) == 0 && len(mutation.Creations) == 0 && len(mutation.UpdatedRoles) == 0
 	if noChanges {
 		out.Created = false
 		out.CreatedSlots = append(out.CreatedSlots, *state.Slots...)
@@ -588,9 +489,6 @@ func (s *SlotUsecase) postUnavailabilityBundle(
 	entries := buildDeletionEntries(mutation.Deletions)
 	for _, c := range mutation.Creations {
 		entries = append(entries, buildBusySlotEntry(c, input.SlotStatus, input.Reason))
-	}
-	for _, fc := range mutation.CreateFree {
-		entries = append(entries, buildFreeSlotEntry(fc))
 	}
 	for _, rb := range mutation.UpdatedRoles {
 		entries = append(entries, buildRoleUpdateEntry(rb))
@@ -604,41 +502,6 @@ func (s *SlotUsecase) postUnavailabilityBundle(
 
 	s.collectPostBundleResult(ctx, out, mutation, input)
 	return out, nil
-}
-
-// processDayAdjustment adjusts free slots for a single day, returning deletions and creations.
-func (s *SlotUsecase) processDayAdjustment(ctx context.Context, in processDayAdjustmentInput) (*processDayAdjustmentOutput, error) {
-	day := in.td.Day
-	loc := in.td.Location
-	scheduleID := in.td.ScheduleID
-	windowsForDay := in.plan.forWeekday(day.Weekday())
-	if len(windowsForDay) == 0 {
-		return nil, nil
-	}
-	dayStart := atClock(day, 0, 0, loc)
-	dayEnd := dayStart.Add(24 * time.Hour)
-	params := contracts.SlotSearchParams{
-		Start:  "lt" + dayEnd.Format(time.RFC3339),
-		End:    "gt" + dayStart.Format(time.RFC3339),
-		Status: "",
-	}
-	daySlots, qErr := s.slots.FindSlotsByScheduleWithQuery(ctx, scheduleID, params)
-	if qErr != nil {
-		s.logger.With(zap.Error(qErr)).Error("failed to fetch day slots for adjustment")
-		return nil, exceptions.BuildNewCustomError(qErr, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, "failed to fetch day slots for adjustment")
-	}
-
-	pseudoSlot := clipDayWindow(in.winStart, in.winEnd, dayStart, dayEnd, in.slotStatus)
-	adjusted := computeAdjustedIntervals(day, loc, daySlots, pseudoSlot, windowsForDay, in.cfg)
-	if len(adjusted) == 0 {
-		return nil, nil
-	}
-	var deletions []string
-	var createFree []freeCreateItem
-	if err := matchFreeSlotIntervals(daySlots, adjusted, scheduleID, &deletions, &createFree); err != nil {
-		return nil, err
-	}
-	return &processDayAdjustmentOutput{deletions: deletions, createFree: createFree}, nil
 }
 
 // detectRoleWindowConflicts detects conflicting slots, idempotency, and deletable IDs for one role's window.
@@ -698,80 +561,6 @@ func hasExactNotAvailable(notAvail []fhir_dto.NotAvailable, reason string, winSt
 	return false
 }
 
-// clipDayWindow creates a pseudo slot clipped to the day boundary, or nil if no overlap.
-func clipDayWindow(winStart, winEnd, dayStart, dayEnd time.Time, slotStatus fhir_dto.SlotStatus) *fhir_dto.Slot {
-	clipStart := winStart
-	if clipStart.Before(dayStart) {
-		clipStart = dayStart
-	}
-	clipEnd := winEnd
-	if clipEnd.After(dayEnd) {
-		clipEnd = dayEnd
-	}
-	if !clipEnd.After(clipStart) {
-		return nil
-	}
-	return &fhir_dto.Slot{
-		Status: slotStatus,
-		Start:  clipStart,
-		End:    clipEnd,
-	}
-}
-
-// computeAdjustedIntervals computes adjusted free intervals given day slots and a pseudo slot.
-func computeAdjustedIntervals(day time.Time, loc *time.Location, daySlots []fhir_dto.Slot, pseudoSlot *fhir_dto.Slot, windowsForDay []dayWindow, cfg ScheduleConfig) []interval {
-	var existingWithPseudo []fhir_dto.Slot
-	existingWithPseudo = append(existingWithPseudo, daySlots...)
-	if pseudoSlot != nil {
-		existingWithPseudo = append(existingWithPseudo, *pseudoSlot)
-	}
-	base := dayWorkIntervals(day.In(loc), loc, windowsForDay)
-	adjusted := adjustIncomingSlotIntervalOnConflict(base, existingWithPseudo, cfg.SlotMinutes, cfg.BufferMinutes)
-	if len(adjusted) == 0 {
-		return nil
-	}
-	return adjusted
-}
-
-// collectDeletableSlotIDs collects IDs of existing free slots whose intervals are not in the adjusted set.
-func collectDeletableSlotIDs(existingFree []fhir_dto.Slot, toDeleteIntervals []interval) []string {
-	if len(toDeleteIntervals) == 0 {
-		return nil
-	}
-	want := make(map[string]struct{}, len(toDeleteIntervals))
-	for _, iv := range toDeleteIntervals {
-		want[intervalKey(iv.Start, iv.End)] = struct{}{}
-	}
-	var ids []string
-	for _, slt := range existingFree {
-		k := intervalKey(slt.Start, slt.End)
-		if _, ok := want[k]; ok && slt.ID != "" {
-			ids = append(ids, slt.ID)
-		}
-	}
-	return ids
-}
-
-// matchFreeSlotIntervals computes which free slot intervals to delete/create to match the adjusted set.
-func matchFreeSlotIntervals(daySlots []fhir_dto.Slot, adjusted []interval, scheduleID string, deletions *[]string, createFree *[]freeCreateItem) error {
-	var existingFree []fhir_dto.Slot
-	for _, slt := range daySlots {
-		if slt.Status == fhir_dto.SlotStatusFree {
-			existingFree = append(existingFree, slt)
-		}
-	}
-	existingFreeIntervals := intervalsFromSlots(existingFree)
-
-	toDeleteIntervals := differenceByIntervalKey(existingFreeIntervals, adjusted)
-	*deletions = append(*deletions, collectDeletableSlotIDs(existingFree, toDeleteIntervals)...)
-
-	toCreateIntervals := differenceByIntervalKey(adjusted, existingFreeIntervals)
-	for _, iv := range toCreateIntervals {
-		*createFree = append(*createFree, freeCreateItem{scheduleID: scheduleID, start: iv.Start, end: iv.End})
-	}
-	return nil
-}
-
 // loadPractitionerRoles loads PractitionerRole resources by their IDs.
 func (s *SlotUsecase) loadPractitionerRoles(ctx context.Context, ids []string) ([]fhir_dto.PractitionerRole, error) {
 	roles := make([]fhir_dto.PractitionerRole, 0, len(ids))
@@ -804,512 +593,40 @@ func (s *SlotUsecase) whitelistAccessByRoles(ctx context.Context, whiteListed []
 	return "", "", errors.New("current role is not permitted to access")
 }
 
-func (s *SlotUsecase) HandleAutomatedSlotGeneration(ctx context.Context, practitionerRole fhir_dto.PractitionerRole) {
-	now := time.Now()
-	logger := s.logger.With(
-		zap.String("method", "HandleAutomatedSlotGeneration"),
-		zap.String("practitioner_role_id", practitionerRole.ID),
-		zap.Time("now", now),
-	)
-
-	logger.Info("starting automated slot generation")
-
-	practitionerID := strings.TrimPrefix(practitionerRole.Practitioner.Reference, practitionerRefPrefix)
-
-	scheds, err := s.schedules.FindScheduleByPractitionerRoleID(ctx, practitionerRole.ID)
-	if err != nil {
-		logger.Error("failed to find schedules", zap.Error(err))
-		return
-	}
-
-	if len(scheds) != 1 {
-		logger.Error("expected 1 schedule, but got", zap.Int("count", len(scheds)))
-		return
-	}
-
-	loc, tzErr := practitionerRole.GetPreferredTimezone()
-	if tzErr != nil {
-		logger.Error("failed to resolve role timezone", zap.Error(tzErr))
-		return
-	}
-
-	logger = logger.With(zap.String("timezone", loc.String()))
-
-	plan, err := ConvertAvailableTimeToWeeklyPlan(practitionerRole.AvailableTime)
-	if err != nil {
-		logger.Error("failed to convert available time to weekly plan", zap.Error(err))
-		return
-	}
-
-	schedule := scheds[0]
-
-	logger = logger.With(
-		zap.String("schedule_id", schedule.ID),
-		zap.String("schedule_comment", schedule.Comment),
-		zap.Any("plan", plan),
-	)
-
-	cfg, err := ParseScheduleConfig(schedule.Comment)
-	if err != nil {
-		return
-	}
-
-	logger = logger.With(zap.Any("schedule config", cfg))
-
-	windowDays := s.config.App.SlotWindowDays
-	today := time.Date(
-		now.In(loc).Year(),
-		now.In(loc).Month(),
-		now.In(loc).Day(),
-		0, 0, 0, 0,
-		loc,
-	)
-
-	end := today.AddDate(0, 0, windowDays-1)
-
-	logger = logger.With(
-		zap.Time("today", today),
-		zap.Time("end", end),
-		zap.Int("window_days", windowDays),
-	)
-
-	for d := today; !d.After(end); d = d.AddDate(0, 0, 1) {
-		logger.With(zap.String("day", d.String())).Info("processing day")
-
-		windows := plan.forWeekday(d.Weekday())
-		if len(windows) == 0 {
-			logger.With(zap.String("day", d.String())).Info("no windows for day")
-			continue
-		}
-
-		acq, key, tok, err := s.tryAcquirePractitionerDayLock(
-			ctx,
-			practitionerID,
-			d,
-			30*time.Second,
-		)
-		if err != nil || !acq {
-			logger.Error("failed to acquire practitioner day lock", zap.Error(err))
-			continue
-		}
-
-		err = s.topUpRoleForDay(
-			ctx,
-			topUpRoleForDayInput{
-				ScheduleID:    schedule.ID,
-				Timezone:      loc,
-				Day:           d,
-				Plan:          windows,
-				SlotMinutes:   cfg.SlotMinutes,
-				BufferMinutes: cfg.BufferMinutes,
-			},
-			logger,
-		)
-		if err != nil {
-			logger.With(zap.Error(err)).Error("failed to top up role for day")
-			continue
-		}
-
-		err = s.releaseLock(ctx, key, tok)
-		if err != nil {
-			logger.With(zap.Error(err)).Error("failed to release day lock")
-			continue
-		}
-	}
-}
-
-// onDemandLockTTL is the TTL for day locks during on-demand regeneration (single bundle, long run).
-const onDemandLockTTL = 5 * time.Minute
-
-// onDemandRegenContext holds the resolved practitioner/schedule context for on-demand slot regeneration.
-type onDemandRegenContext struct {
-	PractitionerID string
-	Schedule       *fhir_dto.Schedule
-	Loc            *time.Location
-	Plan           weeklyPlan
-	Cfg            ScheduleConfig
-}
-
-// resolveOnDemandRegenerationContext loads practitioner role, schedule, timezone, weekly plan, and schedule config.
-// Returns (nil, nil) when the role is not found or inactive (caller should return nil without error).
-func (s *SlotUsecase) resolveOnDemandRegenerationContext(ctx context.Context, practitionerRoleID string, logger *zap.Logger) (*onDemandRegenContext, error) {
-	pr, err := s.practitionerRoles.FindPractitionerRoleByID(ctx, practitionerRoleID)
-	if err != nil {
-		logger.Debug("failed to find practitioner role", zap.Error(err))
-		return nil, err
-	}
-	if pr == nil || !pr.Active {
-		if pr == nil {
-			logger.Debug("practitioner role not found")
-		} else {
-			logger.Debug("practitioner role not active, skipping")
-		}
-		return nil, nil
-	}
-	scheds, err := s.schedules.FindScheduleByPractitionerRoleID(ctx, pr.ID)
-	if err != nil {
-		logger.Error("failed to find schedule", zap.Error(err))
-		return nil, err
-	}
-	if len(scheds) != 1 {
-		logger.Error("expected 1 schedule", zap.Int("count", len(scheds)))
-		return nil, fmt.Errorf("expected 1 schedule for role %s, got %d", practitionerRoleID, len(scheds))
-	}
+// resolveRoleScheduleWindow resolves the schedule and unavailability window for
+// one practitioner role, returning them along with the role's timezone.
+func (s *SlotUsecase) resolveRoleScheduleWindow(ctx context.Context, pr fhir_dto.PractitionerRole, input contracts.SetUnavailabilityForMultiplePractitionerRolesInput) (scheduleID string, winStart, winEnd time.Time, loc *time.Location, err error) {
 	loc, tzErr := pr.GetPreferredTimezone()
 	if tzErr != nil {
-		logger.Error("failed to resolve timezone", zap.Error(tzErr))
-		return nil, tzErr
+		s.logger.With(zap.Error(tzErr), zap.String("practitioner_role_id", pr.ID)).Error("failed to resolve timezone")
+		return "", time.Time{}, time.Time{}, nil, exceptions.BuildNewCustomError(tzErr, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, "failed to resolve timezone")
 	}
-	plan, err := ConvertAvailableTimeToWeeklyPlan(pr.AvailableTime)
-	if err != nil {
-		logger.Error("failed to convert available time", zap.Error(err))
-		return nil, err
-	}
-	schedule := scheds[0]
-	cfg, err := ParseScheduleConfig(schedule.Comment)
-	if err != nil {
-		logger.Error("failed to parse schedule config", zap.Error(err))
-		return nil, err
-	}
-	return &onDemandRegenContext{
-		PractitionerID: strings.TrimPrefix(pr.Practitioner.Reference, practitionerRefPrefix),
-		Schedule:       &schedule,
-		Loc:            loc,
-		Plan:           plan,
-		Cfg:            cfg,
-	}, nil
-}
 
-// processDayForOnDemandRegeneration computes delete IDs and create slots for a single day in the regeneration window.
-func processDayForOnDemandRegeneration(day time.Time, loc *time.Location, plan weeklyPlan, scheduleID string, cfg ScheduleConfig, slotsByDay map[string][]fhir_dto.Slot) (deleteIDs []string, createSlots []fhir_dto.Slot, err error) {
-	windows := plan.forWeekday(day.Weekday())
-	dayLocal := day.In(loc)
-	dayKey := day.Format("2006-01-02")
-	existingSlots := slotsByDay[dayKey]
-	if len(windows) == 0 {
-		return idsOfAutoGeneratedFreeSlots(existingSlots), nil, nil
+	scheds, err := s.schedules.FindScheduleByPractitionerRoleID(ctx, pr.ID)
+	if err != nil || len(scheds) == 0 {
+		s.logger.With(zap.Error(err), zap.String("practitioner_role_id", pr.ID)).Error("failed to resolve schedule")
+		return "", time.Time{}, time.Time{}, nil, exceptions.BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, "failed to resolve schedule")
 	}
-	incomingSlotsIntervals := generateSlotsForDayWindows(dayLocal, loc, windows, cfg.SlotMinutes, cfg.BufferMinutes)
-	cov, toDelete := classifyDayCoverageFromSlots(existingSlots, incomingSlotsIntervals)
-	switch cov {
-	case coverageNone:
-		return nil, buildFHIRSlots(scheduleID, incomingSlotsIntervals, fhir_dto.SlotStatusFree), nil
-	case coverageAllFreeNonAuto:
-		return toDelete, buildFHIRSlots(scheduleID, incomingSlotsIntervals, fhir_dto.SlotStatusFree), nil
-	case coverageAllFreeAuto:
-		return nil, nil, nil
-	case coverageConflict:
-		return computeConflictChangesForDay(dayLocal, loc, windows, existingSlots, scheduleID, cfg)
-	default:
-		return nil, nil, fmt.Errorf("unknown coverage state")
+	if len(scheds) != 1 {
+		s.logger.With(zap.Int("count", len(scheds)), zap.String("practitioner_role_id", pr.ID)).Error("unexpected schedules count")
+		return "", time.Time{}, time.Time{}, nil, exceptions.BuildNewCustomError(nil, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, "unexpected schedules count")
 	}
-}
+	scheduleID = scheds[0].ID
 
-// computeConflictChangesForDay computes delete IDs and create slots for a day in coverageConflict state.
-func computeConflictChangesForDay(dayLocal time.Time, loc *time.Location, windows []dayWindow, existingSlots []fhir_dto.Slot, scheduleID string, cfg ScheduleConfig) (deleteIDs []string, createSlots []fhir_dto.Slot, err error) {
-	baseWindows := dayWorkIntervals(dayLocal, loc, windows)
-	adjusted := adjustIncomingSlotIntervalOnConflict(baseWindows, existingSlots, cfg.SlotMinutes, cfg.BufferMinutes)
-	if len(adjusted) == 0 {
-		return nil, nil, nil
-	}
-	var existingFree []fhir_dto.Slot
-	for _, slt := range existingSlots {
-		if slt.Status == fhir_dto.SlotStatusFree {
-			existingFree = append(existingFree, slt)
-		}
-	}
-	existingFreeIntervals := intervalsFromSlots(existingFree)
-	if isIntervalsMatch(adjusted, existingFreeIntervals) {
-		return nil, nil, nil
-	}
-	adjustedSet := make(map[string]struct{}, len(adjusted))
-	for _, iv := range adjusted {
-		adjustedSet[intervalKey(iv.Start, iv.End)] = struct{}{}
-	}
-	for _, slt := range existingFree {
-		if slt.ID == "" {
-			continue
-		}
-		k := intervalKey(slt.Start, slt.End)
-		if _, ok := adjustedSet[k]; !ok {
-			deleteIDs = append(deleteIDs, slt.ID)
-		}
-	}
-	missing := differenceByIntervalKey(adjusted, existingFreeIntervals)
-	if len(missing) == 0 && len(deleteIDs) == 0 {
-		return nil, nil, nil
-	}
-	return deleteIDs, buildFHIRSlots(scheduleID, missing, fhir_dto.SlotStatusFree), nil
-}
-
-// postSlotRegenerationBundle builds the transaction bundle and posts it with retry.
-func (s *SlotUsecase) postSlotRegenerationBundle(ctx context.Context, scheduleID string, allDeleteIDs []string, allCreateSlots []fhir_dto.Slot) error {
-	if len(allDeleteIDs) == 0 && len(allCreateSlots) == 0 {
-		return nil
-	}
-	var bundle map[string]any
-	if len(allDeleteIDs) > 0 {
-		bundle = buildOverrideSlotsTransactionBundle(scheduleID, allDeleteIDs, allCreateSlots)
-	} else {
-		bundle = buildCreateSlotsTransactionBundle(scheduleID, allCreateSlots)
-	}
-	const postBundleMaxAttempts = 3
-	const postBundleRetryDelay = 100 * time.Millisecond
-	var lastErr error
-	for attempt := 0; attempt < postBundleMaxAttempts; attempt++ {
-		_, lastErr = s.slots.PostTransactionBundle(ctx, bundle)
-		if lastErr == nil {
-			return nil
-		}
-		if !exceptions.IsHTTPErrRetryable(lastErr) || attempt == postBundleMaxAttempts-1 {
-			return lastErr
-		}
-		time.Sleep(postBundleRetryDelay)
-	}
-	return lastErr
-}
-
-// HandleOnDemandSlotRegeneration regenerates slots for one practitioner role from today to end of
-// config window: covered days get generated/updated (same rules as automated), uncovered days have
-// auto-generated free slots erased. Locks all days in the window upfront, then posts one FHIR transaction.
-func (s *SlotUsecase) HandleOnDemandSlotRegeneration(ctx context.Context, practitionerRoleID string) error {
-	logger := s.logger.With(
-		zap.String("method", "HandleOnDemandSlotRegeneration"),
-		zap.String("practitioner_role_id", practitionerRoleID),
-	)
-	ctxRes, err := s.resolveOnDemandRegenerationContext(ctx, practitionerRoleID, logger)
-	if err != nil {
-		return err
-	}
-	if ctxRes == nil {
-		return nil
-	}
-	schedule := ctxRes.Schedule
-	loc := ctxRes.Loc
-	plan := ctxRes.Plan
-	cfg := ctxRes.Cfg
-
-	now := time.Now()
-	windowDays := s.config.App.SlotWindowDays
-	today := time.Date(now.In(loc).Year(), now.In(loc).Month(), now.In(loc).Day(), 0, 0, 0, 0, loc)
-	end := today.AddDate(0, 0, windowDays-1)
-	windowEndExclusive := end.AddDate(0, 0, 1)
-	targets := s.practitionerDayTargetsForWindow(ctxRes.PractitionerID, loc, today, windowEndExclusive)
-	release, err := s.acquirePractitionerDayLocksOrdered(ctx, targets, onDemandLockTTL)
-	if err != nil {
-		logger.Error("failed to acquire day locks", zap.Error(err))
-		return err
-	}
-	defer func() { release(context.Background()) }()
-
-	todayStart := atClock(today.In(loc), 0, 0, loc)
-	params := contracts.SlotSearchParams{
-		Start:  "ge" + todayStart.Format(time.RFC3339),
-		End:    "lt" + windowEndExclusive.Format(time.RFC3339),
-		Status: "",
-	}
-	allSlots, err := s.slots.FindSlotsByScheduleWithQuery(ctx, schedule.ID, params)
-	if err != nil {
-		logger.Error("failed to find slots for window", zap.Error(err))
-		return err
-	}
-	slotsByDay := groupSlotsByLocalDay(allSlots, loc)
-
-	var allDeleteIDs []string
-	var allCreateSlots []fhir_dto.Slot
-	for d := today; !d.After(end); d = d.AddDate(0, 0, 1) {
-		delIDs, newSlots, err := processDayForOnDemandRegeneration(d, loc, plan, schedule.ID, cfg, slotsByDay)
+	if input.AllDay {
+		day, err := time.Parse("2006-01-02", input.AllDayDate)
 		if err != nil {
-			return err
+			s.logger.With(zap.Error(err)).Error("invalid allDay date format")
+			return "", time.Time{}, time.Time{}, nil, exceptions.BuildNewCustomError(err, constvars.StatusBadRequest, constvars.ErrClientCannotProcessRequest, "invalid allDay date format")
 		}
-		allDeleteIDs = append(allDeleteIDs, delIDs...)
-		allCreateSlots = append(allCreateSlots, newSlots...)
+		dayLocal := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, loc)
+		winStart = dayLocal
+		winEnd = dayLocal.Add(24 * time.Hour)
+	} else {
+		winStart = input.StartTime
+		winEnd = input.EndTime
 	}
-	return s.postSlotRegenerationBundle(ctx, schedule.ID, allDeleteIDs, allCreateSlots)
-}
-
-// ReleaseLock releases a lock by key and token.
-func (s *SlotUsecase) releaseLock(ctx context.Context, key, token string) error {
-	if key == "" || token == "" {
-		return nil
-	}
-	return s.locker.Unlock(ctx, key, token)
-}
-
-type topUpRoleForDayInput struct {
-	ScheduleID    string
-	Timezone      *time.Location
-	Day           time.Time
-	Plan          []dayWindow
-	SlotMinutes   int
-	BufferMinutes int
-}
-
-// topUpRoleForDay performs per-day generation/override under caller-provided locking.
-func (s *SlotUsecase) topUpRoleForDay(ctx context.Context, in topUpRoleForDayInput, log ...*zap.Logger) error {
-	logger := zap.L()
-	if len(log) > 0 {
-		logger = log[0]
-	}
-
-	logger = logger.With(
-		zap.String("schedule_id", in.ScheduleID),
-		zap.String("timezone", in.Timezone.String()),
-		zap.Time("day", in.Day),
-		zap.Any("plan", in.Plan),
-		zap.Int("slot_minutes", in.SlotMinutes),
-		zap.Int("buffer_minutes", in.BufferMinutes),
-		zap.String("function", "topUpRoleForDay"),
-	)
-
-	logger.Info("topping up role for day")
-
-	// Compute local day bounds strings
-	dayLocal := in.Day.In(in.Timezone)
-	dayStart := atClock(dayLocal, 0, 0, in.Timezone)
-	dayEnd := dayStart.AddDate(0, 0, 1)
-	params := contracts.SlotSearchParams{
-		Start:  "lt" + dayEnd.Format(time.RFC3339),
-		End:    "gt" + dayStart.Format(time.RFC3339),
-		Status: "", // include all
-	}
-
-	logger = logger.With(zap.Any("FindSlotsByScheduleWithQuery params", params))
-
-	existingSlots, err := s.slots.FindSlotsByScheduleWithQuery(ctx, in.ScheduleID, params)
-	if err != nil {
-		logger.With(zap.Error(err)).Error("failed to find slots by schedule with query")
-		return err
-	}
-
-	// Compute expected intervals up-front and classify coverage against them
-	incomingSlotsIntervals := generateSlotsForDayWindows(dayLocal, in.Timezone, in.Plan, in.SlotMinutes, in.BufferMinutes)
-
-	cov, toDelete := classifyDayCoverageFromSlots(existingSlots, incomingSlotsIntervals)
-	switch cov {
-	case coverageNone:
-		logger.Info("coverage is none, generating new slots")
-		fhirSlots := buildFHIRSlots(in.ScheduleID, incomingSlotsIntervals, fhir_dto.SlotStatusFree)
-		bundle := buildCreateSlotsTransactionBundle(in.ScheduleID, fhirSlots)
-		_, err := s.slots.PostTransactionBundle(ctx, bundle)
-		return err
-	case coverageAllFreeNonAuto:
-		logger.Info("coverage is all free non-auto or mismatch with expected, deleting and generating new slots")
-		fhirSlots := buildFHIRSlots(in.ScheduleID, incomingSlotsIntervals, fhir_dto.SlotStatusFree)
-		bundle := buildOverrideSlotsTransactionBundle(in.ScheduleID, toDelete, fhirSlots)
-		_, err := s.slots.PostTransactionBundle(ctx, bundle)
-		return err
-	case coverageAllFreeAuto:
-		logger.Info("coverage is all free autogenerated and matches. no action needed")
-		return nil
-	case coverageConflict:
-		logger.Info("coverage is conflict, handling slot conflict")
-		return s.handleSlotConflict(ctx, in, existingSlots, logger)
-	default:
-		return fmt.Errorf("unknown coverage state")
-	}
-}
-
-func (s *SlotUsecase) handleSlotConflict(
-	ctx context.Context,
-	in topUpRoleForDayInput,
-	existingSlots []fhir_dto.Slot,
-	log *zap.Logger,
-) error {
-	// 1) Build base day work windows and adjust by non-free blocks with post-gap buffer rule
-	baseWindows := dayWorkIntervals(in.Day.In(in.Timezone), in.Timezone, in.Plan)
-	adjusted := adjustIncomingSlotIntervalOnConflict(baseWindows, existingSlots, in.SlotMinutes, in.BufferMinutes)
-	if len(adjusted) == 0 {
-		log.Info("conflict: no adjusted intervals; nothing to create")
-		return nil
-	}
-
-	// 2) Gather existing free slots and their intervals
-	var existingFree []fhir_dto.Slot
-	for _, slt := range existingSlots {
-		if slt.Status == fhir_dto.SlotStatusFree {
-			existingFree = append(existingFree, slt)
-		}
-	}
-	existingFreeIntervals := intervalsFromSlots(existingFree)
-
-	// 3) If already equal after adjustment, nothing to do
-	if isIntervalsMatch(adjusted, existingFreeIntervals) {
-		log.Info("conflict: adjusted intervals already satisfied; no action")
-		return nil
-	}
-
-	// 4) Delete ALL free slots not present in adjusted (auto or non-auto)
-	adjustedSet := make(map[string]struct{}, len(adjusted))
-	for _, iv := range adjusted {
-		adjustedSet[intervalKey(iv.Start, iv.End)] = struct{}{}
-	}
-	var deleteIDs []string
-	for _, slt := range existingFree {
-		if slt.ID == "" {
-			continue
-		}
-		k := intervalKey(slt.Start, slt.End)
-		if _, ok := adjustedSet[k]; !ok {
-			deleteIDs = append(deleteIDs, slt.ID)
-		}
-	}
-
-	// 5) Missing intervals to create: adjusted \ existingFreeIntervals
-	missing := differenceByIntervalKey(adjusted, existingFreeIntervals)
-	if len(missing) == 0 && len(deleteIDs) == 0 {
-		log.Info("conflict: no missing or deletable slots; no action")
-		return nil
-	}
-
-	// 6) Build and post bundle: delete extras (any free), create missing adjusted
-	createSlots := buildFHIRSlots(in.ScheduleID, missing, fhir_dto.SlotStatusFree)
-	if len(deleteIDs) > 0 {
-		log.Info("conflict: overriding free slots to match adjusted intervals",
-			zap.Int("delete_count", len(deleteIDs)),
-			zap.Int("create_count", len(createSlots)),
-		)
-		bundle := buildOverrideSlotsTransactionBundle(in.ScheduleID, deleteIDs, createSlots)
-		_, err := s.slots.PostTransactionBundle(ctx, bundle)
-		return err
-	}
-
-	log.Info("conflict: creating missing adjusted intervals (no deletes)",
-		zap.Int("create_count", len(createSlots)),
-	)
-	bundle := buildCreateSlotsTransactionBundle(in.ScheduleID, createSlots)
-	_, err := s.slots.PostTransactionBundle(ctx, bundle)
-	return err
-}
-
-// adjustmentDayTarget carries the per-day context for set-unavailability slot
-// adjustments: which schedule, which local day, and in which timezone.
-type adjustmentDayTarget struct {
-	ScheduleID string
-	Day        time.Time
-	Location   *time.Location
-}
-
-// adjustmentDayTargetsForWindow computes local days (inclusive) covered by [start,end) in the given location
-func (s *SlotUsecase) adjustmentDayTargetsForWindow(scheduleID string, loc *time.Location, start, end time.Time) []adjustmentDayTarget {
-	// If the window is empty or inverted, no days are covered.
-	if !end.After(start) {
-		return nil
-	}
-
-	ls := start.In(loc)
-	le := end.In(loc)
-	day := time.Date(ls.Year(), ls.Month(), ls.Day(), 0, 0, 0, 0, loc)
-	// Treat end as exclusive by subtracting a minimal delta before computing the last day.
-	// This ensures that an end exactly at midnight does not include the following calendar day.
-	leExclusive := le.Add(-time.Nanosecond)
-	last := time.Date(leExclusive.Year(), leExclusive.Month(), leExclusive.Day(), 0, 0, 0, 0, loc)
-
-	var out []adjustmentDayTarget
-	for d := day; !d.After(last); d = d.AddDate(0, 0, 1) {
-		out = append(out, adjustmentDayTarget{ScheduleID: scheduleID, Day: d, Location: loc})
-	}
-	return out
+	return scheduleID, winStart, winEnd, loc, nil
 }
 
 // practitionerDayLockTarget identifies a practitioner-local day to lock. The
@@ -1352,16 +669,6 @@ func (s *SlotUsecase) practitionerDayTargetsForWindow(practitionerID string, loc
 func (s *SlotUsecase) practitionerDayLockKey(practitionerID string, day time.Time) string {
 	y, m, d := day.Date()
 	return fmt.Sprintf("slotgen:lock:practitioner:%s:%04d-%02d-%02d", practitionerID, y, int(m), d)
-}
-
-// tryAcquirePractitionerDayLock acquires a per-day lock for a practitioner and local day.
-func (s *SlotUsecase) tryAcquirePractitionerDayLock(ctx context.Context, practitionerID string, day time.Time, ttl time.Duration) (acquired bool, key string, token string, err error) {
-	k := s.practitionerDayLockKey(practitionerID, day)
-	ok, tok, err := s.locker.TryLock(ctx, k, ttl)
-	if err != nil {
-		return false, k, "", err
-	}
-	return ok, k, tok, nil
 }
 
 // sortPractitionerDayTargets orders targets deterministically by practitioner, then day.

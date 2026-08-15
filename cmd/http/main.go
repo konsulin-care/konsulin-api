@@ -6,7 +6,6 @@ import (
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/delivery/http/controllers"
 	"konsulin-service/internal/app/delivery/http/middlewares"
-	"konsulin-service/internal/app/delivery/http/postfhir"
 	"konsulin-service/internal/app/delivery/http/routers"
 	"konsulin-service/internal/app/drivers/database"
 	"konsulin-service/internal/app/drivers/logger"
@@ -272,9 +271,6 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 
 	slotUsecase := slot.NewSlotUsecase(scheduleClient, lockService, slotClient, practitionerRoleClient, practitionerFhirClient, bundleClient, bootstrap.InternalConfig, bootstrap.Logger)
 
-	// Register post-FHIR-proxy hook for on-demand slot regeneration when PractitionerRole/Schedule are mutated.
-	middlewares.PostFHIRProxyHooks = append(middlewares.PostFHIRProxyHooks, postfhir.NewSlotRegenerationHook(bootstrap.Logger, slotUsecase))
-
 	paymentUsecase := payments.NewPaymentUsecase(
 		transactions.NewTransactionPostgresRepository(nil, bootstrap.Logger),
 		bootstrap.InternalConfig,
@@ -320,11 +316,6 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	worker := webhook.NewWorker(bootstrap.Logger, bootstrap.InternalConfig, lockService, webhookQueueService, jwtManager)
 	stopWorker := worker.Start(context.Background())
 	bootstrap.WorkerStop = stopWorker
-
-	// Start slot top-up worker (leader lock inside)
-	slotWorker := slot.NewWorker(bootstrap.Logger, bootstrap.InternalConfig, lockService, practitionerRoleClient, slotUsecase)
-	slotWorker.Start(context.Background())
-	bootstrap.SlotWorkerStop = slotWorker.Stop
 
 	// Setup routes with the router, configuration, middlewares, and controllers
 	routers.SetupRoutes(

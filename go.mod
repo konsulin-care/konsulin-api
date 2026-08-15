@@ -11,7 +11,6 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.12.3
 	github.com/rabbitmq/amqp091-go v1.13.0
-	github.com/robfig/cron/v3 v3.0.1
 	github.com/rubenv/sql-migrate v1.8.1
 	github.com/stretchr/testify v1.11.1
 	github.com/supertokens/supertokens-golang v0.26.0
