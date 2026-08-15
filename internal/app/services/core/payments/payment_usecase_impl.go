@@ -1157,13 +1157,7 @@ func (uc *paymentUsecase) HandleAppointmentPayment(
 		zap.Int("role_count", len(allPractitionerRoles)),
 	)
 
-	release, lockErr := uc.SlotUsecase.AcquireLocksForAppointment(
-		ctx,
-		allPractitionerRoles,
-		precond.Slot.Start,
-		precond.Slot.End,
-		30*time.Second,
-	)
+	release, lockErr := uc.acquireBookingLocks(ctx, precond, 30*time.Second)
 	if lockErr != nil {
 		uc.Log.Error("paymentUsecase.HandleAppointmentPayment failed to acquire locks",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -1238,6 +1232,36 @@ func (uc *paymentUsecase) HandleAppointmentPayment(
 			constvars.StatusConflict,
 			constvars.SlotNoLongerAvailableMessage,
 			fmt.Sprintf("overlapping non-free slot %s with status %s", overlap[0].ID, overlap[0].Status),
+		)
+	}
+
+	// Cross-role guard: the practitioner may hold other bookable roles (other locations).
+	// Reject the booking if a non-free slot overlaps the window in any sibling schedule.
+	crossOverlap, crossErr := uc.findCrossRoleOverlap(ctx, allPractitionerRoles, scheduleID, revalidatedSlot.Start, revalidatedSlot.End)
+	if crossErr != nil {
+		uc.Log.Error("paymentUsecase.HandleAppointmentPayment cross-role overlap search failed",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(crossErr),
+		)
+		return nil, exceptions.BuildNewCustomError(
+			crossErr,
+			constvars.StatusInternalServerError,
+			"Failed to check slot availability. Please try again.",
+			"cross-role overlap search failed",
+		)
+	}
+	if crossOverlap != nil {
+		uc.Log.Warn("paymentUsecase.HandleAppointmentPayment cross-role overlap found",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("slotId", slotID),
+			zap.String("conflictingSlotId", crossOverlap.ID),
+			zap.String("conflictingStatus", string(crossOverlap.Status)),
+		)
+		return nil, exceptions.BuildNewCustomError(
+			nil,
+			constvars.StatusConflict,
+			constvars.SlotNoLongerAvailableMessage,
+			fmt.Sprintf("overlapping non-free slot %s with status %s in sibling schedule", crossOverlap.ID, crossOverlap.Status),
 		)
 	}
 

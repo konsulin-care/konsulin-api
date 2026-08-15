@@ -446,6 +446,49 @@ func (uc *paymentUsecase) notifyProviderAsync(
 	uc.Log.Info("notifyProviderAsync webhook called successfully")
 }
 
+// acquireBookingLocks acquires the practitioner-day locks for a booking. The
+// practitionerID comes from the booked role only; sibling roles are never resolved,
+// so schedule-less or period-less sibling roles cannot break the booking.
+func (uc *paymentUsecase) acquireBookingLocks(ctx context.Context, precond *preconditionData, ttl time.Duration) (func(context.Context), error) {
+	practitionerID := strings.TrimPrefix(precond.PractitionerRole.Practitioner.Reference, constvars.FHIRRefPrefixPractitioner)
+	return uc.SlotUsecase.AcquireLocksForPractitionerDay(ctx, practitionerID, precond.Slot.Start, precond.Slot.End, ttl)
+}
+
+// findCrossRoleOverlap returns the first non-free slot in any schedulable sibling
+// schedule overlapping [start,end), excluding the booked schedule (checked by the
+// caller). Roles without schedules are skipped. Returns (nil, nil) when clear.
+func (uc *paymentUsecase) findCrossRoleOverlap(
+	ctx context.Context,
+	roles []fhir_dto.PractitionerRole,
+	bookedScheduleID string,
+	start, end time.Time,
+) (*fhir_dto.Slot, error) {
+	overlapParams := contracts.SlotSearchParams{
+		Start:  "lt" + end.Format(time.RFC3339),
+		End:    "gt" + start.Format(time.RFC3339),
+		Status: fhir_dto.SlotStatus(string(fhir_dto.SlotStatusBusyUnavailable) + "," + string(fhir_dto.SlotStatusBusyTentative)),
+	}
+	for _, role := range roles {
+		scheds, err := uc.ScheduleFhirClient.FindScheduleByPractitionerRoleID(ctx, role.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, sched := range scheds {
+			if sched.ID == bookedScheduleID {
+				continue
+			}
+			slots, err := uc.SlotFhirClient.FindSlotsByScheduleWithQuery(ctx, sched.ID, overlapParams)
+			if err != nil {
+				return nil, err
+			}
+			if overlap := getOverlappingNonFreeSlots(slots, start, end); len(overlap) > 0 {
+				return &overlap[0], nil
+			}
+		}
+	}
+	return nil, nil
+}
+
 // getOverlappingNonFreeSlots filters FHIR Slot query results for slots whose time range
 // overlaps with [slotStart, slotEnd). Only non-free slots (busy-unavailable, busy-tentative)
 // are considered as conflicts. Free slots are ignored since they are dynamically generated.

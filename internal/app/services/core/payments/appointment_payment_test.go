@@ -214,11 +214,18 @@ func (m *mockInvoiceFhirClient) Search(_ context.Context, _ contracts.InvoiceSea
 
 // mockScheduleFhirClient mocks contracts.ScheduleFhirClient.
 type mockScheduleFhirClient struct {
-	schedules []fhir_dto.Schedule
-	err       error
+	schedules       []fhir_dto.Schedule
+	schedulesByRole map[string][]fhir_dto.Schedule
+	err             error
 }
 
-func (m *mockScheduleFhirClient) FindScheduleByPractitionerRoleID(_ context.Context, _ string) ([]fhir_dto.Schedule, error) {
+func (m *mockScheduleFhirClient) FindScheduleByPractitionerRoleID(_ context.Context, roleID string) ([]fhir_dto.Schedule, error) {
+	if m.schedulesByRole != nil {
+		if s, ok := m.schedulesByRole[roleID]; ok {
+			return s, m.err
+		}
+		return nil, m.err
+	}
 	return m.schedules, m.err
 }
 func (*mockScheduleFhirClient) CreateSchedule(_ context.Context, _ *fhir_dto.Schedule) (*fhir_dto.Schedule, error) {

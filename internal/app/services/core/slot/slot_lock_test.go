@@ -105,6 +105,34 @@ func TestDedupePractitionerDayTargets(t *testing.T) {
 	assert.Len(t, out, 3)
 }
 
+// TestAcquireLocksForPractitionerDay verifies the booking lock acquires the
+// practitioner-day key for the window, computed from the window's own location
+// (booked slot offset) — sibling role timezones are never resolved.
+func TestAcquireLocksForPractitionerDay(t *testing.T) {
+	loc := time.FixedZone("+02:00", 2*3600)
+	mockLocker := new(mockLockerService)
+	s := &SlotUsecase{locker: mockLocker}
+
+	start := time.Date(2026, time.August, 13, 10, 0, 0, 0, loc)
+	end := time.Date(2026, time.August, 13, 11, 0, 0, 0, loc)
+	key := "slotgen:lock:practitioner:prac-1:2026-08-13"
+
+	mockLocker.On("TryLock", mock.Anything, key, 30*time.Second).Return(true, "t1", nil)
+	mockLocker.On("Unlock", mock.Anything, key, "t1").Return(nil)
+
+	release, err := s.AcquireLocksForPractitionerDay(context.Background(), "prac-1", start, end, 30*time.Second)
+	assert.NoError(t, err)
+	release(context.Background())
+	mockLocker.AssertExpectations(t)
+}
+
+// TestAcquireLocksForPractitionerDayRejectsZeroWindow guards against a degenerate window.
+func TestAcquireLocksForPractitionerDayRejectsZeroWindow(t *testing.T) {
+	s := &SlotUsecase{locker: new(mockLockerService)}
+	_, err := s.AcquireLocksForPractitionerDay(context.Background(), "prac-1", time.Time{}, time.Time{}, 30*time.Second)
+	assert.Error(t, err)
+}
+
 // TestTryAcquirePractitionerDayLock verifies the single-day lock uses the practitioner-day key.
 func TestTryAcquirePractitionerDayLock(t *testing.T) {
 	mockLocker := new(mockLockerService)

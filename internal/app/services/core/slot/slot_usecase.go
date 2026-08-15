@@ -1457,49 +1457,20 @@ func (s *SlotUsecase) acquireDayLocksOrdered(ctx context.Context, targets []dayL
 	})
 }
 
-// AcquireLocksForAppointment acquires locks for all affected schedule-day pairs
-// when booking an appointment. This prevents race conditions across practitioner roles.
-func (s *SlotUsecase) AcquireLocksForAppointment(
-	ctx context.Context,
-	practitionerRoles []fhir_dto.PractitionerRole,
-	appointmentStart, appointmentEnd time.Time,
-	ttl time.Duration,
-) (func(context.Context), error) {
-	// Build day lock targets for all roles
-	var allTargets []dayLockTarget
-	for _, role := range practitionerRoles {
-		loc, err := role.GetPreferredTimezone()
-		if err != nil {
-			return func(context.Context) {}, fmt.Errorf("failed to get timezone for role %s: %w", role.ID, err)
-		}
-
-		// Find schedule for this role
-		scheds, err := s.schedules.FindScheduleByPractitionerRoleID(ctx, role.ID)
-		if err != nil || len(scheds) == 0 {
-			return func(context.Context) {}, fmt.Errorf("failed to find schedule for role %s: %w", role.ID, err)
-		}
-		if len(scheds) != 1 {
-			return func(context.Context) {}, fmt.Errorf("unexpected schedule count %d for role %s", len(scheds), role.ID)
-		}
-		scheduleID := scheds[0].ID
-
-		// Compute affected days
-		targets := s.dayTargetsForWindow(scheduleID, loc, appointmentStart, appointmentEnd)
-		allTargets = append(allTargets, targets...)
+// AcquireLocksForPractitionerDay acquires day locks for a practitioner across the
+// appointment window. Local days are computed from the window's own location (the
+// booked slot's offset); sibling role timezones are never resolved, so schedule-less
+// or period-less sibling roles cannot break a booking.
+func (s *SlotUsecase) AcquireLocksForPractitionerDay(ctx context.Context, practitionerID string, start, end time.Time, ttl time.Duration) (func(context.Context), error) {
+	if start.IsZero() || end.IsZero() {
+		return func(context.Context) {}, fmt.Errorf("appointment window start/end must not be zero")
 	}
-
-	// Deduplicate and sort targets
-	seen := make(map[string]struct{})
-	var uniqueTargets []dayLockTarget
-	for _, t := range allTargets {
-		uniqueTargets = dedupeDayTargets(seen, uniqueTargets, t)
+	loc := start.Location()
+	if loc == nil {
+		return func(context.Context) {}, fmt.Errorf("appointment window start has no location/timezone")
 	}
-
-	// Sort for deterministic ordering
-	sortDayTargets(uniqueTargets)
-
-	// Acquire locks in order
-	return s.acquireDayLocksOrdered(ctx, uniqueTargets, ttl)
+	targets := s.practitionerDayTargetsForWindow(practitionerID, loc, start, end)
+	return s.acquirePractitionerDayLocksOrdered(ctx, targets, ttl)
 }
 
 // AcquireLocksForSlot acquires locks for all affected schedule-day pairs
