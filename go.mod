@@ -70,8 +70,8 @@ require (
 	github.com/goccy/go-json v0.10.6
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/google/uuid v1.6.0
-	github.com/klauspost/compress v1.19.1
-	github.com/redis/go-redis/v9 v9.21.0
+	github.com/klauspost/compress v1.19.2
+	github.com/redis/go-redis/v9 v9.22.0
 	go.mongodb.org/mongo-driver v1.17.9
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/time v0.15.0
