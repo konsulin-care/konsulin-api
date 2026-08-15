@@ -106,8 +106,8 @@ func ValidateWriteBody(raw []byte, resourceType string, oc *OwnershipContext, st
 }
 
 // ValidSearchQuery validates an entry-level search or a non-GET (DELETE/PATCH)
-// request against the rule's scoping rules. It mirrors the legacy
-// allowScopedEntryRead / ownsPatientQuery / ownsPractitionerQuery semantics:
+// request against the rule's scoping rules. It mirrors the legacy per-route
+// scoping semantics:
 //   - single-resource reads (no query) are exempt, except identity resources
 //     whose path id must be owned (DELETE /Patient/{id});
 //   - aggregate _summary=count queries stay public;

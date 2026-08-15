@@ -43,6 +43,32 @@ func assertOwned(t *testing.T, raw, resourceType string, oc *OwnershipContext, w
 	assert.Equal(t, want, got, "OwnedBy(%s)", resourceType)
 }
 
+// TestValidIdentityQuery_FailClosedIDOR verifies the identity-resource scoping
+// semantics the legacy per-route patient scoping enforced: a path id must be
+// owned, and a matching _id query param must not override an unowned path id.
+// Both the search and the write entry points delegate identity resources to
+// validIdentityTargetQuery, so both must fail closed identically.
+func TestValidIdentityQuery_FailClosedIDOR(t *testing.T) {
+	oc := patientOC("pat-1")
+	cases := []struct {
+		name string
+		raw  string
+		want bool
+	}{
+		{"own path id", "/Patient/pat-1", true},
+		{"cross patient path id", "/Patient/pat-B", false},
+		{"unowned path id wins over matching _id", "/Patient/pat-B?_id=pat-1", false},
+		{"fhir-prefixed own path id", "/fhir/Patient/pat-1", true},
+		{"fhir-prefixed cross patient", "/fhir/Patient/pat-B", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, ValidSearchQuery(tc.raw, constvars.ResourcePatient, oc), "ValidSearchQuery %s", tc.raw)
+			assert.Equal(t, tc.want, ValidWriteQuery(tc.raw, constvars.ResourcePatient, oc), "ValidWriteQuery %s", tc.raw)
+		})
+	}
+}
+
 func TestOwnedBy_UnclassifiedTypeFailsClosed(t *testing.T) {
 	// The fail-closed flip: a resource type with no rule is denied for any caller.
 	oc := patientOC("pat-1")

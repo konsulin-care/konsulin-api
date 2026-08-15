@@ -47,18 +47,6 @@ func NormalizePath(rawURL string) string {
 	return "/" + path
 }
 
-func RequiresPatientOwnership(resourceType string) bool {
-	return false
-}
-
-func RequiresPractitionerOwnership(resourceType string) bool {
-	return false
-}
-
-func IsPublicResource(resourceType string) bool {
-	return false
-}
-
 func ExtractResourceTypeFromPath(path string) string {
 	u, err := url.Parse(path)
 	if err != nil {

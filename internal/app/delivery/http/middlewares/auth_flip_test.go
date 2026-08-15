@@ -289,20 +289,19 @@ func TestValidatePostRequestBody_PractitionerInvoiceRequiresOwnActor(t *testing.
 	// The Invoice rule carries no WriteRefs, so POST validation must dispatch
 	// the body-only invoice checker: participant.actor must reference the
 	// caller's own practitioner or a PractitionerRole.
-	mw := &Middlewares{}
 	ctx := context.WithValue(context.Background(), keyRoles, []string{constvars.KonsulinRolePractitioner})
 
-	err := mw.validatePostRequestBody(ctx,
+	err := validatePostRequestBody(ctx,
 		[]byte(`{"resourceType":"Invoice","participant":[{"actor":{"reference":"Patient/pat-2"}}]}`),
 		constvars.KonsulinRolePractitioner, "prac-1")
 	assert.Error(t, err, "practitioner must not POST an Invoice whose actor is an unowned patient")
 
-	err = mw.validatePostRequestBody(ctx,
+	err = validatePostRequestBody(ctx,
 		[]byte(`{"resourceType":"Invoice","participant":[{"actor":{"reference":"Practitioner/prac-1"}}]}`),
 		constvars.KonsulinRolePractitioner, "prac-1")
 	assert.NoError(t, err, "practitioner may POST an Invoice referencing themselves")
 
-	err = mw.validatePostRequestBody(ctx,
+	err = validatePostRequestBody(ctx,
 		[]byte(`{"resourceType":"Invoice","participant":[{"actor":{"reference":"PractitionerRole/role-1"}}]}`),
 		constvars.KonsulinRolePractitioner, "prac-1")
 	assert.NoError(t, err, "practitioner may POST an Invoice referencing a PractitionerRole")
@@ -312,20 +311,19 @@ func TestValidatePostRequestBody_PatientSlotRequiresBusyStatus(t *testing.T) {
 	// The Slot rule carries no WriteRefs; a patient POST must still satisfy the
 	// busy/busy-unavailable status check (patients create blocked slots, not
 	// free ones).
-	mw := &Middlewares{}
 	ctx := context.WithValue(context.Background(), keyRoles, []string{constvars.KonsulinRolePatient})
 
-	err := mw.validatePostRequestBody(ctx,
+	err := validatePostRequestBody(ctx,
 		[]byte(`{"resourceType":"Slot","status":"free"}`),
 		constvars.KonsulinRolePatient, "pat-1")
 	assert.Error(t, err, "patient must not POST a free Slot")
 
-	err = mw.validatePostRequestBody(ctx,
+	err = validatePostRequestBody(ctx,
 		[]byte(`{"resourceType":"Slot","status":"busy"}`),
 		constvars.KonsulinRolePatient, "pat-1")
 	assert.NoError(t, err, "patient may POST a busy Slot")
 
-	err = mw.validatePostRequestBody(ctx,
+	err = validatePostRequestBody(ctx,
 		[]byte(`{"resourceType":"Slot","status":"busy-unavailable"}`),
 		constvars.KonsulinRolePatient, "pat-1")
 	assert.NoError(t, err, "patient may POST a busy-unavailable Slot")
@@ -334,9 +332,8 @@ func TestValidatePostRequestBody_PatientSlotRequiresBusyStatus(t *testing.T) {
 func TestValidatePostRequestBody_ClinicAdminInvoiceBypass(t *testing.T) {
 	// Clinic Admin holds the Invoice rule's WriteBypassCodes coding; the
 	// body-only invoice checker must not reject their POST.
-	mw := &Middlewares{}
 	ctx := context.WithValue(context.Background(), keyRoles, []string{constvars.KonsulinRoleClinicAdmin})
-	err := mw.validatePostRequestBody(ctx,
+	err := validatePostRequestBody(ctx,
 		[]byte(`{"resourceType":"Invoice","participant":[{"actor":{"reference":"Patient/pat-2"}}]}`),
 		constvars.KonsulinRolePractitioner, "prac-1")
 	assert.NoError(t, err)
@@ -345,9 +342,8 @@ func TestValidatePostRequestBody_ClinicAdminInvoiceBypass(t *testing.T) {
 func TestValidatePostRequestBody_ClinicAdminScheduleAllowed(t *testing.T) {
 	// Post-flip the clinic admin resolves as a Practitioner, but the Schedule
 	// rule carries no WriteRefs, so body validation stays permissive.
-	mw := &Middlewares{}
 	ctx := context.WithValue(context.Background(), keyRoles, []string{constvars.KonsulinRoleClinicAdmin})
-	err := mw.validatePostRequestBody(ctx,
+	err := validatePostRequestBody(ctx,
 		[]byte(`{"resourceType":"Schedule","actor":[{"reference":"Practitioner/prac-2"}]}`),
 		constvars.KonsulinRolePractitioner, "prac-1")
 	assert.NoError(t, err)

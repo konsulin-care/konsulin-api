@@ -10,7 +10,7 @@ import (
 // only when ALL of its references point at Practitioner, PractitionerRole, or
 // Device actors. Any reference to another type (e.g. a Patient) means the
 // invoice is not public and ownership must be proven via the rule's Refs.
-var invoiceChecker OwnershipChecker = func(raw []byte, oc *OwnershipContext) (bool, error) {
+var invoiceChecker OwnershipChecker = func(raw []byte, _ *OwnershipContext) (bool, error) {
 	whitelisted := map[string]struct{}{
 		constvars.ResourcePractitioner:     {},
 		constvars.ResourcePractitionerRole: {},

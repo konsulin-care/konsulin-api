@@ -22,11 +22,11 @@ import (
 )
 
 // handleAuthPostBody reads and validates the POST request body, restoring it for downstream use.
-func (m *Middlewares) handleAuthPostBody(ctxIface context.Context, r *http.Request, fhirRole, fhirID string) error {
+func handleAuthPostBody(ctxIface context.Context, r *http.Request, fhirRole, fhirID string) error {
 	body, _ := io.ReadAll(r.Body)
 	_ = r.Body.Close()
 
-	if err := m.validatePostRequestBody(ctxIface, body, fhirRole, fhirID); err != nil {
+	if err := validatePostRequestBody(ctxIface, body, fhirRole, fhirID); err != nil {
 		return err
 	}
 
@@ -121,7 +121,7 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 		r = r.WithContext(ctxIface)
 
 		if r.Method == constvars.MethodPost {
-			if err := m.handleAuthPostBody(ctxIface, r, fhirRole, fhirID); err != nil {
+			if err := handleAuthPostBody(ctxIface, r, fhirRole, fhirID); err != nil {
 				utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(err))
 				return
 			}
@@ -199,7 +199,7 @@ func (m *Middlewares) ResolveUserRoles(ctx context.Context, roles []string, uid 
 	return constvars.KonsulinRoleGuest, "", nil
 }
 
-func (m *Middlewares) validatePostRequestBody(ctx context.Context, body []byte, fhirRole, fhirID string) error {
+func validatePostRequestBody(ctx context.Context, body []byte, fhirRole, fhirID string) error {
 	if fhirRole == "" || fhirRole == constvars.KonsulinRoleGuest {
 		return nil
 	}
@@ -820,8 +820,7 @@ func ownsResource(ctx context.Context, fhirID, rawURL, role, method string, clie
 
 	// DELETE/PATCH: scope via the ownership engine's mutating-query rules.
 	// ValidWriteQuery fails closed: a query that cannot prove ownership of
-	// every scoped identity is denied (the legacy ownsPatientQuery /
-	// ownsPractitionerQuery semantics, hardened).
+	// every scoped identity is denied.
 	oc := ownershipContextForRole(role, fhirID)
 	return ownership.ValidWriteQuery(rawURL, resourceType, oc)
 }
@@ -841,32 +840,6 @@ func extractPathResourceID(path string) (resource, id string) {
 		return parts[0], parts[1]
 	}
 	return "", ""
-}
-
-// ownsPatientQuery scopes non-GET requests for a patient role via the
-// ownership engine's search-query rules.
-func ownsPatientQuery(ctx context.Context, fhirID string, u *url.URL, resourceType string, _ contracts.PatientFhirClient, _ contracts.PractitionerFhirClient) bool {
-	return ownsScopedQuery(u.RequestURI(), resourceType, true, fhirID)
-}
-
-// ownsPractitionerQuery scopes non-GET requests for a practitioner-family role
-// via the ownership engine's search-query rules.
-func ownsPractitionerQuery(ctx context.Context, fhirID string, u *url.URL, resourceType string, _ contracts.PatientFhirClient, _ contracts.PractitionerFhirClient) bool {
-	return ownsScopedQuery(u.RequestURI(), resourceType, false, fhirID)
-}
-
-// ownsScopedQuery validates a search query against the caller's identity via
-// the ownership engine.
-func ownsScopedQuery(rawURL, resourceType string, patient bool, fhirID string) bool {
-	oc := ownership.NewContext()
-	if patient {
-		oc.HasPatientRole = true
-		oc.AddPatientID(fhirID)
-	} else {
-		oc.HasPractitionerRole = true
-		oc.AddPractitionerID(fhirID)
-	}
-	return ownership.ValidSearchQuery(rawURL, resourceType, oc)
 }
 
 // hasRole returns true if roles contains the target role (case-insensitive).

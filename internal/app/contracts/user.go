@@ -89,7 +89,7 @@ type FHIRResourcePlan struct {
 //
 // The Practitioner entry is deduplicated so it appears at most once.
 func (i *InitializeNewUserFHIRResourcesInput) Resources() []FHIRResourcePlan {
-	resources := []FHIRResourcePlan{}
+	resources := make([]FHIRResourcePlan, 0)
 	practitionerPlanned := false
 	addPractitioner := func() {
 		if practitionerPlanned {
