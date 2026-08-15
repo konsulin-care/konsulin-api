@@ -10,10 +10,10 @@ import (
 	"io"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/ownership"
 	"konsulin-service/internal/pkg/utils"
 	"net/http"
 	"net/url"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -243,8 +243,9 @@ func (m *Middlewares) filterFHIRResponse(ctx context.Context, resp *http.Respons
 	}
 
 	// Researcher and Superadmin reads of Communication resources are reduced
-	// to non-sensitive fields (sender/recipient/sent/received + envelope).
-	// Patient reads scoped to their own sender/recipient keep full fields.
+	// to the rule's RedactKeep fields (sender/recipient/sent/received +
+	// envelope). Patient reads scoped to their own sender/recipient keep full
+	// fields. The decision is driven by the ownership engine (rule.RedactKeep).
 	if rMethod := resp.Request.Method; rMethod == http.MethodGet &&
 		shouldStripCommunicationFields(roles, fhirID, resp.Request.URL) {
 		bodyAfterFilters, mutated = stripCommunicationFields(bodyAfterFilters)
@@ -253,21 +254,25 @@ func (m *Middlewares) filterFHIRResponse(ctx context.Context, resp *http.Respons
 	return bodyAfterFilters, enc, mutated, nil
 }
 
-// communicationAllowedFields is the whitelist kept when a Researcher or
-// Superadmin reads Communication resources. Every other field (status, topic,
-// subject, payload, ...) may carry sensitive content and is stripped.
-var communicationAllowedFields = []string{"resourceType", "id", "meta", "sender", "recipient", "sent", "received"}
-
 // shouldStripCommunicationFields reports whether a Communication GET response
-// must be reduced to non-sensitive fields. Patients scoped to their own
-// sender/recipient keep full fields (ownership-checked); Researcher and
-// Superadmin calls are stripped to communicationAllowedFields.
+// must be reduced to the ownership rule's RedactKeep fields. Patients scoped
+// to their own sender/recipient keep full fields (ownership-checked);
+// Researcher-coded and Superadmin callers are redacted (the engine decides via
+// the rule's RedactKeep list).
 func shouldStripCommunicationFields(roles []string, fhirID string, u *url.URL) bool {
-	if fhirID != "" && (queryHasOwnRef(u.Query(), fhirID, "sender", "recipient")) {
+	if fhirID != "" && queryHasOwnRef(u.Query(), fhirID, "sender", "recipient") {
 		return false
 	}
-	return hasRole(roles, constvars.KonsulinRoleResearcher) ||
-		hasRole(roles, constvars.KonsulinRoleSuperadmin)
+	oc := ownership.NewContext()
+	for _, r := range roles {
+		switch {
+		case strings.EqualFold(r, constvars.KonsulinRoleSuperadmin):
+			oc.HasSuperadminRole = true
+		case strings.EqualFold(r, constvars.KonsulinRoleResearcher):
+			oc.AddCoding(constvars.FhirPractitionerRoleSystemHL7, constvars.FhirPractitionerRoleCodeResearcher)
+		}
+	}
+	return ownership.ShouldRedact(constvars.ResourceCommunication, oc)
 }
 
 // stripCommunicationFields reduces Communication resources in a response body
@@ -321,15 +326,17 @@ func stripCommunicationBundle(body []byte) ([]byte, bool) {
 	return out, true
 }
 
-// stripSingleCommunication keeps only communicationAllowedFields from a
-// Communication resource. Returns (nil, false) on parse or marshal failure.
+// stripSingleCommunication keeps only the ownership rule's RedactKeep fields
+// from a Communication resource. Returns (nil, false) on parse or marshal
+// failure.
 func stripSingleCommunication(raw json.RawMessage) ([]byte, bool) {
+	keep := ownership.RedactKeepFields(constvars.ResourceCommunication)
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return nil, false
 	}
-	out := make(map[string]json.RawMessage, len(communicationAllowedFields))
-	for _, k := range communicationAllowedFields {
+	out := make(map[string]json.RawMessage, len(keep))
+	for _, k := range keep {
 		if v, ok := m[k]; ok {
 			out[k] = v
 		}
@@ -642,238 +649,152 @@ func encodeBundle(bundle *Bundle) ([]byte, error) {
 	return filteredJSON, nil
 }
 
-// ownershipContext describes what FHIR resources (Patient / Practitioner) the caller owns.
-type ownershipContext struct {
-	HasPatientRole      bool
-	HasPractitionerRole bool
-	PatientIDs          map[string]struct{}
-	PractitionerIDs     map[string]struct{}
-	PractitionerRoleIDs []string
+// ownershipContextFromRoles builds a minimal OwnershipContext from session
+// roles, the resolved FHIR role, and the caller's FHIR id. Session roles map
+// to role flags and to the Phase 1 practitioner-role codings (a Researcher
+// session holds the researcher coding; a Clinic Admin session holds the SNOMED
+// administrative-staff coding). No FHIR I/O is performed.
+func ownershipContextFromRoles(roles []string, fhirRole, fhirID string) *ownership.OwnershipContext {
+	oc := ownership.NewContext()
+	for _, r := range roles {
+		switch {
+		case strings.EqualFold(r, constvars.KonsulinRolePatient):
+			oc.HasPatientRole = true
+		case strings.EqualFold(r, constvars.KonsulinRolePractitioner):
+			oc.HasPractitionerRole = true
+			oc.HoldsPractitionerRole = true
+		case strings.EqualFold(r, constvars.KonsulinRoleSuperadmin):
+			oc.HasSuperadminRole = true
+		case strings.EqualFold(r, constvars.KonsulinRoleResearcher):
+			oc.HasPractitionerRole = true
+			oc.AddCoding(constvars.FhirPractitionerRoleSystemHL7, constvars.FhirPractitionerRoleCodeResearcher)
+		case strings.EqualFold(r, constvars.KonsulinRoleClinicAdmin):
+			oc.HasPractitionerRole = true
+			oc.AddCoding(constvars.FhirPractitionerRoleSystemSnomed, constvars.FhirPractitionerRoleCodeAdministrativeStaff)
+		}
+	}
+	if fhirRole == constvars.KonsulinRolePatient && fhirID != "" {
+		oc.AddPatientID(fhirID)
+	}
+	if fhirRole == constvars.KonsulinRolePractitioner && fhirID != "" {
+		oc.AddPractitionerID(fhirID)
+	}
+	return oc
 }
 
-// buildOwnershipContext resolves owned Patient / Practitioner IDs once per request.
+// buildOwnershipContext resolves owned Patient / Practitioner identities and
+// practitioner-role codings once per request into the ownership engine's
+// OwnershipContext. Session roles map directly to role flags and to the
+// Phase 1 practitioner-role codings (a Researcher session holds the researcher
+// coding, a Clinic Admin session holds the SNOMED administrative-staff coding).
 func (m *Middlewares) buildOwnershipContext(
 	ctx context.Context,
 	roles []string,
 	fhirRole, fhirID string,
-) *ownershipContext {
-	oc := &ownershipContext{
-		PatientIDs:          make(map[string]struct{}),
-		PractitionerIDs:     make(map[string]struct{}),
-		PractitionerRoleIDs: make([]string, 0),
+) *ownership.OwnershipContext {
+	oc := ownershipContextFromRoles(roles, fhirRole, fhirID)
+
+	// Relationship-based seeding (own Patient record via the SuperTokens
+	// identifier, PractitionerRole ids and codings) runs only for sessions that
+	// genuinely hold the Practitioner role. Researcher and Clinic Admin sessions
+	// resolve as practitioners but never inherit the practitioner↔patient
+	// relationship: their reads are code-conditioned instead.
+	if oc.HoldsPractitionerRole {
+		m.resolvePractitionerPatientIDs(ctx, oc, fhirID)
 	}
 
-	for _, r := range roles {
-		if strings.EqualFold(r, constvars.KonsulinRolePatient) {
-			oc.HasPatientRole = true
+	// Dual-identity sessions may read resources owned under either identity.
+	// Seed the non-active identity's own resource ID so GET responses pass the
+	// ownership filter under either active role. The secondary lookup runs
+	// only when the other role is actually held (single-role sessions pay
+	// nothing), and it never re-runs the practitioner related-patient/role
+	// resolution above.
+	if uid, _ := ctx.Value(keyUID).(string); uid != "" {
+		if oc.HasPractitionerRole && fhirRole == constvars.KonsulinRolePatient {
+			if pracID := m.resolveSecondaryFHIRID(ctx, uid, fhirRole); pracID != "" {
+				oc.AddPractitionerID(pracID)
+			}
 		}
-		if strings.EqualFold(r, constvars.KonsulinRolePractitioner) {
-			oc.HasPractitionerRole = true
+		if oc.HasPatientRole && fhirRole == constvars.KonsulinRolePractitioner {
+			if patID := m.resolveSecondaryFHIRID(ctx, uid, fhirRole); patID != "" {
+				oc.AddPatientID(patID)
+			}
 		}
 	}
-
-	if fhirRole == constvars.KonsulinRolePatient && fhirID != "" {
-		oc.PatientIDs[fhirID] = struct{}{}
-	}
-	if fhirRole == constvars.KonsulinRolePractitioner && fhirID != "" {
-		oc.PractitionerIDs[fhirID] = struct{}{}
-	}
-
-	m.resolvePractitionerPatientIDs(ctx, oc, fhirID)
 
 	return oc
 }
 
-// resolvePractitionerPatientIDs populates PatientIDs and PractitionerRoleIDs for a practitioner.
-// resolveRelatedPatientIDsByEmail populates PatientIDs by matching practitioner emails to patients.
-func (m *Middlewares) resolveRelatedPatientIDsByEmail(ctx context.Context, oc *ownershipContext, fhirID string) {
-	prac, err := m.PractitionerFhirClient.FindPractitionerByID(ctx, fhirID)
-	if err != nil || prac == nil {
+// resolvePractitionerPatientIDs populates PatientIDs and PractitionerRoleIDs
+// for a practitioner.
+// resolveOwnPatientBySupertoken seeds the caller's own Patient record — the
+// dual-identity case where the same SuperTokens user holds both Patient and
+// Practitioner identities. Matching by the FhirSupertokenSystemIdentifier (the
+// uid) is exact: one uid maps to at most one Patient record, and email
+// collisions cannot widen access.
+func (m *Middlewares) resolveOwnPatientBySupertoken(ctx context.Context, oc *ownership.OwnershipContext) {
+	uid, _ := ctx.Value(keyUID).(string)
+	if uid == "" {
 		return
 	}
-	for _, em := range prac.GetEmailAddresses() {
-		pats, err := m.PatientFhirClient.FindPatientByEmail(ctx, em)
-		if err != nil {
-			continue
-		}
-		for _, p := range pats {
-			if p.ID != "" {
-				oc.PatientIDs[p.ID] = struct{}{}
-			}
-		}
+	pats, err := m.PatientFhirClient.FindPatientByIdentifier(
+		ctx,
+		fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, uid),
+	)
+	if err != nil {
+		m.Log.Warn("failed to resolve own patient by supertoken identifier; skipping patient seeding",
+			zap.String("uid", uid), zap.Error(err))
+		return
+	}
+	for _, p := range pats {
+		oc.AddPatientID(p.ID)
 	}
 }
 
-// resolvePractitionerRoleIDs populates PractitionerRoleIDs for the given practitioner.
-func (m *Middlewares) resolvePractitionerRoleIDs(ctx context.Context, oc *ownershipContext, fhirID string) {
+// resolvePractitionerRoleIDs populates PractitionerRoleIDs and the
+// practitioner-role codings for the given practitioner.
+func (m *Middlewares) resolvePractitionerRoleIDs(ctx context.Context, oc *ownership.OwnershipContext, fhirID string) {
 	practitionerRoles, err := m.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerID(ctx, fhirID)
 	if err != nil {
 		m.Log.Warn("failed to find practitioner roles by practitioner ID. skipping practitioner role population", zap.String("practitionerID", fhirID), zap.Error(err))
 		return
 	}
 	for _, pr := range practitionerRoles {
-		if pr.ID != "" {
-			oc.PractitionerRoleIDs = append(oc.PractitionerRoleIDs, pr.ID)
+		oc.AddPractitionerRoleID(pr.ID)
+		for _, cc := range pr.Code {
+			for _, c := range cc.Coding {
+				oc.AddCoding(c.System, c.Code)
+			}
 		}
 	}
 }
 
-func (m *Middlewares) resolvePractitionerPatientIDs(ctx context.Context, oc *ownershipContext, fhirID string) {
+func (m *Middlewares) resolvePractitionerPatientIDs(ctx context.Context, oc *ownership.OwnershipContext, fhirID string) {
 	if !oc.HasPractitionerRole || len(oc.PatientIDs) > 0 || fhirID == "" {
 		return
 	}
-	m.resolveRelatedPatientIDsByEmail(ctx, oc, fhirID)
+	m.resolveOwnPatientBySupertoken(ctx, oc)
 	m.resolvePractitionerRoleIDs(ctx, oc, fhirID)
 }
 
-// ownershipChecker is a resource-specific, last-resort ownership function.
-type ownershipChecker func(raw json.RawMessage, oc *ownershipContext) (bool, error)
-
-// resourceSpecificOwnershipCheckers holds resource-specific ownership logic.
-// add your own custom ownership checkers here if needed
-var resourceSpecificOwnershipCheckers = map[string]ownershipChecker{
-	constvars.ResourceInvoice: func(raw json.RawMessage, oc *ownershipContext) (bool, error) {
-		// Invoice is public only if ALL references point to whitelisted resource types.
-		publicResourceIfOwnedByTheseActors := map[string]struct{}{
-			constvars.ResourcePractitioner:     {},
-			constvars.ResourcePractitionerRole: {},
-			constvars.ResourceDevice:           {},
-		}
-
-		var resMap map[string]any
-		if err := json.Unmarshal(raw, &resMap); err != nil {
-			return false, err
-		}
-
-		var refs []string
-		collectReferences(resMap, &refs, 0)
-		if len(refs) == 0 {
-			return false, nil
-		}
-
-		for _, ref := range refs {
-			parts := strings.SplitN(ref, "/", 2)
-			if len(parts) == 0 {
-				return false, nil
-			}
-
-			if _, ok := publicResourceIfOwnedByTheseActors[parts[0]]; !ok {
-				// Found a non-whitelisted reference
-				return false, nil
-			}
-		}
-
-		// All references are whitelisted means the invoice is public.
-		return true, nil
-	},
-}
-
-// resourceOwnedByContext centralizes ownership checks for a single FHIR resource.
-// It is used by both bundle-level and single-resource filters.
-// cannotProvePatientOwnership returns true if patient-only resource exists but caller has no patient context.
-func cannotProvePatientOwnership(resourceType string, oc *ownershipContext) bool {
-	return utils.RequiresPatientOwnership(resourceType) && !utils.RequiresPractitionerOwnership(resourceType) && len(oc.PatientIDs) == 0 && !oc.HasPatientRole
-}
-
-// cannotProvePractitionerOwnership returns true if practitioner-only resource exists but caller has no practitioner context.
-func cannotProvePractitionerOwnership(resourceType string, oc *ownershipContext) bool {
-	return utils.RequiresPractitionerOwnership(resourceType) && !utils.RequiresPatientOwnership(resourceType) && len(oc.PractitionerIDs) == 0 && !oc.HasPractitionerRole
-}
-
-// checkGenericOwnership runs generic ownership patterns, handling errors per fail-closed policy.
-func (m *Middlewares) checkGenericOwnership(raw json.RawMessage, resourceType, id string, oc *ownershipContext) bool {
-	if ok, err := genericOwnershipPatterns(raw, oc); err == nil {
-		return ok
-	} else if !m.handleOwnershipCheckError(resourceType, id, err) {
-		return false
-	}
-	return false
-}
-
-// checkResourceSpecificOwnership runs resource-specific ownership checkers.
-func (m *Middlewares) checkResourceSpecificOwnership(raw json.RawMessage, resourceType, id string, oc *ownershipContext) bool {
-	checker, ok := resourceSpecificOwnershipCheckers[resourceType]
-	if !ok {
-		return false
-	}
-	if ok2, err := checker(raw, oc); err == nil && ok2 {
-		return true
-	} else if err != nil {
-		m.handleOwnershipCheckError(resourceType, id, err)
-	}
-	return false
-}
-
+// resourceOwnedByContext decides ownership for a single FHIR resource using the
+// ownership engine's declarative rules (internal/pkg/ownership). Unclassified
+// and unparseable resources deny (fail-closed flip); per-type strategies
+// (invoice) live in the engine's checker registry.
 func (m *Middlewares) resourceOwnedByContext(
 	raw json.RawMessage,
 	resourceType string,
-	id string,
-	oc *ownershipContext,
+	_ string,
+	oc *ownership.OwnershipContext,
 ) bool {
-	if utils.IsPublicResource(resourceType) {
-		return true
-	}
-
-	requiresPatient := utils.RequiresPatientOwnership(resourceType)
-	requiresPract := utils.RequiresPractitionerOwnership(resourceType)
-	if !requiresPatient && !requiresPract {
-		return true
-	}
-
-	if cannotProvePatientOwnership(resourceType, oc) || cannotProvePractitionerOwnership(resourceType, oc) {
-		return false
-	}
-
-	if simpleOwnershipCheck(resourceType, id, oc) || m.checkGenericOwnership(raw, resourceType, id, oc) {
-		return true
-	}
-
-	return m.checkResourceSpecificOwnership(raw, resourceType, id, oc)
-}
-
-// failClosedOnErrorFromResource is a function that determines if we should fail closed on error from a resource.
-// this function behaviour comes from this discussion: https://github.com/konsulin-care/konsulin-api/pull/250#discussion_r2559068460
-// This function must be used to determine if we should fail closed on error from a resource.
-func (m *Middlewares) failClosedOnErrorFromResource(resourceType string, resourceID string) bool {
-	if resourceType == "" {
-		return true
-	}
-
-	defaultDenyResources := []string{
-		constvars.ResourcePatient,
-		constvars.ResourceCondition,
-		constvars.ResourceObservation,
-		constvars.ResourceMedicationRequest,
-		constvars.ResourceAllergyIntolerance,
-		constvars.ResourceProcedure,
-		constvars.ResourceCarePlan,
-		constvars.ResourceMedicationAdministration,
-	}
-
-	if slices.Contains(defaultDenyResources, resourceType) {
-		// if the resource is in the default deny list, we fail closed
-		m.Log.Info(fmt.Sprintf("Denying an unauthorized request to {%s/%s}", resourceType, resourceID),
+	owned, err := ownership.OwnedBy(raw, resourceType, oc)
+	if err != nil {
+		m.Log.Warn("ownership check failed; denying",
 			zap.String("resourceType", resourceType),
-			zap.String("resourceID", resourceID),
-		)
-		return true
-	}
-
-	return false
-}
-
-// handleOwnershipCheckError decides whether to fail closed or open on an ownership check error.
-// Returns true if we should proceed (fail open), false if we should deny (fail closed).
-func (m *Middlewares) handleOwnershipCheckError(resourceType, id string, err error) bool {
-	if m.failClosedOnErrorFromResource(resourceType, id) {
+			zap.Error(err))
 		return false
 	}
-	m.Log.Warn("resorting to fail open on error from resource",
-		zap.String("resourceType", resourceType),
-		zap.String("id", id),
-		zap.Error(err),
-	)
-	return true
+	return owned
 }
 
 // applyOwnershipFilterToBundle mutates bundle.Entry in-place, keeping only owned resources.
@@ -893,11 +814,11 @@ func (m *Middlewares) applyOwnershipFilterToBundle(
 ) int {
 	oc := m.buildOwnershipContext(ctx, roles, fhirRole, fhirID)
 	infos, allowedRefs := m.evaluateBundleOwnership(ctx, bundle, oc)
-	return filterBundleEntries(bundle, infos, allowedRefs, m.Log)
+	return filterBundleEntries(bundle, infos, allowedRefs, oc, m.Log)
 }
 
 // evaluateBundleOwnership determines direct ownership for each bundle entry and collects allowed refs.
-func (m *Middlewares) evaluateBundleOwnership(_ context.Context, bundle *Bundle, oc *ownershipContext) ([]bundleEntryInfo, map[string]struct{}) {
+func (m *Middlewares) evaluateBundleOwnership(_ context.Context, bundle *Bundle, oc *ownership.OwnershipContext) ([]bundleEntryInfo, map[string]struct{}) {
 	infos := make([]bundleEntryInfo, len(bundle.Entry))
 	allowedRefs := make(map[string]struct{})
 
@@ -907,14 +828,14 @@ func (m *Middlewares) evaluateBundleOwnership(_ context.Context, bundle *Bundle,
 			ID           string `json:"id,omitempty"`
 		}
 		if err := json.Unmarshal(e.Resource, &env); err != nil || env.ResourceType == "" {
-			owned := !m.failClosedOnErrorFromResource(env.ResourceType, env.ID)
-			infos[i] = bundleEntryInfo{idx: i, owned: owned}
+			// Unparseable entry: deny (fail-closed flip).
+			infos[i] = bundleEntryInfo{idx: i, owned: false}
 			continue
 		}
 		owned := m.resourceOwnedByContext(e.Resource, env.ResourceType, env.ID, oc)
 		infos[i] = bundleEntryInfo{idx: i, owned: owned, resourceType: env.ResourceType, id: env.ID}
 
-		if owned && oc.HasPractitionerRole {
+		if owned && oc.HoldsPractitionerRole {
 			var resMap map[string]any
 			if err := json.Unmarshal(e.Resource, &resMap); err == nil {
 				var refs []string
@@ -928,8 +849,12 @@ func (m *Middlewares) evaluateBundleOwnership(_ context.Context, bundle *Bundle,
 	return infos, allowedRefs
 }
 
-// filterBundleEntries removes entries that are neither owned nor referenced by owned resources.
-func filterBundleEntries(bundle *Bundle, infos []bundleEntryInfo, allowedRefs map[string]struct{}, log *zap.Logger) int {
+// filterBundleEntries removes entries that are neither owned nor provably kept:
+// referenced entries survive only when OwnedBy confirms the caller owns them
+// (strict referenced-bundle-keep). Public-scope entries are already owned;
+// unknown and internal types fail closed. A co-worker's scoped resource
+// referenced by an owned resource is therefore dropped.
+func filterBundleEntries(bundle *Bundle, infos []bundleEntryInfo, allowedRefs map[string]struct{}, oc *ownership.OwnershipContext, log *zap.Logger) int {
 	removed := 0
 	filtered := make([]BundleEntry, 0, len(bundle.Entry))
 	for i, e := range bundle.Entry {
@@ -940,100 +865,16 @@ func filterBundleEntries(bundle *Bundle, infos []bundleEntryInfo, allowedRefs ma
 		}
 		refKey := fmt.Sprintf("%s/%s", info.resourceType, info.id)
 		if _, isReferenced := allowedRefs[refKey]; isReferenced {
-			filtered = append(filtered, e)
-		} else {
-			log.Info("removing resource from bundle", zap.String("resourceType", info.resourceType), zap.String("resourceID", info.id))
-			removed++
+			if owned, err := ownership.OwnedBy(e.Resource, info.resourceType, oc); err == nil && owned {
+				filtered = append(filtered, e)
+				continue
+			}
 		}
+		log.Info("removing resource from bundle", zap.String("resourceType", info.resourceType), zap.String("resourceID", info.id))
+		removed++
 	}
 	bundle.Entry = filtered
 	return removed
-}
-
-// simpleOwnershipCheck performs direct ownership based on resourceType + id.
-func simpleOwnershipCheck(resourceType, id string, oc *ownershipContext) bool {
-	if id == "" {
-		return false
-	}
-
-	switch resourceType {
-	case constvars.ResourcePatient:
-		_, ok := oc.PatientIDs[id]
-		return ok
-	case constvars.ResourcePractitioner:
-		_, ok := oc.PractitionerIDs[id]
-		return ok
-	default:
-		return false
-	}
-}
-
-// genericOwnershipPatterns covers:
-// - subject.reference
-// - patient.reference
-// - recipient.reference
-// - actor.reference
-// - participant[*].actor.reference
-// - plus a full recursive "reference" walk as a safety net.
-func genericOwnershipPatterns(raw json.RawMessage, oc *ownershipContext) (bool, error) {
-	var res map[string]any
-	if err := json.Unmarshal(raw, &res); err != nil {
-		return false, err
-	}
-
-	// Check well-known reference fields first.
-	for _, field := range []string{"subject", constvars.FhirFieldPatient, "recipient", "actor"} {
-		if ref := extractReference(res[field]); ref != "" && matchesOwnedRef(ref, oc) {
-			return true, nil
-		}
-	}
-
-	// participant[*].actor.reference
-	if checkParticipantOwnership(res, oc) {
-		return true, nil
-	}
-
-	// Fallback: recursive scan of all "reference" fields.
-	var refs []string
-	collectReferences(res, &refs, 0)
-	for _, ref := range refs {
-		if matchesOwnedRef(ref, oc) {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-// checkParticipantOwnership searches participant[*].actor.reference for a match.
-func checkParticipantOwnership(res map[string]any, oc *ownershipContext) bool {
-	parts, ok := res["participant"]
-	if !ok {
-		return false
-	}
-	arr, ok := parts.([]any)
-	if !ok {
-		return false
-	}
-	for _, item := range arr {
-		pm, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		if ref := extractReference(pm["actor"]); ref != "" && matchesOwnedRef(ref, oc) {
-			return true
-		}
-	}
-	return false
-}
-
-// extractReference gets the "reference" field from a FHIR reference object.
-func extractReference(v any) string {
-	if m, ok := v.(map[string]any); ok {
-		if s, ok := m["reference"].(string); ok {
-			return s
-		}
-	}
-	return ""
 }
 
 // filterSingleResourceByOwnership applies the same ownership rules as the bundle
@@ -1077,29 +918,6 @@ func (m *Middlewares) filterSingleResourceByOwnership(
 
 	// Owned → allow, and we can safely return original body bytes.
 	return body, true, nil
-}
-
-// matchesOwnedRef checks "Patient/{id}" and "Practitioner/{id}" against ownershipContext.
-func matchesOwnedRef(ref string, oc *ownershipContext) bool {
-	if strings.HasPrefix(ref, "Patient/") {
-		id := strings.TrimPrefix(ref, "Patient/")
-		_, ok := oc.PatientIDs[id]
-		return ok
-	}
-	if strings.HasPrefix(ref, "Practitioner/") {
-		id := strings.TrimPrefix(ref, "Practitioner/")
-		_, ok := oc.PractitionerIDs[id]
-		return ok
-	}
-
-	if strings.HasPrefix(ref, "PractitionerRole/") {
-		id := strings.TrimPrefix(ref, "PractitionerRole/")
-		if slices.Contains(oc.PractitionerRoleIDs, id) {
-			return true
-		}
-	}
-
-	return false
 }
 
 // authTxProxyAccess checks RBAC and query params for TxProxy access.

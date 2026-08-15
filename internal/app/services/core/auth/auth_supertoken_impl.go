@@ -359,7 +359,7 @@ func (uc *authUsecase) initializeFHIRForUser(userID string, email *string, phone
 		zap.String("user_id", userID),
 		zap.String("patient_id", result.PatientID),
 		zap.String("practitioner_id", result.PractitionerID),
-		zap.String("person_id", result.PersonID),
+		zap.Strings("practitioner_role_ids", result.PractitionerRoleIDs),
 	)
 	return nil
 }

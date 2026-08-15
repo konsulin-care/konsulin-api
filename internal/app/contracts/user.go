@@ -17,13 +17,16 @@ type InitializeNewUserFHIRResourcesInput struct {
 	// Expected format: international digits without '+' prefix (E.164 without '+').
 	Phone            string
 	SuperTokenUserID string
+	// OrganizationID optionally links created PractitionerRole resources to an
+	// Organization. Required (at the request layer) when Clinic Admin or
+	// Researcher roles are present.
+	OrganizationID string
 
 	// toogle to determine whether the underlying related FHIR resource should be created or not.
 	PractitionerRolesExists bool
 	PatientRolesExists      bool
 	ClinicAdminRolesExists  bool
 	ResearcherRolesExists   bool
-	SuperadminRolesExists   bool
 }
 
 func (i *InitializeNewUserFHIRResourcesInput) Validate() error {
@@ -60,35 +63,74 @@ func (i *InitializeNewUserFHIRResourcesInput) ToogleByRoles(roles []string) {
 			i.ClinicAdminRolesExists = true
 		case constvars.KonsulinRoleResearcher:
 			i.ResearcherRolesExists = true
-		case constvars.KonsulinRoleSuperadmin:
-			i.SuperadminRolesExists = true
 		default:
 			continue
 		}
 	}
 }
 
-// Resources translates the toggle values into the FHIR resources that should be created.
-func (i *InitializeNewUserFHIRResourcesInput) Resources() []string {
-	resources := []string{}
-	if i.PractitionerRolesExists {
-		resources = append(resources, constvars.ResourcePractitioner)
-	}
-	if i.PatientRolesExists {
-		resources = append(resources, constvars.ResourcePatient)
+// FHIRResourcePlan describes one FHIR resource to create during user initialization.
+// For PractitionerRole entries, CodingSystem/CodingCode/CodingDisplay carry the
+// practitioner-role coding; for Patient/Practitioner entries they are empty.
+type FHIRResourcePlan struct {
+	ResourceType  string
+	CodingSystem  string
+	CodingCode    string
+	CodingDisplay string
+}
+
+// Resources translates the toggle values into the structured plan of FHIR
+// resources that should be created. Each role maps to role-appropriate resources:
+//   - Patient -> Patient
+//   - Practitioner -> Practitioner
+//   - Clinic Admin -> Practitioner + PractitionerRole (SNOMED 224608005)
+//   - Researcher -> Practitioner + PractitionerRole (HL7 researcher)
+//   - Superadmin -> nothing (x-api-key only, no FHIR resource)
+//
+// The Practitioner entry is deduplicated so it appears at most once.
+func (i *InitializeNewUserFHIRResourcesInput) Resources() []FHIRResourcePlan {
+	resources := make([]FHIRResourcePlan, 0)
+	practitionerPlanned := false
+	addPractitioner := func() {
+		if practitionerPlanned {
+			return
+		}
+		practitionerPlanned = true
+		resources = append(resources, FHIRResourcePlan{ResourceType: constvars.ResourcePractitioner})
 	}
 
-	if i.ClinicAdminRolesExists || i.ResearcherRolesExists || i.SuperadminRolesExists {
-		resources = append(resources, constvars.ResourcePerson)
+	if i.PractitionerRolesExists {
+		addPractitioner()
+	}
+	if i.PatientRolesExists {
+		resources = append(resources, FHIRResourcePlan{ResourceType: constvars.ResourcePatient})
+	}
+	if i.ClinicAdminRolesExists {
+		addPractitioner()
+		resources = append(resources, FHIRResourcePlan{
+			ResourceType:  constvars.ResourcePractitionerRole,
+			CodingSystem:  constvars.FhirPractitionerRoleSystemSnomed,
+			CodingCode:    constvars.FhirPractitionerRoleCodeAdministrativeStaff,
+			CodingDisplay: constvars.FhirPractitionerRoleDisplayAdministrativeStaff,
+		})
+	}
+	if i.ResearcherRolesExists {
+		addPractitioner()
+		resources = append(resources, FHIRResourcePlan{
+			ResourceType:  constvars.ResourcePractitionerRole,
+			CodingSystem:  constvars.FhirPractitionerRoleSystemHL7,
+			CodingCode:    constvars.FhirPractitionerRoleCodeResearcher,
+			CodingDisplay: constvars.FhirPractitionerRoleDisplayResearcher,
+		})
 	}
 
 	return resources
 }
 
 type InitializeNewUserFHIRResourcesOutput struct {
-	PatientID      string
-	PractitionerID string
-	PersonID       string
+	PatientID           string
+	PractitionerID      string
+	PractitionerRoleIDs []string
 }
 
 type UserFHIRInitializer interface {

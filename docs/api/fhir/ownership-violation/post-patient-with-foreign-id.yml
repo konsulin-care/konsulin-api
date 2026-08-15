@@ -1,0 +1,62 @@
+info:
+  name: "Ownership Violation: Post Patient With Foreign Id"
+  type: http
+  seq: 12
+  tags: [ownership]
+
+http:
+  method: POST
+  url: "{{process.env.APP_BASE_URL}}/fhir/Patient"
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "Patient",
+        "id": "other-patient-b",
+        "name": [{ "family": "Other", "given": ["Test"] }]
+      }
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        bru.setVar("activeRole", "Patient");
+        await bru.sendRequest({
+          method: "POST",
+          url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
+          headers: {
+            "content-type": "application/json",
+            "Authorization": "Bearer " + bru.getVar("sessionToken")
+          },
+          data: JSON.stringify({ role: bru.getVar("activeRole") })
+        }, function(err, res) {
+          if (err) {
+            console.error("role switch failed: " + err.message);
+          } else if (res && res.headers) {
+            // the active-role response carries the regenerated access token;
+            // capture it so the following request sees the new active role
+            var newToken = res.headers["st-access-token"] || res.headers["front-token"];
+            if (newToken) { bru.setVar("sessionToken", newToken); }
+          }
+        });
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Ownership Violation: Read Email Shared Condition");'
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "401"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Expected failure: the session POSTs a Patient resource carrying Patient B's
+  id — attempting to claim a foreign identity. RBAC grants Patient POST
+  /fhir/Patient; `ValidateWriteBody` rejects the `WriteRefs` id reference
+  (the id must be owned) — 401. No resource is created.

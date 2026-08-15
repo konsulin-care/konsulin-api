@@ -155,6 +155,7 @@ p, Superadmin, GET, /fhir/Consent
 p, Superadmin, GET, /fhir/ResearchSubject
 p, Superadmin, GET, /fhir/Schedule
 p, Superadmin, POST, /fhir/Schedule
+p, Superadmin, PUT, /fhir/Schedule
 p, Superadmin, GET, /fhir/Slot
 p, Superadmin, PUT, /fhir/Slot
 p, Superadmin, GET, /fhir/metadata

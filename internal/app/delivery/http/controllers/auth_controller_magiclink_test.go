@@ -66,6 +66,59 @@ func TestNormalizeAndValidateMagicLinkRequest(t *testing.T) {
 	})
 }
 
+func TestNormalizeAndValidateMagicLinkRequest_OrganizationRequiredForAdminRoles(t *testing.T) {
+	ctrl := &AuthController{Log: zap.NewNop()}
+
+	t.Run("clinic admin without organizationId rejected", func(t *testing.T) {
+		req := &requests.SupertokenPasswordlessCreateMagicLink{
+			Email: "admin@test.com",
+			Roles: []string{constvars.KonsulinRoleClinicAdmin},
+		}
+		_, err := ctrl.normalizeAndValidateMagicLinkRequest(req, "req-1")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "organizationId")
+	})
+
+	t.Run("researcher without organizationId rejected", func(t *testing.T) {
+		req := &requests.SupertokenPasswordlessCreateMagicLink{
+			Email: "researcher@test.com",
+			Roles: []string{constvars.KonsulinRoleResearcher},
+		}
+		_, err := ctrl.normalizeAndValidateMagicLinkRequest(req, "req-1")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "organizationId")
+	})
+
+	t.Run("clinic admin with organizationId passes", func(t *testing.T) {
+		req := &requests.SupertokenPasswordlessCreateMagicLink{
+			Email:          "admin@test.com",
+			Roles:          []string{constvars.KonsulinRoleClinicAdmin},
+			OrganizationID: "org-1",
+		}
+		_, err := ctrl.normalizeAndValidateMagicLinkRequest(req, "req-1")
+		assert.NoError(t, err)
+	})
+
+	t.Run("researcher with organizationId passes", func(t *testing.T) {
+		req := &requests.SupertokenPasswordlessCreateMagicLink{
+			Email:          "researcher@test.com",
+			Roles:          []string{constvars.KonsulinRoleResearcher},
+			OrganizationID: "org-1",
+		}
+		_, err := ctrl.normalizeAndValidateMagicLinkRequest(req, "req-1")
+		assert.NoError(t, err)
+	})
+
+	t.Run("patient without organizationId passes", func(t *testing.T) {
+		req := &requests.SupertokenPasswordlessCreateMagicLink{
+			Email: "patient@test.com",
+			Roles: []string{constvars.KonsulinRolePatient},
+		}
+		_, err := ctrl.normalizeAndValidateMagicLinkRequest(req, "req-1")
+		assert.NoError(t, err)
+	})
+}
+
 func TestValidateMagicLinkRoles(t *testing.T) {
 	ctrl := &AuthController{Log: zap.NewNop()}
 

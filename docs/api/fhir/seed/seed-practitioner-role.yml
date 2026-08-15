@@ -5,8 +5,8 @@ info:
   tags: [clinic, utility]
 
 http:
-  method: POST
-  url: "{{process.env.APP_BASE_URL}}/fhir/PractitionerRole"
+  method: PUT
+  url: "{{process.env.APP_BASE_URL}}/fhir/PractitionerRole/seed-role"
   headers:
     - name: X-API-Key
       value: "{{process.env.SUPERADMIN_API_KEY}}"
@@ -15,6 +15,7 @@ http:
     data: |-
       {
         "resourceType": "PractitionerRole",
+        "id": "seed-role",
         "active": true,
         "practitioner": {
           "reference": "Practitioner/{{practitionerId}}"
@@ -50,7 +51,10 @@ runtime:
         bru.runner.setNextRequest("Seed Schedule");
   assertions:
     - expression: res.status
-      operator: eq
+      operator: gte
+      value: "200"
+    - expression: res.status
+      operator: lte
       value: "201"
 
 settings:
@@ -60,9 +64,11 @@ settings:
   maxRedirects: 5
 
 docs: |
-  Seeds the PractitionerRole linking the session user's auto-created
-  Practitioner (`practitionerId`, captured by "Check Email Exists") to the
-  seeded Organization, Location and HealthcareService. `availableTime` defines
-  the practitioner's recurring availability windows — the base of the dynamic
-  free-time computation. Captures `practitionerRoleId` and chains to
-  "Seed Schedule". Superadmin.
+  Seeds the PractitionerRole (fixed id `seed-role`, idempotent PUT) linking the
+  session user's auto-created Practitioner (`practitionerId`, captured by
+  "Check Email Exists") to the seeded Organization, Location and
+  HealthcareService. The `practitioner` reference is per-run, so each run
+  replaces the role's practitioner — the id stays fixed. `availableTime`
+  defines the practitioner's recurring availability windows — the base of the
+  dynamic free-time computation. Captures `practitionerRoleId` (equals
+  seed-role) and chains to "Seed Schedule". Superadmin.

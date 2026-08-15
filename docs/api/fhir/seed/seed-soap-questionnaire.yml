@@ -6,7 +6,7 @@ info:
 
 http:
   method: PUT
-  url: "{{process.env.APP_BASE_URL}}/fhir/Questionnaire/soap"
+  url: "{{process.env.APP_BASE_URL}}/fhir/Questionnaire/seed-soap"
   headers:
     - name: X-API-Key
       value: "{{process.env.SUPERADMIN_API_KEY}}"
@@ -15,7 +15,7 @@ http:
     data: |-
       {
         "resourceType": "Questionnaire",
-        "id": "soap",
+        "id": "seed-soap",
         "status": "active",
         "title": "SOAP Consultation Notes",
         "description": "Subjective, Objective, Assessment, Plan — the consultation note structure.",
@@ -63,8 +63,10 @@ settings:
   maxRedirects: 5
 
 docs: |
-  Seeds the SOAP questionnaire with the fixed id `soap` so
-  `GET /fhir/Questionnaire/soap` resolves. Uses PUT because Blaze ignores
-  client-supplied ids on POST; PUT creates (201) or replaces (200) the `soap`
-  resource and is idempotent across runs. Chains to "Seed Plan Definition".
+  Seeds the SOAP questionnaire with the fixed id `seed-soap` so
+  `GET /fhir/Questionnaire/seed-soap` resolves. Uses PUT because Blaze ignores
+  client-supplied ids on POST; PUT creates (201) or replaces (200) the
+  `seed-soap` resource and is idempotent across runs. The id is deliberately
+  NOT `soap`: the dev Blaze holds a real SOAP questionnaire (id `soap`) that
+  the suite must never write or delete. Chains to "Seed Plan Definition".
   Superadmin.

@@ -127,6 +127,7 @@ func (uc *authUsecase) handlePhoneMagicLink(ctx context.Context, request *reques
 		Roles:            request.Roles,
 		Email:            request.Email,
 		Phone:            phoneDigits,
+		OrganizationID:   request.OrganizationID,
 		Start:            start,
 	}); err != nil {
 		return err
@@ -180,6 +181,7 @@ func (uc *authUsecase) handleEmailMagicLink(ctx context.Context, request *reques
 		Roles:            request.Roles,
 		Email:            request.Email,
 		Phone:            "",
+		OrganizationID:   request.OrganizationID,
 		Start:            start,
 	})
 	if err != nil {
@@ -205,7 +207,7 @@ func (uc *authUsecase) handleEmailMagicLink(ctx context.Context, request *reques
 		zap.Bool(constvars.LoggingSuccessKey, true),
 		zap.String("initialized_resources_patient_id", initializeResources.PatientID),
 		zap.String("initialized_resources_practitioner_id", initializeResources.PractitionerID),
-		zap.String("initialized_resources_person_id", initializeResources.PersonID),
+		zap.Strings("initialized_resources_practitioner_role_ids", initializeResources.PractitionerRoleIDs),
 	)
 	return nil
 }
@@ -253,6 +255,7 @@ type initializeMagicLinkFHIRInput struct {
 	Roles            []string
 	Email            string
 	Phone            string
+	OrganizationID   string
 	Start            time.Time
 }
 
@@ -262,6 +265,7 @@ func initializeMagicLinkFHIR(ctx context.Context, in initializeMagicLinkFHIRInpu
 		Email:            in.Email,
 		Phone:            in.Phone,
 		SuperTokenUserID: in.SuperTokenUserID,
+		OrganizationID:   in.OrganizationID,
 	}
 	input.ToogleByRoles(in.Roles)
 	initCtx, cancel := context.WithDeadline(ctx, time.Now().Add(10*time.Second))

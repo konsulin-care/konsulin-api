@@ -25,7 +25,7 @@ http:
             "resource": {
               "resourceType": "QuestionnaireResponse",
               "status": "completed",
-              "questionnaire": "{{process.env.APP_BASE_URL}}/fhir/Questionnaire/soap",
+              "questionnaire": "{{process.env.APP_BASE_URL}}/fhir/Questionnaire/seed-soap",
               "author": {
                 "reference": "Practitioner/{{practitionerId}}"
               },
@@ -127,7 +127,8 @@ settings:
 
 docs: |
   Submits the SOAP consultation notes for the booked patient: a transaction
-  bundle creating a completed QuestionnaireResponse against the `soap`
-  questionnaire, authored by the practitioner and subject to the patient.
-  Hand-off to the admin phase. Pre-request switches to Practitioner and stamps
-  `now`.
+  bundle creating a completed QuestionnaireResponse against the `seed-soap`
+  questionnaire (the suite's own copy — the real `soap` questionnaire on a dev
+  Blaze is never written or deleted by the collection), authored by the
+  practitioner and subject to the patient. Hand-off to the admin phase.
+  Pre-request switches to Practitioner and stamps `now`.

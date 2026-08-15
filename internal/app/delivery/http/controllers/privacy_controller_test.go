@@ -226,10 +226,11 @@ func TestPurgeData_NilEnforcerFailsClosed(t *testing.T) {
 }
 
 // TestPurgeData_ClinicAdminPolicyDenied proves the policy drives, not the role
-// string: a resolved identity is denied.
+// string: a resolved identity is denied. Post-flip, a Clinic Admin session
+// resolves as a Practitioner identity; the policy grants purge only to Patient.
 func TestPurgeData_ClinicAdminPolicyDenied(t *testing.T) {
 	usecase := &ctrlMockPatientDataPurger{}
-	c := newPurgeTestController(t, usecase)
+	c := newPurgeTestControllerWithPractitioner(t, usecase)
 
 	rec := doPurgeRequest(t, c, []string{constvars.KonsulinRoleClinicAdmin}, "admin-1")
 	assert.Equal(t, http.StatusForbidden, rec.Code)

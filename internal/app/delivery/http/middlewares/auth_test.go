@@ -3,7 +3,6 @@ package middlewares
 import (
 	"context"
 	"net/http"
-	"net/url"
 	"testing"
 
 	"konsulin-service/internal/pkg/constvars"
@@ -125,11 +124,13 @@ func TestNeedsFHIRResolution(t *testing.T) {
 	}{
 		{"Patient role needs resolution", []string{constvars.KonsulinRolePatient}, true},
 		{"Practitioner role needs resolution", []string{constvars.KonsulinRolePractitioner}, true},
-		{"Clinic Admin does not need resolution", []string{constvars.KonsulinRoleClinicAdmin}, false},
-		{"Researcher does not need resolution", []string{constvars.KonsulinRoleResearcher}, false},
+		// Clinic Admin and Researcher resolve as Practitioner identities
+		// (they are practitioners with a specialized PractitionerRole coding).
+		{"Clinic Admin resolves as Practitioner", []string{constvars.KonsulinRoleClinicAdmin}, true},
+		{"Researcher resolves as Practitioner", []string{constvars.KonsulinRoleResearcher}, true},
 		{"Guest does not need resolution", []string{constvars.KonsulinRoleGuest}, false},
 		{"Multiple roles with Patient needs resolution", []string{constvars.KonsulinRoleResearcher, constvars.KonsulinRolePatient}, true},
-		{"Multiple roles without Patient/Practitioner", []string{constvars.KonsulinRoleClinicAdmin, constvars.KonsulinRoleResearcher}, false},
+		{"Multiple FHIR roles need resolution", []string{constvars.KonsulinRoleClinicAdmin, constvars.KonsulinRoleResearcher}, true},
 		{"Empty roles does not need resolution", []string{}, false},
 	}
 
@@ -163,69 +164,6 @@ func TestResolveFHIRIdentity_ActiveRolePatient_MultiMatch(t *testing.T) {
 	assert.Contains(t, err.Error(), "multiple Patient resources")
 	assert.Empty(t, role)
 	assert.Empty(t, id)
-}
-
-func TestOwnsPatientQuery_OwnResourceAllowed(t *testing.T) {
-	mw := &Middlewares{
-		PatientFhirClient:      &mockPatientClient{},
-		PractitionerFhirClient: &mockPractitionerClient{},
-	}
-
-	// Patient accessing their own resource via direct path
-	u, _ := url.Parse("/Patient/pat-1")
-	got := ownsPatientQuery(context.Background(), "pat-1", u, "Patient", mw.PatientFhirClient, mw.PractitionerFhirClient)
-	assert.True(t, got, "patient should own their own resource via path ID match")
-}
-
-func TestOwnsPatientQuery_CrossPatientIDOR(t *testing.T) {
-	mw := &Middlewares{
-		PatientFhirClient:      &mockPatientClient{},
-		PractitionerFhirClient: &mockPractitionerClient{},
-	}
-
-	// Patient A must NOT access /Patient/pat-B directly by ID
-	// This is the IDOR guard: when the path targets a different Patient ID,
-	// we must NOT fall through to query-based checks.
-	u, _ := url.Parse("/Patient/pat-B")
-	got := ownsPatientQuery(context.Background(), "pat-A", u, "Patient", mw.PatientFhirClient, mw.PractitionerFhirClient)
-	assert.False(t, got, "patient must not access another patient's resource directly by ID")
-}
-
-func TestOwnsPatientQuery_IDORViaQueryParamFallthrough(t *testing.T) {
-	mw := &Middlewares{
-		PatientFhirClient:      &mockPatientClient{},
-		PractitionerFhirClient: &mockPractitionerClient{},
-	}
-
-	// IDOR attack: Patient A requests /Patient/pat-B?_id=pat-A
-	// The path targets pat-B (not the requester), but the _id query param
-	// matches fhirID in checkPatientQueryRefs. Currently this falls through
-	// and grants access — it must NOT.
-	u, _ := url.Parse("/Patient/pat-B?_id=pat-A")
-	got := ownsPatientQuery(context.Background(), "pat-A", u, "Patient", mw.PatientFhirClient, mw.PractitionerFhirClient)
-	assert.False(t, got, "patient must not access another patient's resource even with matching _id query param")
-}
-
-func TestOwnsPatientQuery_FHIRPrefixedOwnResourceAllowed(t *testing.T) {
-	mw := &Middlewares{
-		PatientFhirClient:      &mockPatientClient{},
-		PractitionerFhirClient: &mockPractitionerClient{},
-	}
-
-	u, _ := url.Parse("/fhir/Patient/pat-1")
-	got := ownsPatientQuery(context.Background(), "pat-1", u, "Patient", mw.PatientFhirClient, mw.PractitionerFhirClient)
-	assert.True(t, got, "patient should own their own resource via fhir-prefixed path")
-}
-
-func TestOwnsPatientQuery_FHIRPrefixedCrossPatientIDOR(t *testing.T) {
-	mw := &Middlewares{
-		PatientFhirClient:      &mockPatientClient{},
-		PractitionerFhirClient: &mockPractitionerClient{},
-	}
-
-	u, _ := url.Parse("/fhir/Patient/pat-B")
-	got := ownsPatientQuery(context.Background(), "pat-A", u, "Patient", mw.PatientFhirClient, mw.PractitionerFhirClient)
-	assert.False(t, got, "patient must not access another patient via fhir-prefixed path")
 }
 
 func TestResolveFHIRIdentity_ActiveRolePatient_NoPatientResource(t *testing.T) {
@@ -360,12 +298,46 @@ func TestOwnsResource_PostConsentOwnership(t *testing.T) {
 	assert.False(t, got, "Patient must not POST a Consent for another patient")
 }
 
+func TestOwnsResource_DeleteScopesViaValidWriteQuery(t *testing.T) {
+	// A DELETE on a scoped type must fail closed through the mutating-query
+	// gate (ValidWriteQuery): the query must carry an ownership-scoping param
+	// referencing an owned identity.
+	got := ownsResource(context.Background(), "pat-1", "/fhir/Condition?patient=pat-2", constvars.KonsulinRolePatient, constvars.MethodDelete, rbacClients{}, nil)
+	assert.False(t, got, "DELETE scoped to an unowned patient must be denied")
+
+	got = ownsResource(context.Background(), "pat-1", "/fhir/Condition?patient=pat-1", constvars.KonsulinRolePatient, constvars.MethodDelete, rbacClients{}, nil)
+	assert.True(t, got, "DELETE scoped to the caller's own patient must be allowed")
+
+	got = ownsResource(context.Background(), "pat-1", "/fhir/Condition/cond-123", constvars.KonsulinRolePatient, constvars.MethodDelete, rbacClients{}, nil)
+	assert.False(t, got, "single-resource DELETE without a scoping query must be denied")
+
+	got = ownsResource(context.Background(), "pat-1", "/fhir/Patient/pat-1", constvars.KonsulinRolePatient, constvars.MethodDelete, rbacClients{}, nil)
+	assert.True(t, got, "identity DELETE on the caller's own path id must be allowed")
+	got = ownsResource(context.Background(), "pat-1", "/fhir/Patient/pat-2", constvars.KonsulinRolePatient, constvars.MethodDelete, rbacClients{}, nil)
+	assert.False(t, got, "identity DELETE on another patient's path id must be denied")
+}
+
+func TestValidatePostRequestBody_BundleSkipsSingleResourceCheck(t *testing.T) {
+	// Transaction bundles are authorized per-entry by handleAuthBundle's
+	// scanBundle; the single-resource body check must not reject the Bundle
+	// wrapper itself (the ownership spec carries no "Bundle" rule).
+	ctx := context.WithValue(context.Background(), keyRoles, []string{constvars.KonsulinRolePatient})
+	bundle := `{"resourceType":"Bundle","type":"transaction","entry":[{"request":{"method":"POST","url":"Consent"},"resource":{"resourceType":"Consent","status":"active","patient":{"reference":"Patient/pat-1"}}}]}`
+
+	err := validatePostRequestBody(ctx, []byte(bundle), constvars.KonsulinRolePatient, "pat-1")
+
+	assert.NoError(t, err, "a Bundle POST must pass the single-resource body check; entries are validated per-entry by scanBundle")
+}
+
 func TestCheckPatientRefs_ResearchSubjectIndividual(t *testing.T) {
-	// PUT ownership for ResearchSubject relies on individual.reference.
-	assert.True(t, checkPatientRefs(`{"resourceType":"ResearchSubject","status":"active","individual":{"reference":"Patient/pat-1"}}`, "pat-1"),
-		"patient should own a ResearchSubject referencing themselves via individual")
-	assert.False(t, checkPatientRefs(`{"resourceType":"ResearchSubject","status":"active","individual":{"reference":"Patient/pat-2"}}`, "pat-1"),
-		"patient must not own a ResearchSubject referencing another patient")
+	// PUT ownership for ResearchSubject relies on individual.reference,
+	// enforced by the ownership engine's WriteRefs (strict semantics).
+	own := validateResourceOwnership(context.Background(), "pat-1", constvars.KonsulinRolePatient, constvars.ResourceResearchSubject,
+		[]byte(`{"resourceType":"ResearchSubject","status":"active","individual":{"reference":"Patient/pat-1"}}`), rbacClients{})
+	assert.True(t, own, "patient should own a ResearchSubject referencing themselves via individual")
+	other := validateResourceOwnership(context.Background(), "pat-1", constvars.KonsulinRolePatient, constvars.ResourceResearchSubject,
+		[]byte(`{"resourceType":"ResearchSubject","status":"active","individual":{"reference":"Patient/pat-2"}}`), rbacClients{})
+	assert.False(t, other, "patient must not own a ResearchSubject referencing another patient")
 }
 
 func TestExtractPathResourceID(t *testing.T) {
@@ -456,7 +428,6 @@ func TestValidateCommunicationSenderInBody(t *testing.T) {
 		body := `{"resourceType":"Communication","status":"completed","sender":{"reference":"Patient/pat-2"}}`
 		err := validateCommunicationSenderInBody([]byte(body), "pat-1")
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "pat-2")
 	})
 
 	t.Run("missing sender is lenient", func(t *testing.T) {
@@ -495,14 +466,19 @@ func TestValidatePatientCommunicationSender(t *testing.T) {
 
 func TestCheckScopedEntryRead(t *testing.T) {
 	const patientID = "pat-1"
+	ctx := func(role string) context.Context {
+		return context.WithValue(context.Background(), keyFHIRRole, role)
+	}
 	tests := []struct {
-		name         string
-		method       string
-		resourceType string
-		roles        []string
-		fhirID       string
-		rawURL       string
-		wantErr      bool
+		name          string
+		method        string
+		resourceType  string
+		roles         []string
+		fhirID        string
+		rawURL        string
+		fhirRole      string
+		fhirIDsByRole map[string]string
+		wantErr       bool
 	}{
 		{
 			name:         "patient scoped communication read allowed",
@@ -510,7 +486,81 @@ func TestCheckScopedEntryRead(t *testing.T) {
 			resourceType: constvars.ResourceCommunication,
 			roles:        []string{constvars.KonsulinRolePatient},
 			fhirID:       patientID,
+			fhirRole:     constvars.KonsulinRolePatient,
 			rawURL:       "http://blaze/fhir/Communication?sender=Patient/pat-1",
+		},
+		{
+			// Reported request: dual-identity session active as a
+			// practitioner-family role. The researcher coding makes the scope
+			// gate fail closed unless the caller's own patient id is seeded
+			// from the secondary identity map.
+			name:         "dual-role practitioner-active patient scope allowed",
+			method:       http.MethodGet,
+			resourceType: constvars.ResourceQuestionnaireResponse,
+			roles: []string{
+				constvars.KonsulinRolePatient,
+				constvars.KonsulinRolePractitioner,
+				constvars.KonsulinRoleClinicAdmin,
+				constvars.KonsulinRoleResearcher,
+			},
+			fhirID:        "prac-1",
+			fhirRole:      constvars.KonsulinRolePractitioner,
+			fhirIDsByRole: map[string]string{constvars.KonsulinRolePatient: patientID},
+			rawURL:        "http://blaze/fhir/QuestionnaireResponse?author=Patient/pat-1&status=completed&_elements=questionnaire,authored&_count=500&authored=ge2026-01-01",
+		},
+		{
+			// Seeding proves only the caller's own patient identity: scoping
+			// by a different patient's author must still fail closed.
+			name:         "dual-role other patient scope denied",
+			method:       http.MethodGet,
+			resourceType: constvars.ResourceQuestionnaireResponse,
+			roles: []string{
+				constvars.KonsulinRolePatient,
+				constvars.KonsulinRolePractitioner,
+				constvars.KonsulinRoleClinicAdmin,
+				constvars.KonsulinRoleResearcher,
+			},
+			fhirID:        "prac-1",
+			fhirRole:      constvars.KonsulinRolePractitioner,
+			fhirIDsByRole: map[string]string{constvars.KonsulinRolePatient: patientID},
+			rawURL:        "http://blaze/fhir/QuestionnaireResponse?author=Patient/pat-2&status=completed",
+			wantErr:       true,
+		},
+		{
+			// The lazy first pass carries no secondary map: no patient id to
+			// match and the researcher allowance is unanchored, so the gate
+			// still fails closed until the retry populates the map.
+			name:         "dual-role no secondary map denied",
+			method:       http.MethodGet,
+			resourceType: constvars.ResourceQuestionnaireResponse,
+			roles: []string{
+				constvars.KonsulinRolePatient,
+				constvars.KonsulinRolePractitioner,
+				constvars.KonsulinRoleClinicAdmin,
+				constvars.KonsulinRoleResearcher,
+			},
+			fhirID:   "prac-1",
+			fhirRole: constvars.KonsulinRolePractitioner,
+			rawURL:   "http://blaze/fhir/QuestionnaireResponse?author=Patient/pat-1&status=completed",
+			wantErr:  true,
+		},
+		{
+			// Dual-identity seeding applies to Communication too: a
+			// patient-scoped sender query passes under a practitioner-active
+			// session.
+			name:         "dual-role practitioner-active communication pass",
+			method:       http.MethodGet,
+			resourceType: constvars.ResourceCommunication,
+			roles: []string{
+				constvars.KonsulinRolePatient,
+				constvars.KonsulinRolePractitioner,
+				constvars.KonsulinRoleClinicAdmin,
+				constvars.KonsulinRoleResearcher,
+			},
+			fhirID:        "prac-1",
+			fhirRole:      constvars.KonsulinRolePractitioner,
+			fhirIDsByRole: map[string]string{constvars.KonsulinRolePatient: patientID},
+			rawURL:        "http://blaze/fhir/Communication?sender=Patient/pat-1&topic=research-referral",
 		},
 		{
 			name:         "patient unscoped communication read denied",
@@ -518,6 +568,7 @@ func TestCheckScopedEntryRead(t *testing.T) {
 			resourceType: constvars.ResourceCommunication,
 			roles:        []string{constvars.KonsulinRolePatient},
 			fhirID:       patientID,
+			fhirRole:     constvars.KonsulinRolePatient,
 			rawURL:       "http://blaze/fhir/Communication?status=completed",
 			wantErr:      true,
 		},
@@ -527,6 +578,7 @@ func TestCheckScopedEntryRead(t *testing.T) {
 			resourceType: constvars.ResourceQuestionnaireResponse,
 			roles:        []string{constvars.KonsulinRolePatient},
 			fhirID:       patientID,
+			fhirRole:     constvars.KonsulinRolePatient,
 			rawURL:       "http://blaze/fhir/QuestionnaireResponse?_summary=count",
 		},
 		{
@@ -544,7 +596,7 @@ func TestCheckScopedEntryRead(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := checkScopedEntryRead(tt.method, tt.resourceType, tt.roles, tt.fhirID, tt.rawURL)
+			err := checkScopedEntryRead(ctx(tt.fhirRole), tt.method, tt.resourceType, tt.roles, tt.fhirID, tt.rawURL, tt.fhirIDsByRole)
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {

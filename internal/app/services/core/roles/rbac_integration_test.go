@@ -3,19 +3,22 @@ package roles
 import (
 	"testing"
 
+	"konsulin-service/internal/pkg/ownership"
 	"konsulin-service/internal/pkg/utils"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestRBACIntegration(t *testing.T) {
+// newRBACEnforcer builds the Casbin enforcer from the RBAC model and policy
+// files, registering the pathMatch function the policy references. Skips the
+// test when the RBAC files are missing (e.g. package-only CI runs).
+func newRBACEnforcer(t *testing.T) *casbin.Enforcer {
+	t.Helper()
 	enforcer, err := casbin.NewEnforcer("../../../../../resources/rbac_model.conf", "../../../../../resources/rbac_policy.csv")
 	if err != nil {
 		t.Skipf("Skipping test due to missing RBAC files: %v", err)
-		return
 	}
-
 	enforcer.AddFunction("pathMatch", func(args ...interface{}) (interface{}, error) {
 		if len(args) != 2 {
 			return false, nil
@@ -27,334 +30,214 @@ func TestRBACIntegration(t *testing.T) {
 		}
 		return utils.PathMatch(requestPath, policyPath), nil
 	})
+	return enforcer
+}
 
-	t.Run("Guest Role Specific Use Cases", func(t *testing.T) {
+// assertEnforce asserts that the enforcer grants the given role/method/path.
+func assertEnforce(t *testing.T, e *casbin.Enforcer, role, method, path string, want bool) {
+	t.Helper()
+	allowed, err := e.Enforce(role, method, path)
+	assert.NoError(t, err)
+	assert.Equal(t, want, allowed, "%s %s %s", role, method, path)
+}
 
-		allowed, err := enforcer.Enforce("Guest", "GET", "/fhir/Organization?_elements=name,address")
-		assert.NoError(t, err)
-		assert.True(t, allowed, "Guest should be able to access /fhir/Organization?_elements=name,address")
+func TestRBACPathLevelAccess(t *testing.T) {
+	e := newRBACEnforcer(t)
 
-		allowed, err = enforcer.Enforce("Guest", "GET", "/fhir/Slot?schedule.actor=PractitionerRole/123&start=2025-01-01")
-		assert.NoError(t, err)
-		assert.True(t, allowed, "Guest should be able to access /fhir/Slot?schedule.actor=PractitionerRole/123&start=2025-01-01")
+	// Guest: public metadata and slot listings.
+	for _, path := range []string{
+		"/fhir/Organization?_elements=name,address",
+		"/fhir/Slot?schedule.actor=PractitionerRole/123&start=2025-01-01",
+		"/fhir/Slot?schedule.actor=PractitionerRole/456",
+	} {
+		assertEnforce(t, e, "Guest", "GET", path, true)
+	}
 
-		allowed, err = enforcer.Enforce("Guest", "GET", "/fhir/Slot?schedule.actor=PractitionerRole/456")
-		assert.NoError(t, err)
-		assert.True(t, allowed, "Guest should be able to access /fhir/Slot?schedule.actor=PractitionerRole/456")
-	})
+	// Clinic Admin and Superadmin: same public paths.
+	for _, path := range []string{
+		"/fhir/Organization?_elements=name,address",
+		"/fhir/Slot?schedule.actor=PractitionerRole/789&start=2025-01-01",
+	} {
+		assertEnforce(t, e, "Clinic Admin", "GET", path, true)
+	}
+	for _, path := range []string{
+		"/fhir/Organization?_elements=name,address",
+		"/fhir/Slot?schedule.actor=PractitionerRole/999&start=2025-01-01",
+	} {
+		assertEnforce(t, e, "Superadmin", "GET", path, true)
+	}
 
-	t.Run("Clinic Admin Role Specific Use Cases", func(t *testing.T) {
+	// Patient public resources.
+	for _, path := range []string{
+		"/fhir/Questionnaire?_elements=title,description&subject-type=Person,Patient&status=active&context=popular",
+		"/fhir/ResearchStudy?date=ge2025-04-14&_revinclude=List:item",
+		"/fhir/Organization?_elements=name,address",
+		"/fhir/PractitionerRole?active=true",
+		"/fhir/Slot?status=free",
+	} {
+		assertEnforce(t, e, "Patient", "GET", path, true)
+	}
 
-		allowed, err := enforcer.Enforce("Clinic Admin", "GET", "/fhir/Organization?_elements=name,address")
-		assert.NoError(t, err)
-		assert.True(t, allowed, "Clinic Admin should be able to access /fhir/Organization?_elements=name,address")
+	// The Casbin enforcer grants path-level access by role/method/resource
+	// path. ID-level ownership is enforced downstream in ownsResource
+	// (middlewares/auth.go) for writes and post-request filtering
+	// (middlewares/proxy.go) for reads, which this enforcer-only test does not
+	// wire up.
+	for _, path := range []string{
+		"/fhir/Patient/patient-123",
+		"/fhir/Patient/other-patient-456",
+		"/fhir/Appointment?actor=Patient/patient-123",
+		"/fhir/Appointment?actor=Patient/other-patient-456",
+		"/fhir/Observation?subject=Patient/patient-123",
+		"/fhir/Observation?subject=Patient/other-patient-456",
+	} {
+		assertEnforce(t, e, "Patient", "GET", path, true)
+	}
 
-		allowed, err = enforcer.Enforce("Clinic Admin", "GET", "/fhir/Slot?schedule.actor=PractitionerRole/789&start=2025-01-01")
-		assert.NoError(t, err)
-		assert.True(t, allowed, "Clinic Admin should be able to access /fhir/Slot?schedule.actor=PractitionerRole/789&start=2025-01-01")
-	})
+	// Complex appointment queries are path-granted regardless of the actor.
+	for _, path := range []string{
+		"/fhir/Appointment?actor=Patient/patient-123&slot.start=ge2025-01-01T00:00:00+00:00&_include=Appointment:actor:PractitionerRole&_include:iterate=PractitionerRole:practitioner&_include=Appointment:slot",
+		"/fhir/Appointment?actor=Patient/other-patient-456&slot.start=ge2025-01-01T00:00:00+00:00&_include=Appointment:actor:PractitionerRole&_include:iterate=PractitionerRole:practitioner&_include=Appointment:slot",
+	} {
+		assertEnforce(t, e, "Patient", "GET", path, true)
+	}
 
-	t.Run("Superadmin Role Specific Use Cases", func(t *testing.T) {
+	// Query parameter variations: base paths and query suffixes stay public.
+	for _, path := range []string{
+		"/fhir/Organization",
+		"/fhir/Organization?_elements=name,address",
+		"/fhir/Organization?_elements=title,description",
+		"/fhir/Organization?_elements=name,address&status=active&_count=10",
+		"/fhir/Slot?schedule.actor=PractitionerRole/123",
+		"/fhir/Slot?schedule.actor=PractitionerRole/123&start=2025-01-01",
+		"/fhir/Slot?schedule.actor=PractitionerRole/123&start=2025-01-01&status=free&_count=20",
+	} {
+		assertEnforce(t, e, "Guest", "GET", path, true)
+	}
+}
 
-		allowed, err := enforcer.Enforce("Superadmin", "GET", "/fhir/Organization?_elements=name,address")
-		assert.NoError(t, err)
-		assert.True(t, allowed, "Superadmin should be able to access /fhir/Organization?_elements=name,address")
+func TestPathMatchFunction(t *testing.T) {
+	testCases := []struct {
+		name        string
+		requestPath string
+		policyPath  string
+		expected    bool
+	}{
+		{
+			name:        "Exact match without query",
+			requestPath: "/fhir/Organization",
+			policyPath:  "/fhir/Organization",
+			expected:    true,
+		},
+		{
+			name:        "Base path match with query",
+			requestPath: "/fhir/Organization?_elements=name,address",
+			policyPath:  "/fhir/Organization",
+			expected:    true,
+		},
+		{
+			name:        "Different base paths",
+			requestPath: "/fhir/Patient",
+			policyPath:  "/fhir/Organization",
+			expected:    false,
+		},
+		{
+			name:        "Path with special characters",
+			requestPath: "/fhir/Slot?schedule.actor=PractitionerRole/123&start=2025-01-01",
+			policyPath:  "/fhir/Slot",
+			expected:    true,
+		},
+		{
+			name:        "Resource ID sub-path match",
+			requestPath: "/fhir/PractitionerRole/DGKAVBCXVMWT6UOE",
+			policyPath:  "/fhir/PractitionerRole",
+			expected:    true,
+		},
+		{
+			name:        "Resource ID sub-path match with query",
+			requestPath: "/fhir/PractitionerRole/DGKAVBCXVMWT6UOE?_elements=id,active",
+			policyPath:  "/fhir/PractitionerRole",
+			expected:    true,
+		},
+		{
+			name:        "Patient resource ID sub-path match",
+			requestPath: "/fhir/Patient/ABC123",
+			policyPath:  "/fhir/Patient",
+			expected:    true,
+		},
+		{
+			name:        "False positive prevention - similar prefix",
+			requestPath: "/fhir/PractitionerRoleABC",
+			policyPath:  "/fhir/PractitionerRole",
+			expected:    false,
+		},
+		{
+			name:        "Policy path with trailing slash - exact match required",
+			requestPath: "/fhir/Organization/",
+			policyPath:  "/fhir/Organization/",
+			expected:    true,
+		},
+		{
+			name:        "Policy path with trailing slash - sub-path not allowed",
+			requestPath: "/fhir/Organization/123",
+			policyPath:  "/fhir/Organization/",
+			expected:    false,
+		},
+	}
 
-		allowed, err = enforcer.Enforce("Superadmin", "GET", "/fhir/Slot?schedule.actor=PractitionerRole/999&start=2025-01-01")
-		assert.NoError(t, err)
-		assert.True(t, allowed, "Superadmin should be able to access /fhir/Slot?schedule.actor=PractitionerRole/999&start=2025-01-01")
-	})
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := utils.PathMatch(tc.requestPath, tc.policyPath)
+			assert.Equal(t, tc.expected, result, "Request: %s, Policy: %s", tc.requestPath, tc.policyPath)
+		})
+	}
+}
 
-	t.Run("Patient Role Public Resources", func(t *testing.T) {
+func TestRBACResourceClassification(t *testing.T) {
+	// Ownership classification lives in the declarative spec
+	// (internal/pkg/ownership); the RBAC policy gates paths separately.
+	for _, resource := range []string{"Questionnaire", "ResearchStudy", "Organization", "PractitionerRole", "Slot", "Schedule"} {
+		t.Run("Public_"+resource, func(t *testing.T) {
+			rule, ok := ownership.Rule(resource)
+			assert.True(t, ok && rule.Scope == ownership.ScopePublic, "%s should be classified as public", resource)
+		})
+	}
 
-		allowed, err := enforcer.Enforce("Patient", "GET", "/fhir/Questionnaire?_elements=title,description&subject-type=Person,Patient&status=active&context=popular")
-		assert.NoError(t, err)
-		assert.True(t, allowed, "Patient should be able to access public questionnaires")
+	for _, resource := range []string{"Patient", "Appointment", "Observation", "Encounter", "Consent", "ResearchSubject", "Communication"} {
+		t.Run("PatientOwned_"+resource, func(t *testing.T) {
+			rule, ok := ownership.Rule(resource)
+			assert.True(t, ok, "%s should have an ownership rule", resource)
+			assert.True(t, ruleHasRefTarget(rule, "Patient"), "%s should be patient-owned", resource)
+		})
+	}
+}
 
-		allowed, err = enforcer.Enforce("Patient", "GET", "/fhir/ResearchStudy?date=ge2025-04-14&_revinclude=List:item")
-		assert.NoError(t, err)
-		assert.True(t, allowed, "Patient should be able to access public research studies")
-
-		allowed, err = enforcer.Enforce("Patient", "GET", "/fhir/Organization?_elements=name,address")
-		assert.NoError(t, err)
-		assert.True(t, allowed, "Patient should be able to access public organization info")
-
-		allowed, err = enforcer.Enforce("Patient", "GET", "/fhir/PractitionerRole?active=true")
-		assert.NoError(t, err)
-		assert.True(t, allowed, "Patient should be able to access public practitioner roles")
-
-		allowed, err = enforcer.Enforce("Patient", "GET", "/fhir/Slot?status=free")
-		assert.NoError(t, err)
-		assert.True(t, allowed, "Patient should be able to access public slots")
-	})
-
-	// The Casbin enforcer grants path-level access by role/method/resource path.
-	// ID-level ownership is enforced downstream in ownsResource (middlewares/auth.go)
-	// for writes and post-request filtering (middlewares/proxy.go) for reads, which
-	// this enforcer-only test does not wire up.
-	t.Run("Patient Role Path-Level Access", func(t *testing.T) {
-
-		allowed, err := enforcer.Enforce("Patient", "GET", "/fhir/Patient/patient-123")
-		assert.NoError(t, err)
-		assert.True(t, allowed, "Patient policy should grant access to their own patient resource path")
-
-		allowed, err = enforcer.Enforce("Patient", "GET", "/fhir/Patient/other-patient-456")
-		assert.NoError(t, err)
-		assert.True(t, allowed, "policy grants path-level access; ID-level ownership is enforced downstream")
-
-		allowed, err = enforcer.Enforce("Patient", "GET", "/fhir/Appointment?actor=Patient/patient-123")
-		assert.NoError(t, err)
-		assert.True(t, allowed, "Patient policy should grant access to appointment paths")
-
-		allowed, err = enforcer.Enforce("Patient", "GET", "/fhir/Appointment?actor=Patient/other-patient-456")
-		assert.NoError(t, err)
-		assert.True(t, allowed, "policy grants path-level access; ID-level ownership is enforced downstream")
-
-		allowed, err = enforcer.Enforce("Patient", "GET", "/fhir/Observation?subject=Patient/patient-123")
-		assert.NoError(t, err)
-		assert.True(t, allowed, "Patient policy should grant access to observation paths")
-
-		allowed, err = enforcer.Enforce("Patient", "GET", "/fhir/Observation?subject=Patient/other-patient-456")
-		assert.NoError(t, err)
-		assert.True(t, allowed, "policy grants path-level access; ID-level ownership is enforced downstream")
-	})
-
-	t.Run("Patient Role Complex Appointment Queries", func(t *testing.T) {
-
-		allowed, err := enforcer.Enforce("Patient", "GET", "/fhir/Appointment?actor=Patient/patient-123&slot.start=ge2025-01-01T00:00:00+00:00&_include=Appointment:actor:PractitionerRole&_include:iterate=PractitionerRole:practitioner&_include=Appointment:slot")
-		assert.NoError(t, err)
-		assert.True(t, allowed, "Patient should be able to access their own appointments with complex query")
-
-		allowed, err = enforcer.Enforce("Patient", "GET", "/fhir/Appointment?actor=Patient/other-patient-456&slot.start=ge2025-01-01T00:00:00+00:00&_include=Appointment:actor:PractitionerRole&_include:iterate=PractitionerRole:practitioner&_include=Appointment:slot")
-		assert.NoError(t, err)
-		assert.True(t, allowed, "policy grants path-level access regardless of actor; ID-level ownership is enforced downstream")
-	})
-
-	t.Run("Query Parameter Variations", func(t *testing.T) {
-
-		testCases := []struct {
-			name     string
-			path     string
-			expected bool
-		}{
-			{
-				name:     "Basic organization access",
-				path:     "/fhir/Organization",
-				expected: true,
-			},
-			{
-				name:     "Organization with elements",
-				path:     "/fhir/Organization?_elements=name,address",
-				expected: true,
-			},
-			{
-				name:     "Organization with different elements",
-				path:     "/fhir/Organization?_elements=title,description",
-				expected: true,
-			},
-			{
-				name:     "Organization with multiple parameters",
-				path:     "/fhir/Organization?_elements=name,address&status=active&_count=10",
-				expected: true,
-			},
-			{
-				name:     "Slot with schedule actor",
-				path:     "/fhir/Slot?schedule.actor=PractitionerRole/123",
-				expected: true,
-			},
-			{
-				name:     "Slot with schedule actor and start date",
-				path:     "/fhir/Slot?schedule.actor=PractitionerRole/123&start=2025-01-01",
-				expected: true,
-			},
-			{
-				name:     "Slot with multiple parameters",
-				path:     "/fhir/Slot?schedule.actor=PractitionerRole/123&start=2025-01-01&status=free&_count=20",
-				expected: true,
-			},
+func TestRBACConsentResearchSubjectPolicy(t *testing.T) {
+	e := newRBACEnforcer(t)
+	for _, res := range []string{"Consent", "ResearchSubject"} {
+		// Patient: GET/POST/PUT allowed.
+		for _, method := range []string{"GET", "POST", "PUT"} {
+			assertEnforce(t, e, "Patient", method, "/fhir/"+res, true)
 		}
 
-		for _, tc := range testCases {
-			t.Run(tc.name, func(t *testing.T) {
-				allowed, err := enforcer.Enforce("Guest", "GET", tc.path)
-				assert.NoError(t, err)
-				assert.Equal(t, tc.expected, allowed, "Path: %s", tc.path)
-			})
-		}
-	})
-
-	t.Run("PathMatch Function", func(t *testing.T) {
-
-		testCases := []struct {
-			name        string
-			requestPath string
-			policyPath  string
-			expected    bool
-		}{
-			{
-				name:        "Exact match without query",
-				requestPath: "/fhir/Organization",
-				policyPath:  "/fhir/Organization",
-				expected:    true,
-			},
-			{
-				name:        "Base path match with query",
-				requestPath: "/fhir/Organization?_elements=name,address",
-				policyPath:  "/fhir/Organization",
-				expected:    true,
-			},
-			{
-				name:        "Different base paths",
-				requestPath: "/fhir/Patient",
-				policyPath:  "/fhir/Organization",
-				expected:    false,
-			},
-			{
-				name:        "Path with special characters",
-				requestPath: "/fhir/Slot?schedule.actor=PractitionerRole/123&start=2025-01-01",
-				policyPath:  "/fhir/Slot",
-				expected:    true,
-			},
-			{
-				name:        "Resource ID sub-path match",
-				requestPath: "/fhir/PractitionerRole/DGKAVBCXVMWT6UOE",
-				policyPath:  "/fhir/PractitionerRole",
-				expected:    true,
-			},
-			{
-				name:        "Resource ID sub-path match with query",
-				requestPath: "/fhir/PractitionerRole/DGKAVBCXVMWT6UOE?_elements=id,active",
-				policyPath:  "/fhir/PractitionerRole",
-				expected:    true,
-			},
-			{
-				name:        "Patient resource ID sub-path match",
-				requestPath: "/fhir/Patient/ABC123",
-				policyPath:  "/fhir/Patient",
-				expected:    true,
-			},
-			{
-				name:        "False positive prevention - similar prefix",
-				requestPath: "/fhir/PractitionerRoleABC",
-				policyPath:  "/fhir/PractitionerRole",
-				expected:    false,
-			},
-			{
-				name:        "Policy path with trailing slash - exact match required",
-				requestPath: "/fhir/Organization/",
-				policyPath:  "/fhir/Organization/",
-				expected:    true,
-			},
-			{
-				name:        "Policy path with trailing slash - sub-path not allowed",
-				requestPath: "/fhir/Organization/123",
-				policyPath:  "/fhir/Organization/",
-				expected:    false,
-			},
+		// Researcher: GET allowed, writes denied.
+		assertEnforce(t, e, "Researcher", "GET", "/fhir/"+res, true)
+		for _, method := range []string{"POST", "PUT", "DELETE"} {
+			assertEnforce(t, e, "Researcher", method, "/fhir/"+res, false)
 		}
 
-		for _, tc := range testCases {
-			t.Run(tc.name, func(t *testing.T) {
-				result := utils.PathMatch(tc.requestPath, tc.policyPath)
-				assert.Equal(t, tc.expected, result, "Request: %s, Policy: %s", tc.requestPath, tc.policyPath)
-			})
-		}
-	})
+		// Superadmin: GET allowed.
+		assertEnforce(t, e, "Superadmin", "GET", "/fhir/"+res, true)
 
-	t.Run("Resource Type Classification", func(t *testing.T) {
-
-		publicResources := []string{"Questionnaire", "ResearchStudy", "Organization", "PractitionerRole", "Slot", "Practitioner", "Schedule"}
-		for _, resource := range publicResources {
-			t.Run("Public_"+resource, func(t *testing.T) {
-				assert.True(t, utils.IsPublicResource(resource), "%s should be classified as public", resource)
-				assert.False(t, utils.RequiresPatientOwnership(resource), "%s should not require patient ownership", resource)
-			})
-		}
-
-		patientResources := []string{"Patient", "Appointment", "Observation", "Encounter", "Consent", "ResearchSubject"}
-		for _, resource := range patientResources {
-			t.Run("PatientSpecific_"+resource, func(t *testing.T) {
-				assert.False(t, utils.IsPublicResource(resource), "%s should not be classified as public", resource)
-				assert.True(t, utils.RequiresPatientOwnership(resource), "%s should require patient ownership", resource)
-			})
-		}
-
-		testCases := []struct {
-			name     string
-			path     string
-			expected string
-		}{
-			{
-				name:     "FHIR path",
-				path:     "/fhir/Patient/123",
-				expected: "Patient",
-			},
-			{
-				name:     "Direct path",
-				path:     "/Patient/123",
-				expected: "Patient",
-			},
-			{
-				name:     "FHIR path with query",
-				path:     "/fhir/Organization?_elements=name,address",
-				expected: "Organization",
-			},
-			{
-				name:     "Complex path",
-				path:     "/fhir/Appointment?actor=Patient/123&slot.start=ge2025-01-01",
-				expected: "Appointment",
-			},
-		}
-
-		for _, tc := range testCases {
-			t.Run("Extract_"+tc.name, func(t *testing.T) {
-				result := utils.ExtractResourceTypeFromPath(tc.path)
-				assert.Equal(t, tc.expected, result, "Path: %s", tc.path)
-			})
-		}
-	})
-
-	t.Run("Consent and ResearchSubject Policy", func(t *testing.T) {
-		for _, res := range []string{"Consent", "ResearchSubject"} {
-			// Patient: GET/POST/PUT allowed.
+		// Guest / Practitioner / Clinic Admin: denied.
+		for _, role := range []string{"Guest", "Practitioner", "Clinic Admin"} {
 			for _, method := range []string{"GET", "POST", "PUT"} {
-				allowed, err := enforcer.Enforce("Patient", method, "/fhir/"+res)
-				assert.NoError(t, err)
-				assert.True(t, allowed, "Patient %s /fhir/%s should be allowed", method, res)
-			}
-
-			// Researcher: GET allowed, writes denied.
-			allowed, err := enforcer.Enforce("Researcher", "GET", "/fhir/"+res)
-			assert.NoError(t, err)
-			assert.True(t, allowed, "Researcher GET /fhir/%s should be allowed", res)
-			for _, method := range []string{"POST", "PUT", "DELETE"} {
-				allowed, err = enforcer.Enforce("Researcher", method, "/fhir/"+res)
-				assert.NoError(t, err)
-				assert.False(t, allowed, "Researcher %s /fhir/%s should be denied", method, res)
-			}
-
-			// Superadmin: GET allowed.
-			allowed, err = enforcer.Enforce("Superadmin", "GET", "/fhir/"+res)
-			assert.NoError(t, err)
-			assert.True(t, allowed, "Superadmin GET /fhir/%s should be allowed", res)
-
-			// Guest / Practitioner / Clinic Admin: denied.
-			for _, role := range []string{"Guest", "Practitioner", "Clinic Admin"} {
-				for _, method := range []string{"GET", "POST", "PUT"} {
-					allowed, err = enforcer.Enforce(role, method, "/fhir/"+res)
-					assert.NoError(t, err)
-					assert.False(t, allowed, "%s %s /fhir/%s should be denied", role, method, res)
-				}
+				assertEnforce(t, e, role, method, "/fhir/"+res, false)
 			}
 		}
+	}
 
-		// Prefix matching: /fhir/Consent covers sub-paths and query params.
-		allowed, err := enforcer.Enforce("Patient", "GET", "/fhir/Consent/consent-123")
-		assert.NoError(t, err)
-		assert.True(t, allowed, "Patient GET /fhir/Consent/{id} should be allowed via prefix match")
-
-		allowed, err = enforcer.Enforce("Patient", "GET", "/fhir/ResearchSubject/rs-1?patient=Patient/pat-1")
-		assert.NoError(t, err)
-		assert.True(t, allowed, "Patient GET /fhir/ResearchSubject/{id} with query should be allowed via prefix match")
-	})
+	// Prefix matching: /fhir/Consent covers sub-paths and query params.
+	assertEnforce(t, e, "Patient", "GET", "/fhir/Consent/consent-123", true)
+	assertEnforce(t, e, "Patient", "GET", "/fhir/ResearchSubject/rs-1?patient=Patient/pat-1", true)
 }
