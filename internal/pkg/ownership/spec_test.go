@@ -17,22 +17,21 @@ import (
 // tests too; this test documents the exact strings.
 func TestRefPathConstants(t *testing.T) {
 	cases := map[string]string{
-		refSubject:    "subject.reference",
-		refPatient:    "patient.reference",
-		refActor:      "participant.#.actor.reference",
-		refSender:     "sender.reference",
-		refRecipient:  "recipient.reference",
-		refPerformer:  "performer.#.reference",
-		refAuthor:     "author.reference",
-		refEnterer:    "enterer.reference",
-		refProvider:   "provider.reference",
+		refSubject:   "subject.reference",
+		refPatient:   "patient.reference",
+		refActor:     "participant.#.actor.reference",
+		refSender:    "sender.reference",
+		refRecipient: "recipient.reference",
+		refPerformer: "performer.#.reference",
+		refAuthor:    "author.reference",
+		refEnterer:   "enterer.reference",
+		refProvider:  "provider.reference",
 	}
 	for constant, want := range cases {
 		assert.Equal(t, want, constant, "constant value")
 	}
 	assert.Len(t, cases, 9, "all flagged duplicate literals are constantized")
 }
-
 
 // rbacPolicyRow is one parsed rbac_policy.csv row.
 type rbacPolicyRow struct {
