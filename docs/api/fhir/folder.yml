@@ -54,11 +54,20 @@ docs: |
   manual helper request.
 
   ## Chain overview
-  auth (magiclink → … → Set Active Role) → seed (9 superadmin creates) →
-  patient (17 requests) → practitioner (9 requests) → admin (2 requests) →
-  cleanup (3 deletions) → Sign Out. Each request chains to the next via
-  `bru.runner.setNextRequest("<next>")`; chaining works across subfolders.
+  auth (magiclink → … → Set Active Role) → seed (9 superadmin idempotent PUTs,
+  fixed ids seed-clinic … seed-study) → patient (17 requests) → practitioner
+  (9 requests) → admin (2 requests) → cleanup (3 deletions) → Sign Out. Each
+  request chains to the next via `bru.runner.setNextRequest("<next>")`;
+  chaining works across subfolders.
 
   ## Cleanup
   RBAC only permits deleting Patient, Practitioner and Organization via the API.
   All other resources need direct Blaze cleanup (see cleanup/folder.yml).
+
+  The chained cleanup only runs when the whole journey completes. Because the
+  pre-commit wrapper runs `bru run --bail`, a mid-run failure would otherwise
+  leave the fixed-id seed resources behind. `scripts/bru-run.sh` therefore runs
+  `scripts/bru-cleanup.sh` after every suite run — success or failure — a
+  Blaze-direct sweep keyed on the seed ids and the seeds' distinctive content.
+  It never touches `Organization/Konsulin` (boot-created) or the real
+  `Questionnaire/soap`; see scripts/bru-cleanup.sh.

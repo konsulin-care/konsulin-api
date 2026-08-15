@@ -12,7 +12,20 @@ docs: |
   linearly: Organization → Location → HealthcareService → PractitionerRole →
   Schedule → Questionnaire → SOAP Questionnaire → PlanDefinition → ResearchStudy.
 
+  Every seed is a PUT with a fixed id (`seed-clinic`, `seed-location`, `seed-hs`,
+  `seed-role`, `seed-schedule`, `seed-wellbeing`, `seed-soap`, `seed-protocol`,
+  `seed-study`), so re-running the suite replaces the same resources instead of
+  accumulating random-id copies. The SOAP questionnaire is deliberately
+  `seed-soap`, not `soap`: a dev Blaze may hold a real SOAP questionnaire (id
+  `soap`) that the suite must never write or delete. Seed-to-seed references
+  use the captured vars, which resolve to the fixed ids; the PractitionerRole
+  additionally references the per-run magic-link Practitioner.
+
   The Patient/Practitioner/Person identities are NOT seeded here — they are
   auto-created by the auth magic-link flow and captured later by the profile
   lookups. Slots are intentionally NOT seeded: free time is computed
   dynamically by clients (availableTime minus busy slots).
+
+  `scripts/bru-cleanup.sh` removes these seeds (and any resource referencing
+  them) directly against Blaze; `scripts/bru-run.sh` invokes it after every
+  suite run so failed runs cannot leave seed litter behind.

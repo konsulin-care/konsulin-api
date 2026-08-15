@@ -88,7 +88,7 @@ http:
           {
             "request": {
               "method": "DELETE",
-              "url": "Questionnaire/soap"
+              "url": "Questionnaire/seed-soap"
             }
           },
           {
@@ -142,3 +142,8 @@ docs: |
   referential integrity never blocks a DELETE. This makes the subsequent API
   deletions (Organization, Practitioner, Patient) succeed with 200. Chains to
   "Cleanup: Delete Organization".
+
+  Seeds carry fixed ids (Organization/seed-clinic, Questionnaire/seed-soap,
+  ...), so these entries always target the same resources across runs. The
+  SOAP questionnaire entry deletes `seed-soap` — the suite's own copy — never
+  the real `Questionnaire/soap` that a dev Blaze may hold for QA.

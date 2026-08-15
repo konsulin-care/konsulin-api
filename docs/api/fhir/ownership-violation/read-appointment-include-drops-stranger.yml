@@ -1,0 +1,71 @@
+info:
+  name: "Ownership Violation: Read Appointment Include Drops Stranger"
+  type: http
+  seq: 14
+  tags: [ownership]
+
+http:
+  method: GET
+  url: "{{process.env.APP_BASE_URL}}/fhir/Appointment?_id=session-prac-appointment-1&_include=Appointment:participant"
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        bru.setVar("activeRole", "Practitioner");
+        await bru.sendRequest({
+          method: "POST",
+          url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
+          headers: {
+            "content-type": "application/json",
+            "Authorization": "Bearer " + bru.getVar("sessionToken")
+          },
+          data: JSON.stringify({ role: bru.getVar("activeRole") })
+        }, function(err, res) {
+          if (err) {
+            console.error("role switch failed: " + err.message);
+          } else if (res && res.headers) {
+            // the active-role response carries the regenerated access token;
+            // capture it so the following request sees the new active role
+            var newToken = res.headers["st-access-token"] || res.headers["front-token"];
+            if (newToken) { bru.setVar("sessionToken", newToken); }
+          }
+        });
+    - type: after-response
+      code: |-
+        var next = "Ownership Violation: Delete Other Patient By Query";
+        var ok = true;
+        var body = (typeof res.body === "string") ? JSON.parse(res.body) : res.body;
+        var entries = (body && body.entry) || [];
+        for (var i = 0; i < entries.length; i++) {
+          var r = entries[i].resource;
+          if (r && r.resourceType === "Patient" && r.id === "other-patient-b") {
+            ok = false;
+          }
+        }
+        bru.runner.setNextRequest(next);
+        if (!ok) {
+          throw new Error("stranger Patient/other-patient-b kept in include bundle");
+        }
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Expected result: the session's own booked Appointment is searchable and the
+  `_include=Appointment:participant` bundle resolves, but the stranger
+  participant `Patient/other-patient-b` is dropped from the response — 200
+  with the entry absent. a0e2585 made referenced-bundle-keep strict: an
+  unowned entry survives only when OwnedBy confirms the caller owns it.
+  Before a0e2585 the stranger was kept because it appeared in the owned
+  Appointment's participant refs.

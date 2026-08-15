@@ -1,6 +1,7 @@
 package middlewares
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"testing"
 
 	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/fhir_dto"
 
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
@@ -384,6 +386,116 @@ type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
+}
+
+// strictBundleClient helpers: a practitioner session owning prac-1 with own
+// patient pat-own (seeded via the SuperTokens identifier lookup).
+func strictBundleMiddlewares() *Middlewares {
+	return &Middlewares{
+		PatientFhirClient:          &mockPatientClient{patients: []fhir_dto.Patient{{ID: "pat-own"}}},
+		PractitionerFhirClient:     &mockPractitionerClient{practitioners: []fhir_dto.Practitioner{{ID: "prac-1"}}},
+		PractitionerRoleFhirClient: &stubPractitionerRoleClient{},
+		Log:                        zap.NewNop(),
+	}
+}
+
+func bundleEntryIDs(t *testing.T, bundle *Bundle) map[string]bool {
+	t.Helper()
+	ids := map[string]bool{}
+	for _, e := range bundle.Entry {
+		var env struct {
+			ResourceType string `json:"resourceType"`
+			ID           string `json:"id"`
+		}
+		if err := json.Unmarshal(e.Resource, &env); err != nil {
+			continue
+		}
+		ids[env.ResourceType+"/"+env.ID] = true
+	}
+	return ids
+}
+
+func TestApplyOwnershipFilterToBundle_ReferencedStrangerDroppedStrict(t *testing.T) {
+	// Strict referenced-bundle-keep: an owned Appointment may reference
+	// Patient/pat-stranger, but the stranger's Patient entry is dropped unless
+	// the caller provably owns it. The caller's own Patient entry survives.
+	mw := strictBundleMiddlewares()
+	ctx := context.WithValue(context.Background(), keyUID, "user-123")
+	bundle := &Bundle{
+		ResourceType: "Bundle",
+		Type:         "searchset",
+		Entry: []BundleEntry{
+			{
+				Resource: json.RawMessage(`{"resourceType":"Appointment","id":"appt-1","participant":[{"actor":{"reference":"Practitioner/prac-1"}},{"actor":{"reference":"Patient/pat-own"}},{"actor":{"reference":"Patient/pat-stranger"}}]}`),
+			},
+			{
+				Resource: json.RawMessage(`{"resourceType":"Patient","id":"pat-own"}`),
+			},
+			{
+				Resource: json.RawMessage(`{"resourceType":"Patient","id":"pat-stranger"}`),
+			},
+		},
+	}
+
+	removed := mw.applyOwnershipFilterToBundle(ctx, bundle, []string{constvars.KonsulinRolePractitioner}, constvars.KonsulinRolePractitioner, "prac-1")
+
+	assert.Equal(t, 1, removed)
+	ids := bundleEntryIDs(t, bundle)
+	assert.True(t, ids["Appointment/appt-1"], "owned appointment must be kept")
+	assert.True(t, ids["Patient/pat-own"], "own patient entry must be kept")
+	assert.False(t, ids["Patient/pat-stranger"], "referenced-but-unowned patient entry must be dropped")
+}
+
+func TestApplyOwnershipFilterToBundle_PublicReferencedKept(t *testing.T) {
+	// Public-scope resources referenced by owned entries survive the strict
+	// check (they are already owned): a PractitionerRole include stays.
+	mw := strictBundleMiddlewares()
+	ctx := context.WithValue(context.Background(), keyUID, "user-123")
+	bundle := &Bundle{
+		ResourceType: "Bundle",
+		Type:         "searchset",
+		Entry: []BundleEntry{
+			{
+				Resource: json.RawMessage(`{"resourceType":"Appointment","id":"appt-1","participant":[{"actor":{"reference":"PractitionerRole/role-1"}},{"actor":{"reference":"Practitioner/prac-1"}}]}`),
+			},
+			{
+				Resource: json.RawMessage(`{"resourceType":"PractitionerRole","id":"role-1","practitioner":{"reference":"Practitioner/prac-2"}}`),
+			},
+		},
+	}
+
+	removed := mw.applyOwnershipFilterToBundle(ctx, bundle, []string{constvars.KonsulinRolePractitioner}, constvars.KonsulinRolePractitioner, "prac-1")
+
+	assert.Equal(t, 0, removed)
+	ids := bundleEntryIDs(t, bundle)
+	assert.True(t, ids["Appointment/appt-1"])
+	assert.True(t, ids["PractitionerRole/role-1"], "public PractitionerRole include must survive")
+}
+
+func TestApplyOwnershipFilterToBundle_ResearcherCollectsNoReferencedKeep(t *testing.T) {
+	// Researcher sessions are not relationship-based practitioners: they never
+	// collect referenced-keep, so a stranger's referenced patient entry is
+	// dropped even when a genuinely owned resource would have kept it.
+	mw := strictBundleMiddlewares()
+	ctx := context.WithValue(context.Background(), keyUID, "user-123")
+	bundle := &Bundle{
+		ResourceType: "Bundle",
+		Type:         "searchset",
+		Entry: []BundleEntry{
+			{
+				Resource: json.RawMessage(`{"resourceType":"Appointment","id":"appt-1","participant":[{"actor":{"reference":"Practitioner/prac-1"}},{"actor":{"reference":"Patient/pat-stranger"}}]}`),
+			},
+			{
+				Resource: json.RawMessage(`{"resourceType":"Patient","id":"pat-stranger"}`),
+			},
+		},
+	}
+
+	removed := mw.applyOwnershipFilterToBundle(ctx, bundle, []string{constvars.KonsulinRoleResearcher}, constvars.KonsulinRolePractitioner, "prac-1")
+
+	assert.Equal(t, 1, removed)
+	ids := bundleEntryIDs(t, bundle)
+	assert.False(t, ids["Patient/pat-stranger"], "researcher must not inherit referenced-bundle-keep")
 }
 
 func TestStripCommunicationFields_SingleResource(t *testing.T) {

@@ -5,8 +5,8 @@ info:
   tags: [clinic, utility]
 
 http:
-  method: POST
-  url: "{{process.env.APP_BASE_URL}}/fhir/Organization"
+  method: PUT
+  url: "{{process.env.APP_BASE_URL}}/fhir/Organization/seed-clinic"
   headers:
     - name: X-API-Key
       value: "{{process.env.SUPERADMIN_API_KEY}}"
@@ -15,6 +15,7 @@ http:
     data: |-
       {
         "resourceType": "Organization",
+        "id": "seed-clinic",
         "active": true,
         "name": "Konsulin Demo Clinic",
         "type": [
@@ -45,7 +46,10 @@ runtime:
         bru.runner.setNextRequest("Seed Location");
   assertions:
     - expression: res.status
-      operator: eq
+      operator: gte
+      value: "200"
+    - expression: res.status
+      operator: lte
       value: "201"
 
 settings:
@@ -55,6 +59,9 @@ settings:
   maxRedirects: 5
 
 docs: |
-  Seeds the clinic Organization as superadmin (X-API-Key). Captures
-  `organizationId` and chains to "Seed Location". Organization POST is
-  Superadmin-only in the RBAC policy, which is why seeding runs with the API key.
+  Seeds the clinic Organization as superadmin (X-API-Key) with the fixed id
+  `seed-clinic` via PUT — idempotent across runs (Blaze ignores client-supplied
+  ids on POST, so PUT is required for a deterministic id). Captures
+  `organizationId` (equals seed-clinic) and chains to "Seed Location".
+  Organization PUT is Superadmin-only in the RBAC policy, which is why seeding
+  runs with the API key.

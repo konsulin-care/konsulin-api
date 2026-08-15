@@ -29,7 +29,6 @@ const logPrefix = "userUsecase."
 type userUsecase struct {
 	PatientFhirClient          contracts.PatientFhirClient
 	PractitionerFhirClient     contracts.PractitionerFhirClient
-	PersonFhirClient           contracts.PersonFhirClient
 	PractitionerRoleFhirClient contracts.PractitionerRoleFhirClient
 	OrganizationFhirClient     contracts.OrganizationFhirClient
 	RedisRepository            contracts.RedisRepository
@@ -59,7 +58,6 @@ var (
 type UserFHIRInitializerDeps struct {
 	PatientFhirClient          contracts.PatientFhirClient
 	PractitionerFhirClient     contracts.PractitionerFhirClient
-	PersonFhirClient           contracts.PersonFhirClient
 	PractitionerRoleFhirClient contracts.PractitionerRoleFhirClient
 	OrganizationFhirClient     contracts.OrganizationFhirClient
 	RedisRepository            contracts.RedisRepository
@@ -74,7 +72,6 @@ func NewUserFHIRInitializer(deps UserFHIRInitializerDeps) contracts.UserFHIRInit
 		instance := &userUsecase{
 			PatientFhirClient:          deps.PatientFhirClient,
 			PractitionerFhirClient:     deps.PractitionerFhirClient,
-			PersonFhirClient:           deps.PersonFhirClient,
 			PractitionerRoleFhirClient: deps.PractitionerRoleFhirClient,
 			OrganizationFhirClient:     deps.OrganizationFhirClient,
 			RedisRepository:            deps.RedisRepository,
@@ -94,14 +91,20 @@ func (uc *userUsecase) InitializeNewUserFHIRResources(ctx context.Context, input
 	}
 
 	output := &contracts.InitializeNewUserFHIRResourcesOutput{}
+	practitionerID := ""
 
-	for _, resource := range input.Resources() {
-		switch resource {
+	for _, plan := range input.Resources() {
+		switch plan.ResourceType {
 		case constvars.ResourcePractitioner:
+			if practitionerID != "" {
+				// The plan carries at most one Practitioner entry; guard anyway.
+				continue
+			}
 			practitioner, err := uc.createPractitionerIfNotExists(ctx, input.Email, input.Phone, input.SuperTokenUserID)
 			if err != nil {
 				return nil, err
 			}
+			practitionerID = practitioner.ID
 			output.PractitionerID = practitioner.ID
 		case constvars.ResourcePatient:
 			patient, err := uc.createPatientIfNotExists(ctx, input.Email, input.Phone, input.SuperTokenUserID)
@@ -109,15 +112,71 @@ func (uc *userUsecase) InitializeNewUserFHIRResources(ctx context.Context, input
 				return nil, err
 			}
 			output.PatientID = patient.ID
-		case constvars.ResourcePerson:
-			person, err := uc.createPersonIfNotExists(ctx, input.Email, input.Phone, input.SuperTokenUserID)
+		case constvars.ResourcePractitionerRole:
+			if practitionerID == "" {
+				return nil, errors.New("practitioner must be created before PractitionerRole")
+			}
+			role, err := uc.createPractitionerRoleIfNotExists(ctx, practitionerID, input.OrganizationID,
+				plan.CodingSystem, plan.CodingCode, plan.CodingDisplay)
 			if err != nil {
 				return nil, err
 			}
-			output.PersonID = person.ID
+			output.PractitionerRoleIDs = append(output.PractitionerRoleIDs, role.ID)
 		}
 	}
 	return output, nil
+}
+
+// createPractitionerRoleIfNotExists looks up an existing PractitionerRole for the
+// practitioner carrying the given system|code coding and returns it; otherwise it
+// creates a new active role, optionally linked to an organization.
+func (uc *userUsecase) createPractitionerRoleIfNotExists(ctx context.Context, practitionerID, organizationID, system, code, display string) (*fhir_dto.PractitionerRole, error) {
+	existing, err := uc.PractitionerRoleFhirClient.Search(ctx, contracts.PractitionerRoleSearchParams{
+		PractitionerID: practitionerID,
+		Code:           fmt.Sprintf("%s|%s", system, code),
+	})
+	if err != nil {
+		return nil, err
+	}
+	// Some servers (e.g. Blaze) do not index the code search parameter and return
+	// every role for the practitioner; filter client-side for the exact system|code
+	// match to keep create-if-not-exists idempotent.
+	for i := range existing {
+		if roleHasCoding(existing[i], system, code) {
+			return &existing[i], nil
+		}
+	}
+
+	role := &fhir_dto.PractitionerRole{
+		ResourceType: constvars.ResourcePractitionerRole,
+		Active:       true,
+		Practitioner: fhir_dto.Reference{Reference: "Practitioner/" + practitionerID},
+		Code: []fhir_dto.CodeableConcept{{
+			Coding: []fhir_dto.Coding{{
+				System:  system,
+				Code:    code,
+				Display: display,
+			}},
+		}},
+	}
+	if organizationID != "" {
+		role.Organization = fhir_dto.Reference{Reference: "Organization/" + organizationID}
+	}
+
+	return uc.PractitionerRoleFhirClient.CreatePractitionerRole(ctx, role)
+}
+
+// roleHasCoding reports whether the role's code element carries the given
+// system|code coding.
+func roleHasCoding(role fhir_dto.PractitionerRole, system, code string) bool {
+	for _, cc := range role.Code {
+		for _, c := range cc.Coding {
+			if c.System == system && c.Code == code {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // identifierScanResult holds the result of scanning identifiers for supertoken and Chatwoot IDs.
@@ -228,47 +287,53 @@ func (uc *userUsecase) ensurePractitionerIdentifiers(ctx context.Context, practi
 
 // lookupPractitioner searches for an existing Practitioner by email, phone, or supertoken identifier.
 func (uc *userUsecase) lookupPractitioner(ctx context.Context, email, phone, superTokenUserID string) ([]fhir_dto.Practitioner, error) {
+	// The supertoken uid identifier is the stable per-user key; match it first
+	// so createPractitionerIfNotExists stays idempotent per user (email-first
+	// lookup accumulates duplicate Practitioners when the email search
+	// parameter is not reliably indexed). Email/phone remain as fallbacks for
+	// legacy resources created before the identifier scheme.
+	if strings.TrimSpace(superTokenUserID) != "" {
+		pracs, err := uc.PractitionerFhirClient.FindPractitionerByIdentifier(ctx, constvars.FhirSupertokenSystemIdentifier, superTokenUserID)
+		if err != nil {
+			return nil, err
+		}
+		if len(pracs) > 0 {
+			return pracs, nil
+		}
+	}
 	if strings.TrimSpace(email) != "" {
 		return uc.PractitionerFhirClient.FindPractitionerByEmail(ctx, email)
 	}
 	if strings.TrimSpace(phone) != "" {
 		return uc.PractitionerFhirClient.FindPractitionerByPhone(ctx, phone)
 	}
-	if strings.TrimSpace(superTokenUserID) != "" {
-		return uc.PractitionerFhirClient.FindPractitionerByIdentifier(ctx, constvars.FhirSupertokenSystemIdentifier, superTokenUserID)
-	}
 	return nil, nil
 }
 
-// lookupPatient searches for an existing Patient by email, phone, or supertoken identifier.
+// lookupPatient searches for an existing Patient by supertoken uid identifier
+// first (the stable per-user key), then falls back to email and phone for
+// legacy resources created before the identifier scheme. The uid-first order
+// keeps createPatientIfNotExists idempotent per user: repeated magic-link
+// create/consume calls converge on one Patient instead of accumulating
+// duplicates when the email search parameter is not reliably indexed.
 func (uc *userUsecase) lookupPatient(ctx context.Context, email, phone, superTokenUserID string) ([]fhir_dto.Patient, error) {
+	if strings.TrimSpace(superTokenUserID) != "" {
+		pats, err := uc.PatientFhirClient.FindPatientByIdentifier(
+			ctx,
+			fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, superTokenUserID),
+		)
+		if err != nil {
+			return nil, err
+		}
+		if len(pats) > 0 {
+			return pats, nil
+		}
+	}
 	if strings.TrimSpace(email) != "" {
 		return uc.PatientFhirClient.FindPatientByEmail(ctx, email)
 	}
 	if strings.TrimSpace(phone) != "" {
 		return uc.PatientFhirClient.FindPatientByPhone(ctx, phone)
-	}
-	if strings.TrimSpace(superTokenUserID) != "" {
-		return uc.PatientFhirClient.FindPatientByIdentifier(
-			ctx,
-			fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, superTokenUserID),
-		)
-	}
-	return nil, nil
-}
-
-// lookupPerson searches for an existing Person by email, phone, or supertoken identifier.
-func (uc *userUsecase) lookupPerson(ctx context.Context, email, phone, superTokenUserID string) ([]fhir_dto.Person, error) {
-	if strings.TrimSpace(email) != "" {
-		return uc.PersonFhirClient.FindPersonByEmail(ctx, email)
-	}
-	if strings.TrimSpace(phone) != "" {
-		return uc.PersonFhirClient.FindPersonByPhone(ctx, phone)
-	}
-	if strings.TrimSpace(superTokenUserID) != "" {
-		return uc.PersonFhirClient.Search(ctx, contracts.PersonSearchInput{
-			Identifier: fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, superTokenUserID),
-		})
 	}
 	return nil, nil
 }
@@ -322,57 +387,6 @@ func (uc *userUsecase) ensurePatientIdentifiers(ctx context.Context, patient *fh
 		return uc.PatientFhirClient.UpdatePatient(ctx, patient)
 	}
 	return patient, nil
-}
-
-// ensurePersonIdentifiers updates the person's identifiers with the
-// supertoken user ID and Chatwoot contact ID if they differ from what's stored.
-//
-//nolint:dupl
-func (uc *userUsecase) ensurePersonIdentifiers(ctx context.Context, person *fhir_dto.Person, email, phone, superTokenUserID string) (*fhir_dto.Person, error) {
-	userChatwootContact, chatwootCallErr := uc.callChatwootWithFallback(ctx, email, phone, person.FullName())
-	chatwootID := strconv.Itoa(userChatwootContact.ChatwootID)
-
-	scanResult := scanIdentifiers(person.Identifier, superTokenUserID, chatwootID)
-	mustUpdate := false
-
-	if superTokenUserID != "" {
-		if scanResult.foundSupertoken && !scanResult.supertokenExactMatch {
-			mustUpdate = true
-			person.Identifier[scanResult.foundSupertokenIdx] = fhir_dto.Identifier{
-				System: constvars.FhirSupertokenSystemIdentifier,
-				Value:  superTokenUserID,
-			}
-		}
-		if !scanResult.foundSupertoken {
-			mustUpdate = true
-			person.Identifier = append(person.Identifier, fhir_dto.Identifier{
-				System: constvars.FhirSupertokenSystemIdentifier,
-				Value:  superTokenUserID,
-			})
-		}
-	}
-
-	if chatwootCallErr == nil && userChatwootContact.ChatwootID != 0 {
-		if !scanResult.foundChatwoot {
-			mustUpdate = true
-			person.Identifier = append(person.Identifier, fhir_dto.Identifier{
-				System: constvars.KonsulinOmnichannelSystemIdentifier,
-				Value:  chatwootID,
-			})
-		}
-		if scanResult.foundChatwoot && !scanResult.chatwootExactMatch {
-			mustUpdate = true
-			person.Identifier[scanResult.foundChatwootIdx] = fhir_dto.Identifier{
-				System: constvars.KonsulinOmnichannelSystemIdentifier,
-				Value:  chatwootID,
-			}
-		}
-	}
-
-	if mustUpdate {
-		return uc.PersonFhirClient.Update(ctx, person)
-	}
-	return person, nil
 }
 
 // createNewPractitioner creates a new Practitioner FHIR resource.
@@ -438,38 +452,6 @@ func (uc *userUsecase) createNewPatient(ctx context.Context, email, phone, super
 	return uc.PatientFhirClient.CreatePatient(ctx, newPatientInput)
 }
 
-// createNewPerson creates a new Person FHIR resource.
-//
-//nolint:dupl
-func (uc *userUsecase) createNewPerson(ctx context.Context, email, phone, superTokenUserID string) (*fhir_dto.Person, error) {
-	userChatwootContact, chatwootErr := uc.callChatwootWithFallback(ctx, email, phone, "")
-	chatwootID := strconv.Itoa(userChatwootContact.ChatwootID)
-	telecom := buildContactPoints(email, phone)
-
-	newPersonInput := &fhir_dto.Person{
-		ResourceType: constvars.ResourcePerson,
-		Active:       true,
-		Identifier:   []fhir_dto.Identifier{},
-		Telecom:      telecom,
-	}
-
-	if superTokenUserID != "" {
-		newPersonInput.Identifier = append(newPersonInput.Identifier, fhir_dto.Identifier{
-			System: constvars.FhirSupertokenSystemIdentifier,
-			Value:  superTokenUserID,
-		})
-	}
-
-	if chatwootErr == nil && userChatwootContact.ChatwootID != 0 {
-		newPersonInput.Identifier = append(newPersonInput.Identifier, fhir_dto.Identifier{
-			System: constvars.KonsulinOmnichannelSystemIdentifier,
-			Value:  chatwootID,
-		})
-	}
-
-	return uc.PersonFhirClient.Create(ctx, newPersonInput)
-}
-
 //nolint:dupl
 func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email string, phone string, superTokenUserID string) (*fhir_dto.Practitioner, error) {
 	practitioners, err := uc.lookupPractitioner(ctx, email, phone, superTokenUserID)
@@ -492,18 +474,6 @@ func (uc *userUsecase) createPatientIfNotExists(ctx context.Context, email strin
 		return uc.ensurePatientIdentifiers(ctx, &patients[0], email, phone, superTokenUserID)
 	}
 	return uc.createNewPatient(ctx, email, phone, superTokenUserID)
-}
-
-//nolint:dupl
-func (uc *userUsecase) createPersonIfNotExists(ctx context.Context, email string, phone string, superTokenUserID string) (*fhir_dto.Person, error) {
-	persons, err := uc.lookupPerson(ctx, email, phone, superTokenUserID)
-	if err != nil {
-		return nil, err
-	}
-	if len(persons) > 0 {
-		return uc.ensurePersonIdentifiers(ctx, &persons[0], email, phone, superTokenUserID)
-	}
-	return uc.createNewPerson(ctx, email, phone, superTokenUserID)
 }
 
 type callWebhookSvcKonsulinOmnichannelOutput struct {

@@ -52,7 +52,6 @@ type usecase struct {
 	jwtManager         *jwtmanager.JWTManager
 	patientFhir        contracts.PatientFhirClient
 	practitionerFhir   contracts.PractitionerFhirClient
-	personFhir         contracts.PersonFhirClient
 	serviceRequestFhir contracts.ServiceRequestFhirClient
 	enforcer           *casbin.Enforcer
 	syncServiceSet     map[string]struct{}
@@ -60,23 +59,35 @@ type usecase struct {
 	failurePolicy      SyncFailurePolicy
 }
 
+// Options configures the webhook usecase dependencies.
+type Options struct {
+	Log                *zap.Logger
+	Config             *config.InternalConfig
+	Queue              *webhookqueue.Service
+	JWTManager         *jwtmanager.JWTManager
+	PatientFhir        contracts.PatientFhirClient
+	PractitionerFhir   contracts.PractitionerFhirClient
+	ServiceRequestFhir contracts.ServiceRequestFhirClient
+	Enforcer           *casbin.Enforcer
+}
+
 // NewUsecase creates a new webhook usecase instance.
-func NewUsecase(log *zap.Logger, cfg *config.InternalConfig, queue *webhookqueue.Service, jwtMgr *jwtmanager.JWTManager, patient contracts.PatientFhirClient, practitioner contracts.PractitionerFhirClient, person contracts.PersonFhirClient, sr contracts.ServiceRequestFhirClient, enforcer *casbin.Enforcer) Usecase {
+func NewUsecase(opts Options) Usecase {
 	syncSet := make(map[string]struct{})
-	for _, s := range cfg.Webhook.SynchronousServiceNames {
+	for _, s := range opts.Config.Webhook.SynchronousServiceNames {
 		name := strings.ToLower(strings.TrimSpace(s))
 		if name != "" {
 			syncSet[name] = struct{}{}
 		}
 	}
 
-	timeout := time.Duration(cfg.Webhook.HTTPTimeoutInSeconds) * time.Second
+	timeout := time.Duration(opts.Config.Webhook.HTTPTimeoutInSeconds) * time.Second
 	if timeout <= 0 {
 		timeout = 10 * time.Second
 	}
 
 	policy := SyncFailurePolicyReturnError
-	switch strings.ToLower(strings.TrimSpace(cfg.Webhook.SynchronousServiceFailurePolicy)) {
+	switch strings.ToLower(strings.TrimSpace(opts.Config.Webhook.SynchronousServiceFailurePolicy)) {
 	case string(SyncFailurePolicyEnqueueRequest):
 		policy = SyncFailurePolicyEnqueueRequest
 	default:
@@ -84,15 +95,14 @@ func NewUsecase(log *zap.Logger, cfg *config.InternalConfig, queue *webhookqueue
 	}
 
 	return &usecase{
-		log:                log,
-		cfg:                cfg,
-		queue:              queue,
-		jwtManager:         jwtMgr,
-		patientFhir:        patient,
-		practitionerFhir:   practitioner,
-		personFhir:         person,
-		serviceRequestFhir: sr,
-		enforcer:           enforcer,
+		log:                opts.Log,
+		cfg:                opts.Config,
+		queue:              opts.Queue,
+		jwtManager:         opts.JWTManager,
+		patientFhir:        opts.PatientFhir,
+		practitionerFhir:   opts.PractitionerFhir,
+		serviceRequestFhir: opts.ServiceRequestFhir,
+		enforcer:           opts.Enforcer,
 		syncServiceSet:     syncSet,
 		httpClient:         &http.Client{Timeout: timeout},
 		failurePolicy:      policy,
@@ -749,10 +759,8 @@ func parseMultipartBodyFields(body []byte, boundary string) (email, phone, chatw
 // validateContactByRole dispatches contact validation to the correct FHIR resource lookup.
 func (u *usecase) validateContactByRole(ctx context.Context, role, userIdentifierId, email, phone, chatwoot string) error {
 	switch role {
-	case constvars.KonsulinRolePractitioner, constvars.KonsulinRoleClinician:
+	case constvars.KonsulinRolePractitioner, constvars.KonsulinRoleClinician, constvars.KonsulinRoleClinicAdmin:
 		return u.validatePractitionerContact(ctx, userIdentifierId, email, phone, chatwoot)
-	case constvars.KonsulinRoleClinicAdmin:
-		return u.validateClinicAdminContact(ctx, userIdentifierId, email, phone, chatwoot)
 	case constvars.KonsulinRolePatient:
 		return u.validatePatientContact(ctx, userIdentifierId, email, phone, chatwoot)
 	default:
@@ -769,19 +777,6 @@ func (u *usecase) validatePractitionerContact(ctx context.Context, userIdentifie
 		return exceptions.BuildNewCustomError(nil, constvars.StatusNotFound, "practitioner not found", "WEBHOOK_SYNC_USER_NOT_FOUND")
 	}
 	return validateContactFields(email, phone, chatwoot, pracs[0].GetEmailAddresses(), pracs[0].GetPhoneNumbers(), pracs[0].Identifier, constvars.ResourcePractitioner)
-}
-
-func (u *usecase) validateClinicAdminContact(ctx context.Context, userIdentifierId, email, phone, chatwoot string) error {
-	persons, err := u.personFhir.Search(ctx, contracts.PersonSearchInput{
-		Identifier: fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, userIdentifierId),
-	})
-	if err != nil {
-		return err
-	}
-	if len(persons) == 0 {
-		return exceptions.BuildNewCustomError(nil, constvars.StatusNotFound, "person not found", "WEBHOOK_SYNC_USER_NOT_FOUND")
-	}
-	return validateContactFields(email, phone, chatwoot, persons[0].GetEmailAddresses(), persons[0].GetPhoneNumbers(), persons[0].Identifier, constvars.ResourcePerson)
 }
 
 func (u *usecase) validatePatientContact(ctx context.Context, userIdentifierId, email, phone, chatwoot string) error {

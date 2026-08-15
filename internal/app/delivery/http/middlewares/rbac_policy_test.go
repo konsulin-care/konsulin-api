@@ -81,6 +81,43 @@ func TestRBACPolicy_Communication(t *testing.T) {
 	}
 }
 
+// TestRBACPolicy_Schedule asserts the Schedule access matrix: Clinic Admin may
+// GET/POST, Patient and Superadmin GET, Practitioner and Superadmin PUT (the
+// idempotent seed flow PUTs /fhir/Schedule/seed-schedule as superadmin), and
+// no role may DELETE via the gateway.
+func TestRBACPolicy_Schedule(t *testing.T) {
+	enf := testEnforcer(t)
+
+	cases := []struct {
+		name   string
+		role   string
+		method string
+		want   bool
+	}{
+		{"clinic admin get", constvars.KonsulinRoleClinicAdmin, http.MethodGet, true},
+		{"clinic admin post", constvars.KonsulinRoleClinicAdmin, http.MethodPost, true},
+		{"clinic admin put", constvars.KonsulinRoleClinicAdmin, http.MethodPut, false},
+		{"clinic admin delete", constvars.KonsulinRoleClinicAdmin, http.MethodDelete, false},
+		{"patient get", constvars.KonsulinRolePatient, http.MethodGet, true},
+		{"patient put", constvars.KonsulinRolePatient, http.MethodPut, false},
+		{"practitioner put", constvars.KonsulinRolePractitioner, http.MethodPut, true},
+		{"superadmin get", constvars.KonsulinRoleSuperadmin, http.MethodGet, true},
+		{"superadmin post", constvars.KonsulinRoleSuperadmin, http.MethodPost, true},
+		{"superadmin put", constvars.KonsulinRoleSuperadmin, http.MethodPut, true},
+		{"superadmin delete", constvars.KonsulinRoleSuperadmin, http.MethodDelete, false},
+		{"researcher put", constvars.KonsulinRoleResearcher, http.MethodPut, false},
+		{"guest put", constvars.KonsulinRoleGuest, http.MethodPut, false},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ok, err := enf.Enforce(c.role, c.method, "/fhir/Schedule")
+			assert.NoError(t, err)
+			assert.Equal(t, c.want, ok, "Enforce(%q, %q, /fhir/Schedule)", c.role, c.method)
+		})
+	}
+}
+
 // TestRBACPolicy_PrivacyPurge asserts the erasure endpoint matrix: only a
 // resolved Patient session may DELETE /privacy/purge; Guest, Practitioner,
 // Clinic Admin, Researcher, and Superadmin are denied by policy.

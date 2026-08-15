@@ -1,0 +1,68 @@
+info:
+  name: "Ownership Violation: Post Appointment Excluding Self"
+  type: http
+  seq: 11
+  tags: [ownership]
+
+http:
+  method: POST
+  url: "{{process.env.APP_BASE_URL}}/fhir/Appointment"
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "Appointment",
+        "status": "booked",
+        "participant": [
+          {
+            "actor": { "reference": "Patient/other-patient-b" },
+            "status": "accepted"
+          }
+        ]
+      }
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        bru.setVar("activeRole", "Patient");
+        await bru.sendRequest({
+          method: "POST",
+          url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
+          headers: {
+            "content-type": "application/json",
+            "Authorization": "Bearer " + bru.getVar("sessionToken")
+          },
+          data: JSON.stringify({ role: bru.getVar("activeRole") })
+        }, function(err, res) {
+          if (err) {
+            console.error("role switch failed: " + err.message);
+          } else if (res && res.headers) {
+            // the active-role response carries the regenerated access token;
+            // capture it so the following request sees the new active role
+            var newToken = res.headers["st-access-token"] || res.headers["front-token"];
+            if (newToken) { bru.setVar("sessionToken", newToken); }
+          }
+        });
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Ownership Violation: Post Patient With Foreign Id");'
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "401"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Expected failure: the session POSTs an Appointment whose only participant is
+  Patient B — booking an appointment without including itself. RBAC grants
+  Patient POST /fhir/Appointment; `ValidateWriteBody` requires every
+  Patient-typed `participant.#.actor.reference` value to be owned and at
+  least one to exist — none is owned — 401. No resource is created.

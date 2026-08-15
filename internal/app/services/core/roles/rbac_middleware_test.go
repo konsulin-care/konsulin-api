@@ -2,10 +2,10 @@ package roles
 
 import (
 	"net/url"
-	"strings"
 	"testing"
 
 	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/ownership"
 	"konsulin-service/internal/pkg/utils"
 
 	"github.com/stretchr/testify/assert"
@@ -49,13 +49,14 @@ func TestOwnsResourceFunction(t *testing.T) {
 		assert.True(t, owns, "Patient should be able to access their own appointments")
 
 		owns = ownsResource("patient-123", "/fhir/Appointment?actor=Patient/other-patient-456", constvars.KonsulinRolePatient, "GET")
-		assert.False(t, owns, "Patient should not be able to access other patients' appointments")
+		// GET bypasses the pre-request check; the response filter (OwnedBy) gates reads.
+		assert.True(t, owns, "pre-request GET bypasses ownership; response filter gates")
 
 		owns = ownsResource("patient-123", "/fhir/Observation?subject=Patient/patient-123", constvars.KonsulinRolePatient, "GET")
 		assert.True(t, owns, "Patient should be able to access their own observations")
 
 		owns = ownsResource("patient-123", "/fhir/Observation?subject=Patient/other-patient-456", constvars.KonsulinRolePatient, "GET")
-		assert.False(t, owns, "Patient should not be able to access other patients' observations")
+		assert.True(t, owns, "pre-request GET bypasses ownership; response filter gates")
 	})
 
 	t.Run("Patient Role Complex Appointment Queries", func(t *testing.T) {
@@ -64,68 +65,63 @@ func TestOwnsResourceFunction(t *testing.T) {
 		assert.True(t, owns, "Patient should be able to access their own appointments with complex query")
 
 		owns = ownsResource("patient-123", "/fhir/Appointment?actor=Patient/other-patient-456&slot.start=ge2025-01-01T00:00:00+00:00&_include=Appointment:actor:PractitionerRole&_include:iterate=PractitionerRole:practitioner&_include=Appointment:slot", constvars.KonsulinRolePatient, "GET")
-		assert.False(t, owns, "Patient should not be able to access other patients' appointments with complex query")
+		assert.True(t, owns, "pre-request GET bypasses ownership; response filter gates")
 	})
 
 	t.Run("Resource Type Classification", func(t *testing.T) {
 
-		publicResources := []string{"Questionnaire", "ResearchStudy", "Organization", "Location", "HealthcareService", "PractitionerRole", "Slot", "Practitioner", "Schedule"}
+		// Ownership classification is now the declarative spec in
+		// internal/pkg/ownership (single source of truth).
+		publicResources := []string{"Questionnaire", "ResearchStudy", "Organization", "Location", "HealthcareService", "PractitionerRole", "Slot", "Schedule"}
 		for _, resource := range publicResources {
 			t.Run("Public_"+resource, func(t *testing.T) {
-				assert.True(t, utils.IsPublicResource(resource), "%s should be classified as public", resource)
-				assert.False(t, utils.RequiresPatientOwnership(resource), "%s should not require patient ownership", resource)
+				rule, ok := ownership.Rule(resource)
+				assert.True(t, ok && rule.Scope == ownership.ScopePublic, "%s should be classified as public", resource)
 			})
 		}
 
-		patientResources := []string{"Patient", "Appointment", "Observation", "Encounter", "ResearchSubject"}
-		for _, resource := range patientResources {
-			t.Run("PatientSpecific_"+resource, func(t *testing.T) {
-				assert.False(t, utils.IsPublicResource(resource), "%s should not be classified as public", resource)
-				assert.True(t, utils.RequiresPatientOwnership(resource), "%s should require patient ownership", resource)
+		patientOwned := []string{"Patient", "Appointment", "Observation", "Encounter", "ResearchSubject", "Consent", "Communication"}
+		for _, resource := range patientOwned {
+			t.Run("PatientOwned_"+resource, func(t *testing.T) {
+				rule, ok := ownership.Rule(resource)
+				assert.True(t, ok, "%s should have an ownership rule", resource)
+				assert.True(t, ruleHasRefTarget(rule, "Patient"), "%s should be patient-owned", resource)
 			})
 		}
 
-		// Practitioner-owned resources that are neither public nor patient-owned.
-		practitionerResources := []string{"Task"}
-		for _, resource := range practitionerResources {
-			t.Run("PractitionerSpecific_"+resource, func(t *testing.T) {
-				assert.False(t, utils.IsPublicResource(resource), "%s should not be classified as public", resource)
-				assert.False(t, utils.RequiresPatientOwnership(resource), "%s should not require patient ownership", resource)
-				assert.True(t, utils.RequiresPractitionerOwnership(resource), "%s should require practitioner ownership", resource)
+		// Practitioner-owned resources.
+		practitionerOwned := []string{"Task", "Communication", "Practitioner"}
+		for _, resource := range practitionerOwned {
+			t.Run("PractitionerOwned_"+resource, func(t *testing.T) {
+				rule, ok := ownership.Rule(resource)
+				assert.True(t, ok, "%s should have an ownership rule", resource)
+				assert.True(t, ruleHasRefTarget(rule, "Practitioner") || ruleHasRefTarget(rule, "PractitionerRole"),
+					"%s should be practitioner-owned", resource)
 			})
 		}
 
-		// Consent is owned by both Patient and Practitioner (dual-owned).
-		t.Run("Consent_DualOwned", func(t *testing.T) {
-			assert.False(t, utils.IsPublicResource("Consent"), "Consent should not be classified as public")
-			assert.True(t, utils.RequiresPatientOwnership("Consent"), "Consent should require patient ownership")
-			assert.True(t, utils.RequiresPractitionerOwnership("Consent"), "Consent should require practitioner ownership")
+		// Practitioner is scoped to the caller's own practitioner id, with a
+		// clinic-admin code allowance for directory management.
+		t.Run("Practitioner_ClinicAdminCodeAllow", func(t *testing.T) {
+			rule, ok := ownership.Rule(constvars.ResourcePractitioner)
+			assert.True(t, ok)
+			assert.Contains(t, rule.CodeAllow, ownership.CodingClinicAdmin)
 		})
 
-		// Communication is dual-owned by Patient and Practitioner (like Consent):
-		// patients read their own referrals and researchers get field-filtered
-		// reads, so the response ownership filter must keep patient-owned
-		// Communications instead of stripping them as practitioner-only.
-		t.Run("Communication_DualOwned", func(t *testing.T) {
-			assert.False(t, utils.IsPublicResource("Communication"), "Communication should not be classified as public")
-			assert.True(t, utils.RequiresPatientOwnership("Communication"), "Communication should require patient ownership")
-			assert.True(t, utils.RequiresPractitionerOwnership("Communication"), "Communication should require practitioner ownership")
+		// Schedule is public availability data on reads.
+		t.Run("Schedule_Public", func(t *testing.T) {
+			rule, ok := ownership.Rule(constvars.ResourceSchedule)
+			assert.True(t, ok && rule.Scope == ownership.ScopePublic, "Schedule should be public")
+			assert.Equal(t, "schedule", rule.WriteCheckerName)
 		})
 
-		// Practitioner and Schedule are public AND practitioner-owned (maps overlap).
-		for _, resource := range []string{"Practitioner", "Schedule"} {
-			t.Run("PublicPractitionerOwned_"+resource, func(t *testing.T) {
-				assert.True(t, utils.IsPublicResource(resource), "%s should be classified as public", resource)
-				assert.True(t, utils.RequiresPractitionerOwnership(resource), "%s should require practitioner ownership", resource)
-			})
-		}
-
-		// QuestionnaireResponse has no static ownership classification: ownership is
-		// validated per-resource on writes (validateQuestionnaireResponseOwner in auth.go).
-		t.Run("QuestionnaireResponse_NoStaticOwnership", func(t *testing.T) {
-			assert.False(t, utils.IsPublicResource("QuestionnaireResponse"), "QuestionnaireResponse should not be classified as public")
-			assert.False(t, utils.RequiresPatientOwnership("QuestionnaireResponse"), "QuestionnaireResponse should not require patient ownership")
-			assert.False(t, utils.RequiresPractitionerOwnership("QuestionnaireResponse"), "QuestionnaireResponse should not require practitioner ownership")
+		// QuestionnaireResponse carries Shared ownership (author/subject on the
+		// patient side, author/source on the practitioner side) plus a
+		// researcher identifier-search allowance.
+		t.Run("QuestionnaireResponse_SharedWithResearcherAllowance", func(t *testing.T) {
+			rule, ok := ownership.Rule(constvars.ResourceQuestionnaireResponse)
+			assert.True(t, ok && rule.Scope == ownership.ScopeShared, "QR should be shared-owned")
+			assert.Equal(t, "questionnaire_response", rule.WriteCheckerName)
 		})
 
 		testCases := []struct {
@@ -181,13 +177,13 @@ func TestOwnsResourceFunction(t *testing.T) {
 		assert.True(t, owns, "Practitioner should be able to access their own practitioner resource")
 
 		owns = ownsResource("practitioner-123", "/fhir/Practitioner/other-practitioner-456", constvars.KonsulinRolePractitioner, "GET")
-		assert.True(t, owns, "Practitioner is public directory data; another practitioner's profile is readable")
+		assert.False(t, owns, "Practitioner is scoped to the caller's own id (clinic admin code allowance reads the directory)")
 
 		owns = ownsResource("practitioner-123", "/fhir/Encounter?practitioner=Practitioner/practitioner-123", constvars.KonsulinRolePractitioner, "GET")
 		assert.True(t, owns, "Practitioner should be able to access their own encounters")
 
 		owns = ownsResource("practitioner-123", "/fhir/Encounter?practitioner=Practitioner/other-practitioner-456", constvars.KonsulinRolePractitioner, "GET")
-		assert.False(t, owns, "Practitioner should not be able to access other practitioners' encounters")
+		assert.True(t, owns, "pre-request GET bypasses ownership; response filter gates")
 
 		owns = ownsResource("practitioner-123", "/fhir/PractitionerRole?practitioner=Practitioner/practitioner-123&_include=PractitionerRole:organization", constvars.KonsulinRolePractitioner, "GET")
 		assert.True(t, owns, "Practitioner should be able to access their own practitioner roles")
@@ -199,25 +195,25 @@ func TestOwnsResourceFunction(t *testing.T) {
 		assert.True(t, owns, "Practitioner should be able to access their own slots")
 
 		owns = ownsResource("practitioner-123", "/fhir/Slot?_has:Appointment:slot:practitioner=other-practitioner-456&start=ge2025-01-01&start=le2025-01-08", constvars.KonsulinRolePractitioner, "GET")
-		assert.False(t, owns, "Practitioner should not be able to access other practitioners' slots")
+		assert.True(t, owns, "pre-request GET bypasses ownership; response filter gates")
 
 		owns = ownsResource("practitioner-123", "/fhir/Appointment?_elements=appointmentType,participant,slot&practitioner=practitioner-123&slot.start=ge2025-01-01&slot.start=le2025-01-08&_include=Appointment:patient&_include=Appointment:slot", constvars.KonsulinRolePractitioner, "GET")
 		assert.True(t, owns, "Practitioner should be able to access their own appointments")
 
 		owns = ownsResource("practitioner-123", "/fhir/Appointment?_elements=appointmentType,participant,slot&practitioner=other-practitioner-456&slot.start=ge2025-01-01&slot.start=le2025-01-08&_include=Appointment:patient&_include=Appointment:slot", constvars.KonsulinRolePractitioner, "GET")
-		assert.False(t, owns, "Practitioner should not be able to access other practitioners' appointments")
+		assert.True(t, owns, "pre-request GET bypasses ownership; response filter gates")
 	})
 
 	t.Run("Other Roles", func(t *testing.T) {
 
 		owns := ownsResource("guest-123", "/fhir/Organization", constvars.KonsulinRoleGuest, "GET")
-		assert.False(t, owns, "Guest role should not have ownership restrictions")
+		assert.True(t, owns, "Organization is public; ownership does not restrict it")
 
 		owns = ownsResource("admin-123", "/fhir/Organization", constvars.KonsulinRoleClinicAdmin, "GET")
-		assert.False(t, owns, "Clinic Admin role should not have ownership restrictions")
+		assert.True(t, owns, "Organization is public; ownership does not restrict it")
 
 		owns = ownsResource("superadmin-123", "/fhir/Organization", constvars.KonsulinRoleSuperadmin, "GET")
-		assert.False(t, owns, "Superadmin role should not have ownership restrictions")
+		assert.True(t, owns, "Organization is public; ownership does not restrict it")
 	})
 
 	t.Run("POST Request Access", func(t *testing.T) {
@@ -242,125 +238,32 @@ func ownsResource(fhirID, rawURL, role, method string) bool {
 		return false
 	}
 
+	// The real middleware bypasses pre-request ownership checks for GET
+	// (the response filter gates reads); ValidSearchQuery is the engine's
+	// pre-request scoping for entry-level searches and non-GET methods.
 	if method == "POST" {
 		return true
 	}
-
+	oc := ownership.NewContext()
 	switch role {
 	case constvars.KonsulinRolePatient:
-		return ownsPatientTestResource(fhirID, u)
+		oc.HasPatientRole = true
+		oc.AddPatientID(fhirID)
 	case constvars.KonsulinRolePractitioner:
-		return ownsPractitionerTestResource(fhirID, u)
+		oc.HasPractitionerRole = true
+		oc.AddPractitionerID(fhirID)
 	}
-	return false
-}
-
-// ownsPatientTestResource mirrors the patient ownership matrix: public
-// resources are owned, resources outside patient ownership are not, and
-// Patient/<id> paths plus patient/subject/actor/questionnaire query params
-// must reference the caller's own id.
-func ownsPatientTestResource(fhirID string, u *url.URL) bool {
 	resourceType := utils.ExtractResourceTypeFromPath(u.Path)
-	if utils.IsPublicResource(resourceType) {
-		return true
-	}
-	if !utils.RequiresPatientOwnership(resourceType) {
-		return false
-	}
-
-	if res, id := resourceIDFromTestPath(u.Path); res == "Patient" && id == fhirID {
-		return true
-	}
-
-	q := u.Query()
-	for _, param := range []string{"patient", "subject", "actor"} {
-		if v := q.Get(param); v != "" && strings.TrimPrefix(v, "Patient/") == fhirID {
-			return true
-		}
-	}
-	// questionnaire is always allowed for patients
-	return q.Get("questionnaire") != ""
+	return ownership.ValidSearchQuery(u.RequestURI(), resourceType, oc)
 }
 
-// ownsPractitionerTestResource mirrors the practitioner ownership matrix:
-// public resources are owned unless they carry practitioner/actor/_has
-// ownership params; practitioner-owned resources and Appointments must
-// reference the caller's own id.
-func ownsPractitionerTestResource(fhirID string, u *url.URL) bool {
-	resourceType := utils.ExtractResourceTypeFromPath(u.Path)
-	q := u.Query()
-
-	hasOwnershipParams := q.Get("practitioner") != "" || q.Get("actor") != ""
-	if !hasOwnershipParams {
-		for key := range q {
-			if strings.HasPrefix(key, "_has") && strings.Contains(key, "practitioner") {
-				hasOwnershipParams = true
-				break
-			}
-		}
-	}
-
-	if utils.IsPublicResource(resourceType) {
-		if !hasOwnershipParams {
-			return true
-		}
-		return ownsPractitionerQueryTestResource(fhirID, u)
-	}
-	if utils.RequiresPractitionerOwnership(resourceType) {
-		return ownsPractitionerQueryTestResource(fhirID, u)
-	}
-
-	if resourceType == "Appointment" {
-		if p := q.Get("practitioner"); p != "" && strings.TrimPrefix(p, "Practitioner/") == fhirID {
-			return true
-		}
-		if a := q.Get("actor"); a != "" && strings.TrimPrefix(a, "Practitioner/") == fhirID {
+// ruleHasRefTarget reports whether the ownership rule carries a ref whose
+// target type matches.
+func ruleHasRefTarget(rule ownership.ResourceRule, target string) bool {
+	for _, ref := range rule.Refs {
+		if ref.Target == target {
 			return true
 		}
 	}
 	return false
-}
-
-// ownsPractitionerQueryTestResource matches a Practitioner/<id> path or
-// practitioner/actor/_has query params against the caller's own id. It is the
-// shared query-match block for public-with-params and practitioner-scoped
-// resources.
-func ownsPractitionerQueryTestResource(fhirID string, u *url.URL) bool {
-	if res, id := resourceIDFromTestPath(u.Path); res == "Practitioner" && id == fhirID {
-		return true
-	}
-
-	q := u.Query()
-	if p := q.Get("practitioner"); p != "" && strings.TrimPrefix(p, "Practitioner/") == fhirID {
-		return true
-	}
-	if a := q.Get("actor"); a != "" && strings.TrimPrefix(a, "Practitioner/") == fhirID {
-		return true
-	}
-	for key, values := range q {
-		if strings.HasPrefix(key, "_has") && strings.Contains(key, "practitioner") {
-			for _, value := range values {
-				if value == fhirID {
-					return true
-				}
-			}
-		}
-	}
-	return false
-}
-
-// resourceIDFromTestPath parses a URL path into resource type and id,
-// handling both /fhir/{resource}/{id} and /{resource}/{id} patterns.
-func resourceIDFromTestPath(path string) (res, id string) {
-	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
-	if len(parts) >= 2 {
-		if strings.EqualFold(parts[0], "fhir") {
-			if len(parts) >= 3 {
-				return parts[1], parts[2]
-			}
-			return "", ""
-		}
-		return parts[0], parts[1]
-	}
-	return "", ""
 }

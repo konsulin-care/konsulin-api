@@ -11,10 +11,10 @@ import (
 // constructor shape so the 10-parameter signature cannot regress.
 func TestNewUserFHIRInitializerTakesDepsStruct(t *testing.T) {
 	instance := NewUserFHIRInitializer(UserFHIRInitializerDeps{
-		PatientFhirClient:      &MockPatientFhirClient{},
-		PractitionerFhirClient: &MockPractitionerFhirClient{},
-		PersonFhirClient:       &MockPersonFhirClient{},
-		Logger:                 zap.NewNop(),
+		PatientFhirClient:          &MockPatientFhirClient{},
+		PractitionerFhirClient:     &MockPractitionerFhirClient{},
+		PractitionerRoleFhirClient: &MockPractitionerRoleFhirClient{},
+		Logger:                     zap.NewNop(),
 	})
 	require.NotNil(t, instance)
 
@@ -22,6 +22,6 @@ func TestNewUserFHIRInitializerTakesDepsStruct(t *testing.T) {
 	require.True(t, ok)
 	require.NotNil(t, uc.PatientFhirClient)
 	require.NotNil(t, uc.PractitionerFhirClient)
-	require.NotNil(t, uc.PersonFhirClient)
+	require.NotNil(t, uc.PractitionerRoleFhirClient)
 	require.NotNil(t, uc.Log)
 }

@@ -11,6 +11,7 @@ type PractitionerRole struct {
 	Practitioner      Reference         `json:"practitioner,omitempty"`
 	Active            bool              `json:"active,omitempty"`
 	Organization      Reference         `json:"organization,omitempty"`
+	Code              []CodeableConcept `json:"code,omitempty"`
 	Specialty         []CodeableConcept `json:"specialty,omitempty"`
 	HealthcareService []Reference       `json:"healthcareService,omitempty"`
 	AvailableTime     []AvailableTime   `json:"availableTime,omitempty"`

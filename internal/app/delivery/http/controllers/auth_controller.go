@@ -185,6 +185,17 @@ func (ctrl *AuthController) normalizeAndValidateMagicLinkRequest(request *reques
 	// Persist normalized phone for downstream use (repo expects digits-only without '+').
 	request.Phone = phoneDigits
 
+	// Clinic Admin and Researcher map to org-scoped PractitionerRole resources,
+	// so an organization must be provided alongside those roles.
+	for _, role := range request.Roles {
+		if role == constvars.KonsulinRoleClinicAdmin || role == constvars.KonsulinRoleResearcher {
+			if strings.TrimSpace(request.OrganizationID) == "" {
+				return "", exceptions.ErrInputValidation(fmt.Errorf("organizationId is required when %s or %s role is selected", constvars.KonsulinRoleClinicAdmin, constvars.KonsulinRoleResearcher))
+			}
+			break
+		}
+	}
+
 	// Struct tag validation (email format, roles).
 	if err := utils.ValidateStruct(request); err != nil {
 		ctrl.Log.Error("Request validation failed",

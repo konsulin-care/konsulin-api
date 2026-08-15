@@ -43,7 +43,6 @@ type paymentUsecase struct {
 	JWTManager                 *jwtmanager.JWTManager
 	PatientFhirClient          contracts.PatientFhirClient
 	PractitionerFhirClient     contracts.PractitionerFhirClient
-	PersonFhirClient           contracts.PersonFhirClient
 	Storage                    *storage.ServiceRequestStorage
 	InvoiceFhirClient          contracts.InvoiceFhirClient
 	PractitionerRoleFhirClient contracts.PractitionerRoleFhirClient
@@ -66,7 +65,6 @@ func NewPaymentUsecase(
 	jwtMgr *jwtmanager.JWTManager,
 	patientFhirClient contracts.PatientFhirClient,
 	practitionerFhirClient contracts.PractitionerFhirClient,
-	personFhirClient contracts.PersonFhirClient,
 	storageService *storage.ServiceRequestStorage,
 	xenditClient *xendit.APIClient,
 	invoiceFhirClient contracts.InvoiceFhirClient,
@@ -85,7 +83,6 @@ func NewPaymentUsecase(
 			JWTManager:                 jwtMgr,
 			PatientFhirClient:          patientFhirClient,
 			PractitionerFhirClient:     practitionerFhirClient,
-			PersonFhirClient:           personFhirClient,
 			Storage:                    storageService,
 			InvoiceFhirClient:          invoiceFhirClient,
 			PractitionerRoleFhirClient: practitionerRoleFhirClient,
@@ -1077,12 +1074,9 @@ func (uc *paymentUsecase) lookupIdentityByService(ctx context.Context, service s
 	case string(constvars.ServiceAnalyze):
 		return resolveEmailIdentity(ctx, email, "no patient found", uc.PatientFhirClient.FindPatientByEmail,
 			func(ps []fhir_dto.Patient) (string, string) { return ps[0].ID, ps[0].FullName() })
-	case string(constvars.ServiceReport):
+	case string(constvars.ServiceReport), string(constvars.ServicePerformanceReport), string(constvars.ServiceAccessDataset):
 		return resolveEmailIdentity(ctx, email, "no practitioner found", uc.PractitionerFhirClient.FindPractitionerByEmail,
 			func(ps []fhir_dto.Practitioner) (string, string) { return ps[0].ID, ps[0].FullName() })
-	case string(constvars.ServicePerformanceReport), string(constvars.ServiceAccessDataset):
-		return resolveEmailIdentity(ctx, email, "no person found", uc.PersonFhirClient.FindPersonByEmail,
-			func(ps []fhir_dto.Person) (string, string) { return ps[0].ID, ps[0].FullName() })
 	default:
 		return "", "", exceptions.ErrClientCustomMessage(fmt.Errorf("unsupported service: %s", service))
 	}
@@ -1112,7 +1106,7 @@ func mapServiceToRequesterResourceType(service string) string {
 	case string(constvars.ServiceReport):
 		return constvars.ResourcePractitioner
 	case string(constvars.ServicePerformanceReport), string(constvars.ServiceAccessDataset):
-		return constvars.ResourcePerson
+		return constvars.ResourcePractitioner
 	default:
 		return ""
 	}

@@ -88,6 +88,7 @@ func TestParseAppointmentExternalID(t *testing.T) {
 type mockPractitionerFhirClient struct {
 	practitioner *fhir_dto.Practitioner
 	err          error
+	byEmail      func(ctx context.Context, email string) ([]fhir_dto.Practitioner, error)
 }
 
 func (m *mockPractitionerFhirClient) FindPractitionerByID(_ context.Context, _ string) (*fhir_dto.Practitioner, error) {
@@ -96,7 +97,10 @@ func (m *mockPractitionerFhirClient) FindPractitionerByID(_ context.Context, _ s
 func (*mockPractitionerFhirClient) FindPractitionerByIdentifier(_ context.Context, _, _ string) ([]fhir_dto.Practitioner, error) {
 	return nil, nil
 }
-func (*mockPractitionerFhirClient) FindPractitionerByEmail(_ context.Context, _ string) ([]fhir_dto.Practitioner, error) {
+func (m *mockPractitionerFhirClient) FindPractitionerByEmail(ctx context.Context, email string) ([]fhir_dto.Practitioner, error) {
+	if m.byEmail != nil {
+		return m.byEmail(ctx, email)
+	}
 	return nil, nil
 }
 func (*mockPractitionerFhirClient) FindPractitionerByPhone(_ context.Context, _ string) ([]fhir_dto.Practitioner, error) {

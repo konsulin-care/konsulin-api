@@ -18,5 +18,10 @@ docs: |
      referencing resources are gone.
   3. Chain terminates at Sign Out.
 
-  Run the whole journey on a clean backend (purge Blaze or start fresh) so the
-  seed phase starts from a known state.
+  The chained cleanup only runs when the journey completes. `scripts/bru-run.sh`
+  additionally runs `scripts/bru-cleanup.sh` after every suite run (success or
+  failure): a Blaze-direct sweep keyed on the fixed seed ids and the seeds'
+  distinctive content that removes seed resources and anything referencing
+  them, while preserving real data (`Organization/Konsulin`,
+  `Questionnaire/soap`, and non-seed QA resources). Run it manually any time
+  with `scripts/bru-cleanup.sh`.

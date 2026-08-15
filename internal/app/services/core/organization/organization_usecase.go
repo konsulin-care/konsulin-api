@@ -23,31 +23,31 @@ import (
 
 // Usecase implements contracts.OrganizationUsecase.
 type Usecase struct {
-	practitionerClient contracts.PractitionerFhirClient
-	personClient       contracts.PersonFhirClient
-	organizationClient contracts.OrganizationFhirClient
-	bundleClient       bundleSvc.BundleFhirClient
-	config             *config.InternalConfig
-	log                *zap.Logger
-	httpClient         *http.Client
+	practitionerClient     contracts.PractitionerFhirClient
+	practitionerRoleClient contracts.PractitionerRoleFhirClient
+	organizationClient     contracts.OrganizationFhirClient
+	bundleClient           bundleSvc.BundleFhirClient
+	config                 *config.InternalConfig
+	log                    *zap.Logger
+	httpClient             *http.Client
 }
 
 // NewOrganizationUsecase constructs a new Organization usecase.
 func NewOrganizationUsecase(
 	practitionerClient contracts.PractitionerFhirClient,
-	personClient contracts.PersonFhirClient,
+	practitionerRoleClient contracts.PractitionerRoleFhirClient,
 	organizationClient contracts.OrganizationFhirClient,
 	bundles bundleSvc.BundleFhirClient,
 	cfg *config.InternalConfig,
 	log *zap.Logger,
 ) contracts.OrganizationUsecase {
 	return &Usecase{
-		practitionerClient: practitionerClient,
-		personClient:       personClient,
-		organizationClient: organizationClient,
-		bundleClient:       bundles,
-		config:             cfg,
-		log:                log,
+		practitionerClient:     practitionerClient,
+		practitionerRoleClient: practitionerRoleClient,
+		organizationClient:     organizationClient,
+		bundleClient:           bundles,
+		config:                 cfg,
+		log:                    log,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
@@ -187,40 +187,46 @@ func (uc *Usecase) whitelistAccessByRoles(ctx context.Context, whiteListed []str
 }
 
 // ensureClinicAdminManagesOrganization enforces that the clinic admin identified
-// by uid manages the given organization ID, using Person.ManagingOrganization.
+// by uid manages the given organization ID, using the organization references of
+// the admin's PractitionerRole resources carrying the administrative staff code.
 func (uc *Usecase) ensureClinicAdminManagesOrganization(ctx context.Context, uid, organizationID string) error {
-	identifierToken := fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, uid)
-	people, err := uc.personClient.Search(ctx, contracts.PersonSearchInput{Identifier: identifierToken})
+	practitioners, err := uc.practitionerClient.FindPractitionerByIdentifier(ctx, constvars.FhirSupertokenSystemIdentifier, uid)
 	if err != nil {
 		return exceptions.BuildNewCustomError(
 			err,
 			constvars.StatusInternalServerError,
 			constvars.ErrClientSomethingWrongWithApplication,
-			"error searching for person by identifier",
+			"error searching for practitioner by identifier",
 		)
 	}
-	if len(people) != 1 {
-		errMultiPersons := errors.New("multiple persons found on the same identifier or no person found at all")
+	if len(practitioners) != 1 {
+		errMulti := errors.New("multiple practitioners found on the same identifier or no practitioner found at all")
 		return exceptions.BuildNewCustomError(
-			errMultiPersons,
+			errMulti,
 			constvars.StatusBadRequest,
-			errMultiPersons.Error(),
-			errMultiPersons.Error(),
+			errMulti.Error(),
+			errMulti.Error(),
 		)
 	}
-	adminPerson := people[0]
-	adminOrgRef := ""
-	if adminPerson.ManagingOrganization != nil {
-		adminOrgRef = adminPerson.ManagingOrganization.Reference
+
+	adminRoles, err := uc.practitionerRoleClient.FindPractitionerRoleByPractitionerID(ctx, practitioners[0].ID)
+	if err != nil {
+		return exceptions.BuildNewCustomError(
+			err,
+			constvars.StatusInternalServerError,
+			constvars.ErrClientSomethingWrongWithApplication,
+			"error searching for admin practitioner roles",
+		)
 	}
-	if adminOrgRef == "" {
-		err := exceptions.BuildNewCustomError(nil, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, "clinic admin has no managingOrganization configured")
-		uc.log.With(zap.Error(err)).Error("organization scope check failed: missing managingOrganization on admin")
+	adminOrgRefs := adminOrgReferences(adminRoles)
+	if len(adminOrgRefs) == 0 {
+		err := exceptions.BuildNewCustomError(nil, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, "clinic admin has no org-scoped admin role configured")
+		uc.log.With(zap.Error(err)).Error("organization scope check failed: missing org-scoped admin role")
 		return err
 	}
 
 	expectedRef := fmt.Sprintf("%s/%s", constvars.ResourceOrganization, organizationID)
-	if adminOrgRef != expectedRef {
+	if !slices.Contains(adminOrgRefs, expectedRef) {
 		msg := fmt.Sprintf("The requesting account does not manage %s", expectedRef)
 		err := exceptions.BuildNewCustomError(nil, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, msg)
 		uc.log.With(zap.Error(err)).Error("organization scope check failed: admin does not manage organization")
@@ -228,6 +234,33 @@ func (uc *Usecase) ensureClinicAdminManagesOrganization(ctx context.Context, uid
 	}
 
 	return nil
+}
+
+// adminOrgReferences returns the organization references of the given
+// PractitionerRole resources that carry the administrative staff code.
+func adminOrgReferences(roles []fhir_dto.PractitionerRole) []string {
+	var refs []string
+	for _, r := range roles {
+		if !hasRoleCode(r, constvars.FhirPractitionerRoleCodeAdministrativeStaff) {
+			continue
+		}
+		if r.Organization.Reference != "" {
+			refs = append(refs, r.Organization.Reference)
+		}
+	}
+	return refs
+}
+
+// hasRoleCode reports whether any coding of the role's code element matches code.
+func hasRoleCode(role fhir_dto.PractitionerRole, code string) bool {
+	for _, cc := range role.Code {
+		for _, c := range cc.Coding {
+			if c.Code == code {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // ensurePractitionerExistsByEmail resolves a Practitioner by email. If none exists,
