@@ -129,8 +129,9 @@ func TestAcquireLocksForPractitionerDay(t *testing.T) {
 // TestAcquireLocksForPractitionerDayRejectsZeroWindow guards against a degenerate window.
 func TestAcquireLocksForPractitionerDayRejectsZeroWindow(t *testing.T) {
 	s := &SlotUsecase{locker: new(mockLockerService)}
-	_, err := s.AcquireLocksForPractitionerDay(context.Background(), "prac-1", time.Time{}, time.Time{}, 30*time.Second)
+	release, err := s.AcquireLocksForPractitionerDay(context.Background(), "prac-1", time.Time{}, time.Time{}, 30*time.Second)
 	assert.Error(t, err)
+	assert.Nil(t, release, "release must be nil when lock acquisition fails")
 }
 
 // TestAcquirePractitionerDayLocksOrdered verifies ordered acquisition and
@@ -161,12 +162,15 @@ func TestAcquirePractitionerDayLocksOrdered(t *testing.T) {
 			{PractitionerID: "prac-1", Day: time.Date(2026, time.August, 13, 0, 0, 0, 0, time.UTC)},
 			{PractitionerID: "prac-1", Day: time.Date(2026, time.August, 14, 0, 0, 0, 0, time.UTC)},
 		}
+		acquireCtx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 		mockLocker.On("TryLock", mock.Anything, "slotgen:lock:practitioner:prac-1:2026-08-13", 30*time.Second).Return(true, "t1", nil)
 		mockLocker.On("TryLock", mock.Anything, "slotgen:lock:practitioner:prac-1:2026-08-14", 30*time.Second).Return(false, "", nil)
-		mockLocker.On("Unlock", mock.Anything, "slotgen:lock:practitioner:prac-1:2026-08-13", "t1").Return(nil)
+		mockLocker.On("Unlock", mock.MatchedBy(func(ctx context.Context) bool { return ctx == acquireCtx }), "slotgen:lock:practitioner:prac-1:2026-08-13", "t1").Return(nil)
 
-		_, err := s.acquirePractitionerDayLocksOrdered(context.Background(), targets, 30*time.Second)
+		release, err := s.acquirePractitionerDayLocksOrdered(acquireCtx, targets, 30*time.Second)
 		assert.Error(t, err)
+		assert.Nil(t, release, "release must be nil when acquisition fails")
 		assert.Contains(t, err.Error(), "failed to acquire lock")
 		mockLocker.AssertExpectations(t)
 	})

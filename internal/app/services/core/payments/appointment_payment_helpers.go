@@ -495,10 +495,10 @@ func (uc *paymentUsecase) findCrossRoleOverlap(
 func (uc *paymentUsecase) acquireNotificationLocks(ctx context.Context, fields appointmentExternalIDFields, slot *fhir_dto.Slot, ttl time.Duration) (func(context.Context), error) {
 	role, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByID(ctx, fields.PractitionerRoleID)
 	if err != nil {
-		return func(context.Context) {}, fmt.Errorf("failed to fetch practitioner role %s: %w", fields.PractitionerRoleID, err)
+		return nil, fmt.Errorf("failed to fetch practitioner role %s: %w", fields.PractitionerRoleID, err)
 	}
 	if role == nil {
-		return func(context.Context) {}, fmt.Errorf("practitioner role %s not found", fields.PractitionerRoleID)
+		return nil, fmt.Errorf("practitioner role %s not found", fields.PractitionerRoleID)
 	}
 	practitionerID := strings.TrimPrefix(role.Practitioner.Reference, constvars.FHIRRefPrefixPractitioner)
 	return uc.SlotUsecase.AcquireLocksForPractitionerDay(ctx, practitionerID, slot.Start, slot.End, ttl)

@@ -703,12 +703,12 @@ func acquireLocksOrdered[T any](ctx context.Context, locker contracts.LockerServ
 		ok, tok, err := locker.TryLock(ctx, key, ttl)
 		if err != nil || !ok {
 			for i := len(acquiredList) - 1; i >= 0; i-- {
-				_ = locker.Unlock(context.Background(), acquiredList[i].key, acquiredList[i].tok)
+				_ = locker.Unlock(ctx, acquiredList[i].key, acquiredList[i].tok)
 			}
 			if err == nil {
 				err = fmt.Errorf("failed to acquire lock: %s", key)
 			}
-			return func(context.Context) {}, err
+			return nil, err
 		}
 		acquiredList = append(acquiredList, acquiredLock{key: key, tok: tok})
 	}
@@ -733,11 +733,11 @@ func (s *SlotUsecase) acquirePractitionerDayLocksOrdered(ctx context.Context, ta
 // or period-less sibling roles cannot break a booking.
 func (s *SlotUsecase) AcquireLocksForPractitionerDay(ctx context.Context, practitionerID string, start, end time.Time, ttl time.Duration) (func(context.Context), error) {
 	if start.IsZero() || end.IsZero() {
-		return func(context.Context) {}, fmt.Errorf("appointment window start/end must not be zero")
+		return nil, fmt.Errorf("appointment window start/end must not be zero")
 	}
 	loc := start.Location()
 	if loc == nil {
-		return func(context.Context) {}, fmt.Errorf("appointment window start has no location/timezone")
+		return nil, fmt.Errorf("appointment window start has no location/timezone")
 	}
 	targets := s.practitionerDayTargetsForWindow(practitionerID, loc, start, end)
 	return s.acquirePractitionerDayLocksOrdered(ctx, targets, ttl)

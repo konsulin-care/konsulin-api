@@ -155,8 +155,9 @@ func TestAcquireNotificationLocks(t *testing.T) {
 			SlotUsecase:                &mockSlotUsecase{},
 			Log:                        zap.NewNop(),
 		}
-		_, err := uc.acquireNotificationLocks(context.Background(), appointmentExternalIDFields{PractitionerRoleID: "pr-456"}, &fhir_dto.Slot{Start: start, End: end}, 30*time.Second)
+		release, err := uc.acquireNotificationLocks(context.Background(), appointmentExternalIDFields{PractitionerRoleID: "pr-456"}, &fhir_dto.Slot{Start: start, End: end}, 30*time.Second)
 		assert.Error(t, err)
+		assert.Nil(t, release, "release must be nil when lock acquisition fails")
 	})
 
 	t.Run("role fetch error propagates", func(t *testing.T) {
@@ -165,8 +166,9 @@ func TestAcquireNotificationLocks(t *testing.T) {
 			SlotUsecase:                &mockSlotUsecase{},
 			Log:                        zap.NewNop(),
 		}
-		_, err := uc.acquireNotificationLocks(context.Background(), appointmentExternalIDFields{PractitionerRoleID: "pr-456"}, &fhir_dto.Slot{Start: start, End: end}, 30*time.Second)
+		release, err := uc.acquireNotificationLocks(context.Background(), appointmentExternalIDFields{PractitionerRoleID: "pr-456"}, &fhir_dto.Slot{Start: start, End: end}, 30*time.Second)
 		assert.Error(t, err)
+		assert.Nil(t, release, "release must be nil when lock acquisition fails")
 	})
 }
 

@@ -119,5 +119,7 @@ type SlotUsecaseIface interface {
 	// AcquireLocksForPractitionerDay locks the practitioner's local days covered by [start,end),
 	// computed from the window's own location. It is the single serialization unit for all slot
 	// mutators of a practitioner, so concurrent bookings across roles contend on the same keys.
+	// The returned release closure is valid only when err == nil; on error it is nil and must not
+	// be called.
 	AcquireLocksForPractitionerDay(ctx context.Context, practitionerID string, start, end time.Time, ttl time.Duration) (func(context.Context), error)
 }
