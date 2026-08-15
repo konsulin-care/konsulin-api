@@ -33,7 +33,8 @@ SKIPPED=0
 # delete_ref <Type>/<id> — best-effort DELETE; 2xx counts as deleted, 404/410
 # as already absent, 409 as skipped (still referenced), anything else warned.
 delete_ref() {
-  ref="$1"
+  local ref="$1"
+  local code
   code="$(curl -s -o /dev/null -w '%{http_code}' -X DELETE "${FHIR}/${ref}")"
   case "$code" in
     200|201|204) DELETED=$((DELETED + 1)) ;;
@@ -41,46 +42,60 @@ delete_ref() {
     409) SKIPPED=$((SKIPPED + 1)); echo "  skip ${ref}: still referenced" ;;
     *) echo "  WARN: DELETE ${ref} -> ${code}" ;;
   esac
+  return 0
 }
 
 # ids <Type> <param> <value> — ids of resources matching param=value (single
 # page capped at 1000; test litter never exceeds that).
 ids() {
-  curl -s -G "${FHIR}/$1" --data-urlencode "$2=$3" --data-urlencode "_count=1000" \
+  local type="$1" param="$2" value="$3"
+  curl -s -G "${FHIR}/${type}" --data-urlencode "${param}=${value}" --data-urlencode "_count=1000" \
     | jq -r '.entry[]?.resource.id // empty'
+  return 0
 }
 
 # delete_each <Type> <param> <value> — delete every matching resource.
 delete_each() {
+  local type="$1"
+  local id
   for id in $(ids "$@"); do
-    delete_ref "$1/${id}"
+    delete_ref "${type}/${id}"
   done
+  return 0
 }
 
 # delete_slot_graph <id> — appointments referencing the slot first, then it.
 delete_slot_graph() {
-  delete_each Appointment slot "Slot/$1"
-  delete_ref "Slot/$1"
+  local id="$1"
+  delete_each Appointment slot "Slot/${id}"
+  delete_ref "Slot/${id}"
+  return 0
 }
 
 # delete_schedule_graph <id> — slots (and their appointments) first, then the
 # schedule; also any appointment referencing the schedule directly.
 delete_schedule_graph() {
-  delete_each Appointment actor "Schedule/$1"
-  for id in $(ids Slot schedule "Schedule/$1"); do
-    delete_slot_graph "$id"
+  local id="$1"
+  local slot_id
+  delete_each Appointment actor "Schedule/${id}"
+  for slot_id in $(ids Slot schedule "Schedule/${id}"); do
+    delete_slot_graph "${slot_id}"
   done
-  delete_ref "Schedule/$1"
+  delete_ref "Schedule/${id}"
+  return 0
 }
 
 # delete_role_graph <id> — schedules and appointments referencing the role
 # first, then the role itself.
 delete_role_graph() {
-  delete_each Appointment actor "PractitionerRole/$1"
-  for id in $(ids Schedule actor "PractitionerRole/$1"); do
-    delete_schedule_graph "$id"
+  local id="$1"
+  local schedule_id
+  delete_each Appointment actor "PractitionerRole/${id}"
+  for schedule_id in $(ids Schedule actor "PractitionerRole/${id}"); do
+    delete_schedule_graph "${schedule_id}"
   done
-  delete_ref "PractitionerRole/$1"
+  delete_ref "PractitionerRole/${id}"
+  return 0
 }
 
 # delete_org_graph <id> — roles referencing the org first, then the org.
@@ -92,16 +107,21 @@ delete_role_graph() {
 # explicitly. Non-seed references (real QA data) are left alone; if they still
 # block the org delete, the org is skipped and reported.
 delete_org_graph() {
-  for id in $(ids PractitionerRole organization "Organization/$1"); do
-    delete_role_graph "$id"
+  local id="$1"
+  local role_id
+  for role_id in $(ids PractitionerRole organization "Organization/${id}"); do
+    delete_role_graph "${role_id}"
   done
-  delete_ref "Organization/$1"
+  delete_ref "Organization/${id}"
+  return 0
 }
 
 # delete_study_graph <id> — research subjects referencing the study first.
 delete_study_graph() {
-  delete_each ResearchSubject study "ResearchStudy/$1"
-  delete_ref "ResearchStudy/$1"
+  local id="$1"
+  delete_each ResearchSubject study "ResearchStudy/${id}"
+  delete_ref "ResearchStudy/${id}"
+  return 0
 }
 
 # phase_a_fixed_ids — the suite's current seed ids (post-idempotent conversion)
@@ -120,14 +140,16 @@ phase_a_fixed_ids() {
   delete_ref "HealthcareService/seed-hs"
   delete_ref "Location/seed-location"
   delete_org_graph seed-clinic
+  return 0
 }
 
 # phase_b_legacy — pre-conversion random-id litter, keyed on the seeds'
 # distinctive content so real QA data (different names/titles) is never matched.
 phase_b_legacy() {
   echo "[phase B] legacy content-keyed litter"
+  local id
   for id in $(ids ResearchStudy title "Wellbeing Monitoring Study"); do
-    delete_study_graph "$id"
+    delete_study_graph "${id}"
   done
   for id in $(ids PlanDefinition title "Wellbeing Check-in Protocol"); do
     delete_ref "PlanDefinition/${id}"
@@ -146,6 +168,7 @@ phase_b_legacy() {
   for id in $(ids Organization name "Konsulin Demo Clinic"); do
     delete_ref "Organization/${id}"
   done
+  return 0
 }
 
 main() {
@@ -157,6 +180,7 @@ main() {
   phase_a_fixed_ids
   phase_b_legacy
   echo "cleanup finished: ${DELETED} deleted, ${SKIPPED} skipped (still referenced)"
+  return 0
 }
 
 main "$@"

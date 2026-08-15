@@ -1074,10 +1074,7 @@ func (uc *paymentUsecase) lookupIdentityByService(ctx context.Context, service s
 	case string(constvars.ServiceAnalyze):
 		return resolveEmailIdentity(ctx, email, "no patient found", uc.PatientFhirClient.FindPatientByEmail,
 			func(ps []fhir_dto.Patient) (string, string) { return ps[0].ID, ps[0].FullName() })
-	case string(constvars.ServiceReport):
-		return resolveEmailIdentity(ctx, email, "no practitioner found", uc.PractitionerFhirClient.FindPractitionerByEmail,
-			func(ps []fhir_dto.Practitioner) (string, string) { return ps[0].ID, ps[0].FullName() })
-	case string(constvars.ServicePerformanceReport), string(constvars.ServiceAccessDataset):
+	case string(constvars.ServiceReport), string(constvars.ServicePerformanceReport), string(constvars.ServiceAccessDataset):
 		return resolveEmailIdentity(ctx, email, "no practitioner found", uc.PractitionerFhirClient.FindPractitionerByEmail,
 			func(ps []fhir_dto.Practitioner) (string, string) { return ps[0].ID, ps[0].FullName() })
 	default:

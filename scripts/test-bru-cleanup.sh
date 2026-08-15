@@ -23,39 +23,50 @@ FAILED=0
 
 # code <Type>/<id> — HTTP status of a GET.
 code() {
-  curl -s -o /dev/null -w '%{http_code}' "${FHIR}/$1"
+  local type_id="$1"
+  curl -s -o /dev/null -w '%{http_code}' "${FHIR}/${type_id}"
+  return 0
 }
 
 # put <Type>/<id> <json> — PUT a fixture resource; marks FAILED on error.
 put() {
-  http="$(curl -s -o /dev/null -w '%{http_code}' -X PUT "${FHIR}/$1" \
-    -H 'content-type: application/fhir+json' -d "$2")"
-  if [ "$http" != "200" ] && [ "$http" != "201" ]; then
-    echo "FAIL: setup PUT $1 -> $http"
+  local type_id="$1" json="$2"
+  local http
+  http="$(curl -s -o /dev/null -w '%{http_code}' -X PUT "${FHIR}/${type_id}" \
+    -H 'content-type: application/fhir+json' -d "${json}")"
+  if [[ "${http}" != "200" && "${http}" != "201" ]]; then
+    echo "FAIL: setup PUT ${type_id} -> ${http}"
     FAILED=1
   fi
+  return 0
 }
 
 # check_absent <label> <Type>/<id> — 404/410 means gone.
 check_absent() {
-  c="$(code "$2")"
-  if [ "$c" = "404" ] || [ "$c" = "410" ]; then
-    echo "PASS: $1 absent ($c)"
+  local label="$1" type_id="$2"
+  local c
+  c="$(code "${type_id}")"
+  if [[ "${c}" = "404" || "${c}" = "410" ]]; then
+    echo "PASS: ${label} absent (${c})"
   else
-    echo "FAIL: $1 present ($c)"
+    echo "FAIL: ${label} present (${c})"
     FAILED=1
   fi
+  return 0
 }
 
 # check_code <label> <expected> <Type>/<id>
 check_code() {
-  c="$(code "$3")"
-  if [ "$c" = "$2" ]; then
-    echo "PASS: $1 ($c)"
+  local label="$1" expected="$2" type_id="$3"
+  local c
+  c="$(code "${type_id}")"
+  if [[ "${c}" = "${expected}" ]]; then
+    echo "PASS: ${label} (${c})"
   else
-    echo "FAIL: $1 expected $2, got $c"
+    echo "FAIL: ${label} expected ${expected}, got ${c}"
     FAILED=1
   fi
+  return 0
 }
 
 echo "== static contract: collection seeds fixed ids via PUT =="
@@ -95,7 +106,7 @@ else
   echo "PASS: no collection request references Questionnaire/soap"
 fi
 
-if [ "$FAILED" = "1" ]; then
+if [[ "$FAILED" = "1" ]]; then
   echo "ABORT: static contract broken; fix the collection before running the live checks"
   exit 1
 fi
@@ -120,7 +131,7 @@ put ResearchSubject/zz-legacy-rs '{"resourceType":"ResearchSubject","id":"zz-leg
 # must survive the cleanup untouched (guards against type-wide sweeps).
 put Organization/zz-qa-org '{"resourceType":"Organization","id":"zz-qa-org","active":true,"name":"Cabang Klinik QA"}'
 put Location/zz-qa-location '{"resourceType":"Location","id":"zz-qa-location","status":"active","name":"Cabang Klinik QA — Main","managingOrganization":{"reference":"Organization/zz-qa-org"}}'
-if [ "$FAILED" = "1" ]; then
+if [[ "$FAILED" = "1" ]]; then
   echo "ABORT: fixture setup failed; refusing to run the cleanup against a broken baseline"
   exit 1
 fi
@@ -151,7 +162,7 @@ SOAP_BEFORE="$(code Questionnaire/soap)"
 echo "== run scripts/bru-cleanup.sh (second pass, idempotency) =="
 sh scripts/bru-cleanup.sh
 SOAP_AFTER="$(code Questionnaire/soap)"
-if [ "$SOAP_BEFORE" = "$SOAP_AFTER" ]; then
+if [[ "$SOAP_BEFORE" = "$SOAP_AFTER" ]]; then
   echo "PASS: Questionnaire/soap untouched across both passes ($SOAP_BEFORE)"
 else
   echo "FAIL: Questionnaire/soap changed $SOAP_BEFORE -> $SOAP_AFTER"
@@ -165,7 +176,7 @@ curl -s -o /dev/null -X DELETE "${FHIR}/Patient/zz-cleanup-pat"
 curl -s -o /dev/null -X DELETE "${FHIR}/Location/zz-qa-location"
 curl -s -o /dev/null -X DELETE "${FHIR}/Organization/zz-qa-org"
 
-if [ "$FAILED" = "1" ]; then
+if [[ "$FAILED" = "1" ]]; then
   echo "FAILED: one or more cleanup assertions did not hold"
   exit 1
 fi

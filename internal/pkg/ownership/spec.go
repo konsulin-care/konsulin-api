@@ -98,3 +98,18 @@ func pracRef(path string) Ref   { return Ref{Path: path, Target: constvars.Resou
 func roleRef(path string) Ref   { return Ref{Path: path, Target: constvars.ResourcePractitionerRole} }
 func personRef(path string) Ref { return Ref{Path: path, Target: constvars.ResourcePerson} }
 func idRef(target string) Ref   { return Ref{Path: "id", Target: target} }
+
+// Reference-path constants for the Rules table. These are gjson paths into the
+// FHIR JSON; the compartment conformance tests resolve them against the
+// vendored R4 CompartmentDefinitions.
+const (
+	refSubject   = "subject.reference"
+	refPatient   = "patient.reference"
+	refActor     = "participant.#.actor.reference"
+	refSender    = "sender.reference"
+	refRecipient = "recipient.reference"
+	refPerformer = "performer.#.reference"
+	refAuthor    = "author.reference"
+	refEnterer   = "enterer.reference"
+	refProvider  = "provider.reference"
+)

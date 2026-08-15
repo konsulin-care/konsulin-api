@@ -249,7 +249,16 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	if err != nil {
 		return err
 	}
-	webhookUsecase := webhook.NewUsecase(bootstrap.Logger, bootstrap.InternalConfig, webhookQueueService, jwtManager, patientFhirClient, practitionerFhirClient, serviceRequestFhirClient, middlewares.Enforcer)
+	webhookUsecase := webhook.NewUsecase(webhook.Options{
+		Log:                bootstrap.Logger,
+		Config:             bootstrap.InternalConfig,
+		Queue:              webhookQueueService,
+		JWTManager:         jwtManager,
+		PatientFhir:        patientFhirClient,
+		PractitionerFhir:   practitionerFhirClient,
+		ServiceRequestFhir: serviceRequestFhirClient,
+		Enforcer:           middlewares.Enforcer,
+	})
 
 	// Wire in-process forwarders for internal callers (magic link delivery, omnichannel)
 	// to skip the HTTP loopback and call ForwardSynchronousInternal directly.

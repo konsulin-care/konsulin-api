@@ -20,6 +20,14 @@ import (
 	"go.uber.org/zap"
 )
 
+// errMultiplePractitionersFound is returned when the supertoken identifier
+// resolves to zero or several Practitioner resources during role ownership
+// checks.
+const errMultiplePractitionersFound = "multiple practitioners found on the same identifier or no practitioner found at all"
+
+// practitionerRefPrefix builds FHIR references of the form Practitioner/<id>.
+const practitionerRefPrefix = "Practitioner/"
+
 type SlotUsecase struct {
 	schedules         contracts.ScheduleFhirClient
 	locker            contracts.LockerService
@@ -213,19 +221,19 @@ func (s *SlotUsecase) checkRoleOwnership(ctx context.Context, role, uid string, 
 	}
 	if len(practitioners) != 1 {
 		return "", exceptions.BuildNewCustomError(
-			errors.New("multiple practitioners found on the same identifier or no practitioner found at all"),
+			errors.New(errMultiplePractitionersFound),
 			http.StatusBadRequest,
-			"multiple practitioners found on the same identifier or no practitioner found at all",
-			"multiple practitioners found on the same identifier or no practitioner found at all",
+			errMultiplePractitionersFound,
+			errMultiplePractitionersFound,
 		)
 	}
 	practitioner := practitioners[0]
 	for _, pr := range roles {
-		if pr.Practitioner.Reference != "Practitioner/"+practitioner.ID {
+		if pr.Practitioner.Reference != practitionerRefPrefix+practitioner.ID {
 			return "", exceptions.BuildNewCustomError(nil, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, "practitioner cannot modify other practitioner's role")
 		}
 	}
-	return "Practitioner/" + practitioner.ID, nil
+	return practitionerRefPrefix + practitioner.ID, nil
 }
 
 // verifyClinicAdminScope ensures a Clinic Admin only modifies roles from their
@@ -242,10 +250,10 @@ func (s *SlotUsecase) verifyClinicAdminScope(ctx context.Context, role, uid stri
 	}
 	if len(practitioners) != 1 {
 		return "", exceptions.BuildNewCustomError(
-			errors.New("multiple practitioners found on the same identifier or no practitioner found at all"),
+			errors.New(errMultiplePractitionersFound),
 			constvars.StatusBadRequest,
-			"multiple practitioners found on the same identifier or no practitioner found at all",
-			"multiple practitioners found on the same identifier or no practitioner found at all",
+			errMultiplePractitionersFound,
+			errMultiplePractitionersFound,
 		)
 	}
 	practitionerID := practitioners[0].ID
@@ -263,7 +271,7 @@ func (s *SlotUsecase) verifyClinicAdminScope(ctx context.Context, role, uid stri
 			return "", exceptions.BuildNewCustomError(nil, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, "clinic admin cannot modify roles from other organization")
 		}
 	}
-	return "Practitioner/" + practitionerID, nil
+	return practitionerRefPrefix + practitionerID, nil
 }
 
 // adminOrgReferences returns the organization references of the given

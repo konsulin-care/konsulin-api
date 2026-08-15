@@ -25,7 +25,7 @@ func (m *mockPractitionerFhirClient) CreatePractitioner(ctx context.Context, req
 	return nil, args.Error(1)
 }
 
-func (m *mockPractitionerFhirClient) UpdatePractitioner(ctx context.Context, req *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
+func (m *mockPractitionerFhirClient) UpdatePractitioner(ctx context.Context, req *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) { // NOSONAR:go:S4144 testify mock idiom
 	args := m.Called(ctx, req)
 	if v := args.Get(0); v != nil {
 		return v.(*fhir_dto.Practitioner), args.Error(1)
@@ -33,7 +33,7 @@ func (m *mockPractitionerFhirClient) UpdatePractitioner(ctx context.Context, req
 	return nil, args.Error(1)
 }
 
-func (m *mockPractitionerFhirClient) PatchPractitioner(ctx context.Context, req *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
+func (m *mockPractitionerFhirClient) PatchPractitioner(ctx context.Context, req *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) { // NOSONAR:go:S4144 testify mock idiom
 	args := m.Called(ctx, req)
 	if v := args.Get(0); v != nil {
 		return v.(*fhir_dto.Practitioner), args.Error(1)
@@ -125,7 +125,7 @@ func (m *mockPractitionerRoleFhirClient) CreatePractitionerRole(ctx context.Cont
 	return nil, args.Error(1)
 }
 
-func (m *mockPractitionerRoleFhirClient) UpdatePractitionerRole(ctx context.Context, request *fhir_dto.PractitionerRole) (*fhir_dto.PractitionerRole, error) {
+func (m *mockPractitionerRoleFhirClient) UpdatePractitionerRole(ctx context.Context, request *fhir_dto.PractitionerRole) (*fhir_dto.PractitionerRole, error) { // NOSONAR:go:S4144 testify mock idiom
 	args := m.Called(ctx, request)
 	if v := args.Get(0); v != nil {
 		return v.(*fhir_dto.PractitionerRole), args.Error(1)
@@ -249,4 +249,20 @@ func TestVerifyClinicAdminScope(t *testing.T) {
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "no practitioner found")
 	})
+}
+
+// TestCheckRoleOwnershipMultiplePractitioners pins the exact error message a
+// practitioner gets when the supertoken identifier resolves to zero or several
+// Practitioner resources (constantized to avoid string drift).
+func TestCheckRoleOwnershipMultiplePractitioners(t *testing.T) {
+	mockPrac := new(mockPractitionerFhirClient)
+	s := &SlotUsecase{practitioner: mockPrac}
+
+	mockPrac.On("FindPractitionerByIdentifier", mock.Anything, constvars.FhirSupertokenSystemIdentifier, "st-123").
+		Return([]fhir_dto.Practitioner{{ID: "p-1"}, {ID: "p-2"}}, nil)
+
+	_, err := s.checkRoleOwnership(context.Background(), constvars.KonsulinRolePractitioner, "st-123", nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "multiple practitioners found on the same identifier or no practitioner found at all")
+	mockPrac.AssertExpectations(t)
 }

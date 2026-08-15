@@ -59,6 +59,26 @@ var nonCompartmentRefs = map[string]map[string]string{
 	"PaymentReconciliation": {},
 }
 
+// assertRefsInCompartment asserts every ref of an allowed target type resolves
+// to a compartment search parameter for resource type rt. Paths documented in
+// allowed (nonCompartmentRefs) are exempt.
+func assertRefsInCompartment(t *testing.T, rt string, refs []Ref, params []string, allowedTargets map[string]bool, compartmentCode string, allowed map[string]string) {
+	t.Helper()
+	for _, ref := range refs {
+		if ref.Path == "id" || !allowedTargets[ref.Target] {
+			continue
+		}
+		norm := resolveCompartmentParam(rt, ref.Path)
+		if contains(params, norm) {
+			continue
+		}
+		if _, ok := allowed[norm]; ok {
+			continue
+		}
+		t.Errorf("rule %q ref %q (compartment param %q) not in %s compartment params %v", rt, ref.Path, norm, compartmentCode, params)
+	}
+}
+
 // TestRefsConformToPatientCompartment asserts that every Patient-scoped ref in
 // the Rules table exists as a parameter of the FHIR R4 Patient compartment.
 // It is one-directional: the compartment may list more params than we use.
@@ -68,19 +88,7 @@ func TestRefsConformToPatientCompartment(t *testing.T) {
 		if !ruleHasPatientRefs(rule) {
 			continue
 		}
-		params := compartment[rt]
-		for _, ref := range rule.Refs {
-			if ref.Path == "id" || ref.Target != "Patient" {
-				continue
-			}
-			norm := resolveCompartmentParam(rt, ref.Path)
-			if !contains(params, norm) {
-				if _, allowed := nonCompartmentRefs[rt][norm]; allowed {
-					continue
-				}
-				t.Errorf("rule %q ref %q (compartment param %q) not in Patient compartment params %v", rt, ref.Path, norm, params)
-			}
-		}
+		assertRefsInCompartment(t, rt, rule.Refs, compartment[rt], map[string]bool{"Patient": true}, "Patient", nonCompartmentRefs[rt])
 	}
 }
 
@@ -93,19 +101,7 @@ func TestRefsConformToPractitionerCompartment(t *testing.T) {
 		if !ruleHasPractitionerRefs(rule) {
 			continue
 		}
-		params := compartment[rt]
-		for _, ref := range rule.Refs {
-			if ref.Path == "id" || (ref.Target != "Practitioner" && ref.Target != "PractitionerRole") {
-				continue
-			}
-			norm := resolveCompartmentParam(rt, ref.Path)
-			if !contains(params, norm) {
-				if _, allowed := nonCompartmentRefs[rt][norm]; allowed {
-					continue
-				}
-				t.Errorf("rule %q ref %q (compartment param %q) not in Practitioner compartment params %v", rt, ref.Path, norm, params)
-			}
-		}
+		assertRefsInCompartment(t, rt, rule.Refs, compartment[rt], map[string]bool{"Practitioner": true, "PractitionerRole": true}, "Practitioner", nonCompartmentRefs[rt])
 	}
 }
 

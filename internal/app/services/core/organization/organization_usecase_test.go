@@ -26,7 +26,7 @@ func (m *mockPractitionerFhirClient) CreatePractitioner(ctx context.Context, req
 	return nil, args.Error(1)
 }
 
-func (m *mockPractitionerFhirClient) UpdatePractitioner(ctx context.Context, req *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
+func (m *mockPractitionerFhirClient) UpdatePractitioner(ctx context.Context, req *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) { // NOSONAR:go:S4144 testify mock idiom
 	args := m.Called(ctx, req)
 	if v := args.Get(0); v != nil {
 		return v.(*fhir_dto.Practitioner), args.Error(1)
@@ -34,7 +34,7 @@ func (m *mockPractitionerFhirClient) UpdatePractitioner(ctx context.Context, req
 	return nil, args.Error(1)
 }
 
-func (m *mockPractitionerFhirClient) PatchPractitioner(ctx context.Context, req *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
+func (m *mockPractitionerFhirClient) PatchPractitioner(ctx context.Context, req *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) { // NOSONAR:go:S4144 testify mock idiom
 	args := m.Called(ctx, req)
 	if v := args.Get(0); v != nil {
 		return v.(*fhir_dto.Practitioner), args.Error(1)
@@ -126,7 +126,7 @@ func (m *mockPractitionerRoleFhirClient) CreatePractitionerRole(ctx context.Cont
 	return nil, args.Error(1)
 }
 
-func (m *mockPractitionerRoleFhirClient) UpdatePractitionerRole(ctx context.Context, request *fhir_dto.PractitionerRole) (*fhir_dto.PractitionerRole, error) {
+func (m *mockPractitionerRoleFhirClient) UpdatePractitionerRole(ctx context.Context, request *fhir_dto.PractitionerRole) (*fhir_dto.PractitionerRole, error) { // NOSONAR:go:S4144 testify mock idiom
 	args := m.Called(ctx, request)
 	if v := args.Get(0); v != nil {
 		return v.(*fhir_dto.PractitionerRole), args.Error(1)

@@ -5,9 +5,57 @@ import (
 	"testing"
 
 	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/fhir_dto"
+
+	"github.com/stretchr/testify/assert"
 )
 
-// TestDetermineServiceRequestSubject pins the FHIR subject mapping: analyze maps
+// TestLookupIdentityByService pins identity resolution per service: analyze
+// resolves via Patient; report, performance-report, and access-dataset all
+// resolve via Practitioner (identical branches merged after the Person identity
+// was dropped), and unknown services are rejected.
+func TestLookupIdentityByService(t *testing.T) {
+	t.Run("practitioner services resolve the practitioner by email", func(t *testing.T) {
+		uc := &paymentUsecase{
+			PractitionerFhirClient: &mockPractitionerFhirClient{
+				byEmail: func(_ context.Context, _ string) ([]fhir_dto.Practitioner, error) {
+					return []fhir_dto.Practitioner{{ID: "prac-1", Name: []fhir_dto.HumanName{{Text: "Jane Doe"}}}}, nil
+				},
+			},
+		}
+		for _, service := range []string{
+			string(constvars.ServiceReport),
+			string(constvars.ServicePerformanceReport),
+			string(constvars.ServiceAccessDataset),
+		} {
+			id, name, err := uc.lookupIdentityByService(context.Background(), service, "jane@example.com")
+			assert.NoError(t, err, "service %s", service)
+			assert.Equal(t, "prac-1", id, "service %s", service)
+			assert.Equal(t, "Jane Doe", name, "service %s", service)
+		}
+	})
+
+	t.Run("practitioner services report not found when no match", func(t *testing.T) {
+		uc := &paymentUsecase{PractitionerFhirClient: &mockPractitionerFhirClient{}}
+		for _, service := range []string{
+			string(constvars.ServiceReport),
+			string(constvars.ServicePerformanceReport),
+			string(constvars.ServiceAccessDataset),
+		} {
+			_, _, err := uc.lookupIdentityByService(context.Background(), service, "nobody@example.com")
+			assert.Error(t, err, "service %s", service)
+			assert.Contains(t, err.Error(), "no practitioner found", "service %s", service)
+		}
+	})
+
+	t.Run("unsupported service rejected", func(t *testing.T) {
+		uc := &paymentUsecase{}
+		_, _, err := uc.lookupIdentityByService(context.Background(), "unknown", "x@example.com")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported service")
+	})
+}
+
 // to Patient/<id>, other services map to configured Group subjects, case-insensitively.
 func TestDetermineServiceRequestSubject(t *testing.T) {
 	uc := &paymentUsecase{}
