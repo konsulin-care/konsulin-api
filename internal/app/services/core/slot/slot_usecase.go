@@ -1357,30 +1357,119 @@ func dedupeDayTargets(seen map[string]struct{}, out []dayLockTarget, t dayLockTa
 	return append(out, t)
 }
 
-// acquireDayLocksOrdered acquires locks in deterministic order and returns a release closure
-func (s *SlotUsecase) acquireDayLocksOrdered(ctx context.Context, targets []dayLockTarget, ttl time.Duration) (func(context.Context), error) {
-	type acquired struct{ key, tok string }
-	acquiredList := make([]acquired, 0, len(targets))
+// practitionerDayLockTarget identifies a practitioner-local day to lock. The
+// practitioner-day is the serialization unit: one practitioner can hold at most
+// one booking per overlapping window, so every slot mutator contends on the same
+// keys regardless of which schedule/role is involved.
+type practitionerDayLockTarget struct {
+	PractitionerID string
+	Day            time.Time
+}
+
+// practitionerDayTargetsForWindow computes local days (inclusive) covered by
+// [start,end) in the given location. Days are the natural boundaries for
+// practitioner-day locks; each caller computes them in its own local context
+// (booked slot offset for booking/callback, role Period timezone for the worker).
+func (s *SlotUsecase) practitionerDayTargetsForWindow(practitionerID string, loc *time.Location, start, end time.Time) []practitionerDayLockTarget {
+	// If the window is empty or inverted, no days are covered.
+	if !end.After(start) {
+		return nil
+	}
+
+	ls := start.In(loc)
+	le := end.In(loc)
+	day := time.Date(ls.Year(), ls.Month(), ls.Day(), 0, 0, 0, 0, loc)
+	// Treat end as exclusive by subtracting a minimal delta before computing the last day.
+	// This ensures that an end exactly at midnight does not include the following calendar day.
+	leExclusive := le.Add(-time.Nanosecond)
+	last := time.Date(leExclusive.Year(), leExclusive.Month(), leExclusive.Day(), 0, 0, 0, 0, loc)
+
+	var out []practitionerDayLockTarget
+	for d := day; !d.After(last); d = d.AddDate(0, 0, 1) {
+		out = append(out, practitionerDayLockTarget{PractitionerID: practitionerID, Day: d})
+	}
+	return out
+}
+
+// practitionerDayLockKey builds the practitioner-local-day lock key.
+// The key deliberately drops any timezone suffix: each caller computes the local
+// day in its own context, so the same practitioner+date always maps to one key.
+func (s *SlotUsecase) practitionerDayLockKey(practitionerID string, day time.Time) string {
+	y, m, d := day.Date()
+	return fmt.Sprintf("slotgen:lock:practitioner:%s:%04d-%02d-%02d", practitionerID, y, int(m), d)
+}
+
+// tryAcquirePractitionerDayLock acquires a per-day lock for a practitioner and local day.
+func (s *SlotUsecase) tryAcquirePractitionerDayLock(ctx context.Context, practitionerID string, day time.Time, ttl time.Duration) (acquired bool, key string, token string, err error) {
+	k := s.practitionerDayLockKey(practitionerID, day)
+	ok, tok, err := s.locker.TryLock(ctx, k, ttl)
+	if err != nil {
+		return false, k, "", err
+	}
+	return ok, k, tok, nil
+}
+
+// sortPractitionerDayTargets orders targets deterministically by practitioner, then day.
+func sortPractitionerDayTargets(targets []practitionerDayLockTarget) {
+	sort.SliceStable(targets, func(i, j int) bool {
+		if targets[i].PractitionerID != targets[j].PractitionerID {
+			return targets[i].PractitionerID < targets[j].PractitionerID
+		}
+		return targets[i].Day.Before(targets[j].Day)
+	})
+}
+
+// dedupePractitionerDayTargets appends t to out unless a target with the same
+// practitioner and local day was already seen.
+func dedupePractitionerDayTargets(seen map[string]struct{}, out []practitionerDayLockTarget, t practitionerDayLockTarget) []practitionerDayLockTarget {
+	key := fmt.Sprintf("%s|%04d-%02d-%02d", t.PractitionerID, t.Day.Year(), int(t.Day.Month()), t.Day.Day())
+	if _, ok := seen[key]; ok {
+		return out
+	}
+	seen[key] = struct{}{}
+	return append(out, t)
+}
+
+// acquireLocksOrdered acquires the given lock keys in deterministic order,
+// releasing all previously acquired locks if any acquisition fails, and returns
+// a release closure. keyFor maps a target to its lock key.
+func acquireLocksOrdered[T any](ctx context.Context, locker contracts.LockerService, targets []T, ttl time.Duration, keyFor func(T) string) (func(context.Context), error) {
+	type acquiredLock struct{ key, tok string }
+	acquiredList := make([]acquiredLock, 0, len(targets))
 	for _, t := range targets {
-		key := s.dayLockKey(t.ScheduleID, t.Day, t.Location.String())
-		ok, tok, err := s.locker.TryLock(ctx, key, ttl)
+		key := keyFor(t)
+		ok, tok, err := locker.TryLock(ctx, key, ttl)
 		if err != nil || !ok {
 			for i := len(acquiredList) - 1; i >= 0; i-- {
-				_ = s.locker.Unlock(context.Background(), acquiredList[i].key, acquiredList[i].tok)
+				_ = locker.Unlock(context.Background(), acquiredList[i].key, acquiredList[i].tok)
 			}
 			if err == nil {
 				err = fmt.Errorf("failed to acquire lock: %s", key)
 			}
 			return func(context.Context) {}, err
 		}
-		acquiredList = append(acquiredList, acquired{key: key, tok: tok})
+		acquiredList = append(acquiredList, acquiredLock{key: key, tok: tok})
 	}
 	release := func(ctx context.Context) {
 		for i := len(acquiredList) - 1; i >= 0; i-- {
-			_ = s.locker.Unlock(ctx, acquiredList[i].key, acquiredList[i].tok)
+			_ = locker.Unlock(ctx, acquiredList[i].key, acquiredList[i].tok)
 		}
 	}
 	return release, nil
+}
+
+// acquirePractitionerDayLocksOrdered acquires locks in deterministic order and returns a release closure
+func (s *SlotUsecase) acquirePractitionerDayLocksOrdered(ctx context.Context, targets []practitionerDayLockTarget, ttl time.Duration) (func(context.Context), error) {
+	return acquireLocksOrdered(ctx, s.locker, targets, ttl, func(t practitionerDayLockTarget) string {
+		return s.practitionerDayLockKey(t.PractitionerID, t.Day)
+	})
+}
+
+// acquireDayLocksOrdered acquires locks in deterministic order and returns a release closure
+func (s *SlotUsecase) acquireDayLocksOrdered(ctx context.Context, targets []dayLockTarget, ttl time.Duration) (func(context.Context), error) {
+	return acquireLocksOrdered(ctx, s.locker, targets, ttl, func(t dayLockTarget) string {
+		return s.dayLockKey(t.ScheduleID, t.Day, t.Location.String())
+	})
 }
 
 // AcquireLocksForAppointment acquires locks for all affected schedule-day pairs
