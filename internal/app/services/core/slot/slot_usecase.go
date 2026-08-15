@@ -147,7 +147,6 @@ type resolvedWindows struct {
 
 // resolveAndLockWindows resolves schedules for all roles, builds lock targets, and acquires locks.
 func (s *SlotUsecase) resolveAndLockWindows(ctx context.Context, roles []fhir_dto.PractitionerRole, input contracts.SetUnavailabilityForMultiplePractitionerRolesInput) (*resolvedWindows, error) {
-	windows := make([]lockWindow, 0, len(roles))
 	res := &resolvedWindows{
 		schedulesByRole:       make(map[string]string, len(roles)),
 		scheduleCommentByRole: make(map[string]string, len(roles)),
@@ -155,6 +154,15 @@ func (s *SlotUsecase) resolveAndLockWindows(ctx context.Context, roles []fhir_dt
 		endByRole:             make(map[string]time.Time),
 	}
 
+	// All roles belong to one practitioner (ownership is validated by the caller);
+	// derive the practitioner-scoped day lock from the first role.
+	var practitionerID string
+	if len(roles) > 0 {
+		practitionerID = strings.TrimPrefix(roles[0].Practitioner.Reference, practitionerRefPrefix)
+	}
+
+	seen := make(map[string]struct{})
+	var targets []practitionerDayLockTarget
 	for _, pr := range roles {
 		loc, tzErr := pr.GetPreferredTimezone()
 		if tzErr != nil {
@@ -189,14 +197,16 @@ func (s *SlotUsecase) resolveAndLockWindows(ctx context.Context, roles []fhir_dt
 			winEnd = input.EndTime
 		}
 
-		windows = append(windows, lockWindow{ScheduleID: scheduleID, Location: loc, Start: winStart, End: winEnd})
+		for _, t := range s.practitionerDayTargetsForWindow(practitionerID, loc, winStart, winEnd) {
+			targets = dedupePractitionerDayTargets(seen, targets, t)
+		}
 		res.schedulesByRole[pr.ID] = scheduleID
 		res.startByRole[pr.ID] = winStart
 		res.endByRole[pr.ID] = winEnd
 	}
 
-	targets := s.dayTargetsForMultiple(windows)
-	releaseFn, lerr := s.acquireDayLocksOrdered(ctx, targets, 30*time.Second)
+	sortPractitionerDayTargets(targets)
+	releaseFn, lerr := s.acquirePractitionerDayLocksOrdered(ctx, targets, 30*time.Second)
 	if lerr != nil {
 		s.logger.With(zap.Error(lerr)).Error("failed to acquire locks")
 		return nil, exceptions.BuildNewCustomError(lerr, constvars.StatusConflict, constvars.ErrClientCannotProcessRequest, "failed to acquire locks")
@@ -804,6 +814,8 @@ func (s *SlotUsecase) HandleAutomatedSlotGeneration(ctx context.Context, practit
 
 	logger.Info("starting automated slot generation")
 
+	practitionerID := strings.TrimPrefix(practitionerRole.Practitioner.Reference, practitionerRefPrefix)
+
 	scheds, err := s.schedules.FindScheduleByPractitionerRoleID(ctx, practitionerRole.ID)
 	if err != nil {
 		logger.Error("failed to find schedules", zap.Error(err))
@@ -870,15 +882,14 @@ func (s *SlotUsecase) HandleAutomatedSlotGeneration(ctx context.Context, practit
 			continue
 		}
 
-		acq, key, tok, err := s.tryAcquireDayLock(
+		acq, key, tok, err := s.tryAcquirePractitionerDayLock(
 			ctx,
-			schedule.ID,
+			practitionerID,
 			d,
-			loc.String(),
 			30*time.Second,
 		)
 		if err != nil || !acq {
-			logger.Error("failed to acquire day lock", zap.Error(err))
+			logger.Error("failed to acquire practitioner day lock", zap.Error(err))
 			continue
 		}
 
@@ -912,10 +923,11 @@ const onDemandLockTTL = 5 * time.Minute
 
 // onDemandRegenContext holds the resolved practitioner/schedule context for on-demand slot regeneration.
 type onDemandRegenContext struct {
-	Schedule *fhir_dto.Schedule
-	Loc      *time.Location
-	Plan     weeklyPlan
-	Cfg      ScheduleConfig
+	PractitionerID string
+	Schedule       *fhir_dto.Schedule
+	Loc            *time.Location
+	Plan           weeklyPlan
+	Cfg            ScheduleConfig
 }
 
 // resolveOnDemandRegenerationContext loads practitioner role, schedule, timezone, weekly plan, and schedule config.
@@ -959,7 +971,13 @@ func (s *SlotUsecase) resolveOnDemandRegenerationContext(ctx context.Context, pr
 		logger.Error("failed to parse schedule config", zap.Error(err))
 		return nil, err
 	}
-	return &onDemandRegenContext{Schedule: &schedule, Loc: loc, Plan: plan, Cfg: cfg}, nil
+	return &onDemandRegenContext{
+		PractitionerID: strings.TrimPrefix(pr.Practitioner.Reference, practitionerRefPrefix),
+		Schedule:       &schedule,
+		Loc:            loc,
+		Plan:           plan,
+		Cfg:            cfg,
+	}, nil
 }
 
 // processDayForOnDemandRegeneration computes delete IDs and create slots for a single day in the regeneration window.
@@ -1076,8 +1094,8 @@ func (s *SlotUsecase) HandleOnDemandSlotRegeneration(ctx context.Context, practi
 	today := time.Date(now.In(loc).Year(), now.In(loc).Month(), now.In(loc).Day(), 0, 0, 0, 0, loc)
 	end := today.AddDate(0, 0, windowDays-1)
 	windowEndExclusive := end.AddDate(0, 0, 1)
-	targets := s.dayTargetsForWindow(schedule.ID, loc, today, windowEndExclusive)
-	release, err := s.acquireDayLocksOrdered(ctx, targets, onDemandLockTTL)
+	targets := s.practitionerDayTargetsForWindow(ctxRes.PractitionerID, loc, today, windowEndExclusive)
+	release, err := s.acquirePractitionerDayLocksOrdered(ctx, targets, onDemandLockTTL)
 	if err != nil {
 		logger.Error("failed to acquire day locks", zap.Error(err))
 		return err
@@ -1108,18 +1126,6 @@ func (s *SlotUsecase) HandleOnDemandSlotRegeneration(ctx context.Context, practi
 		allCreateSlots = append(allCreateSlots, newSlots...)
 	}
 	return s.postSlotRegenerationBundle(ctx, schedule.ID, allDeleteIDs, allCreateSlots)
-}
-
-// tryAcquireDayLock acquires a per-day lock for a schedule and local day.
-// tzName should be the IANA timezone string used when computing the local day boundaries.
-func (s *SlotUsecase) tryAcquireDayLock(ctx context.Context, scheduleID string, day time.Time, tzName string, ttl time.Duration) (acquired bool, key string, token string, err error) {
-	k := s.dayLockKey(scheduleID, day, tzName)
-	ok, tok, err := s.locker.TryLock(ctx, k, ttl)
-	if err != nil {
-		return false, k, "", err
-	}
-
-	return ok, k, tok, nil
 }
 
 // ReleaseLock releases a lock by key and token.
@@ -1290,13 +1296,6 @@ type dayLockTarget struct {
 	Location   *time.Location
 }
 
-type lockWindow struct {
-	ScheduleID string
-	Location   *time.Location
-	Start      time.Time
-	End        time.Time
-}
-
 // dayTargetsForWindow computes local days (inclusive) covered by [start,end) in the given location
 func (s *SlotUsecase) dayTargetsForWindow(scheduleID string, loc *time.Location, start, end time.Time) []dayLockTarget {
 	// If the window is empty or inverted, no days are covered.
@@ -1316,20 +1315,6 @@ func (s *SlotUsecase) dayTargetsForWindow(scheduleID string, loc *time.Location,
 	for d := day; !d.After(last); d = d.AddDate(0, 0, 1) {
 		out = append(out, dayLockTarget{ScheduleID: scheduleID, Day: d, Location: loc})
 	}
-	return out
-}
-
-// dayTargetsForMultiple aggregates and returns sorted unique targets across windows
-func (s *SlotUsecase) dayTargetsForMultiple(windows []lockWindow) []dayLockTarget {
-	seen := make(map[string]struct{})
-	var out []dayLockTarget
-	for _, w := range windows {
-		ts := s.dayTargetsForWindow(w.ScheduleID, w.Location, w.Start, w.End)
-		for _, t := range ts {
-			out = dedupeDayTargets(seen, out, t)
-		}
-	}
-	sortDayTargets(out)
 	return out
 }
 
