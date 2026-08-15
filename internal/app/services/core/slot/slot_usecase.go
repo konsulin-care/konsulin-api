@@ -332,7 +332,7 @@ type processSingleRoleWindowInput struct {
 
 // processDayAdjustmentInput groups parameters for processDayAdjustment.
 type processDayAdjustmentInput struct {
-	td               dayLockTarget
+	td               adjustmentDayTarget
 	winStart, winEnd time.Time
 	slotStatus       fhir_dto.SlotStatus
 	plan             weeklyPlan
@@ -405,7 +405,7 @@ func (s *SlotUsecase) processSingleRoleWindow(ctx context.Context, in processSin
 	}
 
 	roleLoc, _ := in.pr.GetPreferredTimezone()
-	for _, td := range s.dayTargetsForWindow(scheduleID, roleLoc, in.winStart, in.winEnd) {
+	for _, td := range s.adjustmentDayTargetsForWindow(scheduleID, roleLoc, in.winStart, in.winEnd) {
 		adjOut, err := s.processDayAdjustment(ctx, processDayAdjustmentInput{
 			td:       td,
 			winStart: in.winStart, winEnd: in.winEnd,
@@ -1136,13 +1136,6 @@ func (s *SlotUsecase) releaseLock(ctx context.Context, key, token string) error 
 	return s.locker.Unlock(ctx, key, token)
 }
 
-// dayLockKey builds the per-(schedule, local-day) lock key. The day is formatted as YYYY-MM-DD in the given timezone name.
-func (s *SlotUsecase) dayLockKey(scheduleID string, day time.Time, tzName string) string {
-	y, m, d := day.Date()
-	prefix := "slotgen:lock:day"
-	return fmt.Sprintf("%s:%s:%04d-%02d-%02d:%s", prefix, scheduleID, y, int(m), d, tzName)
-}
-
 type topUpRoleForDayInput struct {
 	ScheduleID    string
 	Timezone      *time.Location
@@ -1289,15 +1282,16 @@ func (s *SlotUsecase) handleSlotConflict(
 	return err
 }
 
-// Internal locking helpers (kept unexported in separate file to keep usecase file focused)
-type dayLockTarget struct {
+// adjustmentDayTarget carries the per-day context for set-unavailability slot
+// adjustments: which schedule, which local day, and in which timezone.
+type adjustmentDayTarget struct {
 	ScheduleID string
 	Day        time.Time
 	Location   *time.Location
 }
 
-// dayTargetsForWindow computes local days (inclusive) covered by [start,end) in the given location
-func (s *SlotUsecase) dayTargetsForWindow(scheduleID string, loc *time.Location, start, end time.Time) []dayLockTarget {
+// adjustmentDayTargetsForWindow computes local days (inclusive) covered by [start,end) in the given location
+func (s *SlotUsecase) adjustmentDayTargetsForWindow(scheduleID string, loc *time.Location, start, end time.Time) []adjustmentDayTarget {
 	// If the window is empty or inverted, no days are covered.
 	if !end.After(start) {
 		return nil
@@ -1311,35 +1305,11 @@ func (s *SlotUsecase) dayTargetsForWindow(scheduleID string, loc *time.Location,
 	leExclusive := le.Add(-time.Nanosecond)
 	last := time.Date(leExclusive.Year(), leExclusive.Month(), leExclusive.Day(), 0, 0, 0, 0, loc)
 
-	var out []dayLockTarget
+	var out []adjustmentDayTarget
 	for d := day; !d.After(last); d = d.AddDate(0, 0, 1) {
-		out = append(out, dayLockTarget{ScheduleID: scheduleID, Day: d, Location: loc})
+		out = append(out, adjustmentDayTarget{ScheduleID: scheduleID, Day: d, Location: loc})
 	}
 	return out
-}
-
-// sortDayTargets orders targets deterministically by schedule, day, and location.
-func sortDayTargets(targets []dayLockTarget) {
-	sort.SliceStable(targets, func(i, j int) bool {
-		if targets[i].ScheduleID != targets[j].ScheduleID {
-			return targets[i].ScheduleID < targets[j].ScheduleID
-		}
-		if !targets[i].Day.Equal(targets[j].Day) {
-			return targets[i].Day.Before(targets[j].Day)
-		}
-		return targets[i].Location.String() < targets[j].Location.String()
-	})
-}
-
-// dedupeDayTargets appends t to out unless a target with the same schedule,
-// day, and location was already seen.
-func dedupeDayTargets(seen map[string]struct{}, out []dayLockTarget, t dayLockTarget) []dayLockTarget {
-	key := fmt.Sprintf("%s|%04d-%02d-%02d|%s", t.ScheduleID, t.Day.Year(), int(t.Day.Month()), t.Day.Day(), t.Location.String())
-	if _, ok := seen[key]; ok {
-		return out
-	}
-	seen[key] = struct{}{}
-	return append(out, t)
 }
 
 // practitionerDayLockTarget identifies a practitioner-local day to lock. The
@@ -1450,13 +1420,6 @@ func (s *SlotUsecase) acquirePractitionerDayLocksOrdered(ctx context.Context, ta
 	})
 }
 
-// acquireDayLocksOrdered acquires locks in deterministic order and returns a release closure
-func (s *SlotUsecase) acquireDayLocksOrdered(ctx context.Context, targets []dayLockTarget, ttl time.Duration) (func(context.Context), error) {
-	return acquireLocksOrdered(ctx, s.locker, targets, ttl, func(t dayLockTarget) string {
-		return s.dayLockKey(t.ScheduleID, t.Day, t.Location.String())
-	})
-}
-
 // AcquireLocksForPractitionerDay acquires day locks for a practitioner across the
 // appointment window. Local days are computed from the window's own location (the
 // booked slot's offset); sibling role timezones are never resolved, so schedule-less
@@ -1471,46 +1434,4 @@ func (s *SlotUsecase) AcquireLocksForPractitionerDay(ctx context.Context, practi
 	}
 	targets := s.practitionerDayTargetsForWindow(practitionerID, loc, start, end)
 	return s.acquirePractitionerDayLocksOrdered(ctx, targets, ttl)
-}
-
-// AcquireLocksForSlot acquires locks for all affected schedule-day pairs
-// for a given slot. This prevents race conditions when mutating slot resources.
-// The function extracts the schedule ID and timezone from the slot automatically.
-func (s *SlotUsecase) AcquireLocksForSlot(
-	ctx context.Context,
-	slot *fhir_dto.Slot,
-	ttl time.Duration,
-) (func(context.Context), error) {
-	if slot == nil {
-		return func(context.Context) {}, fmt.Errorf("slot cannot be nil")
-	}
-
-	// Extract schedule ID from Schedule.Reference (e.g., "Schedule/123" -> "123")
-	scheduleRef := slot.Schedule.Reference
-	if scheduleRef == "" {
-		return func(context.Context) {}, fmt.Errorf("slot has no schedule reference")
-	}
-
-	scheduleID := strings.TrimPrefix(scheduleRef, constvars.FHIRRefPrefixSchedule)
-	if scheduleID == "" {
-		return func(context.Context) {}, fmt.Errorf("invalid schedule reference format: %s", scheduleRef)
-	}
-
-	// Extract timezone from slot start time
-	if slot.Start.IsZero() {
-		return func(context.Context) {}, fmt.Errorf("slot start time is zero")
-	}
-	loc := slot.Start.Location()
-	if loc == nil {
-		return func(context.Context) {}, fmt.Errorf("slot start time has no location/timezone")
-	}
-
-	// Compute affected days for the slot's time window
-	targets := s.dayTargetsForWindow(scheduleID, loc, slot.Start, slot.End)
-	if len(targets) == 0 {
-		return func(context.Context) {}, fmt.Errorf("no day targets computed for slot time window")
-	}
-
-	// Acquire locks in order
-	return s.acquireDayLocksOrdered(ctx, targets, ttl)
 }

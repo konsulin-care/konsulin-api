@@ -74,9 +74,6 @@ func (m *mockSlotUsecase) AcquireLocksForPractitionerDay(_ context.Context, prac
 	}
 	return func(_ context.Context) {}, nil
 }
-func (*mockSlotUsecase) AcquireLocksForSlot(_ context.Context, _ *fhir_dto.Slot, _ time.Duration) (func(context.Context), error) {
-	return func(_ context.Context) {}, nil
-}
 
 func TestHandleAppointmentPaymentNotification_ExpiredSlotNotFound(t *testing.T) {
 	t.Run("EXPIRED callback returns nil when slot is already deleted", func(t *testing.T) {
@@ -131,6 +128,9 @@ func TestHandleAppointmentPaymentNotification_ExpiredSlotFree(t *testing.T) {
 	t.Run("EXPIRED callback returns nil when slot is already free", func(t *testing.T) {
 		slotID := "slot-already-free"
 		uc := &paymentUsecase{
+			PractitionerRoleFhirClient: &mockPractitionerRoleFhirClient{
+				role: &fhir_dto.PractitionerRole{Practitioner: fhir_dto.Reference{Reference: "Practitioner/prac-9"}},
+			},
 			SlotFhirClient: &mockSlotFhirClient{
 				slot: &fhir_dto.Slot{
 					ID:     slotID,

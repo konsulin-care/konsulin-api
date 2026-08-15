@@ -291,7 +291,7 @@ func (uc *paymentUsecase) handleAppointmentPaymentNotification(ctx context.Conte
 	}
 
 	// Acquire locks before mutation to prevent race conditions and TOCTOU
-	release, lockErr := uc.SlotUsecase.AcquireLocksForSlot(ctx, slot, 30*time.Second)
+	release, lockErr := uc.acquireNotificationLocks(ctx, fields, slot, 30*time.Second)
 	if lockErr != nil {
 		uc.Log.Error("paymentUsecase.handleAppointmentPaymentNotification failed to acquire locks",
 			zap.String(constvars.LoggingRequestIDKey, requestID),

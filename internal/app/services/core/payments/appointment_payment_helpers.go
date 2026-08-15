@@ -489,6 +489,21 @@ func (uc *paymentUsecase) findCrossRoleOverlap(
 	return nil, nil
 }
 
+// acquireNotificationLocks acquires the practitioner-day locks for a payment
+// callback, resolving the practitionerID from the callback's practitioner role.
+// The slot window determines the affected local days.
+func (uc *paymentUsecase) acquireNotificationLocks(ctx context.Context, fields appointmentExternalIDFields, slot *fhir_dto.Slot, ttl time.Duration) (func(context.Context), error) {
+	role, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByID(ctx, fields.PractitionerRoleID)
+	if err != nil {
+		return func(context.Context) {}, fmt.Errorf("failed to fetch practitioner role %s: %w", fields.PractitionerRoleID, err)
+	}
+	if role == nil {
+		return func(context.Context) {}, fmt.Errorf("practitioner role %s not found", fields.PractitionerRoleID)
+	}
+	practitionerID := strings.TrimPrefix(role.Practitioner.Reference, constvars.FHIRRefPrefixPractitioner)
+	return uc.SlotUsecase.AcquireLocksForPractitionerDay(ctx, practitionerID, slot.Start, slot.End, ttl)
+}
+
 // getOverlappingNonFreeSlots filters FHIR Slot query results for slots whose time range
 // overlaps with [slotStart, slotEnd). Only non-free slots (busy-unavailable, busy-tentative)
 // are considered as conflicts. Free slots are ignored since they are dynamically generated.

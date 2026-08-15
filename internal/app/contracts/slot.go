@@ -122,5 +122,4 @@ type SlotUsecaseIface interface {
 	// computed from the window's own location. It is the single serialization unit for all slot
 	// mutators of a practitioner, so concurrent bookings across roles contend on the same keys.
 	AcquireLocksForPractitionerDay(ctx context.Context, practitionerID string, start, end time.Time, ttl time.Duration) (func(context.Context), error)
-	AcquireLocksForSlot(ctx context.Context, slot *fhir_dto.Slot, ttl time.Duration) (func(context.Context), error)
 }

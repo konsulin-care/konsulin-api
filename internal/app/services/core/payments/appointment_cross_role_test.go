@@ -120,6 +120,56 @@ func TestFindCrossRoleOverlap(t *testing.T) {
 	})
 }
 
+// TestAcquireNotificationLocks verifies the Xendit callback resolves the
+// practitionerID from the callback role and locks practitioner days.
+func TestAcquireNotificationLocks(t *testing.T) {
+	loc := time.FixedZone("+02:00", 2*3600)
+	start := time.Date(2026, time.August, 13, 10, 0, 0, 0, loc)
+	end := time.Date(2026, time.August, 13, 11, 0, 0, 0, loc)
+
+	t.Run("locks practitioner days resolved from the callback role", func(t *testing.T) {
+		roleMock := &mockPractitionerRoleFhirClient{
+			role: &fhir_dto.PractitionerRole{
+				Practitioner: fhir_dto.Reference{Reference: "Practitioner/prac-9"},
+			},
+		}
+		lockMock := &mockSlotUsecase{}
+		uc := &paymentUsecase{
+			PractitionerRoleFhirClient: roleMock,
+			SlotUsecase:                lockMock,
+			Log:                        zap.NewNop(),
+		}
+		fields := appointmentExternalIDFields{PractitionerRoleID: "pr-456"}
+
+		release, err := uc.acquireNotificationLocks(context.Background(), fields, &fhir_dto.Slot{Start: start, End: end}, 30*time.Second)
+		require.NoError(t, err)
+		release(context.Background())
+		assert.Equal(t, "prac-9", lockMock.lockPractitioner)
+		assert.Equal(t, start, lockMock.lockStart)
+		assert.Equal(t, end, lockMock.lockEnd)
+	})
+
+	t.Run("role not found errors", func(t *testing.T) {
+		uc := &paymentUsecase{
+			PractitionerRoleFhirClient: &mockPractitionerRoleFhirClient{role: nil},
+			SlotUsecase:                &mockSlotUsecase{},
+			Log:                        zap.NewNop(),
+		}
+		_, err := uc.acquireNotificationLocks(context.Background(), appointmentExternalIDFields{PractitionerRoleID: "pr-456"}, &fhir_dto.Slot{Start: start, End: end}, 30*time.Second)
+		assert.Error(t, err)
+	})
+
+	t.Run("role fetch error propagates", func(t *testing.T) {
+		uc := &paymentUsecase{
+			PractitionerRoleFhirClient: &mockPractitionerRoleFhirClient{err: assert.AnError},
+			SlotUsecase:                &mockSlotUsecase{},
+			Log:                        zap.NewNop(),
+		}
+		_, err := uc.acquireNotificationLocks(context.Background(), appointmentExternalIDFields{PractitionerRoleID: "pr-456"}, &fhir_dto.Slot{Start: start, End: end}, 30*time.Second)
+		assert.Error(t, err)
+	})
+}
+
 // TestAcquireBookingLocksPassesPractitionerDay is the regression test for the
 // reported 409: the booking lock must be practitioner-scoped (practitionerID +
 // window only) and must never resolve sibling role timezones — a practitioner with
