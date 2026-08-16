@@ -17,9 +17,9 @@ http:
       {
         "patientId": "Patient/123",
         "invoiceId": "Invoice/456",
-        "useOnlinePayment": true,
         "practitionerRoleId": "PractitionerRole/789",
         "slotId": "Slot/012",
+        "appointmentId": "Appointment/appt-123",
         "healthcareServiceId": "HealthcareService/345",
         "condition": "R45.1"
       }
@@ -45,7 +45,7 @@ settings:
   maxRedirects: 5
 
 examples:
-  - name: Online payment
+  - name: Pending payment
     request:
       url: "{{process.env.BASE_URL}}/api/v1/pay/appointment"
       method: POST
@@ -56,12 +56,12 @@ examples:
           value: Bearer {{sessionToken}}
       body:
         type: json
-        data: '{"patientId":"Patient/123","invoiceId":"Invoice/456","useOnlinePayment":true,"practitionerRoleId":"PractitionerRole/789","slotId":"Slot/012"}'
+        data: '{"patientId":"Patient/123","invoiceId":"Invoice/456","practitionerRoleId":"PractitionerRole/789","slotId":"Slot/012","appointmentId":"Appointment/appt-123"}'
     response:
       status: 201
       body:
         type: json
-        data: '{"success":true,"message":"Appointment payment processed","data":{"status":201,"message":"Appointment payment processed","slot":"Slot/012","appointment":"Appointment/abc","paymentNotice":"PaymentNotice/xyz","paymentUrl":"https://checkout.xendit.co/inv_123","expiresAt":"2026-07-09T11:00:00Z"}}'
+        data: '{"success":true,"message":"Payment invoice created. Please complete payment to confirm your appointment.","data":{"status":201,"message":"Payment invoice created. Please complete payment to confirm your appointment.","appointment":"Appointment/appt-123","slot":"Slot/012","paymentUrl":"https://checkout.xendit.co/inv_123","expiresAt":"2026-07-09T11:00:00Z"}}'
   - name: Validation error
     request:
       url: "{{process.env.BASE_URL}}/api/v1/pay/appointment"
@@ -81,18 +81,27 @@ examples:
         data: '{"success":false,"message":"patientId is required","status_code":400}'
 
 docs: |
-  Processes payment for an appointment. Requires an authenticated session. Supports both online payment (via payment gateway) and offline payment.
+  Accepts a BFF-proposed appointment and starts its payment flow. Requires an authenticated session.
 
   ### Request Fields
   - `patientId`: (required) FHIR Patient reference (`Patient/ID`).
   - `invoiceId`: (required) FHIR Invoice reference (`Invoice/ID`).
-  - `useOnlinePayment`: (required) `true` for online gateway, `false` for offline.
   - `practitionerRoleId`: (required) FHIR PractitionerRole reference.
   - `slotId`: (required) FHIR Slot reference.
+  - `appointmentId`: (required) FHIR Appointment reference (`Appointment/ID`) — the BFF-created `proposed` appointment to accept.
   - `healthcareServiceId`: (optional) FHIR HealthcareService reference.
   - `condition`: (optional) ICD-10 diagnosis code.
 
+  ### Behavior
+  - Validates the proposed appointment (status `proposed`, matching slot/participants/window) and the slot availability.
+  - Reserves the slot as `busy-tentative` and moves the appointment to `pending`.
+  - Creates a Xendit invoice and returns the payment URL.
+  - On payment confirmation (Xendit PAID callback) the appointment becomes `booked` and the slot `busy-unavailable`.
+  - On payment expiry (Xendit EXPIRED callback) the slot, invoice, and appointment are deleted.
+
   ### Responses
-  - **201 Created**: Payment processed. Body: `{ "success": true, "message": "...", "data": { "status": 201, "message": "...", "slot": "Slot/012", "appointment": "Appointment/...", "paymentNotice": "PaymentNotice/...", "paymentUrl": "...", "expiresAt": "..." } }`.
-  - **400 Bad Request**: Validation error — missing required fields or invalid reference format. Body: `{ "success": false, "message": "...", "status_code": 400 }`.
+  - **201 Created**: Invoice created, payment pending. Body: `{ "success": true, "message": "Payment invoice created. Please complete payment to confirm your appointment.", "data": { "status": 201, "message": "...", "appointment": "Appointment/...", "slot": "Slot/012", "paymentUrl": "...", "expiresAt": "..." } }`.
+  - **400 Bad Request**: Validation error — missing required fields, invalid reference format, or appointment not eligible for booking. Body: `{ "success": false, "message": "...", "status_code": 400 }`.
+  - **404 Not Found**: The referenced appointment does not exist. Body: `{ "success": false, "message": "Appointment not found", "status_code": 404 }`.
+  - **409 Conflict**: The selected slot is no longer available. Body: `{ "success": false, "message": "Selected slot is no longer available.", "status_code": 409 }`.
   - **500 Internal Server Error**: Processing failure or timeout. Body: `{ "success": false, "message": "...", "status_code": 500 }`.

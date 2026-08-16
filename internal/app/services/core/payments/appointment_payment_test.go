@@ -50,7 +50,7 @@ func assertErrorExpected(t *testing.T, err error, wantErr bool) {
 
 func TestParseAppointmentExternalID(t *testing.T) {
 	t.Run("parses valid external_id with all fields", func(t *testing.T) {
-		externalID := "appointment:slot-123:pr-456:pat-789:inv-012:hs-999"
+		externalID := "appointment:slot-123:pr-456:pat-789:inv-012:hs-999:appt-000"
 		fields, err := parseAppointmentExternalID(externalID)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -60,6 +60,7 @@ func TestParseAppointmentExternalID(t *testing.T) {
 		assertFieldEquals(t, fields.PatientID, "pat-789", "PatientID")
 		assertFieldEquals(t, fields.InvoiceID, "inv-012", "InvoiceID")
 		assertFieldEquals(t, fields.HealthcareServiceID, "hs-999", "HealthcareServiceID")
+		assertFieldEquals(t, fields.AppointmentID, "appt-000", "AppointmentID")
 	})
 
 	t.Run("errors on wrong number of parts", func(t *testing.T) {
@@ -69,17 +70,31 @@ func TestParseAppointmentExternalID(t *testing.T) {
 		}
 	})
 
+	t.Run("errors on missing appointment ID", func(t *testing.T) {
+		_, err := parseAppointmentExternalID("appointment:slot-123:pr-456:pat-789:inv-012:hs-999")
+		if err == nil {
+			t.Error("expected error for 6-part external_id missing appointment ID")
+		}
+	})
+
 	t.Run("errors on wrong prefix", func(t *testing.T) {
-		_, err := parseAppointmentExternalID("webhook:slot-123:pr-456:pat-789:inv-012:hs-999")
+		_, err := parseAppointmentExternalID("webhook:slot-123:pr-456:pat-789:inv-012:hs-999:appt-000")
 		if err == nil {
 			t.Error("expected error for wrong prefix")
 		}
 	})
 
 	t.Run("errors on empty slot ID", func(t *testing.T) {
-		_, err := parseAppointmentExternalID("appointment::pr-456:pat-789:inv-012:hs-999")
+		_, err := parseAppointmentExternalID("appointment::pr-456:pat-789:inv-012:hs-999:appt-000")
 		if err == nil {
 			t.Error("expected error for empty slot ID")
+		}
+	})
+
+	t.Run("errors on empty appointment ID", func(t *testing.T) {
+		_, err := parseAppointmentExternalID("appointment:slot-123:pr-456:pat-789:inv-012:hs-999:")
+		if err == nil {
+			t.Error("expected error for empty appointment ID")
 		}
 	})
 }
@@ -421,5 +436,111 @@ func TestGetOverlappingNonFreeSlots(t *testing.T) {
 		}
 		result := getOverlappingNonFreeSlots([]fhir_dto.Slot{existing}, slotStart, slotEnd)
 		assertOverlapCount(t, len(result), 1, "full containment should be overlap")
+	})
+}
+
+// validProposedAppointmentRequest returns a booking request with an appointment
+// reference that matches the given slot window.
+func validProposedAppointmentRequest() *requests.AppointmentPaymentRequest {
+	return &requests.AppointmentPaymentRequest{
+		PatientID:          "Patient/pat-123",
+		InvoiceID:          "Invoice/inv-456",
+		PractitionerRoleID: "PractitionerRole/pr-789",
+		SlotID:             "Slot/slot-012",
+		AppointmentID:      "Appointment/appt-000",
+	}
+}
+
+// proposedAppointmentFor builds a proposed Appointment that matches the given
+// request and slot window, so tests can mutate a single field to force a failure.
+func proposedAppointmentFor(req *requests.AppointmentPaymentRequest, slot *fhir_dto.Slot) *fhir_dto.Appointment {
+	return &fhir_dto.Appointment{
+		ResourceType: constvars.ResourceAppointment,
+		ID:           "appt-000",
+		Status:       constvars.FhirAppointmentStatusProposed,
+		Start:        slot.Start,
+		End:          slot.End,
+		Slot: []fhir_dto.Reference{
+			{Reference: req.SlotID},
+		},
+		Participant: []fhir_dto.AppointmentParticipant{
+			{Actor: fhir_dto.Reference{Reference: req.PatientID}, Status: constvars.FhirParticipantStatusAccepted},
+			{Actor: fhir_dto.Reference{Reference: req.PractitionerRoleID}, Status: constvars.FhirParticipantStatusAccepted},
+		},
+	}
+}
+
+func TestValidateProposedAppointment(t *testing.T) {
+	req := validProposedAppointmentRequest()
+	slot := &fhir_dto.Slot{
+		ID:     "slot-012",
+		Status: fhir_dto.SlotStatusFree,
+		Start:  time.Date(2026, 7, 4, 9, 0, 0, 0, time.UTC),
+		End:    time.Date(2026, 7, 4, 10, 0, 0, 0, time.UTC),
+	}
+
+	t.Run("accepts valid proposed appointment", func(t *testing.T) {
+		err := validateProposedAppointment(proposedAppointmentFor(req, slot), req, slot)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("rejects nil appointment", func(t *testing.T) {
+		err := validateProposedAppointment(nil, req, slot)
+		assertErrorExpected(t, err, true)
+	})
+
+	t.Run("rejects non-proposed status", func(t *testing.T) {
+		appt := proposedAppointmentFor(req, slot)
+		appt.Status = constvars.FhirAppointmentStatusPending
+		err := validateProposedAppointment(appt, req, slot)
+		assertErrorExpected(t, err, true)
+	})
+
+	t.Run("rejects mismatched slot reference", func(t *testing.T) {
+		appt := proposedAppointmentFor(req, slot)
+		appt.Slot[0].Reference = "Slot/other-slot"
+		err := validateProposedAppointment(appt, req, slot)
+		assertErrorExpected(t, err, true)
+	})
+
+	t.Run("rejects appointment without slot reference", func(t *testing.T) {
+		appt := proposedAppointmentFor(req, slot)
+		appt.Slot = nil
+		err := validateProposedAppointment(appt, req, slot)
+		assertErrorExpected(t, err, true)
+	})
+
+	t.Run("rejects missing patient participant", func(t *testing.T) {
+		appt := proposedAppointmentFor(req, slot)
+		appt.Participant = []fhir_dto.AppointmentParticipant{
+			{Actor: fhir_dto.Reference{Reference: req.PractitionerRoleID}, Status: constvars.FhirParticipantStatusAccepted},
+		}
+		err := validateProposedAppointment(appt, req, slot)
+		assertErrorExpected(t, err, true)
+	})
+
+	t.Run("rejects missing practitioner role participant", func(t *testing.T) {
+		appt := proposedAppointmentFor(req, slot)
+		appt.Participant = []fhir_dto.AppointmentParticipant{
+			{Actor: fhir_dto.Reference{Reference: req.PatientID}, Status: constvars.FhirParticipantStatusAccepted},
+		}
+		err := validateProposedAppointment(appt, req, slot)
+		assertErrorExpected(t, err, true)
+	})
+
+	t.Run("rejects mismatched start time", func(t *testing.T) {
+		appt := proposedAppointmentFor(req, slot)
+		appt.Start = appt.Start.Add(15 * time.Minute)
+		err := validateProposedAppointment(appt, req, slot)
+		assertErrorExpected(t, err, true)
+	})
+
+	t.Run("rejects mismatched end time", func(t *testing.T) {
+		appt := proposedAppointmentFor(req, slot)
+		appt.End = appt.End.Add(15 * time.Minute)
+		err := validateProposedAppointment(appt, req, slot)
+		assertErrorExpected(t, err, true)
 	})
 }
