@@ -146,13 +146,9 @@ func (s *SlotUsecase) resolveAndLockWindows(ctx context.Context, roles []fhir_dt
 		endByRole:       make(map[string]time.Time),
 	}
 
-	// All roles belong to one practitioner (ownership is validated by the caller);
-	// derive the practitioner-scoped day lock from the first role.
-	var practitionerID string
-	if len(roles) > 0 {
-		practitionerID = strings.TrimPrefix(roles[0].Practitioner.Reference, practitionerRefPrefix)
-	}
-
+	// Roles may belong to different practitioners (e.g. a clinic admin managing
+	// several practitioners' roles), so derive the practitioner-scoped day lock
+	// per role. Deduplication still collapses same-practitioner same-day targets.
 	seen := make(map[string]struct{})
 	var targets []practitionerDayLockTarget
 	for _, pr := range roles {
@@ -161,6 +157,7 @@ func (s *SlotUsecase) resolveAndLockWindows(ctx context.Context, roles []fhir_dt
 			return nil, err
 		}
 
+		practitionerID := strings.TrimPrefix(pr.Practitioner.Reference, practitionerRefPrefix)
 		for _, t := range practitionerDayTargetsForWindow(practitionerID, loc, winStart, winEnd) {
 			targets = dedupePractitionerDayTargets(seen, targets, t)
 		}

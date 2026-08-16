@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"konsulin-service/internal/app/contracts"
@@ -14,6 +15,7 @@ import (
 	"konsulin-service/internal/pkg/fhir_dto"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -239,7 +241,7 @@ func (uc *paymentUsecase) buildDayAdjustmentEntries(
 		return nil, nil
 	}
 
-	toDelete, toCreate, adjErr := slot.BuildSlotAdjustmentForAppointment(
+	toCreate, adjErr := slot.BuildSlotAdjustmentForAppointment(
 		role,
 		schedule,
 		existingSlots,
@@ -254,18 +256,6 @@ func (uc *paymentUsecase) buildDayAdjustmentEntries(
 			zap.Error(adjErr),
 		)
 		return nil, nil
-	}
-
-	for _, slotID := range toDelete {
-		if slotID == precond.Slot.ID {
-			continue
-		}
-		entries = append(entries, map[string]any{
-			constvars.FhirFieldRequest: map[string]any{
-				constvars.FhirFieldMethod: "DELETE",
-				constvars.FhirFieldURL:    constvars.ResourceSlot + "/" + slotID,
-			},
-		})
 	}
 
 	for _, newSlot := range toCreate {
@@ -436,9 +426,15 @@ func (uc *paymentUsecase) acquireBookingLocks(ctx context.Context, precond *prec
 	return uc.SlotUsecase.AcquireLocksForPractitionerDay(ctx, practitionerID, precond.Slot.Start, precond.Slot.End, ttl)
 }
 
+// errCrossRoleOverlapFound signals that a sibling check found a conflicting slot;
+// it cancels any remaining sibling checks through the errgroup context.
+var errCrossRoleOverlapFound = errors.New("cross-role overlap found")
+
 // findCrossRoleOverlap returns the first non-free slot in any schedulable sibling
 // schedule overlapping [start,end), excluding the booked schedule (checked by the
 // caller). Roles without schedules are skipped. Returns (nil, nil) when clear.
+// Per-role checks run concurrently with bounded parallelism so the booking lock
+// is held only briefly; the first detected overlap cancels the remaining checks.
 func (uc *paymentUsecase) findCrossRoleOverlap(
 	ctx context.Context,
 	roles []fhir_dto.PractitionerRole,
@@ -450,25 +446,45 @@ func (uc *paymentUsecase) findCrossRoleOverlap(
 		End:    "gt" + start.Format(time.RFC3339),
 		Status: fhir_dto.SlotStatus(string(fhir_dto.SlotStatusBusyUnavailable) + "," + string(fhir_dto.SlotStatusBusyTentative)),
 	}
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(4) // bound concurrent sibling checks
+
+	var (
+		mu      sync.Mutex
+		overlap *fhir_dto.Slot
+	)
 	for _, role := range roles {
-		scheds, err := uc.ScheduleFhirClient.FindScheduleByPractitionerRoleID(ctx, role.ID)
-		if err != nil {
-			return nil, err
-		}
-		for _, sched := range scheds {
-			if sched.ID == bookedScheduleID {
-				continue
-			}
-			slots, err := uc.SlotFhirClient.FindSlotsByScheduleWithQuery(ctx, sched.ID, overlapParams)
+		g.Go(func() error {
+			scheds, err := uc.ScheduleFhirClient.FindScheduleByPractitionerRoleID(gctx, role.ID)
 			if err != nil {
-				return nil, err
+				return err
 			}
-			if overlap := getOverlappingNonFreeSlots(slots, start, end); len(overlap) > 0 {
-				return &overlap[0], nil
+			for _, sched := range scheds {
+				if sched.ID == bookedScheduleID {
+					continue
+				}
+				slots, err := uc.SlotFhirClient.FindSlotsByScheduleWithQuery(gctx, sched.ID, overlapParams)
+				if err != nil {
+					return err
+				}
+				if found := getOverlappingNonFreeSlots(slots, start, end); len(found) > 0 {
+					mu.Lock()
+					if overlap == nil {
+						overlap = &found[0]
+					}
+					mu.Unlock()
+					return errCrossRoleOverlapFound
+				}
 			}
-		}
+			return nil
+		})
 	}
-	return nil, nil
+
+	if err := g.Wait(); err != nil && overlap == nil {
+		return nil, err
+	}
+	return overlap, nil
 }
 
 // acquireNotificationLocks acquires the practitioner-day locks for a payment

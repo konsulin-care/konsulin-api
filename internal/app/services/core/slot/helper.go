@@ -168,15 +168,15 @@ func BuildSlotAdjustmentForAppointment(
 	existingSlots []fhir_dto.Slot,
 	appointedStart, appointedEnd time.Time,
 	appointedSlotID string,
-) (toDelete []string, toCreate []fhir_dto.Slot, err error) {
+) ([]fhir_dto.Slot, error) {
 	loc, tzErr := practitionerRole.GetPreferredTimezone()
 	if tzErr != nil {
-		return nil, nil, fmt.Errorf("failed to resolve timezone: %w", tzErr)
+		return nil, fmt.Errorf("failed to resolve timezone: %w", tzErr)
 	}
 
 	plan, planErr := ConvertAvailableTimeToWeeklyPlan(practitionerRole.AvailableTime)
 	if planErr != nil {
-		return nil, nil, fmt.Errorf("failed to convert available time to weekly plan: %w", planErr)
+		return nil, fmt.Errorf("failed to convert available time to weekly plan: %w", planErr)
 	}
 
 	day := time.Date(appointedStart.In(loc).Year(), appointedStart.In(loc).Month(), appointedStart.In(loc).Day(), 0, 0, 0, 0, loc)
@@ -184,12 +184,11 @@ func BuildSlotAdjustmentForAppointment(
 	windowsForDay := plan.forWeekday(day.Weekday())
 	if len(windowsForDay) == 0 {
 		// No configured windows for this day, nothing to adjust
-		return nil, nil, nil
+		return nil, nil
 	}
 
 	baseWindows := dayWorkIntervals(day, loc, windowsForDay)
-	busySlots := buildBusyUnavailableOverlaps(appointedStart, appointedEnd, baseWindows, existingSlots, appointedSlotID, schedule.ID)
-	return nil, busySlots, nil
+	return buildBusyUnavailableOverlaps(appointedStart, appointedEnd, baseWindows, existingSlots, appointedSlotID, schedule.ID), nil
 }
 
 // buildBusyUnavailableOverlaps creates busy-unavailable slots for appointment overlap with working windows.

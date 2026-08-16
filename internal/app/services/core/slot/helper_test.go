@@ -27,9 +27,8 @@ func TestBuildSlotAdjustmentForAppointment(t *testing.T) {
 		start := time.Date(2026, time.August, 10, 10, 0, 0, 0, loc) // Monday
 		end := time.Date(2026, time.August, 10, 11, 0, 0, 0, loc)
 
-		toDelete, toCreate, err := BuildSlotAdjustmentForAppointment(role, schedule, nil, start, end, "slot-1")
+		toCreate, err := BuildSlotAdjustmentForAppointment(role, schedule, nil, start, end, "slot-1")
 		assert.NoError(t, err)
-		assert.Nil(t, toDelete)
 		assert.Len(t, toCreate, 1)
 		got := toCreate[0]
 		assert.Equal(t, fhir_dto.SlotStatusBusyUnavailable, got.Status)
@@ -43,9 +42,8 @@ func TestBuildSlotAdjustmentForAppointment(t *testing.T) {
 		end := time.Date(2026, time.August, 10, 11, 0, 0, 0, loc)
 		existing := fhir_dto.Slot{ID: "slot-1", Start: start, End: end}
 
-		toDelete, toCreate, err := BuildSlotAdjustmentForAppointment(role, schedule, []fhir_dto.Slot{existing}, start, end, "slot-1")
+		toCreate, err := BuildSlotAdjustmentForAppointment(role, schedule, []fhir_dto.Slot{existing}, start, end, "slot-1")
 		assert.NoError(t, err)
-		assert.Nil(t, toDelete)
 		assert.Empty(t, toCreate)
 	})
 
@@ -53,9 +51,8 @@ func TestBuildSlotAdjustmentForAppointment(t *testing.T) {
 		start := time.Date(2026, time.August, 16, 10, 0, 0, 0, loc) // Sunday
 		end := time.Date(2026, time.August, 16, 11, 0, 0, 0, loc)
 
-		toDelete, toCreate, err := BuildSlotAdjustmentForAppointment(role, schedule, nil, start, end, "slot-1")
+		toCreate, err := BuildSlotAdjustmentForAppointment(role, schedule, nil, start, end, "slot-1")
 		assert.NoError(t, err)
-		assert.Nil(t, toDelete)
 		assert.Empty(t, toCreate)
 	})
 }

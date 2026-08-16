@@ -50,29 +50,41 @@ func (m *mockScheduleFhirClient) Search(ctx context.Context, params contracts.Sc
 }
 
 // TestResolveAndLockWindowsUsesPractitionerDayLocks verifies set-unavailability
-// locks the practitioner's days (union across roles) with the practitioner key family.
+// locks each role's own practitioner day, using the practitioner key family.
 func TestResolveAndLockWindowsUsesPractitionerDayLocks(t *testing.T) {
 	loc := time.FixedZone("+07:00", 7*3600)
 	mockSched := new(mockScheduleFhirClient)
 	mockLocker := new(mockLockerService)
 	s := &SlotUsecase{schedules: mockSched, locker: mockLocker, logger: zap.NewNop()}
 
-	roles := []fhir_dto.PractitionerRole{{
-		ID:           "role-1",
-		Practitioner: fhir_dto.Reference{Reference: "Practitioner/prac-1"},
-		Period:       fhir_dto.Period{Start: "2026-08-08T15:02:02+07:00"},
-	}}
-	schedule := fhir_dto.Schedule{ID: "sched-1"}
-	mockSched.On("FindScheduleByPractitionerRoleID", mock.Anything, "role-1").Return([]fhir_dto.Schedule{schedule}, nil)
+	roles := []fhir_dto.PractitionerRole{
+		{
+			ID:           "role-1",
+			Practitioner: fhir_dto.Reference{Reference: "Practitioner/prac-1"},
+			Period:       fhir_dto.Period{Start: "2026-08-08T15:02:02+07:00"},
+		},
+		{
+			ID:           "role-2",
+			Practitioner: fhir_dto.Reference{Reference: "Practitioner/prac-2"},
+			Period:       fhir_dto.Period{Start: "2026-08-08T15:02:02+07:00"},
+		},
+	}
+	mockSched.On("FindScheduleByPractitionerRoleID", mock.Anything, "role-1").Return([]fhir_dto.Schedule{{ID: "sched-1"}}, nil)
+	mockSched.On("FindScheduleByPractitionerRoleID", mock.Anything, "role-2").Return([]fhir_dto.Schedule{{ID: "sched-2"}}, nil)
 
 	input := contracts.SetUnavailabilityForMultiplePractitionerRolesInput{
 		StartTime: time.Date(2026, time.August, 13, 9, 0, 0, 0, loc),
 		EndTime:   time.Date(2026, time.August, 13, 10, 0, 0, 0, loc),
 	}
 
-	expectedKey := "slotgen:lock:practitioner:prac-1:2026-08-13"
-	mockLocker.On("TryLock", mock.Anything, expectedKey, 30*time.Second).Return(true, "tok-1", nil)
-	mockLocker.On("Unlock", mock.Anything, expectedKey, "tok-1").Return(nil)
+	// Each role locks its own practitioner's day: both date-specific keys must be
+	// acquired and released, in deterministic (practitioner, day) order.
+	expectedKey1 := "slotgen:lock:practitioner:prac-1:2026-08-13"
+	expectedKey2 := "slotgen:lock:practitioner:prac-2:2026-08-13"
+	mockLocker.On("TryLock", mock.Anything, expectedKey1, 30*time.Second).Return(true, "tok-1", nil)
+	mockLocker.On("TryLock", mock.Anything, expectedKey2, 30*time.Second).Return(true, "tok-2", nil)
+	mockLocker.On("Unlock", mock.Anything, expectedKey1, "tok-1").Return(nil)
+	mockLocker.On("Unlock", mock.Anything, expectedKey2, "tok-2").Return(nil)
 
 	res, err := s.resolveAndLockWindows(context.Background(), roles, input)
 	assert.NoError(t, err)
