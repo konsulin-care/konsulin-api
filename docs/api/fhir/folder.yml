@@ -7,6 +7,8 @@ request:
   headers:
     - name: Content-Type
       value: application/fhir+json
+    - name: Accept
+      value: application/fhir+json
   scripts:
     - type: tests
       code: |-

@@ -89,18 +89,22 @@ runtime:
           // atob is not available in the QuickJS sandbox, so decode base64url by hand.
           try {
             function b64uToStr(b64u) {
-              var b64 = b64u.replace(/-/g, "+").replace(/_/g, "/");
               var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+              var b64 = b64u.replace(/-/g, "+").replace(/_/g, "/");
               var out = "";
               for (var i = 0; i < b64.length; i += 4) {
-                if (b64[i] === "=" || b64[i + 1] === "=") { break; }
-                var n = (chars.indexOf(b64[i]) << 18) |
-                        (chars.indexOf(b64[i + 1]) << 12) |
-                        (chars.indexOf(b64[i + 2]) << 6) |
-                        chars.indexOf(b64[i + 3]);
+                var a = chars.indexOf(b64[i]);
+                if (a < 0) break;
+                var b = chars.indexOf(b64[i + 1]);
+                var c = chars.indexOf(b64[i + 2]);
+                var d = chars.indexOf(b64[i + 3]);
+                var n = a << 18;
+                if (b >= 0) n |= b << 12;
+                if (c >= 0) n |= c << 6;
+                if (d >= 0) n |= d;
                 out += String.fromCharCode((n >>> 16) & 255);
-                if (b64[i + 2] !== "=") { out += String.fromCharCode((n >>> 8) & 255); }
-                if (b64[i + 3] !== "=") { out += String.fromCharCode(n & 255); }
+                if (c >= 0) out += String.fromCharCode((n >>> 8) & 255);
+                if (d >= 0) out += String.fromCharCode(n & 255);
               }
               return out;
             }
