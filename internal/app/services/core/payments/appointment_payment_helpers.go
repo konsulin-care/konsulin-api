@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"konsulin-service/internal/app/contracts"
@@ -14,6 +15,7 @@ import (
 	"konsulin-service/internal/pkg/fhir_dto"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -195,10 +197,8 @@ func (uc *paymentUsecase) buildAppointmentPaymentBundle(
 
 // DayAdjustmentConfig groups the intra-day parameters for slot adjustment computation.
 type DayAdjustmentConfig struct {
-	Day           time.Time
-	DayEnd        time.Time
-	SlotMinutes   int
-	BufferMinutes int
+	Day    time.Time
+	DayEnd time.Time
 }
 
 // buildDayAdjustmentEntries computes slot adjustments for a single day within an appointment window.
@@ -241,15 +241,13 @@ func (uc *paymentUsecase) buildDayAdjustmentEntries(
 		return nil, nil
 	}
 
-	toDelete, toCreate, adjErr := slot.BuildSlotAdjustmentForAppointment(
+	toCreate, adjErr := slot.BuildSlotAdjustmentForAppointment(
 		role,
 		schedule,
 		existingSlots,
 		segmentStart,
 		segmentEnd,
 		precond.Slot.ID,
-		config.SlotMinutes,
-		config.BufferMinutes,
 	)
 	if adjErr != nil {
 		uc.Log.Warn("buildDayAdjustmentEntries failed to compute adjustments",
@@ -258,18 +256,6 @@ func (uc *paymentUsecase) buildDayAdjustmentEntries(
 			zap.Error(adjErr),
 		)
 		return nil, nil
-	}
-
-	for _, slotID := range toDelete {
-		if slotID == precond.Slot.ID {
-			continue
-		}
-		entries = append(entries, map[string]any{
-			constvars.FhirFieldRequest: map[string]any{
-				constvars.FhirFieldMethod: "DELETE",
-				constvars.FhirFieldURL:    constvars.ResourceSlot + "/" + slotID,
-			},
-		})
 	}
 
 	for _, newSlot := range toCreate {
@@ -306,20 +292,6 @@ func (uc *paymentUsecase) buildSlotAdjustmentEntries(
 
 	var entries []map[string]any
 
-	slotMinutes, durErr := precond.HealthcareService.ServiceDurationMinutes()
-	if durErr != nil {
-		return nil, exceptions.BuildNewCustomError(
-			durErr,
-			constvars.StatusInternalServerError,
-			"Failed to parse schedule duration",
-			"failed to read serviceDuration extension from HealthcareService",
-		)
-	}
-	bufferMinutes := 5
-	if b, ok := precond.HealthcareService.ServiceBufferMinutes(); ok {
-		bufferMinutes = b
-	}
-
 	for _, role := range allPractitionerRoles {
 		schedules, err := uc.ScheduleFhirClient.FindScheduleByPractitionerRoleID(ctx, role.ID)
 		if err != nil || len(schedules) == 0 {
@@ -348,7 +320,7 @@ func (uc *paymentUsecase) buildSlotAdjustmentEntries(
 		for day := time.Date(slotStartLocal.Year(), slotStartLocal.Month(), slotStartLocal.Day(), 0, 0, 0, 0, loc); !day.After(time.Date(slotEndLocal.Year(), slotEndLocal.Month(), slotEndLocal.Day(), 0, 0, 0, 0, loc)); day = day.Add(24 * time.Hour) {
 			dayEnd := day.Add(24 * time.Hour)
 			dayEntries, dayErr := uc.buildDayAdjustmentEntries(ctx, requestID, precond, role, schedule, DayAdjustmentConfig{
-				Day: day, DayEnd: dayEnd, SlotMinutes: slotMinutes, BufferMinutes: bufferMinutes,
+				Day: day, DayEnd: dayEnd,
 			})
 			if dayErr != nil {
 				return nil, dayErr
@@ -446,6 +418,111 @@ func (uc *paymentUsecase) notifyProviderAsync(
 	uc.Log.Info("notifyProviderAsync webhook called successfully")
 }
 
+// acquireBookingLocks acquires the practitioner-day locks for a booking. The
+// practitionerID comes from the booked role only; sibling roles are never resolved,
+// so schedule-less or period-less sibling roles cannot break the booking.
+func (uc *paymentUsecase) acquireBookingLocks(ctx context.Context, precond *preconditionData, ttl time.Duration) (func(context.Context), error) {
+	practitionerID := strings.TrimPrefix(precond.PractitionerRole.Practitioner.Reference, constvars.FHIRRefPrefixPractitioner)
+	return uc.SlotUsecase.AcquireLocksForPractitionerDay(ctx, practitionerID, precond.Slot.Start, precond.Slot.End, ttl)
+}
+
+// errCrossRoleOverlapFound signals that a sibling check found a conflicting slot;
+// it cancels any remaining sibling checks through the errgroup context.
+var errCrossRoleOverlapFound = errors.New("cross-role overlap found")
+
+// findCrossRoleOverlap returns the first non-free slot in any schedulable sibling
+// schedule overlapping [start,end), excluding the booked schedule (checked by the
+// caller). Roles without schedules are skipped. Returns (nil, nil) when clear.
+// Per-role checks run concurrently with bounded parallelism so the booking lock
+// is held only briefly; the first detected overlap cancels the remaining checks.
+func (uc *paymentUsecase) findCrossRoleOverlap(
+	ctx context.Context,
+	roles []fhir_dto.PractitionerRole,
+	bookedScheduleID string,
+	start, end time.Time,
+) (*fhir_dto.Slot, error) {
+	overlapParams := contracts.SlotSearchParams{
+		Start:  "lt" + end.Format(time.RFC3339),
+		End:    "gt" + start.Format(time.RFC3339),
+		Status: fhir_dto.SlotStatus(string(fhir_dto.SlotStatusBusyUnavailable) + "," + string(fhir_dto.SlotStatusBusyTentative)),
+	}
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(4) // bound concurrent sibling checks
+
+	var (
+		mu      sync.Mutex
+		overlap *fhir_dto.Slot
+	)
+	for _, role := range roles {
+		g.Go(func() error {
+			hit, err := uc.checkRoleOverlap(gctx, role, bookedScheduleID, start, end, overlapParams)
+			if err != nil {
+				return err
+			}
+			if hit == nil {
+				return nil
+			}
+			mu.Lock()
+			if overlap == nil {
+				overlap = hit
+			}
+			mu.Unlock()
+			return errCrossRoleOverlapFound
+		})
+	}
+
+	if err := g.Wait(); err != nil && overlap == nil {
+		return nil, err
+	}
+	return overlap, nil
+}
+
+// checkRoleOverlap returns the first non-free slot in any schedulable schedule
+// of role overlapping [start,end), skipping the booked schedule. Returns
+// (nil, nil) when clear. Runs as the per-role unit of the concurrent
+// cross-role overlap check.
+func (uc *paymentUsecase) checkRoleOverlap(
+	ctx context.Context,
+	role fhir_dto.PractitionerRole,
+	bookedScheduleID string,
+	start, end time.Time,
+	params contracts.SlotSearchParams,
+) (*fhir_dto.Slot, error) {
+	scheds, err := uc.ScheduleFhirClient.FindScheduleByPractitionerRoleID(ctx, role.ID)
+	if err != nil {
+		return nil, err
+	}
+	for _, sched := range scheds {
+		if sched.ID == bookedScheduleID {
+			continue
+		}
+		slots, err := uc.SlotFhirClient.FindSlotsByScheduleWithQuery(ctx, sched.ID, params)
+		if err != nil {
+			return nil, err
+		}
+		if found := getOverlappingNonFreeSlots(slots, start, end); len(found) > 0 {
+			return &found[0], nil
+		}
+	}
+	return nil, nil
+}
+
+// acquireNotificationLocks acquires the practitioner-day locks for a payment
+// callback, resolving the practitionerID from the callback's practitioner role.
+// The slot window determines the affected local days.
+func (uc *paymentUsecase) acquireNotificationLocks(ctx context.Context, fields appointmentExternalIDFields, slot *fhir_dto.Slot, ttl time.Duration) (func(context.Context), error) {
+	role, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByID(ctx, fields.PractitionerRoleID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch practitioner role %s: %w", fields.PractitionerRoleID, err)
+	}
+	if role == nil {
+		return nil, fmt.Errorf("practitioner role %s not found", fields.PractitionerRoleID)
+	}
+	practitionerID := strings.TrimPrefix(role.Practitioner.Reference, constvars.FHIRRefPrefixPractitioner)
+	return uc.SlotUsecase.AcquireLocksForPractitionerDay(ctx, practitionerID, slot.Start, slot.End, ttl)
+}
+
 // getOverlappingNonFreeSlots filters FHIR Slot query results for slots whose time range
 // overlaps with [slotStart, slotEnd). Only non-free slots (busy-unavailable, busy-tentative)
 // are considered as conflicts. Free slots are ignored since they are dynamically generated.
@@ -515,6 +592,10 @@ func formatMoney(money *fhir_dto.Money) string {
 	}
 	return fmt.Sprintf("%s %.0f", money.Currency, money.Value)
 }
+
+// constUnknownResourceType is the fallback resource type label when a concurrent
+// fetch fails without carrying a typed resourceFetchError.
+const constUnknownResourceType = "unknown"
 
 // fetchedResources holds all resources fetched by fetchCommonResources.
 type fetchedResources struct {
@@ -601,7 +682,7 @@ func (uc *paymentUsecase) fetchCommonResources(
 	})
 
 	if err := g.Wait(); err != nil {
-		resType := "unknown"
+		resType := constUnknownResourceType
 		if fe, ok := err.(*resourceFetchError); ok {
 			resType = fe.resource
 		}

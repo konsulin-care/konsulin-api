@@ -39,6 +39,6 @@ If `enqueue_request` is set without a properly configured RabbitMQ consumer, web
 
 Casbin evaluates policies in file order. If a deny rule exists but appears after an allow rule, the allow rule wins. Always order policies so that more specific rules come before general ones.
 
-## Slot Generation
+## Slot Generation (removed)
 
-Slot generation runs on a cron schedule (daily by default) with a rolling window. On-demand regeneration is triggered via post-FHIR-proxy hooks. If the cron worker fails or the hook is not called after creating a Schedule resource, slots won't be generated until the next cron run.
+Backend free-slot generation (cron worker, on-demand regeneration hook, and the `SLOT_WINDOW_DAYS` / `SLOT_WORKER_CRON_SPEC` config) was removed. Free slots are now transient resources created by the BFF service right before a booking, and the frontend infers availability from `PractitionerRole.availableTime` minus non-free slots (`busy`, `busy-unavailable`, `busy-tentative`). The backend only stores non-free slots; a booking's free slot is flipped to `busy-tentative`/`busy-unavailable` on payment.

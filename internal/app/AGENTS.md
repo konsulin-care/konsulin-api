@@ -23,7 +23,6 @@ Three service groups:
 - **`middlewares/`** — 9 middlewares in fixed order (see ARCHITECTURE.md): core, auth, api_key, body_buffer, error_handler, proxy, rate_limit, session, logging
 - **`routers/`** — Route setup: CORS, middleware chain, API v1, FHIR bridge, terminology proxy
 - **`handlers/`** — HTTP handler utilities
-- **`postfhir/`** — Post-FHIR-proxy hooks for slot regeneration
 
 ### `internal/app/drivers/`
 Infrastructure wrappers:

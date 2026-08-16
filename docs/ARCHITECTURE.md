@@ -193,7 +193,6 @@ Each rule declares:
 - `github.com/xendit/xendit-go/v7` — Payments
 - `go.uber.org/zap` — Logging
 - `github.com/joho/godotenv` — Config (.env loading)
-- `github.com/robfig/cron/v3` — Scheduled tasks (slot generation)
 
 ## Deployment
 

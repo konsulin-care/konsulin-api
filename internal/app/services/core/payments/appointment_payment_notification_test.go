@@ -16,8 +16,9 @@ import (
 
 // mockSlotFhirClient mocks contracts.SlotFhirClient for notification tests.
 type mockSlotFhirClient struct {
-	slot *fhir_dto.Slot
-	err  error
+	slot            *fhir_dto.Slot
+	err             error
+	slotsBySchedule func(scheduleID string, params contracts.SlotSearchParams) ([]fhir_dto.Slot, error)
 }
 
 func (m *mockSlotFhirClient) FindSlotByID(_ context.Context, _ string) (*fhir_dto.Slot, error) {
@@ -38,7 +39,10 @@ func (*mockSlotFhirClient) CreateSlot(_ context.Context, _ *fhir_dto.Slot) (*fhi
 func (*mockSlotFhirClient) UpdateSlot(_ context.Context, _ string, _ *fhir_dto.Slot) (*fhir_dto.Slot, error) {
 	return nil, nil
 }
-func (*mockSlotFhirClient) FindSlotsByScheduleWithQuery(_ context.Context, _ string, _ contracts.SlotSearchParams) ([]fhir_dto.Slot, error) {
+func (m *mockSlotFhirClient) FindSlotsByScheduleWithQuery(_ context.Context, scheduleID string, params contracts.SlotSearchParams) ([]fhir_dto.Slot, error) {
+	if m.slotsBySchedule != nil {
+		return m.slotsBySchedule(scheduleID, params)
+	}
 	return nil, nil
 }
 func (*mockSlotFhirClient) PostTransactionBundle(_ context.Context, _ map[string]interface{}) (*fhir_dto.FHIRBundle, error) {
@@ -46,20 +50,23 @@ func (*mockSlotFhirClient) PostTransactionBundle(_ context.Context, _ map[string
 }
 
 // mockSlotUsecase mocks contracts.SlotUsecaseIface for notification tests.
-type mockSlotUsecase struct{}
+type mockSlotUsecase struct {
+	lockErr          error
+	lockPractitioner string
+	lockStart        time.Time
+	lockEnd          time.Time
+}
 
-func (*mockSlotUsecase) HandleAutomatedSlotGeneration(_ context.Context, _ fhir_dto.PractitionerRole) {
-}
-func (*mockSlotUsecase) HandleOnDemandSlotRegeneration(_ context.Context, _ string) error {
-	return nil
-}
 func (*mockSlotUsecase) HandleSetUnavailabilityForMultiplePractitionerRoles(_ context.Context, _ contracts.SetUnavailabilityForMultiplePractitionerRolesInput) (*contracts.SetUnavailableOutcome, error) {
 	return nil, nil
 }
-func (*mockSlotUsecase) AcquireLocksForAppointment(_ context.Context, _ []fhir_dto.PractitionerRole, _, _ time.Time, _ time.Duration) (func(context.Context), error) {
-	return func(_ context.Context) {}, nil
-}
-func (*mockSlotUsecase) AcquireLocksForSlot(_ context.Context, _ *fhir_dto.Slot, _ time.Duration) (func(context.Context), error) {
+func (m *mockSlotUsecase) AcquireLocksForPractitionerDay(_ context.Context, practitionerID string, start, end time.Time, _ time.Duration) (func(context.Context), error) {
+	m.lockPractitioner = practitionerID
+	m.lockStart = start
+	m.lockEnd = end
+	if m.lockErr != nil {
+		return func(_ context.Context) {}, m.lockErr
+	}
 	return func(_ context.Context) {}, nil
 }
 
@@ -116,6 +123,9 @@ func TestHandleAppointmentPaymentNotification_ExpiredSlotFree(t *testing.T) {
 	t.Run("EXPIRED callback returns nil when slot is already free", func(t *testing.T) {
 		slotID := "slot-already-free"
 		uc := &paymentUsecase{
+			PractitionerRoleFhirClient: &mockPractitionerRoleFhirClient{
+				role: &fhir_dto.PractitionerRole{Practitioner: fhir_dto.Reference{Reference: "Practitioner/prac-9"}},
+			},
 			SlotFhirClient: &mockSlotFhirClient{
 				slot: &fhir_dto.Slot{
 					ID:     slotID,

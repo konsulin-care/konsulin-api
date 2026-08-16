@@ -22,8 +22,7 @@ konsulin-service/
 │   │   │   ├── controllers/   # 9 HTTP controllers
 │   │   │   ├── middlewares/   # 9 middleware components
 │   │   │   ├── routers/       # Route setup & registration
-│   │   │   ├── handlers/      # HTTP handler utilities
-│   │   │   └── postfhir/      # Post-FHIR-proxy hooks
+│   │   │   └── handlers/      # HTTP handler utilities
 │   │   ├── drivers/           # Infrastructure wrappers
 │   │   │   ├── database/      # DB connection drivers
 │   │   │   ├── logger/        # Zap logger wrapper
