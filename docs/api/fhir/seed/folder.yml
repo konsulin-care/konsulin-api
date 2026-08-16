@@ -7,8 +7,8 @@ request: {}
 
 docs: |
   Seeds a clean backend with the FHIR resources the journeys depend on.
-  All requests authenticate as superadmin via `X-API-Key:
-  {{process.env.SUPERADMIN_API_KEY}}` (no session bearer needed) and chain
+  Every request PUTs directly to the Blaze FHIR server
+  (`{{process.env.BLAZE_BASE_URL}}` — no gateway, no auth headers) and chains
   linearly: Organization → Location → HealthcareService → PractitionerRole →
   Schedule → Questionnaire → SOAP Questionnaire → PlanDefinition → ResearchStudy →
   Invoice.

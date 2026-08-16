@@ -6,10 +6,7 @@ info:
 
 http:
   method: PUT
-  url: "{{process.env.APP_BASE_URL}}/fhir/ResearchStudy/seed-study"
-  headers:
-    - name: X-API-Key
-      value: "{{process.env.SUPERADMIN_API_KEY}}"
+  url: "{{process.env.BLAZE_BASE_URL}}/fhir/ResearchStudy/seed-study"
   body:
     type: json
     data: |-
@@ -58,4 +55,5 @@ docs: |
   dangling references. Captures `researchStudyId` (equals seed-study) and hands
   off to "Seed Invoice" (the invoice the payment step charges against), which
   then enters the ownership-violation suite (which seeds foreign identities,
-  runs the 401 scenarios, cleans up, then enters the patient journey). Superadmin.
+  runs the 401 scenarios, cleans up, then enters the patient journey). Direct
+  Blaze PUT.
