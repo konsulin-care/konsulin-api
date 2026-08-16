@@ -195,10 +195,8 @@ func (uc *paymentUsecase) buildAppointmentPaymentBundle(
 
 // DayAdjustmentConfig groups the intra-day parameters for slot adjustment computation.
 type DayAdjustmentConfig struct {
-	Day           time.Time
-	DayEnd        time.Time
-	SlotMinutes   int
-	BufferMinutes int
+	Day    time.Time
+	DayEnd time.Time
 }
 
 // buildDayAdjustmentEntries computes slot adjustments for a single day within an appointment window.
@@ -248,8 +246,6 @@ func (uc *paymentUsecase) buildDayAdjustmentEntries(
 		segmentStart,
 		segmentEnd,
 		precond.Slot.ID,
-		config.SlotMinutes,
-		config.BufferMinutes,
 	)
 	if adjErr != nil {
 		uc.Log.Warn("buildDayAdjustmentEntries failed to compute adjustments",
@@ -306,20 +302,6 @@ func (uc *paymentUsecase) buildSlotAdjustmentEntries(
 
 	var entries []map[string]any
 
-	slotMinutes, durErr := precond.HealthcareService.ServiceDurationMinutes()
-	if durErr != nil {
-		return nil, exceptions.BuildNewCustomError(
-			durErr,
-			constvars.StatusInternalServerError,
-			"Failed to parse schedule duration",
-			"failed to read serviceDuration extension from HealthcareService",
-		)
-	}
-	bufferMinutes := 5
-	if b, ok := precond.HealthcareService.ServiceBufferMinutes(); ok {
-		bufferMinutes = b
-	}
-
 	for _, role := range allPractitionerRoles {
 		schedules, err := uc.ScheduleFhirClient.FindScheduleByPractitionerRoleID(ctx, role.ID)
 		if err != nil || len(schedules) == 0 {
@@ -348,7 +330,7 @@ func (uc *paymentUsecase) buildSlotAdjustmentEntries(
 		for day := time.Date(slotStartLocal.Year(), slotStartLocal.Month(), slotStartLocal.Day(), 0, 0, 0, 0, loc); !day.After(time.Date(slotEndLocal.Year(), slotEndLocal.Month(), slotEndLocal.Day(), 0, 0, 0, 0, loc)); day = day.Add(24 * time.Hour) {
 			dayEnd := day.Add(24 * time.Hour)
 			dayEntries, dayErr := uc.buildDayAdjustmentEntries(ctx, requestID, precond, role, schedule, DayAdjustmentConfig{
-				Day: day, DayEnd: dayEnd, SlotMinutes: slotMinutes, BufferMinutes: bufferMinutes,
+				Day: day, DayEnd: dayEnd,
 			})
 			if dayErr != nil {
 				return nil, dayErr

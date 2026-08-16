@@ -29,20 +29,18 @@ func (m *mockLockerService) Refresh(ctx context.Context, key, lockValue string, 
 // TestPractitionerDayLockKey pins the practitioner-day lock key format:
 // slotgen:lock:practitioner:<practitionerID>:<YYYY-MM-DD> (no timezone suffix).
 func TestPractitionerDayLockKey(t *testing.T) {
-	s := &SlotUsecase{}
 	day := time.Date(2026, time.August, 13, 0, 0, 0, 0, time.UTC)
-	assert.Equal(t, "slotgen:lock:practitioner:prac-1:2026-08-13", s.practitionerDayLockKey("prac-1", day))
+	assert.Equal(t, "slotgen:lock:practitioner:prac-1:2026-08-13", practitionerDayLockKey("prac-1", day))
 }
 
 // TestPractitionerDayTargetsForWindow verifies local-day computation semantics.
 func TestPractitionerDayTargetsForWindow(t *testing.T) {
 	loc := time.FixedZone("+02:00", 2*3600)
-	s := &SlotUsecase{}
 
 	t.Run("single local day", func(t *testing.T) {
 		start := time.Date(2026, time.August, 13, 9, 0, 0, 0, loc)
 		end := time.Date(2026, time.August, 13, 10, 0, 0, 0, loc)
-		targets := s.practitionerDayTargetsForWindow("prac-1", loc, start, end)
+		targets := practitionerDayTargetsForWindow("prac-1", loc, start, end)
 		assert.Len(t, targets, 1)
 		assert.Equal(t, "prac-1", targets[0].PractitionerID)
 		assert.Equal(t, "2026-08-13", targets[0].Day.Format("2006-01-02"))
@@ -51,27 +49,27 @@ func TestPractitionerDayTargetsForWindow(t *testing.T) {
 	t.Run("end exactly at midnight excludes next day", func(t *testing.T) {
 		start := time.Date(2026, time.August, 13, 9, 0, 0, 0, loc)
 		end := time.Date(2026, time.August, 14, 0, 0, 0, 0, loc)
-		targets := s.practitionerDayTargetsForWindow("prac-1", loc, start, end)
+		targets := practitionerDayTargetsForWindow("prac-1", loc, start, end)
 		assert.Len(t, targets, 1)
 	})
 
 	t.Run("multi-day window", func(t *testing.T) {
 		start := time.Date(2026, time.August, 13, 22, 0, 0, 0, loc)
 		end := time.Date(2026, time.August, 15, 10, 0, 0, 0, loc)
-		targets := s.practitionerDayTargetsForWindow("prac-1", loc, start, end)
+		targets := practitionerDayTargetsForWindow("prac-1", loc, start, end)
 		assert.Len(t, targets, 3)
 	})
 
 	t.Run("inverted window returns nil", func(t *testing.T) {
 		start := time.Date(2026, time.August, 13, 10, 0, 0, 0, loc)
 		end := time.Date(2026, time.August, 13, 9, 0, 0, 0, loc)
-		assert.Nil(t, s.practitionerDayTargetsForWindow("prac-1", loc, start, end))
+		assert.Nil(t, practitionerDayTargetsForWindow("prac-1", loc, start, end))
 	})
 
 	t.Run("window crossing UTC date boundary uses local day", func(t *testing.T) {
 		start := time.Date(2026, time.August, 13, 23, 30, 0, 0, loc)
 		end := time.Date(2026, time.August, 14, 0, 30, 0, 0, loc)
-		targets := s.practitionerDayTargetsForWindow("prac-1", loc, start, end)
+		targets := practitionerDayTargetsForWindow("prac-1", loc, start, end)
 		assert.Len(t, targets, 2)
 		assert.Equal(t, "2026-08-13", targets[0].Day.Format("2006-01-02"))
 		assert.Equal(t, "2026-08-14", targets[1].Day.Format("2006-01-02"))

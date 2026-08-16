@@ -168,7 +168,6 @@ func BuildSlotAdjustmentForAppointment(
 	existingSlots []fhir_dto.Slot,
 	appointedStart, appointedEnd time.Time,
 	appointedSlotID string,
-	slotMinutes, bufferMinutes int,
 ) (toDelete []string, toCreate []fhir_dto.Slot, err error) {
 	loc, tzErr := practitionerRole.GetPreferredTimezone()
 	if tzErr != nil {

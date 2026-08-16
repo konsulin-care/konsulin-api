@@ -62,7 +62,7 @@ func TestResolveAndLockWindowsUsesPractitionerDayLocks(t *testing.T) {
 		Practitioner: fhir_dto.Reference{Reference: "Practitioner/prac-1"},
 		Period:       fhir_dto.Period{Start: "2026-08-08T15:02:02+07:00"},
 	}}
-	schedule := fhir_dto.Schedule{ID: "sched-1", Comment: `{"slotMinutes":60,"bufferMinutes":0}`}
+	schedule := fhir_dto.Schedule{ID: "sched-1"}
 	mockSched.On("FindScheduleByPractitionerRoleID", mock.Anything, "role-1").Return([]fhir_dto.Schedule{schedule}, nil)
 
 	input := contracts.SetUnavailabilityForMultiplePractitionerRolesInput{

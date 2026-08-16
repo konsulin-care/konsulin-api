@@ -161,7 +161,7 @@ func (s *SlotUsecase) resolveAndLockWindows(ctx context.Context, roles []fhir_dt
 			return nil, err
 		}
 
-		for _, t := range s.practitionerDayTargetsForWindow(practitionerID, loc, winStart, winEnd) {
+		for _, t := range practitionerDayTargetsForWindow(practitionerID, loc, winStart, winEnd) {
 			targets = dedupePractitionerDayTargets(seen, targets, t)
 		}
 		res.schedulesByRole[pr.ID] = scheduleID
@@ -642,7 +642,7 @@ type practitionerDayLockTarget struct {
 // [start,end) in the given location. Days are the natural boundaries for
 // practitioner-day locks; each caller computes them in its own local context
 // (booked slot offset for booking/callback, role Period timezone for the worker).
-func (s *SlotUsecase) practitionerDayTargetsForWindow(practitionerID string, loc *time.Location, start, end time.Time) []practitionerDayLockTarget {
+func practitionerDayTargetsForWindow(practitionerID string, loc *time.Location, start, end time.Time) []practitionerDayLockTarget {
 	// If the window is empty or inverted, no days are covered.
 	if !end.After(start) {
 		return nil
@@ -666,7 +666,7 @@ func (s *SlotUsecase) practitionerDayTargetsForWindow(practitionerID string, loc
 // practitionerDayLockKey builds the practitioner-local-day lock key.
 // The key deliberately drops any timezone suffix: each caller computes the local
 // day in its own context, so the same practitioner+date always maps to one key.
-func (s *SlotUsecase) practitionerDayLockKey(practitionerID string, day time.Time) string {
+func practitionerDayLockKey(practitionerID string, day time.Time) string {
 	y, m, d := day.Date()
 	return fmt.Sprintf("slotgen:lock:practitioner:%s:%04d-%02d-%02d", practitionerID, y, int(m), d)
 }
@@ -723,7 +723,7 @@ func acquireLocksOrdered[T any](ctx context.Context, locker contracts.LockerServ
 // acquirePractitionerDayLocksOrdered acquires locks in deterministic order and returns a release closure
 func (s *SlotUsecase) acquirePractitionerDayLocksOrdered(ctx context.Context, targets []practitionerDayLockTarget, ttl time.Duration) (func(context.Context), error) {
 	return acquireLocksOrdered(ctx, s.locker, targets, ttl, func(t practitionerDayLockTarget) string {
-		return s.practitionerDayLockKey(t.PractitionerID, t.Day)
+		return practitionerDayLockKey(t.PractitionerID, t.Day)
 	})
 }
 
@@ -739,6 +739,6 @@ func (s *SlotUsecase) AcquireLocksForPractitionerDay(ctx context.Context, practi
 	if loc == nil {
 		return nil, fmt.Errorf("appointment window start has no location/timezone")
 	}
-	targets := s.practitionerDayTargetsForWindow(practitionerID, loc, start, end)
+	targets := practitionerDayTargetsForWindow(practitionerID, loc, start, end)
 	return s.acquirePractitionerDayLocksOrdered(ctx, targets, ttl)
 }
