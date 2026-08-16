@@ -120,6 +120,102 @@ func TestFindCrossRoleOverlap(t *testing.T) {
 	})
 }
 
+// TestCheckRoleOverlap verifies the per-role unit of the cross-role overlap
+// check: it scans a role's schedulable schedules (excluding the booked one) and
+// returns the first non-free slot overlapping [start,end).
+func TestCheckRoleOverlap(t *testing.T) {
+	loc := time.FixedZone("+02:00", 2*3600)
+	start := time.Date(2026, time.August, 13, 10, 0, 0, 0, loc)
+	end := time.Date(2026, time.August, 13, 11, 0, 0, 0, loc)
+
+	params := contracts.SlotSearchParams{
+		Start:  "lt" + end.Format(time.RFC3339),
+		End:    "gt" + start.Format(time.RFC3339),
+		Status: fhir_dto.SlotStatus(string(fhir_dto.SlotStatusBusyUnavailable) + "," + string(fhir_dto.SlotStatusBusyTentative)),
+	}
+
+	t.Run("returns the first non-free slot, skipping the booked schedule", func(t *testing.T) {
+		schedMock := &mockScheduleFhirClient{schedulesByRole: map[string][]fhir_dto.Schedule{
+			"role-1": {
+				{ID: "booked-sched"},
+				{ID: "sched-2"},
+				{ID: "sched-3"},
+			},
+		}}
+		var queried []string
+		slotMock := &mockSlotFhirClient{slotsBySchedule: func(scheduleID string, _ contracts.SlotSearchParams) ([]fhir_dto.Slot, error) {
+			queried = append(queried, scheduleID)
+			switch scheduleID {
+			case "sched-2":
+				return []fhir_dto.Slot{{ID: "slot-free", Status: fhir_dto.SlotStatusFree, Start: start, End: end}}, nil
+			default:
+				return []fhir_dto.Slot{
+					{ID: "slot-busy-1", Status: fhir_dto.SlotStatusBusyTentative, Start: start, End: end},
+					{ID: "slot-busy-2", Status: fhir_dto.SlotStatusBusyUnavailable, Start: start, End: end},
+				}, nil
+			}
+		}}
+		uc := &paymentUsecase{ScheduleFhirClient: schedMock, SlotFhirClient: slotMock, Log: zap.NewNop()}
+
+		hit, err := uc.checkRoleOverlap(context.Background(), fhir_dto.PractitionerRole{ID: "role-1"}, "booked-sched", start, end, params)
+		require.NoError(t, err)
+		require.NotNil(t, hit)
+		assert.Equal(t, "slot-busy-1", hit.ID)
+		assert.Equal(t, []string{"sched-2", "sched-3"}, queried, "booked schedule must be skipped without a slot query")
+	})
+
+	t.Run("returns nil when only free slots overlap", func(t *testing.T) {
+		schedMock := &mockScheduleFhirClient{schedulesByRole: map[string][]fhir_dto.Schedule{
+			"role-1": {{ID: "sched-2"}},
+		}}
+		slotMock := &mockSlotFhirClient{slotsBySchedule: func(_ string, _ contracts.SlotSearchParams) ([]fhir_dto.Slot, error) {
+			return []fhir_dto.Slot{{ID: "slot-free", Status: fhir_dto.SlotStatusFree, Start: start, End: end}}, nil
+		}}
+		uc := &paymentUsecase{ScheduleFhirClient: schedMock, SlotFhirClient: slotMock, Log: zap.NewNop()}
+
+		hit, err := uc.checkRoleOverlap(context.Background(), fhir_dto.PractitionerRole{ID: "role-1"}, "booked-sched", start, end, params)
+		require.NoError(t, err)
+		assert.Nil(t, hit)
+	})
+
+	t.Run("returns nil when no slot overlaps the window", func(t *testing.T) {
+		schedMock := &mockScheduleFhirClient{schedulesByRole: map[string][]fhir_dto.Schedule{
+			"role-1": {{ID: "sched-2"}},
+		}}
+		slotMock := &mockSlotFhirClient{slotsBySchedule: func(_ string, _ contracts.SlotSearchParams) ([]fhir_dto.Slot, error) {
+			return []fhir_dto.Slot{{ID: "slot-elsewhere", Status: fhir_dto.SlotStatusBusyTentative, Start: end, End: end.Add(time.Hour)}}, nil
+		}}
+		uc := &paymentUsecase{ScheduleFhirClient: schedMock, SlotFhirClient: slotMock, Log: zap.NewNop()}
+
+		hit, err := uc.checkRoleOverlap(context.Background(), fhir_dto.PractitionerRole{ID: "role-1"}, "booked-sched", start, end, params)
+		require.NoError(t, err)
+		assert.Nil(t, hit)
+	})
+
+	t.Run("propagates schedule fetch error", func(t *testing.T) {
+		schedMock := &mockScheduleFhirClient{err: assert.AnError}
+		uc := &paymentUsecase{ScheduleFhirClient: schedMock, SlotFhirClient: &mockSlotFhirClient{}, Log: zap.NewNop()}
+
+		hit, err := uc.checkRoleOverlap(context.Background(), fhir_dto.PractitionerRole{ID: "role-1"}, "booked-sched", start, end, params)
+		assert.Error(t, err)
+		assert.Nil(t, hit)
+	})
+
+	t.Run("propagates slot query error", func(t *testing.T) {
+		schedMock := &mockScheduleFhirClient{schedulesByRole: map[string][]fhir_dto.Schedule{
+			"role-1": {{ID: "sched-2"}},
+		}}
+		slotMock := &mockSlotFhirClient{slotsBySchedule: func(_ string, _ contracts.SlotSearchParams) ([]fhir_dto.Slot, error) {
+			return nil, assert.AnError
+		}}
+		uc := &paymentUsecase{ScheduleFhirClient: schedMock, SlotFhirClient: slotMock, Log: zap.NewNop()}
+
+		hit, err := uc.checkRoleOverlap(context.Background(), fhir_dto.PractitionerRole{ID: "role-1"}, "booked-sched", start, end, params)
+		assert.Error(t, err)
+		assert.Nil(t, hit)
+	})
+}
+
 // TestAcquireNotificationLocks verifies the Xendit callback resolves the
 // practitionerID from the callback role and locks practitioner days.
 func TestAcquireNotificationLocks(t *testing.T) {

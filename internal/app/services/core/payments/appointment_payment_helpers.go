@@ -456,28 +456,19 @@ func (uc *paymentUsecase) findCrossRoleOverlap(
 	)
 	for _, role := range roles {
 		g.Go(func() error {
-			scheds, err := uc.ScheduleFhirClient.FindScheduleByPractitionerRoleID(gctx, role.ID)
+			hit, err := uc.checkRoleOverlap(gctx, role, bookedScheduleID, start, end, overlapParams)
 			if err != nil {
 				return err
 			}
-			for _, sched := range scheds {
-				if sched.ID == bookedScheduleID {
-					continue
-				}
-				slots, err := uc.SlotFhirClient.FindSlotsByScheduleWithQuery(gctx, sched.ID, overlapParams)
-				if err != nil {
-					return err
-				}
-				if found := getOverlappingNonFreeSlots(slots, start, end); len(found) > 0 {
-					mu.Lock()
-					if overlap == nil {
-						overlap = &found[0]
-					}
-					mu.Unlock()
-					return errCrossRoleOverlapFound
-				}
+			if hit == nil {
+				return nil
 			}
-			return nil
+			mu.Lock()
+			if overlap == nil {
+				overlap = hit
+			}
+			mu.Unlock()
+			return errCrossRoleOverlapFound
 		})
 	}
 
@@ -485,6 +476,36 @@ func (uc *paymentUsecase) findCrossRoleOverlap(
 		return nil, err
 	}
 	return overlap, nil
+}
+
+// checkRoleOverlap returns the first non-free slot in any schedulable schedule
+// of role overlapping [start,end), skipping the booked schedule. Returns
+// (nil, nil) when clear. Runs as the per-role unit of the concurrent
+// cross-role overlap check.
+func (uc *paymentUsecase) checkRoleOverlap(
+	ctx context.Context,
+	role fhir_dto.PractitionerRole,
+	bookedScheduleID string,
+	start, end time.Time,
+	params contracts.SlotSearchParams,
+) (*fhir_dto.Slot, error) {
+	scheds, err := uc.ScheduleFhirClient.FindScheduleByPractitionerRoleID(ctx, role.ID)
+	if err != nil {
+		return nil, err
+	}
+	for _, sched := range scheds {
+		if sched.ID == bookedScheduleID {
+			continue
+		}
+		slots, err := uc.SlotFhirClient.FindSlotsByScheduleWithQuery(ctx, sched.ID, params)
+		if err != nil {
+			return nil, err
+		}
+		if found := getOverlappingNonFreeSlots(slots, start, end); len(found) > 0 {
+			return &found[0], nil
+		}
+	}
+	return nil, nil
 }
 
 // acquireNotificationLocks acquires the practitioner-day locks for a payment
