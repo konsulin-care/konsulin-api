@@ -10,12 +10,13 @@ docs: |
   All requests authenticate as superadmin via `X-API-Key:
   {{process.env.SUPERADMIN_API_KEY}}` (no session bearer needed) and chain
   linearly: Organization → Location → HealthcareService → PractitionerRole →
-  Schedule → Questionnaire → SOAP Questionnaire → PlanDefinition → ResearchStudy.
+  Schedule → Questionnaire → SOAP Questionnaire → PlanDefinition → ResearchStudy →
+  Invoice.
 
   Every seed is a PUT with a fixed id (`seed-clinic`, `seed-location`, `seed-hs`,
   `seed-role`, `seed-schedule`, `seed-wellbeing`, `seed-soap`, `seed-protocol`,
-  `seed-study`), so re-running the suite replaces the same resources instead of
-  accumulating random-id copies. The SOAP questionnaire is deliberately
+  `seed-study`, `seed-invoice`), so re-running the suite replaces the same
+  resources instead of accumulating random-id copies. The SOAP questionnaire is deliberately
   `seed-soap`, not `soap`: a dev Blaze may hold a real SOAP questionnaire (id
   `soap`) that the suite must never write or delete. Seed-to-seed references
   use the captured vars, which resolve to the fixed ids; the PractitionerRole
@@ -24,7 +25,9 @@ docs: |
   The Patient/Practitioner/Person identities are NOT seeded here — they are
   auto-created by the auth magic-link flow and captured later by the profile
   lookups. Slots are intentionally NOT seeded: free time is computed
-  dynamically by clients (availableTime minus busy slots).
+  dynamically by clients (availableTime minus busy slots). The Invoice is
+  seeded after the PractitionerRole it references so the payment step can
+  charge against `Invoice/seed-invoice`.
 
   `scripts/bru-cleanup.sh` removes these seeds (and any resource referencing
   them) directly against Blaze; `scripts/bru-run.sh` invokes it after every

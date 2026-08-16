@@ -1,7 +1,7 @@
 info:
-  name: "Patient: Verify Appointment Booking"
+  name: "Patient: Verify Slot Booking"
   type: http
-  seq: 15
+  seq: 16
   tags: [appointment]
 
 http:
@@ -9,7 +9,7 @@ http:
   headers:
     - name: Authorization
       value: Bearer {{sessionToken}}
-  url: "{{process.env.APP_BASE_URL}}/fhir/Appointment/{{appointmentId}}"
+  url: "{{process.env.APP_BASE_URL}}/fhir/Slot/{{slotId}}"
 
 runtime:
   scripts:
@@ -35,17 +35,14 @@ runtime:
           }
         });
     - type: after-response
-      code: 'bru.runner.setNextRequest("Patient: Verify Slot Booking");'
+      code: 'bru.runner.setNextRequest("Patient: Write Referral");'
   assertions:
     - expression: res.status
       operator: eq
       value: "200"
     - expression: res.body.status
       operator: eq
-      value: "pending"
-    - expression: res.body.slot[0].reference
-      operator: eq
-      value: "Slot/{{slotId}}"
+      value: "busy-tentative"
 
 settings:
   encodeUrl: true
@@ -54,13 +51,12 @@ settings:
   maxRedirects: 5
 
 docs: |
-  Verifies the booking-acceptance outcome for the appointment: proposed by the
-  BFF, then accepted by `POST /pay/appointment`, which reserved the slot as
-  `busy-tentative` and moved the appointment to `pending` while the Xendit
-  payment is outstanding. This is the state the linear suite can assert
-  in-band; the PAID/SETTLED transition to `booked` (and the slot to
-  `busy-unavailable`) is covered by the unit test
-  `TestHandleAppointmentPaymentPaid_TransitionsAppointmentToBooked`, since
-  driving it end-to-end requires a real paid Xendit invoice. Asserts the
-  appointment is `pending` and still references the reserved slot, then hands
-  off to the slot verification. Pre-request switches to Patient.
+  Verifies the booking-acceptance outcome for the slot: reserved as
+  `busy-tentative` by `POST /pay/appointment` while payment is outstanding.
+  Together with "Patient: Verify Appointment Booking" (appointment `pending`)
+  this closes the loop on the reservation pair of the payment-driven
+  lifecycle. The fully-booked pair (appointment `booked`, slot
+  `busy-unavailable`) is asserted by
+  `TestHandleAppointmentPaymentPaid_TransitionsAppointmentToBooked`.
+  Hands off to "Patient: Write Referral", preserving the patient-journey
+  continuation. Pre-request switches to Patient.

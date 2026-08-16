@@ -40,7 +40,7 @@ http:
             },
             "resource": {
               "resourceType": "Appointment",
-              "status": "booked",
+              "status": "proposed",
               "slot": [
                 {
                   "reference": "urn:uuid:slot-1"
@@ -118,7 +118,7 @@ runtime:
             if (type === "Appointment") { bru.setVar("appointmentId", id); }
           }
         }
-        bru.runner.setNextRequest("Patient: Update Appointment Status");
+        bru.runner.setNextRequest("Handle Appointment Payment");
   assertions:
     - expression: res.status
       operator: eq
@@ -131,9 +131,13 @@ settings:
   maxRedirects: 5
 
 docs: |
-  Books an appointment atomically: a transaction bundle creating a Slot
-  (`status=busy-tentative`, sized by the HealthcareService duration extension)
-  plus the Appointment referencing it via `urn:uuid`. The slot time is computed
-  in the pre-request script inside the seeded `availableTime` window. Captures
-  `slotId` and `appointmentId` from the transaction response. Pre-request
-  switches to Patient.
+  Proposes an appointment atomically for the payment-driven lifecycle: a
+  transaction bundle creating a Slot (`status=busy-tentative`, sized by the
+  HealthcareService duration extension) plus the Appointment referencing it via
+  `urn:uuid`. The appointment is created as `proposed` — the backend owns the
+  status transitions (pending on booking acceptance, booked on PAID callback),
+  per the ff72b9b contract. The slot time is computed in the pre-request script
+  inside the seeded `availableTime` window. Captures `slotId` and `appointmentId`
+  from the transaction response and hands off to "Handle Appointment Payment",
+  which validates the proposal and starts the Xendit flow. Pre-request switches
+  to Patient.

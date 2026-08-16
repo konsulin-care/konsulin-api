@@ -18,13 +18,27 @@ http:
     data: |-
       {
         "id": "inv_abc123",
-        "external_id": "INV-001",
-        "status": "PAID",
+        "external_id": "appointment:{{slotId}}:{{practitionerRoleId}}:{{patientId}}:{{invoiceId}}:{{healthcareServiceId}}:{{appointmentId}}",
+        "status": "SETTLED",
         "amount": 50000,
         "currency": "IDR",
         "created": "2026-07-09T10:00:00Z",
         "updated": "2026-07-09T10:05:00Z"
       }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Patient: Verify Appointment Booking");'
+      # NOTE: not part of the linear suite chain — nothing hands control here.
+      # A PAID/SETTLED callback creates PaymentNotice/PaymentReconciliation/
+      # slot-adjustment records that a doc-driven teardown cannot sweep, so the
+      # suite verifies the reservation state in-band instead and this request
+      # stays as a manually-runnable reference (see docs).
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
 
 settings:
   encodeUrl: true
@@ -46,7 +60,7 @@ examples:
           value: wh_abc123
       body:
         type: json
-        data: '{"id":"inv_abc123","external_id":"INV-001","status":"PAID","amount":50000,"currency":"IDR"}'
+        data: '{"id":"inv_abc123","external_id":"appointment:{{slotId}}:{{practitionerRoleId}}:{{patientId}}:{{invoiceId}}:{{healthcareServiceId}}:{{appointmentId}}","status":"PAID","amount":50000,"currency":"IDR"}'
     response:
       status: 200
       body:
@@ -65,7 +79,7 @@ examples:
           value: wh_def456
       body:
         type: json
-        data: '{"id":"inv_def456","external_id":"INV-002","status":"EXPIRED","amount":50000,"currency":"IDR"}'
+        data: '{"id":"inv_def456","external_id":"appointment:{{slotId}}:{{practitionerRoleId}}:{{patientId}}:{{invoiceId}}:{{healthcareServiceId}}:{{appointmentId}}","status":"EXPIRED","amount":50000,"currency":"IDR"}'
     response:
       status: 200
       body:
@@ -82,7 +96,7 @@ examples:
           value: wh_ghi789
       body:
         type: json
-        data: '{"id":"inv_ghi789","external_id":"INV-003","status":"PAID"}'
+        data: '{"id":"inv_ghi789","external_id":"appointment:{{slotId}}:{{practitionerRoleId}}:{{patientId}}:{{invoiceId}}:{{healthcareServiceId}}:{{appointmentId}}","status":"PAID"}'
     response:
       status: 400
       body:
@@ -98,9 +112,37 @@ docs: |
 
   ### Request Body
   - `id`: Xendit invoice ID.
-  - `external_id`: Partner transaction ID (mapped to application invoice).
+  - `external_id`: partner transaction ID. For appointment payments it is the
+    composite key the backend generated when creating the invoice and parses on
+    callback (`parseAppointmentExternalID`):
+
+    ```
+    appointment:{slotId}:{practitionerRoleId}:{patientId}:{invoiceId}:{healthcareServiceId}:{appointmentId}
+    ```
+
+    Seven colon-separated bare FHIR id segments (no resource-type prefixes,
+    matching how the ids were captured by the seeds/booking steps), prefixed by
+    the service marker `appointment` that routes the callback to the
+    appointment payment handler. On PAID/SETTLED the backend flips the
+    appointment to `booked` and the slot to `busy-unavailable` in one
+    transaction bundle; on EXPIRED it deletes the slot, invoice, and
+    appointment atomically.
   - `status`: One of `PENDING`, `PAID`, `EXPIRED`, `SETTLED`.
   - `amount`, `currency`, `created`, `updated`: optional metadata.
+
+  ### Chain behavior
+  This request is NOT part of the linear suite chain: posting a `PAID`
+  callback triggers a live Xendit re-verification (`verifyPaymentStatus`
+  fetches the invoice by id), and a doc-driven chain cannot satisfy that
+  without a real paid invoice. `SETTLED` is routed identically to PAID
+  (appointment `pending` → `booked`, slot → `busy-unavailable`) while skipping
+  the live lookup, so it is a convenient manual smoke signal — but the
+  transaction bundle it produces (PaymentNotice, PaymentReconciliation, slot
+  adjustments) cannot be swept by the static purge bundle, so the suite
+  verifies the reservation state (`pending` / `busy-tentative`) in-band after
+  "Handle Appointment Payment", and `scripts/bru-cleanup.sh` sweeps any
+  payment records left by a manual callback. The examples below show the
+  equivalent PAID/EXPIRED payloads a real gateway would send.
 
   ### Responses
   - **200 OK**: Callback processed successfully. Body: `{ "success": true, "message": "Xendit invoice callback processed successfully", "data": "PAID" }`.

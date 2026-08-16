@@ -1,0 +1,68 @@
+info:
+  name: Seed Invoice
+  type: http
+  seq: 10
+  tags: [payment, utility]
+
+http:
+  method: PUT
+  url: "{{process.env.APP_BASE_URL}}/fhir/Invoice/seed-invoice"
+  headers:
+    - name: X-API-Key
+      value: "{{process.env.SUPERADMIN_API_KEY}}"
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "Invoice",
+        "id": "seed-invoice",
+        "status": "issued",
+        "participant": [
+          {
+            "role": {
+              "text": "Consultation"
+            },
+            "actor": {
+              "reference": "PractitionerRole/{{practitionerRoleId}}"
+            }
+          }
+        ],
+        "totalNet": {
+          "value": 150000,
+          "currency": "IDR"
+        }
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        bru.setVar("invoiceId", body.id);
+        bru.runner.setNextRequest("Ownership Violation: Seed Other Identities");
+  assertions:
+    - expression: res.status
+      operator: gte
+      value: "200"
+    - expression: res.status
+      operator: lte
+      value: "201"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Seeds the Invoice (fixed id `seed-invoice`, idempotent PUT) that the
+  appointment payment flow charges against. The backend's precondition
+  validation (`ensurePreconditionsValid`) requires the invoice to carry a
+  participant whose actor references the practitioner role and a `totalNet`
+  amount greater than zero — both satisfied here via the seeded
+  `PractitionerRole/{{practitionerRoleId}}` and `150000 IDR`.
+
+  Must run after Seed Practitioner Role so the role reference resolves, and
+  before the payment step so `{{invoiceId}}` (equals seed-invoice) is
+  available to "Handle Appointment Payment". Captures `invoiceId` and hands
+  off to the ownership-violation suite. Superadmin.

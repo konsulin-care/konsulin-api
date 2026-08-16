@@ -64,6 +64,12 @@ http:
           {
             "request": {
               "method": "DELETE",
+              "url": "Invoice/{{invoiceId}}"
+            }
+          },
+          {
+            "request": {
+              "method": "DELETE",
               "url": "PractitionerRole/{{practitionerRoleId}}"
             }
           },

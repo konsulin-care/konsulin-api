@@ -52,6 +52,11 @@ type paymentUsecase struct {
 	SlotUsecase                contracts.SlotUsecaseIface
 	XenditClient               *xendit.APIClient
 	FHIRClient                 appointmentResourceClient
+	// CreateAppointmentInvoice is the injectable seam for the Xendit invoice
+	// creation call made by handleAppointmentBooking; when nil it falls back to
+	// createXenditInvoiceForAppointment. Tests stub it to exercise the booking
+	// flow offline without a Xendit sandbox.
+	CreateAppointmentInvoice func(ctx context.Context, req *requests.AppointmentPaymentRequest, precond *preconditionData) (string, error)
 }
 
 var (
@@ -1383,7 +1388,11 @@ func (uc *paymentUsecase) handleAppointmentBooking(
 		)
 	}
 
-	url, xenditErr := uc.createXenditInvoiceForAppointment(ctx, req, precond)
+	createInvoice := uc.CreateAppointmentInvoice
+	if createInvoice == nil {
+		createInvoice = uc.createXenditInvoiceForAppointment
+	}
+	url, xenditErr := createInvoice(ctx, req, precond)
 	if xenditErr != nil {
 		uc.Log.Error("paymentUsecase.handleAppointmentBooking failed to create Xendit invoice",
 			zap.String(constvars.LoggingRequestIDKey, requestID),

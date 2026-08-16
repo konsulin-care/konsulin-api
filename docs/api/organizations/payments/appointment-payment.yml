@@ -15,16 +15,19 @@ http:
     type: json
     data: |-
       {
-        "patientId": "Patient/123",
-        "invoiceId": "Invoice/456",
-        "practitionerRoleId": "PractitionerRole/789",
-        "slotId": "Slot/012",
-        "appointmentId": "Appointment/appt-123",
-        "healthcareServiceId": "HealthcareService/345",
-        "condition": "R45.1"
+        "patientId": "Patient/{{patientId}}",
+        "invoiceId": "Invoice/{{invoiceId}}",
+        "practitionerRoleId": "PractitionerRole/{{practitionerRoleId}}",
+        "slotId": "Slot/{{slotId}}",
+        "appointmentId": "Appointment/{{appointmentId}}",
+        "healthcareServiceId": "HealthcareService/{{healthcareServiceId}}",
+        "condition": "kepala pusing dan mual sejak pagi"
       }
 
 runtime:
+  scripts:
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Patient: Verify Appointment Booking");'
   assertions:
     - expression: res.status
       operator: eq
@@ -56,7 +59,7 @@ examples:
           value: Bearer {{sessionToken}}
       body:
         type: json
-        data: '{"patientId":"Patient/123","invoiceId":"Invoice/456","practitionerRoleId":"PractitionerRole/789","slotId":"Slot/012","appointmentId":"Appointment/appt-123"}'
+        data: '{"patientId":"Patient/123","invoiceId":"Invoice/456","practitionerRoleId":"PractitionerRole/789","slotId":"Slot/012","appointmentId":"Appointment/appt-123","healthcareServiceId":"HealthcareService/345","condition":"kepala pusing dan mual sejak pagi"}'
     response:
       status: 201
       body:
@@ -90,7 +93,13 @@ docs: |
   - `slotId`: (required) FHIR Slot reference.
   - `appointmentId`: (required) FHIR Appointment reference (`Appointment/ID`) — the BFF-created `proposed` appointment to accept.
   - `healthcareServiceId`: (optional) FHIR HealthcareService reference.
-  - `condition`: (optional) ICD-10 diagnosis code.
+  - `condition`: (optional) free-text chief complaint written by the patient
+    describing their condition (e.g. "kepala pusing dan mual sejak pagi").
+    Not a coded ICD-10 code. The payment bundle builder maps it to a FHIR
+    `Condition` resource (`evidence[0].code[0].text`, free text inside a
+    CodeableConcept, never coded) when populated; note the PAID/SETTLED
+    callback path reconstructs its request from the `external_id` only, so the
+    complaint is not carried into that bundle.
 
   ### Behavior
   - Validates the proposed appointment (status `proposed`, matching slot/participants/window) and the slot availability.
@@ -98,6 +107,11 @@ docs: |
   - Creates a Xendit invoice and returns the payment URL.
   - On payment confirmation (Xendit PAID callback) the appointment becomes `booked` and the slot `busy-unavailable`.
   - On payment expiry (Xendit EXPIRED callback) the slot, invoice, and appointment are deleted.
+
+  In the linear suite the chain verifies the reservation state in-band
+  (appointment `pending`, slot `busy-tentative`) — the fully-booked pair is
+  driven by the callback, which requires a real paid Xendit invoice and is
+  asserted by the unit test `TestHandleAppointmentPaymentPaid_TransitionsAppointmentToBooked`.
 
   ### Responses
   - **201 Created**: Invoice created, payment pending. Body: `{ "success": true, "message": "Payment invoice created. Please complete payment to confirm your appointment.", "data": { "status": 201, "message": "...", "appointment": "Appointment/...", "slot": "Slot/012", "paymentUrl": "...", "expiresAt": "..." } }`.
