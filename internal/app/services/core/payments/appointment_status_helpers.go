@@ -10,6 +10,7 @@ import (
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -31,6 +32,9 @@ func fetchResourceByID[T any](
 	id string,
 	label string,
 ) (*T, error) {
+	// the id may arrive bare or reference-prefixed (e.g. "Appointment/appt-000");
+	// strip a matching prefix so the URL is never double-prefixed.
+	id = strings.TrimPrefix(id, resourceType+"/")
 	url := baseURL + resourceType + "/" + id
 
 	body, err := client.Do(ctx, http.MethodGet, url, nil)
