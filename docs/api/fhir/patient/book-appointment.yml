@@ -25,7 +25,7 @@ http:
             },
             "resource": {
               "resourceType": "Slot",
-              "status": "busy-tentative",
+              "status": "free",
               "schedule": {
                 "reference": "Schedule/{{scheduleId}}"
               },
@@ -132,12 +132,14 @@ settings:
 
 docs: |
   Proposes an appointment atomically for the payment-driven lifecycle: a
-  transaction bundle creating a Slot (`status=busy-tentative`, sized by the
-  HealthcareService duration extension) plus the Appointment referencing it via
-  `urn:uuid`. The appointment is created as `proposed` — the backend owns the
-  status transitions (pending on booking acceptance, booked on PAID callback),
-  per the ff72b9b contract. The slot time is computed in the pre-request script
-  inside the seeded `availableTime` window. Captures `slotId` and `appointmentId`
-  from the transaction response and hands off to "Handle Appointment Payment",
-  which validates the proposal and starts the Xendit flow. Pre-request switches
-  to Patient.
+  transaction bundle creates the Slot as `status=free` (sized by the
+  HealthcareService duration extension) plus the Appointment (`status=proposed`)
+  referencing it via `urn:uuid`, mirroring the BFF's relay booking bundle. The
+  backend owns the status transitions: on booking acceptance (`POST
+  /api/v1/pay/appointment`) it reserves the slot to `busy-tentative` and moves
+  the appointment to `pending`; on PAID callback the pair becomes `booked` /
+  `busy-unavailable`, per the ff72b9b contract. The slot time is computed in the
+  pre-request script inside the seeded `availableTime` window. Captures
+  `slotId` and `appointmentId` from the transaction response and hands off to
+  "Handle Appointment Payment", which validates the proposal and starts the
+  Xendit flow. Pre-request switches to Patient.

@@ -53,6 +53,7 @@ settings:
 
 docs: |
   Slots that already have appointments for this practitioner, via the
-  reverse-include `_has:Appointment:slot:practitioner`. After the patient
-  booking step, the busy-tentative slot created there appears. Pre-request
-  switches to Practitioner and stamps `nowIso`.
+  reverse-include `_has:Appointment:slot:practitioner`. After payment
+  acceptance, the booked slot appears as `busy-tentative` (until the PAID
+  callback moves it to `busy-unavailable`). Pre-request switches to
+  Practitioner and stamps `nowIso`.
