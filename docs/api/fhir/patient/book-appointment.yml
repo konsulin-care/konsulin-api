@@ -80,9 +80,17 @@ runtime:
         bru.setVar("activeRole", "Patient");
         // Book a window inside the seeded availableTime (Mon-Fri 09:00-17:00 WIB):
         // next Friday 10:00 WIB (03:00 UTC), duration 30 minutes.
+        // The naive ((8 - d.getDay() + 7) % 7) delta is 0 on Mondays, which books
+        // today 03:00 UTC -> a past slot that the payment precondition rejects with
+        // 400 "Slot start time must be in the future." Always target the next Friday
+        // (|| 7 so a Friday run skips to next week) and never book at/before now.
         var d = new Date();
-        var friday = new Date(d.getTime() + ((8 - d.getDay() + 7) % 7) * 24 * 60 * 60 * 1000);
-        friday.setUTCHours(3, 0, 0, 0);
+        var daysUntilFriday = ((5 - d.getDay() + 7) % 7) || 7;
+        var friday = new Date(d.getTime() + daysUntilFriday * 24 * 60 * 60 * 1000);
+        friday.setUTCHours(3, 0, 0, 0); // 10:00 WIB
+        if (friday.getTime() <= Date.now()) {
+          friday.setDate(friday.getDate() + 7);
+        }
         bru.setVar("slotStart", friday.toISOString());
         bru.setVar("slotEnd", new Date(friday.getTime() + 30 * 60 * 1000).toISOString());
         await bru.sendRequest({
