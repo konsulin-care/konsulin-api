@@ -130,6 +130,13 @@ phase_a_fixed_ids() {
   echo "[phase A] fixed seed ids"
   delete_study_graph seed-study
   delete_schedule_graph seed-schedule
+  # Payment records a manual appointment-payment callback (PAID/SETTLED) may
+  # have left: PaymentNotice references Invoice/seed-invoice request and
+  # PaymentReconciliation references the role as requestor, so sweep them
+  # before those seed deletes would 409.
+  delete_each PaymentNotice request "Invoice/seed-invoice"
+  delete_each PaymentReconciliation requestor "PractitionerRole/seed-role"
+  delete_ref "Invoice/seed-invoice"
   delete_role_graph seed-role
   delete_each Appointment actor "HealthcareService/seed-hs"
   delete_each Appointment actor "Location/seed-location"

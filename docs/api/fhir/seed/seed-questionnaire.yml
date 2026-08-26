@@ -6,10 +6,7 @@ info:
 
 http:
   method: PUT
-  url: "{{process.env.APP_BASE_URL}}/fhir/Questionnaire/seed-wellbeing"
-  headers:
-    - name: X-API-Key
-      value: "{{process.env.SUPERADMIN_API_KEY}}"
+  url: "{{process.env.BLAZE_BASE_URL}}/fhir/Questionnaire/seed-wellbeing"
   body:
     type: json
     data: |-
@@ -97,4 +94,4 @@ docs: |
   it) plus the platform's real extension URLs (`questionnaireEstimatedDuration`,
   `fee`). The catalog queries (`GET /fhir/Questionnaire?context=regular&status=active`)
   return it. Captures `questionnaireId` (equals seed-wellbeing) and chains to
-  "Seed SOAP Questionnaire". Superadmin.
+  "Seed SOAP Questionnaire". Direct Blaze PUT.

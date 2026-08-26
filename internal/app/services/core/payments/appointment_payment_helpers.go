@@ -29,6 +29,7 @@ func (uc *paymentUsecase) buildAppointmentPaymentBundle(
 	req *requests.AppointmentPaymentRequest,
 	precond *preconditionData,
 	allPractitionerRoles []fhir_dto.PractitionerRole,
+	appointment *fhir_dto.Appointment,
 ) ([]map[string]any, string, string, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 
@@ -128,56 +129,13 @@ func (uc *paymentUsecase) buildAppointmentPaymentBundle(
 		})
 	}
 
-	// Slot status is updated directly by the caller (Phase 1: busy-tentative, Phase 2 PAID: busy-unavailable, offline: busy-unavailable)
-	// No slot entry is added here to avoid conflicts with the direct update.
-
-	appointmentID := uuid.New().String()
-	appointmentTypeText := "Offline"
-	if req.UseOnlinePayment {
-		appointmentTypeText = "Online"
-	}
-	appointment := fhir_dto.Appointment{
-		ResourceType: constvars.ResourceAppointment,
-		ID:           appointmentID,
-		Meta: fhir_dto.Meta{
-			LastUpdated: now,
-		},
-		Status: constvars.FhirAppointmentStatusBooked,
-		AppointmentType: fhir_dto.CodeableConcept{
-			Text: appointmentTypeText,
-		},
-		Start:   precond.Slot.Start,
-		End:     precond.Slot.End,
-		Created: now,
-		Slot: []fhir_dto.Reference{
-			{Reference: req.SlotID},
-		},
-		Participant: []fhir_dto.AppointmentParticipant{
-			{
-				Actor:  fhir_dto.Reference{Reference: req.PatientID},
-				Status: constvars.FhirParticipantStatusAccepted,
-			},
-			{
-				Actor:  fhir_dto.Reference{Reference: constvars.FHIRRefPrefixPractitioner + precond.Practitioner.ID},
-				Status: constvars.FhirParticipantStatusAccepted,
-			},
-			{
-				Actor:  fhir_dto.Reference{Reference: req.PractitionerRoleID},
-				Status: constvars.FhirParticipantStatusAccepted,
-			},
-		},
-	}
-
-	if strings.TrimSpace(req.Condition) != "" {
-		appointment.ReasonReference = []fhir_dto.Reference{
-			{Reference: constvars.ResourceCondition + "/" + conditionID},
-		}
-	}
-
+	// The appointment already exists (created by the BFF as proposed); the caller
+	// has set its status to booked. Emit a PUT so the status transition is atomic
+	// with the payment records and slot adjustments in this transaction bundle.
 	entries = append(entries, map[string]any{
 		constvars.FhirFieldRequest: map[string]any{
 			constvars.FhirFieldMethod: constvars.FhirBundleMethodPut,
-			constvars.FhirFieldURL:    constvars.ResourceAppointment + "/" + appointmentID,
+			constvars.FhirFieldURL:    constvars.ResourceAppointment + "/" + appointment.ID,
 		},
 		constvars.FhirFieldResource: appointment,
 	})
@@ -192,7 +150,7 @@ func (uc *paymentUsecase) buildAppointmentPaymentBundle(
 	}
 	entries = append(entries, slotEntries...)
 
-	return entries, appointmentID, paymentNoticeID, nil
+	return entries, appointment.ID, paymentNoticeID, nil
 }
 
 // DayAdjustmentConfig groups the intra-day parameters for slot adjustment computation.

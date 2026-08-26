@@ -6,10 +6,7 @@ info:
 
 http:
   method: PUT
-  url: "{{process.env.APP_BASE_URL}}/fhir/PractitionerRole/seed-role"
-  headers:
-    - name: X-API-Key
-      value: "{{process.env.SUPERADMIN_API_KEY}}"
+  url: "{{process.env.BLAZE_BASE_URL}}/fhir/PractitionerRole/seed-role"
   body:
     type: json
     data: |-
@@ -71,4 +68,4 @@ docs: |
   replaces the role's practitioner — the id stays fixed. `availableTime`
   defines the practitioner's recurring availability windows — the base of the
   dynamic free-time computation. Captures `practitionerRoleId` (equals
-  seed-role) and chains to "Seed Schedule". Superadmin.
+  seed-role) and chains to "Seed Schedule". Direct Blaze PUT.

@@ -6,10 +6,7 @@ info:
 
 http:
   method: PUT
-  url: "{{process.env.APP_BASE_URL}}/fhir/Schedule/seed-schedule"
-  headers:
-    - name: X-API-Key
-      value: "{{process.env.SUPERADMIN_API_KEY}}"
+  url: "{{process.env.BLAZE_BASE_URL}}/fhir/Schedule/seed-schedule"
   body:
     type: json
     data: |-
@@ -54,4 +51,4 @@ docs: |
   practitioner's role. Clients fetch it (`GET /fhir/Schedule/{id}` and
   `GET /fhir/Schedule?actor=PractitionerRole/{id}`) for booking context. No
   slots are seeded: free time is computed dynamically. Captures `scheduleId`
-  (equals seed-schedule) and chains to "Seed Questionnaire". Superadmin.
+  (equals seed-schedule) and chains to "Seed Questionnaire". Direct Blaze PUT.

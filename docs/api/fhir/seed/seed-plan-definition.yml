@@ -6,10 +6,7 @@ info:
 
 http:
   method: PUT
-  url: "{{process.env.APP_BASE_URL}}/fhir/PlanDefinition/seed-protocol"
-  headers:
-    - name: X-API-Key
-      value: "{{process.env.SUPERADMIN_API_KEY}}"
+  url: "{{process.env.BLAZE_BASE_URL}}/fhir/PlanDefinition/seed-protocol"
   body:
     type: json
     data: |-
@@ -30,7 +27,7 @@ http:
         "action": [
           {
             "title": "Complete weekly wellbeing questionnaire",
-            "definitionCanonical": "{{process.env.APP_BASE_URL}}/fhir/Questionnaire/{{questionnaireId}}"
+            "definitionCanonical": "{{process.env.BLAZE_BASE_URL}}/fhir/Questionnaire/{{questionnaireId}}"
           }
         ]
       }
@@ -60,4 +57,4 @@ docs: |
   Seeds the research protocol PlanDefinition (fixed id `seed-protocol`,
   idempotent PUT) referenced by the ResearchStudy (`_include=ResearchStudy:protocol`
   pulls it into study listings). Captures `planDefinitionId` (equals
-  seed-protocol) and chains to "Seed Research Study". Superadmin.
+  seed-protocol) and chains to "Seed Research Study". Direct Blaze PUT..

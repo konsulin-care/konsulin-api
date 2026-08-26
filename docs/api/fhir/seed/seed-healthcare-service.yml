@@ -6,10 +6,7 @@ info:
 
 http:
   method: PUT
-  url: "{{process.env.APP_BASE_URL}}/fhir/HealthcareService/seed-hs"
-  headers:
-    - name: X-API-Key
-      value: "{{process.env.SUPERADMIN_API_KEY}}"
+  url: "{{process.env.BLAZE_BASE_URL}}/fhir/HealthcareService/seed-hs"
   body:
     type: json
     data: |-
@@ -83,4 +80,4 @@ docs: |
   clinic. Its `appointment-duration` extension (30 minutes) is what clients use
   to size slots in the dynamic availability model; the fee extension feeds the
   payment flow. Captures `healthcareServiceId` (equals seed-hs) and chains to
-  "Seed Practitioner Role". Superadmin.
+  "Seed Practitioner Role". Direct Blaze PUT.

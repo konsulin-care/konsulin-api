@@ -9,6 +9,7 @@ This directory contains reference documents for AI agents working on this projec
 | [KNOWN-PITFALLS.md](KNOWN-PITFALLS.md) | Avoid common mistakes: double-slash FHIR URLs, legacy deps, rate limiting limits, config gotchas |
 | [STRUCTURE.md](STRUCTURE.md) | Navigate the repository: what each directory contains, which files to modify for a given task |
 | [DEEPSOURCE-FIX-PATTERNS.md](DEEPSOURCE-FIX-PATTERNS.md) | Resolve common DeepSource static analysis issues: unused params/receivers, log.Fatalf, complexity, dead code, test helpers |
+| [api/AGENTS.md](api/AGENTS.md) | Learn the Bruno collection conventions: direct-Blaze seeding, gateway auth modes, env vars, run/cleanup flow |
 
 ## How to Use
 
