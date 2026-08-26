@@ -6,10 +6,7 @@ info:
 
 http:
   method: PUT
-  url: "{{process.env.APP_BASE_URL}}/fhir/Questionnaire/seed-soap"
-  headers:
-    - name: X-API-Key
-      value: "{{process.env.SUPERADMIN_API_KEY}}"
+  url: "{{process.env.BLAZE_BASE_URL}}/fhir/Questionnaire/seed-soap"
   body:
     type: json
     data: |-
@@ -69,4 +66,4 @@ docs: |
   `seed-soap` resource and is idempotent across runs. The id is deliberately
   NOT `soap`: the dev Blaze holds a real SOAP questionnaire (id `soap`) that
   the suite must never write or delete. Chains to "Seed Plan Definition".
-  Superadmin.
+  Direct Blaze PUT.

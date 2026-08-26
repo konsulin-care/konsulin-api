@@ -1,7 +1,7 @@
 info:
-  name: "Practitioner: List Practitioner Slots"
+  name: "Patient: Verify Slot Booking"
   type: http
-  seq: 4
+  seq: 16
   tags: [appointment]
 
 http:
@@ -9,21 +9,13 @@ http:
   headers:
     - name: Authorization
       value: Bearer {{sessionToken}}
-  url: "{{process.env.APP_BASE_URL}}/fhir/Slot?_has:Appointment:slot:practitioner={{practitionerId}}&start=ge{{nowIso}}"
-  params:
-    - name: _has:Appointment:slot:practitioner
-      value: "{{practitionerId}}"
-      type: query
-    - name: start
-      value: "ge{{nowIso}}"
-      type: query
+  url: "{{process.env.APP_BASE_URL}}/fhir/Slot/{{slotId}}"
 
 runtime:
   scripts:
     - type: before-request
       code: |-
-        bru.setVar("activeRole", "Practitioner");
-        bru.setVar("nowIso", new Date().toISOString());
+        bru.setVar("activeRole", "Patient");
         await bru.sendRequest({
           method: "POST",
           url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
@@ -43,7 +35,14 @@ runtime:
           }
         });
     - type: after-response
-      code: 'bru.runner.setNextRequest("Practitioner: Get Busy Slots");'
+      code: 'bru.runner.setNextRequest("Patient: Write Referral");'
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.status
+      operator: eq
+      value: "busy-tentative"
 
 settings:
   encodeUrl: true
@@ -52,8 +51,12 @@ settings:
   maxRedirects: 5
 
 docs: |
-  Slots that already have appointments for this practitioner, via the
-  reverse-include `_has:Appointment:slot:practitioner`. After payment
-  acceptance, the booked slot appears as `busy-tentative` (until the PAID
-  callback moves it to `busy-unavailable`). Pre-request switches to
-  Practitioner and stamps `nowIso`.
+  Verifies the booking-acceptance outcome for the slot: reserved as
+  `busy-tentative` by `POST /pay/appointment` while payment is outstanding.
+  Together with "Patient: Verify Appointment Booking" (appointment `pending`)
+  this closes the loop on the reservation pair of the payment-driven
+  lifecycle. The fully-booked pair (appointment `booked`, slot
+  `busy-unavailable`) is asserted by
+  `TestHandleAppointmentPaymentPaid_TransitionsAppointmentToBooked`.
+  Hands off to "Patient: Write Referral", preserving the patient-journey
+  continuation. Pre-request switches to Patient.
