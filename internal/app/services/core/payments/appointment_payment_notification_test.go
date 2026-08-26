@@ -247,9 +247,9 @@ func TestHandleAppointmentPaymentNotification_ExpiredDeletesAllResources(t *test
 					End:    time.Date(2026, 7, 4, 10, 0, 0, 0, time.UTC),
 				},
 			},
-			SlotUsecase:     &mockSlotUsecase{},
+			SlotUsecase:      &mockSlotUsecase{},
 			BundleFhirClient: bundleClient,
-			Log:             zap.NewNop(),
+			Log:              zap.NewNop(),
 		}
 
 		externalID := fmt.Sprintf("appointment:%s:pr-456:pat-789:inv-012:hs-999:appt-000", slotID)
