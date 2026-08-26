@@ -36,6 +36,7 @@ go run ./cmd/migration
 - **[internal/app/AGENTS.md](internal/app/AGENTS.md)** — Application layer: config, contracts, services, delivery, drivers
 - **[internal/pkg/AGENTS.md](internal/pkg/AGENTS.md)** — Shared packages: FHIR client, DTOs, constants, utilities
 - **[docs/AGENTS.md](docs/AGENTS.md)** — Documentation index: which doc answers what question
+- **[docs/api/AGENTS.md](docs/api/AGENTS.md)** — Bruno collection: direct-Blaze seeding, gateway auth modes, env vars, run/cleanup
 
 ## Reference Documents
 

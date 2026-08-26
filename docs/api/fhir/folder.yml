@@ -7,6 +7,8 @@ request:
   headers:
     - name: Content-Type
       value: application/fhir+json
+    - name: Accept
+      value: application/fhir+json
   scripts:
     - type: tests
       code: |-
@@ -26,10 +28,12 @@ docs: |
     `Authorization: Bearer {{sessionToken}}` header on every request (folder
     auth cannot interpolate runtime variables). The active SuperTokens role
     (see below) decides which FHIR identity the proxy resolves and filters by.
-  - **Superadmin (X-API-Key)** — seed/, admin/ and cleanup/delete-organization
+  - **Superadmin (X-API-Key)** — admin/ and cleanup/delete-organization
     override auth with `X-API-Key: {{process.env.SUPERADMIN_API_KEY}}`; the
     presence of a valid key short-circuits session handling and sets the
-    superadmin role.
+    superadmin role. Seed requests (seed/) do NOT go through the gateway at
+    all: they PUT directly to Blaze (`{{process.env.BLAZE_BASE_URL}}`), so no
+    API key or RBAC policy applies (see seed/folder.yml and docs/api/AGENTS.md).
 
   ## Role switching
   Every journey request sets the role in its pre-request script and switches it
@@ -54,8 +58,8 @@ docs: |
   manual helper request.
 
   ## Chain overview
-  auth (magiclink → … → Set Active Role) → seed (9 superadmin idempotent PUTs,
-  fixed ids seed-clinic … seed-study) → patient (17 requests) → practitioner
+  auth (magiclink → … → Set Active Role) → seed (10 direct-Blaze idempotent
+  PUTs, fixed ids seed-clinic … seed-invoice) → patient (17 requests) → practitioner
   (9 requests) → admin (2 requests) → cleanup (3 deletions) → Sign Out. Each
   request chains to the next via `bru.runner.setNextRequest("<next>")`;
   chaining works across subfolders.

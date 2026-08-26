@@ -6,10 +6,7 @@ info:
 
 http:
   method: PUT
-  url: "{{process.env.APP_BASE_URL}}/fhir/Location/seed-location"
-  headers:
-    - name: X-API-Key
-      value: "{{process.env.SUPERADMIN_API_KEY}}"
+  url: "{{process.env.BLAZE_BASE_URL}}/fhir/Location/seed-location"
   body:
     type: json
     data: |-
@@ -55,4 +52,4 @@ settings:
 docs: |
   Seeds the clinic Location (fixed id `seed-location`, idempotent PUT) linked
   to the seeded Organization. Captures `locationId` (equals seed-location) and
-  chains to "Seed Healthcare Service". Runs as superadmin.
+  chains to "Seed Healthcare Service". Direct Blaze PUT.

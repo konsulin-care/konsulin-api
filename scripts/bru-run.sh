@@ -61,6 +61,11 @@ if [[ -z "${APP_BASE_URL}" ]]; then
   exit 1
 fi
 
+# Direct-Blaze seeds (docs/api/fhir/seed/*) target BLAZE_BASE_URL. Default to
+# the standard dev Blaze port so the suite works even when the collection .env
+# does not set it; mirrors the default in scripts/bru-cleanup.sh.
+export BLAZE_BASE_URL="${BLAZE_BASE_URL:-http://localhost:8080}"
+
 HEALTH_URL="${APP_BASE_URL%/}/health"
 
 if RESPONSE="$(curl -sf --max-time 5 "${HEALTH_URL}")"; then
@@ -73,7 +78,7 @@ if RESPONSE="$(curl -sf --max-time 5 "${HEALTH_URL}")"; then
   # Decoupled cleanup: runs after the suite whether it passed or failed, so a
   # mid-run failure can never leave the fixed-id seed resources behind. The
   # cleanup is Blaze-direct and non-fatal (see scripts/bru-cleanup.sh).
-  "${SCRIPT_DIR}/bru-cleanup.sh" || true
+  bash "${SCRIPT_DIR}/bru-cleanup.sh" || true
   exit "${BRU_RC}"
 else
   if [[ "${REQUIRED}" -eq 1 ]]; then

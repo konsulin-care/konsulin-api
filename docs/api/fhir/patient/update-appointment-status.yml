@@ -1,44 +1,15 @@
 info:
-  name: "Patient: Update Appointment Status"
+  name: "Patient: Verify Appointment Booking"
   type: http
   seq: 15
   tags: [appointment]
 
 http:
-  method: PUT
+  method: GET
   headers:
     - name: Authorization
       value: Bearer {{sessionToken}}
   url: "{{process.env.APP_BASE_URL}}/fhir/Appointment/{{appointmentId}}"
-  body:
-    type: json
-    data: |-
-      {
-        "resourceType": "Appointment",
-        "id": "{{appointmentId}}",
-        "status": "booked",
-        "slot": [
-          {
-            "reference": "Slot/{{slotId}}"
-          }
-        ],
-        "participant": [
-          {
-            "actor": {
-              "reference": "Patient/{{patientId}}"
-            },
-            "status": "accepted"
-          },
-          {
-            "actor": {
-              "reference": "PractitionerRole/{{practitionerRoleId}}"
-            },
-            "status": "accepted"
-          }
-        ],
-        "start": "{{slotStart}}",
-        "end": "{{slotEnd}}"
-      }
 
 runtime:
   scripts:
@@ -64,11 +35,17 @@ runtime:
           }
         });
     - type: after-response
-      code: 'bru.runner.setNextRequest("Patient: Write Referral");'
+      code: 'bru.runner.setNextRequest("Patient: Verify Slot Booking");'
   assertions:
     - expression: res.status
       operator: eq
-      value: "401"
+      value: "200"
+    - expression: res.body.status
+      operator: eq
+      value: "pending"
+    - expression: res.body.slot[0].reference
+      operator: eq
+      value: "Slot/{{slotId}}"
 
 settings:
   encodeUrl: true
@@ -77,12 +54,13 @@ settings:
   maxRedirects: 5
 
 docs: |
-  Updates an appointment's status via fetch-merge-PUT (full-resource PUT
-  semantics; the body carries the appointment created in the booking step).
-
-  NOTE: the current RBAC policy grants Patient only `GET`/`POST` on
-  `/fhir/Appointment` — there is no `PUT` rule, so this request is expected to
-  be denied (401) until the policy gains a Patient PUT rule. The assertion
-  pins this expected status so the collection stays green while documenting
-  the backend gap; once the policy is fixed, the assertion will flag it.
-  Pre-request switches to Patient.
+  Verifies the booking-acceptance outcome for the appointment: proposed by the
+  BFF, then accepted by `POST /pay/appointment`, which reserved the slot as
+  `busy-tentative` and moved the appointment to `pending` while the Xendit
+  payment is outstanding. This is the state the linear suite can assert
+  in-band; the PAID/SETTLED transition to `booked` (and the slot to
+  `busy-unavailable`) is covered by the unit test
+  `TestHandleAppointmentPaymentPaid_TransitionsAppointmentToBooked`, since
+  driving it end-to-end requires a real paid Xendit invoice. Asserts the
+  appointment is `pending` and still references the reserved slot, then hands
+  off to the slot verification. Pre-request switches to Patient.

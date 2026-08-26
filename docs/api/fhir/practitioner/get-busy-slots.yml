@@ -64,6 +64,6 @@ settings:
 docs: |
   Busy slots for the practitioner's role on a day (Blaze has no `:not`
   search, so busy statuses are queried explicitly). Clients subtract these from
-  `availableTime` to compute free time; after the booking step the
+  `availableTime` to compute free time; after payment acceptance the
   busy-tentative slot shows up here. Pre-request switches to Practitioner and
   stamps the UTC day bounds.
