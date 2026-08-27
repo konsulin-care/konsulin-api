@@ -1,6 +1,6 @@
 package constvars
 
-// Validation messages mapper
+// CustomValidationErrorMessages maps validation rule names to human-readable error messages.
 var CustomValidationErrorMessages = map[string]string{
 	"required":             "is required",
 	"username":             "must only contain letters, numbers, underscores, or dots",
@@ -37,7 +37,7 @@ var CustomValidationErrorMessages = map[string]string{
 	"not_past_time":        "the time must not be in the past for today's date.",
 }
 
-// Tags that require parameter substitution
+// TagsWithParams identifies validation tags that require parameter substitution.
 var TagsWithParams = map[string]bool{
 	"min":                  true,
 	"max":                  true,

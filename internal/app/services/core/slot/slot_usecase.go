@@ -71,7 +71,7 @@ func (s *SlotUsecase) HandleSetUnavailabilityForMultiplePractitionerRoles(ctx co
 		)
 	}
 
-	role, uid, authErr := s.whitelistAccessByRoles(
+	role, uid, authErr := whitelistAccessByRoles(
 		ctx,
 		[]string{
 			constvars.KonsulinRolePractitioner,
@@ -577,7 +577,7 @@ func (s *SlotUsecase) loadPractitionerRoles(ctx context.Context, ids []string) (
 // the defined enum of known roles as defined in consvars package. for now, the function signature
 // will accept string slices, but in the future it should be refactored to used custom typed string
 // instead.
-func (s *SlotUsecase) whitelistAccessByRoles(ctx context.Context, whiteListed []string) (string, string, error) {
+func whitelistAccessByRoles(ctx context.Context, whiteListed []string) (string, string, error) {
 	roles, _ := ctx.Value(constvars.CONTEXT_FHIR_ROLE).([]string)
 	uid, _ := ctx.Value(constvars.CONTEXT_UID).(string)
 

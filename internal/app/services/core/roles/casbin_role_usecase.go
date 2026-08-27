@@ -14,15 +14,15 @@ func NewCasbinRoleUsecase(e *casbin.Enforcer) *CasbinRoleUsecase {
 	return &CasbinRoleUsecase{enforcer: e}
 }
 
-func (u *CasbinRoleUsecase) ListRoles(ctx context.Context) ([]string, error) {
+func (u *CasbinRoleUsecase) ListRoles(_ context.Context) ([]string, error) {
 	return u.enforcer.GetAllRoles()
 }
 
-func (u *CasbinRoleUsecase) AddPermission(ctx context.Context, role, method, path string) error {
+func (u *CasbinRoleUsecase) AddPermission(_ context.Context, role, method, path string) error {
 	return u.updatePolicy(func() (bool, error) { return u.enforcer.AddPolicy(role, method, path) })
 }
 
-func (u *CasbinRoleUsecase) RemovePermission(ctx context.Context, role, method, path string) error {
+func (u *CasbinRoleUsecase) RemovePermission(_ context.Context, role, method, path string) error {
 	return u.updatePolicy(func() (bool, error) { return u.enforcer.RemovePolicy(role, method, path) })
 }
 

@@ -486,7 +486,7 @@ func (uc *paymentUsecase) handleAppointmentPaymentPaid(
 func (uc *paymentUsecase) handleAppointmentPaymentExpired(
 	ctx context.Context,
 	fields appointmentExternalIDFields,
-	slot *fhir_dto.Slot,
+	_ *fhir_dto.Slot,
 ) error {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 
@@ -615,7 +615,7 @@ func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePay
 	}
 
 	// 5) Determine ServiceRequest.subject
-	subject := uc.determineServiceRequestSubject(requestedService, resourceID)
+	subject := determineServiceRequestSubject(requestedService, resourceID)
 
 	// 6) Build instantiateUri
 	baseURL := strings.TrimRight(uc.InternalConfig.App.BaseUrl, "/")
@@ -1088,7 +1088,7 @@ func (uc *paymentUsecase) callInstantiateURI(ctx context.Context, url string, bo
 
 // determineServiceRequestSubject returns the FHIR subject reference string based on service.
 // For Patient service, it returns "Patient/<patient-id>". For others, it maps to configured Group subjects.
-func (uc *paymentUsecase) determineServiceRequestSubject(service string, patientID string) string {
+func determineServiceRequestSubject(service string, patientID string) string {
 	normalized := strings.ToLower(service)
 	switch normalized {
 	case string(constvars.ServiceAnalyze):

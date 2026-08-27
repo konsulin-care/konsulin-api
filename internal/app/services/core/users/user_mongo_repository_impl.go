@@ -23,7 +23,7 @@ func NewUserMongoRepository(db *mongo.Client, dbName string) contracts.UserRepos
 	}
 }
 
-func (repo *userMongoRepository) GetClient(ctx context.Context) interface{} {
+func (repo *userMongoRepository) GetClient(_ context.Context) interface{} {
 	return repo.Collection.Database().Client()
 }
 

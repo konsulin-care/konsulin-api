@@ -181,7 +181,7 @@ var (
 
 	// RabbitMQ
 	ErrRabbitMQPublishMessage = func(err error, queueName string) *CustomError {
-		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevRedisSMembers)
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, fmt.Sprintf(constvars.ErrDevRabbitMQPublishMessage, queueName))
 	}
 
 	// HTTP

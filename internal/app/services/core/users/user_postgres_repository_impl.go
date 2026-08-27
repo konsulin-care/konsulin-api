@@ -36,7 +36,7 @@ func NewUserPostgresRepository(db *sql.DB, logger *zap.Logger) contracts.UserRep
 	return userPostgresRepositoryInstance
 }
 
-func (repo *userPostgresRepository) GetClient(ctx context.Context) interface{} {
+func (repo *userPostgresRepository) GetClient(_ context.Context) interface{} {
 	return repo.DB.Ping()
 }
 
