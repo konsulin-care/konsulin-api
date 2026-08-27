@@ -108,8 +108,9 @@ func main() {
 
 	// Create an HTTP server with the router and address configuration
 	server := &http.Server{
-		Addr:    fmt.Sprintf("%s:%s", internalConfig.App.Address, internalConfig.App.Port),
-		Handler: chiRouter,
+		Addr:              fmt.Sprintf("%s:%s", internalConfig.App.Address, internalConfig.App.Port),
+		Handler:           chiRouter,
+		ReadHeaderTimeout: 60 * time.Second,
 	}
 
 	// Start the server in a separate goroutine
@@ -144,7 +145,9 @@ func main() {
 	// Shutdown the HTTP server gracefully
 	err = server.Shutdown(shutdownCtx)
 	if err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
+		log.Printf("Server forced to shutdown: %v", err)
+		cancel()
+		return
 	}
 
 	// Shutdown the bootstrap components gracefully

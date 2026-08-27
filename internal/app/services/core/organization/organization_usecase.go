@@ -68,7 +68,7 @@ func (uc *Usecase) RegisterPractitionerRoleAndSchedule(ctx context.Context, in c
 		)
 	}
 
-	role, uid, authErr := uc.whitelistAccessByRoles(
+	role, uid, authErr := whitelistAccessByRoles(
 		ctx,
 		[]string{
 			constvars.KonsulinRoleClinicAdmin,
@@ -173,7 +173,7 @@ func (uc *Usecase) RegisterPractitionerRoleAndSchedule(ctx context.Context, in c
 	}, nil
 }
 
-func (uc *Usecase) whitelistAccessByRoles(ctx context.Context, whiteListed []string) (string, string, error) {
+func whitelistAccessByRoles(ctx context.Context, whiteListed []string) (string, string, error) {
 	roles, _ := ctx.Value(constvars.CONTEXT_FHIR_ROLE).([]string)
 	uid, _ := ctx.Value(constvars.CONTEXT_UID).(string)
 

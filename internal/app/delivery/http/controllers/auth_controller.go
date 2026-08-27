@@ -528,8 +528,8 @@ func (ctrl *AuthController) PasswordlessEmailExists(w http.ResponseWriter, r *ht
 
 	exists := output != nil && output.SupertokenUser != nil
 
-	patientIds := []string{}
-	practitionerIds := []string{}
+	var patientIds []string
+	var practitionerIds []string
 
 	if output != nil {
 		patientIds = output.PatientIds

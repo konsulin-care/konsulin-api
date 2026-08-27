@@ -58,7 +58,7 @@ type fakeRows struct {
 	fail bool
 }
 
-func (fakeRows) Columns() []string {
+func (*fakeRows) Columns() []string {
 	return []string{
 		"id", "patient_id", "practitioner_id", "payment_link", "status_payment",
 		"amount", "currency", "created_at", "updated_at", "session_total",
@@ -67,7 +67,7 @@ func (fakeRows) Columns() []string {
 	}
 }
 
-func (fakeRows) Close() error { return nil }
+func (*fakeRows) Close() error { return nil }
 
 func (r *fakeRows) Next(dest []driver.Value) error {
 	if r.done {
