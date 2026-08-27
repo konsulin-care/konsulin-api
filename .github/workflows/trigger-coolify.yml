@@ -3,6 +3,8 @@ name: Triggering Coolify deployment
 on:
   workflow_call:
     secrets:
+      COOLIFY_URL:
+        required: true
       COOLIFY_SERVICE:
         required: true
       COOLIFY_TOKEN:

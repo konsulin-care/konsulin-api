@@ -54,6 +54,7 @@ jobs:
     if: github.ref_name == 'develop'
     uses: ./.github/workflows/trigger-coolify.yml
     secrets:
+      COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
       COOLIFY_SERVICE: ${{ secrets.COOLIFY_SERVICE_DEV }}
       COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
 
@@ -63,6 +64,7 @@ jobs:
     if: github.ref_name == 'main'
     uses: ./.github/workflows/trigger-coolify.yml
     secrets:
+      COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
       COOLIFY_SERVICE: ${{ secrets.COOLIFY_SERVICE_PROD }}
       COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
 
