@@ -1,0 +1,72 @@
+info:
+  name: Service Request Callback
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{process.env.APP_BASE_URL}}/api/v1/callback/service-request"
+  headers:
+    - name: content-type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "serviceRequestId": "sr_abc123",
+        "result": "{\"status\":\"completed\",\"output\":\"...\"}",
+        "timestamp": "2026-07-09T10:30:00Z"
+      }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples:
+  - name: Success
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/callback/service-request"
+      method: POST
+      headers:
+        - name: content-type
+          value: application/json
+      body:
+        type: json
+        data: '{"serviceRequestId":"sr_abc123","result":"{\"status\":\"completed\"}","timestamp":"2026-07-09T10:30:00Z"}'
+    response:
+      status: 200
+      body:
+        type: json
+        data: ""
+  - name: Missing fields
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/callback/service-request"
+      method: POST
+      headers:
+        - name: content-type
+          value: application/json
+      body:
+        type: json
+        data: '{"serviceRequestId":"sr_abc123"}'
+    response:
+      status: 400
+      body:
+        type: json
+        data: '{"success":false,"message":"result is required","status_code":400}'
+
+docs: |
+  Receives asynchronous service result callbacks from external services. Stores the result against the original service request for later retrieval.
+
+  ### Request Fields
+  - `serviceRequestId`: (required) the async service request identifier.
+  - `result`: (required) the result payload as a JSON string.
+  - `timestamp`: (required) RFC3339 timestamp of when the result was produced.
+
+  ### Responses
+  - **200 OK**: Callback processed successfully. No body.
+  - **400 Bad Request**: Missing required fields or invalid timestamp format. Body: `{ "success": false, "message": "...", "status_code": 400 }`.
+  - **405 Method Not Allowed**: Non-POST request. Body: `{ "success": false, "message": "Only POST is allowed", "status_code": 405 }`.
+  - **415 Unsupported Media Type**: Content-Type is not `application/json`. Body: `{ "success": false, "message": "Content-Type must be application/json", "status_code": 415 }`.
+  - **500 Internal Server Error**: Storage failure. Body: `{ "success": false, "message": "...", "status_code": 500 }`.

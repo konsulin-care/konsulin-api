@@ -1,0 +1,62 @@
+info:
+  name: Seed Organization
+  type: http
+  seq: 1
+  tags: [clinic, utility]
+
+http:
+  method: PUT
+  url: "{{process.env.BLAZE_BASE_URL}}/fhir/Organization/seed-clinic"
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "Organization",
+        "id": "seed-clinic",
+        "active": true,
+        "name": "Konsulin Demo Clinic",
+        "type": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/organization-type",
+                "code": "prov",
+                "display": "Healthcare Provider"
+              }
+            ]
+          }
+        ],
+        "address": [
+          {
+            "city": "Jakarta",
+            "country": "ID"
+          }
+        ]
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        bru.setVar("organizationId", body.id);
+        bru.runner.setNextRequest("Seed Location");
+  assertions:
+    - expression: res.status
+      operator: gte
+      value: "200"
+    - expression: res.status
+      operator: lte
+      value: "201"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Seeds the clinic Organization (fixed id `seed-clinic`) via a direct
+  idempotent PUT to the Blaze FHIR server (`{{process.env.BLAZE_BASE_URL}}`),
+  bypassing the gateway and its RBAC policies. Captures `organizationId`
+  (equals seed-clinic) and chains to "Seed Location".

@@ -1,0 +1,27 @@
+info:
+  name: cleanup
+  type: folder
+  seq: 5
+
+request: {}
+
+docs: |
+  Tears down the resources the journey created.
+
+  1. **Purge Journey Resources** — one transaction bundle of DELETE entries
+     sent directly to Blaze (`{{blazeBaseUrl}}`, default http://localhost:8080).
+     The RBAC policies grant no DELETE on the journey resources, and Blaze
+     enforces referential integrity, so this direct purge is the only teardown
+     path; children are deleted before parents to keep every DELETE green.
+  2. **API deletions** — Organization (Superadmin), Practitioner
+     (Practitioner role), Patient (Patient role) — succeed with 200 once the
+     referencing resources are gone.
+  3. Chain terminates at Sign Out.
+
+  The chained cleanup only runs when the journey completes. `scripts/bru-run.sh`
+  additionally runs `scripts/bru-cleanup.sh` after every suite run (success or
+  failure): a Blaze-direct sweep keyed on the fixed seed ids and the seeds'
+  distinctive content that removes seed resources and anything referencing
+  them, while preserving real data (`Organization/Konsulin`,
+  `Questionnaire/soap`, and non-seed QA resources). Run it manually any time
+  with `scripts/bru-cleanup.sh`.

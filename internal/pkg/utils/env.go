@@ -7,135 +7,106 @@ import (
 	"strconv"
 )
 
-func getEnv(key string, defaultValue interface{}) interface{} {
+// lookupEnvWithDefault reads an env var and returns whether the key existed.
+// Returns the raw value (or empty if missing) and true if the key was present.
+func lookupEnvWithDefault(key string) (string, bool) {
 	value, exists := os.LookupEnv(key)
+	if !exists {
+		log.Printf(constvars.ErrEnvKeyNotExist, key)
+		return "", false
+	}
+	if value == "" {
+		return "", false
+	}
+	return value, true
+}
 
-	// If the key is missing OR the value is empty, immediately return the default.
-	if !exists || value == "" {
-		if !exists {
-			log.Printf(constvars.ErrEnvKeyNotExist, key)
-		}
+// envNumeric parses an env var as a signed or unsigned integer of the given
+// bit size, falling back to defaultValue when the key is missing, empty, or
+// unparsable. parse is the strconv parse function for the target type.
+func envNumeric[T ~int64 | ~uint64](key string, defaultValue T, bitSize int, parse func(string, int, int) (T, error)) T {
+	value, ok := lookupEnvWithDefault(key)
+	if !ok {
 		return defaultValue
 	}
-
-	switch defaultValue.(type) {
-	case string:
-		return value
-	case int:
-		intValue, err := strconv.Atoi(value)
-		if err != nil {
-			log.Printf(constvars.ErrEnvParsing, key, err)
-			return defaultValue
-		}
-		return intValue
-	case int64:
-		int64Value, err := strconv.ParseInt(value, 10, 64)
-		if err != nil {
-			log.Printf(constvars.ErrEnvParsing, key, err)
-			return defaultValue
-		}
-		return int64Value
-	case int32:
-		int32Value, err := strconv.ParseInt(value, 10, 32)
-		if err != nil {
-			log.Printf(constvars.ErrEnvParsing, key, err)
-			return defaultValue
-		}
-		return int32(int32Value)
-	case uint:
-		uintValue, err := strconv.ParseUint(value, 10, 0)
-		if err != nil {
-			log.Printf(constvars.ErrEnvParsing, key, err)
-			return defaultValue
-		}
-		return uint(uintValue)
-	case uint64:
-		uint64Value, err := strconv.ParseUint(value, 10, 64)
-		if err != nil {
-			log.Printf(constvars.ErrEnvParsing, key, err)
-			return defaultValue
-		}
-		return uint64Value
-	case uint32:
-		uint32Value, err := strconv.ParseUint(value, 10, 32)
-		if err != nil {
-			log.Printf(constvars.ErrEnvParsing, key, err)
-			return defaultValue
-		}
-		return uint32(uint32Value)
-	case uint16:
-		uint16Value, err := strconv.ParseUint(value, 10, 16)
-		if err != nil {
-			log.Printf(constvars.ErrEnvParsing, key, err)
-			return defaultValue
-		}
-		return uint16(uint16Value)
-	case uint8:
-		uint8Value, err := strconv.ParseUint(value, 10, 8)
-		if err != nil {
-			log.Printf(constvars.ErrEnvParsing, key, err)
-			return defaultValue
-		}
-		return uint8(uint8Value)
-	case bool:
-		boolValue, err := strconv.ParseBool(value)
-		if err != nil {
-			log.Printf(constvars.ErrEnvParsing, key, err)
-			return defaultValue
-		}
-		return boolValue
-	case float64:
-		floatValue, err := strconv.ParseFloat(value, 64)
-		if err != nil {
-			log.Printf(constvars.ErrEnvParsing, key, err)
-			return defaultValue
-		}
-		return floatValue
-	default:
+	parsed, err := parse(value, 10, bitSize)
+	if err != nil {
+		log.Printf(constvars.ErrEnvParsing, key, err)
 		return defaultValue
 	}
+	return parsed
+}
+
+func envInt64(key string, defaultValue int64, bitSize int) int64 {
+	return envNumeric(key, defaultValue, bitSize, strconv.ParseInt)
+}
+
+func envUint64(key string, defaultValue uint64, bitSize int) uint64 {
+	return envNumeric(key, defaultValue, bitSize, strconv.ParseUint)
 }
 
 func GetEnvString(key, defaultValue string) string {
-	return getEnv(key, defaultValue).(string)
+	value, ok := lookupEnvWithDefault(key)
+	if !ok {
+		return defaultValue
+	}
+	return value
 }
 
 func GetEnvInt(key string, defaultValue int) int {
-	return getEnv(key, defaultValue).(int)
+	return int(envInt64(key, int64(defaultValue), 0))
 }
 
 func GetEnvInt64(key string, defaultValue int64) int64 {
-	return getEnv(key, defaultValue).(int64)
+	return envInt64(key, defaultValue, 64)
 }
 
 func GetEnvInt32(key string, defaultValue int32) int32 {
-	return getEnv(key, defaultValue).(int32)
+	return int32(envInt64(key, int64(defaultValue), 32))
 }
 
 func GetEnvUint(key string, defaultValue uint) uint {
-	return getEnv(key, defaultValue).(uint)
+	return uint(envUint64(key, uint64(defaultValue), 0))
 }
 
 func GetEnvUint64(key string, defaultValue uint64) uint64 {
-	return getEnv(key, defaultValue).(uint64)
+	return envUint64(key, defaultValue, 64)
 }
 
 func GetEnvUint32(key string, defaultValue uint32) uint32 {
-	return getEnv(key, defaultValue).(uint32)
+	return uint32(envUint64(key, uint64(defaultValue), 32))
 }
 
 func GetEnvUint16(key string, defaultValue uint16) uint16 {
-	return getEnv(key, defaultValue).(uint16)
+	return uint16(envUint64(key, uint64(defaultValue), 16))
 }
 
 func GetEnvUint8(key string, defaultValue uint8) uint8 {
-	return getEnv(key, defaultValue).(uint8)
+	return uint8(envUint64(key, uint64(defaultValue), 8))
 }
 
 func GetEnvBool(key string, defaultValue bool) bool {
-	return getEnv(key, defaultValue).(bool)
+	value, ok := lookupEnvWithDefault(key)
+	if !ok {
+		return defaultValue
+	}
+	boolValue, err := strconv.ParseBool(value)
+	if err != nil {
+		log.Printf(constvars.ErrEnvParsing, key, err)
+		return defaultValue
+	}
+	return boolValue
 }
 
 func GetEnvFloat(key string, defaultValue float64) float64 {
-	return getEnv(key, defaultValue).(float64)
+	value, ok := lookupEnvWithDefault(key)
+	if !ok {
+		return defaultValue
+	}
+	floatValue, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		log.Printf(constvars.ErrEnvParsing, key, err)
+		return defaultValue
+	}
+	return floatValue
 }

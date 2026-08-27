@@ -37,7 +37,7 @@ func BuildSuccessResponse(w http.ResponseWriter, code int, message string, data 
 	}
 	w.Header().Set(constvars.HeaderContentType, constvars.MIMEApplicationJSON)
 	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 func BuildSuccessResponseWithPagination(w http.ResponseWriter, code int, message string, pagination *responses.Pagination, data interface{}) {
@@ -49,7 +49,7 @@ func BuildSuccessResponseWithPagination(w http.ResponseWriter, code int, message
 	}
 	w.Header().Set(constvars.HeaderContentType, constvars.MIMEApplicationJSON)
 	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 func BuildErrorResponse(log *zap.Logger, w http.ResponseWriter, err error) {
@@ -87,5 +87,5 @@ func BuildErrorResponse(log *zap.Logger, w http.ResponseWriter, err error) {
 		response.DevMessage = customErr.DevMessage
 		response.Locations = customErr.Locations
 	}
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }

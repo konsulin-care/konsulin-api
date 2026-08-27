@@ -1,0 +1,55 @@
+info:
+  name: Seed Location
+  type: http
+  seq: 2
+  tags: [clinic, utility]
+
+http:
+  method: PUT
+  url: "{{process.env.BLAZE_BASE_URL}}/fhir/Location/seed-location"
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "Location",
+        "id": "seed-location",
+        "status": "active",
+        "name": "Konsulin Demo Clinic — Main",
+        "managingOrganization": {
+          "reference": "Organization/{{organizationId}}"
+        },
+        "address": {
+          "city": "Jakarta",
+          "country": "ID"
+        },
+        "position": {
+          "latitude": -6.2088,
+          "longitude": 106.8456
+        }
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        bru.setVar("locationId", body.id);
+        bru.runner.setNextRequest("Seed Healthcare Service");
+  assertions:
+    - expression: res.status
+      operator: gte
+      value: "200"
+    - expression: res.status
+      operator: lte
+      value: "201"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Seeds the clinic Location (fixed id `seed-location`, idempotent PUT) linked
+  to the seeded Organization. Captures `locationId` (equals seed-location) and
+  chains to "Seed Healthcare Service". Direct Blaze PUT.

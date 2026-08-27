@@ -1,0 +1,128 @@
+info:
+  name: "Cleanup: Delete Practitioner Profile"
+  type: http
+  seq: 2
+  tags: [utility]
+
+http:
+  method: DELETE
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  url: "{{process.env.APP_BASE_URL}}/fhir/Practitioner/{{practitionerId}}"
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        // Blaze-direct hygiene before deleting the session user's profiles:
+        // magic-link FHIR init creates one PractitionerRole per Clinic Admin /
+        // Researcher coding (not captured as a collection var), and failed runs
+        // can leave patient-scoped resources behind. Both would otherwise make
+        // the DELETE below return 409 (referential integrity). Searches and
+        // deletes run directly against Blaze, bypassing authz.
+        const blaze = bru.getVar("blazeBaseUrl") || "http://localhost:8080";
+        const pracId = bru.getVar("practitionerId");
+        const patId = bru.getVar("patientId");
+
+        // bru.sendRequest resolves with an axios response: parsed JSON lives in
+        // .data (not the main-request response object's getBody()), and it
+        // rejects on non-2xx, so every delete is guarded.
+        async function listBySearch(url) {
+          const res = await bru.sendRequest({
+            method: "GET",
+            url: blaze + url,
+            headers: { "Accept": "application/fhir+json" }
+          });
+          const body = (res && res.data) || {};
+          return body.entry || [];
+        }
+
+        async function deleteResource(type, id) {
+          if (!id || !type) {
+            return;
+          }
+          try {
+            await bru.sendRequest({ method: "DELETE", url: blaze + "/fhir/" + type + "/" + id });
+          } catch (err) {
+            console.error("delete " + type + "/" + id + " failed: " + (err && err.message));
+          }
+        }
+
+        async function deleteSearchResults(url) {
+          const entries = await listBySearch(url);
+          for (const e of entries) {
+            await deleteResource(e.resource && e.resource.resourceType, e.resource && e.resource.id);
+          }
+        }
+
+        if (pracId) {
+          // PractitionerRoles: delete referencing Schedules (actor can point at
+          // the role or the practitioner directly) before the roles themselves,
+          // otherwise referential integrity 409s the role delete.
+          const roleEntries = await listBySearch("/fhir/PractitionerRole?practitioner=Practitioner/" + pracId + "&_count=100");
+          for (const e of roleEntries) {
+            const roleId = e.resource && e.resource.id;
+            if (!roleId) {
+              continue;
+            }
+            await deleteSearchResults("/fhir/Schedule?actor=PractitionerRole/" + roleId + "&_count=100");
+            await deleteResource("PractitionerRole", roleId);
+          }
+          await deleteSearchResults("/fhir/Schedule?actor=Practitioner/" + pracId + "&_count=100");
+        }
+        if (patId) {
+          await deleteSearchResults("/fhir/QuestionnaireResponse?subject=Patient/" + patId + "&_count=100");
+          await deleteSearchResults("/fhir/QuestionnaireResponse?author=Patient/" + patId + "&_count=100");
+          await deleteSearchResults("/fhir/Observation?subject=Patient/" + patId + "&_count=100");
+          await deleteSearchResults("/fhir/Consent?patient=Patient/" + patId + "&_count=100");
+          await deleteSearchResults("/fhir/ResearchSubject?individual=Patient/" + patId + "&_count=100");
+          await deleteSearchResults("/fhir/Appointment?actor=Patient/" + patId + "&_count=100");
+        }
+
+        bru.setVar("activeRole", "Practitioner");
+        await bru.sendRequest({
+          method: "POST",
+          url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
+          headers: {
+            "content-type": "application/json",
+            "Authorization": "Bearer " + bru.getVar("sessionToken")
+          },
+          data: JSON.stringify({ role: bru.getVar("activeRole") })
+        }, function(err, res) {
+          if (err) {
+            console.error("role switch failed: " + err.message);
+          } else if (res && res.headers) {
+            // the active-role response carries the regenerated access token;
+            // capture it so the following request sees the new active role
+            var newToken = res.headers["st-access-token"] || res.headers["front-token"];
+            if (newToken) { bru.setVar("sessionToken", newToken); }
+          }
+        });
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Cleanup: Delete Patient Profile");'
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "204"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Deletes the session user's Practitioner profile (RBAC grants Practitioner
+  DELETE on `/fhir/Practitioner`, ownership-checked to the caller's own id).
+  Must run after all practitioner-scoped FHIR work; the preceding Blaze-direct
+  purge removes referencing resources, so the DELETE succeeds with 200.
+  Pre-request switches to Practitioner.
+
+  The before-request script also purges, directly against Blaze: every
+  PractitionerRole bound to the session practitioner (magic-link FHIR init
+  creates one per Clinic Admin / Researcher coding that the collection does
+  not track) and any leftover patient-scoped resources (QuestionnaireResponse,
+  Observation, Consent, ResearchSubject, Appointment) referencing the session
+  patient from earlier runs. Without this, referential integrity makes the
+  profile DELETE return 409. Chains to the Patient profile deletion.

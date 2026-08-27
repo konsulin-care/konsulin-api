@@ -169,6 +169,7 @@ type Extension struct {
 	ValueCode      string    `json:"valueCode,omitempty"`
 	ValueInt       int       `json:"valueInt,omitempty"`
 	ValueMoney     *Money    `json:"valueMoney,omitempty"`
+	ValueDuration  *Duration `json:"valueDuration,omitempty"`
 	ValueBoolean   bool      `json:"valueBoolean,omitempty" bson:"valueBoolean,omitempty"`
 	ValueInteger   int       `json:"valueInteger,omitempty" bson:"valueInteger,omitempty"`
 	ValueDecimal   float64   `json:"valueDecimal,omitempty" bson:"valueDecimal,omitempty"`

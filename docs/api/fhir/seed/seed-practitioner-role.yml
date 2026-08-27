@@ -1,0 +1,71 @@
+info:
+  name: Seed Practitioner Role
+  type: http
+  seq: 4
+  tags: [clinic, utility]
+
+http:
+  method: PUT
+  url: "{{process.env.BLAZE_BASE_URL}}/fhir/PractitionerRole/seed-role"
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "PractitionerRole",
+        "id": "seed-role",
+        "active": true,
+        "practitioner": {
+          "reference": "Practitioner/{{practitionerId}}"
+        },
+        "organization": {
+          "reference": "Organization/{{organizationId}}"
+        },
+        "location": [
+          {
+            "reference": "Location/{{locationId}}"
+          }
+        ],
+        "healthcareService": [
+          {
+            "reference": "HealthcareService/{{healthcareServiceId}}"
+          }
+        ],
+        "availableTime": [
+          {
+            "daysOfWeek": ["mon", "tue", "wed", "thu", "fri"],
+            "availableStartTime": "09:00:00",
+            "availableEndTime": "17:00:00"
+          }
+        ]
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        bru.setVar("practitionerRoleId", body.id);
+        bru.runner.setNextRequest("Seed Schedule");
+  assertions:
+    - expression: res.status
+      operator: gte
+      value: "200"
+    - expression: res.status
+      operator: lte
+      value: "201"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Seeds the PractitionerRole (fixed id `seed-role`, idempotent PUT) linking the
+  session user's auto-created Practitioner (`practitionerId`, captured by
+  "Check Email Exists") to the seeded Organization, Location and
+  HealthcareService. The `practitioner` reference is per-run, so each run
+  replaces the role's practitioner — the id stays fixed. `availableTime`
+  defines the practitioner's recurring availability windows — the base of the
+  dynamic free-time computation. Captures `practitionerRoleId` (equals
+  seed-role) and chains to "Seed Schedule". Direct Blaze PUT.

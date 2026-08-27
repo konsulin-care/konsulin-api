@@ -10,19 +10,58 @@ import (
 	"go.uber.org/zap"
 )
 
-// Deprecated: all context keys must use typed string, such as constvars.ContextKey
+// contextKey is a custom type for context keys to avoid collisions with other packages.
+type contextKey string
+
 const (
-	keyFHIRRole                               = "fhirRole"
-	keyFHIRID                                 = "fhirID"
-	keyRoles                                  = "roles"
-	keyUID                                    = "uid"
-	supertokenAccessTokenPayloadRolesKey      = "st-role"
-	supertokenAccessTokenPayloadRolesValueKey = "v"
+	keyFHIRRole   contextKey = "fhirRole"
+	keyFHIRID     contextKey = "fhirID"
+	keyRoles      contextKey = "roles"
+	keyUID        contextKey = "uid"
+	keyActiveRole contextKey = "activeRole"
 )
+
+// extractRolesFromAccessToken extracts the roles list from a SuperTokens access token payload.
+func extractRolesFromAccessToken(raw map[string]interface{}) []string {
+	rolesData, exists := raw[constvars.SupertokenPayloadRolesKey]
+	if !exists {
+		return nil
+	}
+	rolesMap, ok := rolesData.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	rolesValue, ok := rolesMap[constvars.SupertokenPayloadRolesValueKey]
+	if !ok {
+		return nil
+	}
+	rolesList, ok := rolesValue.([]interface{})
+	if !ok {
+		return nil
+	}
+	roles := make([]string, 0, len(rolesList))
+	for _, item := range rolesList {
+		if role, ok := item.(string); ok {
+			roles = append(roles, role)
+		}
+	}
+	return roles
+}
+
+// buildSessionAuth extracts uid, roles and activeRole from a SuperTokens session.
+func buildSessionAuth(sess sessmodels.SessionContainer) (uid string, roles []string, activeRole string) {
+	uid = sess.GetUserID()
+	if raw := sess.GetAccessTokenPayload(); raw != nil {
+		roles = extractRolesFromAccessToken(raw)
+		if v, ok := raw[constvars.SupertokenPayloadActiveRoleKey].(string); ok && v != "" {
+			activeRole = v
+		}
+	}
+	return
+}
 
 func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
 		if apiKeyAuth, ok := r.Context().Value(ContextAPIKeyAuth).(bool); ok && apiKeyAuth {
 			next.ServeHTTP(w, r)
 			return
@@ -31,33 +70,15 @@ func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
 		sessRequired := false
 		sess, _ := session.GetSession(r, w, &sessmodels.VerifySessionOptions{SessionRequired: &sessRequired})
 
-		roles := []string{constvars.KonsulinRoleGuest}
+		var roles []string
 		uid := ""
+		activeRole := ""
 
 		if sess != nil {
-			uid = sess.GetUserID()
-			if raw := sess.GetAccessTokenPayload(); raw != nil {
-				if rolesData, exists := raw[supertokenAccessTokenPayloadRolesKey]; exists {
-					if rolesMap, ok := rolesData.(map[string]interface{}); ok {
-						if rolesValue, ok := rolesMap[supertokenAccessTokenPayloadRolesValueKey]; ok {
-							if rolesList, ok := rolesValue.([]interface{}); ok {
-
-								roles = []string{}
-								for _, item := range rolesList {
-									if role, ok := item.(string); ok {
-										roles = append(roles, role)
-									}
-								}
-							}
-						}
-					}
-				}
-			}
+			uid, roles, activeRole = buildSessionAuth(sess)
 		} else {
-
 			uid = "anonymous"
 			roles = []string{constvars.KonsulinRoleGuest}
-
 			m.Log.Info("Anonymous session created",
 				zap.String("ip", r.RemoteAddr),
 				zap.String("user_agent", r.UserAgent()),
@@ -68,9 +89,9 @@ func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
 
 		ctx := context.WithValue(r.Context(), keyRoles, roles)
 		ctx = context.WithValue(ctx, keyUID, uid)
-
-		// new keys for context will be used for now and one and this
-		// will deprecate the use of untyped string in context keys
+		if activeRole != "" {
+			ctx = context.WithValue(ctx, keyActiveRole, activeRole)
+		}
 		ctx = context.WithValue(ctx, constvars.CONTEXT_FHIR_ROLE, roles)
 		ctx = context.WithValue(ctx, constvars.CONTEXT_UID, uid)
 
@@ -80,7 +101,6 @@ func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
 
 func (m *Middlewares) CreateAnonymousSessionIfNeeded(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
 		if apiKeyAuth, ok := r.Context().Value(ContextAPIKeyAuth).(bool); ok && apiKeyAuth {
 
 			next.ServeHTTP(w, r)
@@ -91,7 +111,6 @@ func (m *Middlewares) CreateAnonymousSessionIfNeeded(next http.Handler) http.Han
 		sess, _ := session.GetSession(r, w, &sessmodels.VerifySessionOptions{SessionRequired: &sessRequired})
 
 		if sess == nil {
-
 			m.Log.Info("Creating anonymous session for request",
 				zap.String("ip", r.RemoteAddr),
 				zap.String("endpoint", r.URL.Path),
@@ -105,7 +124,6 @@ func (m *Middlewares) CreateAnonymousSessionIfNeeded(next http.Handler) http.Han
 
 func (m *Middlewares) EnsureAnonymousSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
 		if apiKeyAuth, ok := r.Context().Value(ContextAPIKeyAuth).(bool); ok && apiKeyAuth {
 
 			next.ServeHTTP(w, r)
@@ -119,6 +137,8 @@ func (m *Middlewares) EnsureAnonymousSession(next http.Handler) http.Handler {
 
 			ctx := context.WithValue(r.Context(), keyRoles, []string{constvars.KonsulinRoleGuest})
 			ctx = context.WithValue(ctx, keyUID, "anonymous")
+			ctx = context.WithValue(ctx, constvars.CONTEXT_FHIR_ROLE, []string{constvars.KonsulinRoleGuest})
+			ctx = context.WithValue(ctx, constvars.CONTEXT_UID, "anonymous")
 
 			m.Log.Info("Ensuring anonymous session for request",
 				zap.String("ip", r.RemoteAddr),

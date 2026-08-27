@@ -1,0 +1,66 @@
+info:
+  name: "Patient: Verify Appointment Booking"
+  type: http
+  seq: 15
+  tags: [appointment]
+
+http:
+  method: GET
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  url: "{{process.env.APP_BASE_URL}}/fhir/Appointment/{{appointmentId}}"
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        bru.setVar("activeRole", "Patient");
+        await bru.sendRequest({
+          method: "POST",
+          url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
+          headers: {
+            "content-type": "application/json",
+            "Authorization": "Bearer " + bru.getVar("sessionToken")
+          },
+          data: JSON.stringify({ role: bru.getVar("activeRole") })
+        }, function(err, res) {
+          if (err) {
+            console.error("role switch failed: " + err.message);
+          } else if (res && res.headers) {
+            // the active-role response carries the regenerated access token;
+            // capture it so the following request sees the new active role
+            var newToken = res.headers["st-access-token"] || res.headers["front-token"];
+            if (newToken) { bru.setVar("sessionToken", newToken); }
+          }
+        });
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Patient: Verify Slot Booking");'
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.status
+      operator: eq
+      value: "pending"
+    - expression: res.body.slot[0].reference
+      operator: eq
+      value: "Slot/{{slotId}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Verifies the booking-acceptance outcome for the appointment: proposed by the
+  BFF, then accepted by `POST /pay/appointment`, which reserved the slot as
+  `busy-tentative` and moved the appointment to `pending` while the Xendit
+  payment is outstanding. This is the state the linear suite can assert
+  in-band; the PAID/SETTLED transition to `booked` (and the slot to
+  `busy-unavailable`) is covered by the unit test
+  `TestHandleAppointmentPaymentPaid_TransitionsAppointmentToBooked`, since
+  driving it end-to-end requires a real paid Xendit invoice. Asserts the
+  appointment is `pending` and still references the reserved slot, then hands
+  off to the slot verification. Pre-request switches to Patient.

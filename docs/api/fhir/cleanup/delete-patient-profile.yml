@@ -1,0 +1,56 @@
+info:
+  name: "Cleanup: Delete Patient Profile"
+  type: http
+  seq: 3
+  tags: [utility]
+
+http:
+  method: DELETE
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  url: "{{process.env.APP_BASE_URL}}/fhir/Patient/{{patientId}}"
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        bru.setVar("activeRole", "Patient");
+        await bru.sendRequest({
+          method: "POST",
+          url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
+          headers: {
+            "content-type": "application/json",
+            "Authorization": "Bearer " + bru.getVar("sessionToken")
+          },
+          data: JSON.stringify({ role: bru.getVar("activeRole") })
+        }, function(err, res) {
+          if (err) {
+            console.error("role switch failed: " + err.message);
+          } else if (res && res.headers) {
+            // the active-role response carries the regenerated access token;
+            // capture it so the following request sees the new active role
+            var newToken = res.headers["st-access-token"] || res.headers["front-token"];
+            if (newToken) { bru.setVar("sessionToken", newToken); }
+          }
+        });
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Sign Out");'
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "204"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Deletes the session user's Patient profile (RBAC grants Patient DELETE on
+  `/fhir/Patient`, ownership-checked to the caller's own id). Final FHIR step:
+  after this, the session has no resolvable FHIR identity left, so the chain
+  terminates at "Sign Out". The preceding Blaze-direct purge removes
+  referencing resources, so the DELETE succeeds with 200. Pre-request switches
+  to Patient.

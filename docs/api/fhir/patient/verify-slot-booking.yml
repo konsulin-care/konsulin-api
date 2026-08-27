@@ -1,0 +1,62 @@
+info:
+  name: "Patient: Verify Slot Booking"
+  type: http
+  seq: 16
+  tags: [appointment]
+
+http:
+  method: GET
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  url: "{{process.env.APP_BASE_URL}}/fhir/Slot/{{slotId}}"
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        bru.setVar("activeRole", "Patient");
+        await bru.sendRequest({
+          method: "POST",
+          url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
+          headers: {
+            "content-type": "application/json",
+            "Authorization": "Bearer " + bru.getVar("sessionToken")
+          },
+          data: JSON.stringify({ role: bru.getVar("activeRole") })
+        }, function(err, res) {
+          if (err) {
+            console.error("role switch failed: " + err.message);
+          } else if (res && res.headers) {
+            // the active-role response carries the regenerated access token;
+            // capture it so the following request sees the new active role
+            var newToken = res.headers["st-access-token"] || res.headers["front-token"];
+            if (newToken) { bru.setVar("sessionToken", newToken); }
+          }
+        });
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Patient: Write Referral");'
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.status
+      operator: eq
+      value: "busy-tentative"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Verifies the booking-acceptance outcome for the slot: reserved as
+  `busy-tentative` by `POST /pay/appointment` while payment is outstanding.
+  Together with "Patient: Verify Appointment Booking" (appointment `pending`)
+  this closes the loop on the reservation pair of the payment-driven
+  lifecycle. The fully-booked pair (appointment `booked`, slot
+  `busy-unavailable`) is asserted by
+  `TestHandleAppointmentPaymentPaid_TransitionsAppointmentToBooked`.
+  Hands off to "Patient: Write Referral", preserving the patient-journey
+  continuation. Pre-request switches to Patient.

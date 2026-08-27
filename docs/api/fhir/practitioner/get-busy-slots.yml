@@ -1,0 +1,69 @@
+info:
+  name: "Practitioner: Get Busy Slots"
+  type: http
+  seq: 5
+  tags: [appointment]
+
+http:
+  method: GET
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  url: "{{process.env.APP_BASE_URL}}/fhir/Slot?schedule.actor=PractitionerRole/{{practitionerRoleId}}&start=ge{{todayStart}}&start=le{{todayEnd}}&status=busy,busy-tentative,busy-unavailable"
+  params:
+    - name: schedule.actor
+      value: "PractitionerRole/{{practitionerRoleId}}"
+      type: query
+    - name: start
+      value: "ge{{todayStart}}"
+      type: query
+    - name: start
+      value: "le{{todayEnd}}"
+      type: query
+    - name: status
+      value: busy,busy-tentative,busy-unavailable
+      type: query
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        bru.setVar("activeRole", "Practitioner");
+        var dayStart = new Date();
+        dayStart.setUTCHours(0, 0, 0, 0);
+        var dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+        bru.setVar("todayStart", dayStart.toISOString());
+        bru.setVar("todayEnd", dayEnd.toISOString());
+        await bru.sendRequest({
+          method: "POST",
+          url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
+          headers: {
+            "content-type": "application/json",
+            "Authorization": "Bearer " + bru.getVar("sessionToken")
+          },
+          data: JSON.stringify({ role: bru.getVar("activeRole") })
+        }, function(err, res) {
+          if (err) {
+            console.error("role switch failed: " + err.message);
+          } else if (res && res.headers) {
+            // the active-role response carries the regenerated access token;
+            // capture it so the following request sees the new active role
+            var newToken = res.headers["st-access-token"] || res.headers["front-token"];
+            if (newToken) { bru.setVar("sessionToken", newToken); }
+          }
+        });
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Practitioner: List Sessions");'
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Busy slots for the practitioner's role on a day (Blaze has no `:not`
+  search, so busy statuses are queried explicitly). Clients subtract these from
+  `availableTime` to compute free time; after payment acceptance the
+  busy-tentative slot shows up here. Pre-request switches to Practitioner and
+  stamps the UTC day bounds.

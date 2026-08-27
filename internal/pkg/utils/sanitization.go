@@ -14,16 +14,6 @@ func cleanWhiteSpaceFromEachStringOfAnArray(input []string) []string {
 	return sanitizedArray
 }
 
-func capitalizeFirstLetter(s string) string {
-	if len(s) == 0 {
-		return s
-	}
-
-	first := string(unicode.ToUpper(rune(s[0])))
-
-	return first + s[1:]
-}
-
 func capitalize(input string) string {
 	if len(input) == 0 {
 		return input
@@ -34,25 +24,6 @@ func capitalize(input string) string {
 		runes[i] = unicode.ToLower(runes[i])
 	}
 	return string(runes)
-}
-
-func SanitizeRegisterViaWhatsAppRequest(input *requests.RegisterViaWhatsApp) {
-	input.To = strings.TrimSpace(input.To)
-}
-
-func SanitizeLoginViaWhatsAppRequest(input *requests.LoginViaWhatsApp) {
-	input.To = strings.TrimSpace(input.To)
-}
-func SanitizeVerifyRegisterWhatsAppOTP(input *requests.VerivyRegisterWhatsAppOTP) {
-	input.To = strings.TrimSpace(input.To)
-	input.OTP = strings.TrimSpace(input.OTP)
-	input.Role = strings.TrimSpace(input.Role)
-	input.Role = capitalizeFirstLetter(input.Role)
-}
-
-func SanitizeVerifyLoginWhatsAppOTP(input *requests.VerivyLoginWhatsAppOTP) {
-	input.To = strings.TrimSpace(input.To)
-	input.OTP = strings.TrimSpace(input.OTP)
 }
 
 func SanitizeRegisterUserRequest(input *requests.RegisterUser) {

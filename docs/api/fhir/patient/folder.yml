@@ -1,0 +1,14 @@
+info:
+  name: patient
+  type: folder
+  seq: 2
+
+request: {}
+
+docs: |
+  Patient journey: runs after the seed phase under the session bearer token
+  with `activeRole=Patient` (set in every request's pre-request script via the
+  "Switch Active Role" helper). Covers research consent, assessments, records,
+  journals, appointment booking (dynamic availability), referrals and circle
+  stats. One linear chain; the last request hands off to the practitioner
+  journey.

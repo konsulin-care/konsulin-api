@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
@@ -10,11 +11,14 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/goccy/go-json"
+	"github.com/supertokens/supertokens-golang/recipe/session"
+	"github.com/supertokens/supertokens-golang/recipe/session/sessmodels"
 	"go.uber.org/zap"
 )
 
@@ -41,57 +45,10 @@ func NewAuthController(logger *zap.Logger, authUsecase contracts.AuthUsecase, in
 	return authControllerInstance
 }
 
-func (ctrl *AuthController) Logout(w http.ResponseWriter, r *http.Request) {
-	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	if !ok || requestID == "" {
-		ctrl.Log.Error("AuthController.Logout requestID not found in context")
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingRequestID(nil))
-		return
-	}
-	ctrl.Log.Info("AuthController.Logout called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-	)
-
-	sessionData, ok := r.Context().Value(constvars.CONTEXT_SESSION_DATA_KEY).(string)
-	if !ok || sessionData == "" {
-		ctrl.Log.Error("AuthController.Logout sessionData not found in context",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-		)
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingSessionData(nil))
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	if err := ctrl.AuthUsecase.LogoutUser(ctx, sessionData); err != nil {
-		ctrl.Log.Error("AuthController.Logout error from usecase",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		if err == context.DeadlineExceeded {
-			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
-			return
-		}
-		utils.BuildErrorResponse(ctrl.Log, w, err)
-		return
-	}
-	ctrl.Log.Info("AuthController.Logout succeeded",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-	)
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.LogoutSuccessMessage, nil)
-}
-
 func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
-	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	if !ok || requestID == "" {
-		ctrl.Log.Error("Request ID missing from context",
-			zap.String(constvars.LoggingEndpointKey, r.URL.Path),
-			zap.String(constvars.LoggingMethodKey, r.Method),
-			zap.String(constvars.LoggingRemoteAddrKey, r.RemoteAddr),
-		)
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingRequestID(nil))
+	requestID, ok := requireRequestID(ctrl.Log, w, r)
+	if !ok {
 		return
 	}
 
@@ -102,79 +59,24 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 	)
 
 	request := new(requests.SupertokenPasswordlessCreateMagicLink)
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		ctrl.Log.Error("Failed to parse request body",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingErrorTypeKey, "JSON parsing"),
-			zap.Error(err),
-		)
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+	if !decodeJSONBody(ctrl.Log, w, r, requestID, &request, "Failed to parse request body", true) {
 		return
 	}
 
 	utils.SanitizeCreateMagicLinkRequest(request)
 
-	if request.RedirectToPath != "" {
-		if err := utils.ValidateRedirectPath(request.RedirectToPath); err != nil {
-			ctrl.Log.Warn("magic link creation rejected: invalid redirectToPath",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.String("redirect_to_path", request.RedirectToPath),
-				zap.Error(err),
-			)
-			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
-			return
-		}
-		ctrl.Log.Info("magic link redirect path requested",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("redirect_to_path", request.RedirectToPath),
-		)
+	_, err := ctrl.normalizeAndValidateMagicLinkRequest(request, requestID)
+	if err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
 	}
-
-	// Enforce mutually-exclusive email or phone (exactly one must be set).
 	hasEmail := strings.TrimSpace(request.Email) != ""
-	phoneDigits := ""
-	if strings.TrimSpace(request.Phone) != "" {
-		// Normalize phone to digits-only format (remove all non-digit characters).
-		phoneDigits = utils.NormalizePhoneDigits(request.Phone)
-	}
-	hasPhone := strings.TrimSpace(phoneDigits) != ""
-	if hasEmail && hasPhone {
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(fmt.Errorf("email and phone are mutually exclusive")))
-		return
-	}
-	if !hasEmail && !hasPhone {
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(fmt.Errorf("either email or phone is required")))
-		return
-	}
-	if hasPhone {
-		if err := utils.ValidateInternationalPhoneDigits(phoneDigits); err != nil {
-			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
-			return
-		}
-	}
-
-	// Persist normalized phone for downstream use (repo expects digits-only without '+').
-	request.Phone = phoneDigits
-
-	// Struct tag validation (email format, roles).
-	if err := utils.ValidateStruct(request); err != nil {
-		ctrl.Log.Error("Request validation failed",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingEmailKey, request.Email),
-			zap.String("phone", request.Phone),
-			zap.String(constvars.LoggingErrorTypeKey, "input validation"),
-			zap.Error(err),
-		)
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
-		return
-	}
 
 	// Check if user exists to determine if roles are required
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
 	var userExistsOutput *contracts.CheckUserExistsOutput
-	var err error
 	if hasEmail {
 		userExistsOutput, err = ctrl.AuthUsecase.CheckUserExists(ctx, request.Email)
 	} else {
@@ -205,20 +107,9 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 	}
 
 	// If roles are provided, validate them
-	if len(request.Roles) > 0 {
-		// Validate each role individually
-		for _, role := range request.Roles {
-			if role != "Patient" && role != "Practitioner" && role != "Clinic Admin" && role != "Researcher" {
-				ctrl.Log.Error("Invalid role provided",
-					zap.String(constvars.LoggingRequestIDKey, requestID),
-					zap.String(constvars.LoggingEmailKey, request.Email),
-					zap.String("invalid_role", role),
-					zap.String(constvars.LoggingErrorTypeKey, "role validation"),
-				)
-				utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(fmt.Errorf("invalid role: %s", role)))
-				return
-			}
-		}
+	if err := ctrl.validateMagicLinkRoles(requestID, request.Email, request.Roles); err != nil {
+		utils.BuildErrorResponse(ctrl.Log, w, err)
+		return
 	}
 
 	ctx, cancel = context.WithTimeout(r.Context(), 10*time.Second)
@@ -251,6 +142,104 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.MagicLinkSuccessMessage, nil)
 }
 
+// normalizeAndValidateMagicLinkRequest validates a magic-link creation request:
+// the optional redirect path, email/phone exclusivity, phone digits normalization
+// and international validation, and struct-tag validation. On success it persists
+// the digits-only phone on request.Phone and returns the normalized digits.
+func (ctrl *AuthController) normalizeAndValidateMagicLinkRequest(request *requests.SupertokenPasswordlessCreateMagicLink, requestID string) (string, error) {
+	if request.RedirectToPath != "" {
+		if err := utils.ValidateRedirectPath(request.RedirectToPath); err != nil {
+			ctrl.Log.Warn("magic link creation rejected: invalid redirectToPath",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.String("redirect_to_path", request.RedirectToPath),
+				zap.Error(err),
+			)
+			return "", exceptions.ErrInputValidation(err)
+		}
+		ctrl.Log.Info("magic link redirect path requested",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("redirect_to_path", request.RedirectToPath),
+		)
+	}
+
+	// Enforce mutually-exclusive email or phone (exactly one must be set).
+	hasEmail := strings.TrimSpace(request.Email) != ""
+	phoneDigits := ""
+	if strings.TrimSpace(request.Phone) != "" {
+		// Normalize phone to digits-only format (remove all non-digit characters).
+		phoneDigits = utils.NormalizePhoneDigits(request.Phone)
+	}
+	hasPhone := strings.TrimSpace(phoneDigits) != ""
+	if hasEmail && hasPhone {
+		return "", exceptions.ErrInputValidation(fmt.Errorf("email and phone are mutually exclusive"))
+	}
+	if !hasEmail && !hasPhone {
+		return "", exceptions.ErrInputValidation(fmt.Errorf("either email or phone is required"))
+	}
+	if hasPhone {
+		if err := utils.ValidateInternationalPhoneDigits(phoneDigits); err != nil {
+			return "", exceptions.ErrInputValidation(err)
+		}
+	}
+
+	// Persist normalized phone for downstream use (repo expects digits-only without '+').
+	request.Phone = phoneDigits
+
+	// Clinic Admin and Researcher map to org-scoped PractitionerRole resources,
+	// so an organization must be provided alongside those roles.
+	for _, role := range request.Roles {
+		if role == constvars.KonsulinRoleClinicAdmin || role == constvars.KonsulinRoleResearcher {
+			if strings.TrimSpace(request.OrganizationID) == "" {
+				return "", exceptions.ErrInputValidation(fmt.Errorf("organizationId is required when %s or %s role is selected", constvars.KonsulinRoleClinicAdmin, constvars.KonsulinRoleResearcher))
+			}
+			break
+		}
+	}
+
+	// Struct tag validation (email format, roles).
+	if err := utils.ValidateStruct(request); err != nil {
+		ctrl.Log.Error("Request validation failed",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingEmailKey, request.Email),
+			zap.String("phone", request.Phone),
+			zap.String(constvars.LoggingErrorTypeKey, "input validation"),
+			zap.Error(err),
+		)
+		return "", exceptions.ErrInputValidation(err)
+	}
+	return phoneDigits, nil
+}
+
+// writeUsecaseError logs a usecase failure and writes the error response,
+// mapping context deadline errors to the dedicated gateway-timeout response.
+func (ctrl *AuthController) writeUsecaseError(w http.ResponseWriter, requestID, op string, err error) {
+	ctrl.Log.Error(op,
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.Error(err),
+	)
+	if err == context.DeadlineExceeded {
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+		return
+	}
+	utils.BuildErrorResponse(ctrl.Log, w, err)
+}
+
+// validateMagicLinkRoles ensures each requested role is a known Konsulin role.
+func (ctrl *AuthController) validateMagicLinkRoles(requestID, email string, roles []string) error {
+	for _, role := range roles {
+		if role != constvars.KonsulinRolePatient && role != constvars.KonsulinRolePractitioner && role != constvars.KonsulinRoleClinicAdmin && role != constvars.KonsulinRoleResearcher {
+			ctrl.Log.Error("Invalid role provided",
+				zap.String(constvars.LoggingRequestIDKey, requestID),
+				zap.String(constvars.LoggingEmailKey, email),
+				zap.String("invalid_role", role),
+				zap.String(constvars.LoggingErrorTypeKey, "role validation"),
+			)
+			return exceptions.ErrInputValidation(fmt.Errorf("invalid role: %s", role))
+		}
+	}
+	return nil
+}
+
 func (ctrl *AuthController) CreateAnonymousSession(w http.ResponseWriter, r *http.Request) {
 	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	if !ok || requestID == "" {
@@ -274,15 +263,7 @@ func (ctrl *AuthController) CreateAnonymousSession(w http.ResponseWriter, r *htt
 
 	result, err := ctrl.AuthUsecase.CreateAnonymousSession(ctx, existingToken, forceNew)
 	if err != nil {
-		ctrl.Log.Error("AuthController.CreateAnonymousSession error from usecase",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		if err == context.DeadlineExceeded {
-			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
-			return
-		}
-		utils.BuildErrorResponse(ctrl.Log, w, err)
+		ctrl.writeUsecaseError(w, requestID, "AuthController.CreateAnonymousSession error from usecase", err)
 		return
 	}
 
@@ -356,24 +337,13 @@ func (ctrl *AuthController) ClaimAnonymousResources(w http.ResponseWriter, r *ht
 
 	result, err := ctrl.AuthUsecase.ClaimAnonymousResources(ctx, supertokensUserID, roles, anonToken)
 	if err != nil {
-		ctrl.Log.Error("AuthController.ClaimAnonymousResources error from usecase",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		if err == context.DeadlineExceeded {
-			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
-			return
-		}
-		utils.BuildErrorResponse(ctrl.Log, w, err)
+		ctrl.writeUsecaseError(w, requestID, "AuthController.ClaimAnonymousResources error from usecase", err)
 		return
 	}
 
 	// Secure flag defaults to true for security. Only disable for local development
 	// where HTTPS may not be available. In production/staging, cookies must be secure.
-	secure := true
-	if strings.EqualFold(ctrl.InternalConfig.App.Env, "local") {
-		secure = false
-	}
+	secure := !strings.EqualFold(ctrl.InternalConfig.App.Env, constvars.EnvLocal)
 	http.SetCookie(w, &http.Cookie{
 		Name:     constvars.AnonymousSessionCookieName,
 		Value:    "",
@@ -390,6 +360,133 @@ func (ctrl *AuthController) ClaimAnonymousResources(w http.ResponseWriter, r *ht
 		"count":         result.Count,
 		"referenceList": result.ReferenceList,
 	})
+}
+
+// setRoleBody holds the role value from the request body.
+type setRoleBody struct {
+	Role string `json:"role"`
+}
+
+// parseSetRoleBody decodes and validates the role from the request body.
+func parseSetRoleBody(r *http.Request) (string, error) {
+	var body setRoleBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		return "", fmt.Errorf("failed to parse body: %w", err)
+	}
+	if body.Role == "" {
+		return "", fmt.Errorf("role is required")
+	}
+	return body.Role, nil
+}
+
+// validateUserRole checks that the requested role is in the user's assigned roles.
+func validateUserRole(role string, userRoles []string) error {
+	if !slices.Contains(userRoles, role) {
+		return fmt.Errorf("role %s is not assigned to user", role)
+	}
+	return nil
+}
+
+// SetActiveRole sets the active role in the SuperTokens session's access token
+// payload so downstream middleware reads it instead of iterating all roles.
+func (ctrl *AuthController) SetActiveRole(w http.ResponseWriter, r *http.Request) {
+	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	if !ok || requestID == "" {
+		ctrl.Log.Error("AuthController.SetActiveRole requestID not found in context")
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingRequestID(nil))
+		return
+	}
+
+	role, err := parseSetRoleBody(r)
+	if err != nil {
+		ctrl.Log.Error("AuthController.SetActiveRole failed to parse body",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+		return
+	}
+
+	sessRequired := true
+	sess, err := session.GetSession(r, w, &sessmodels.VerifySessionOptions{SessionRequired: &sessRequired})
+	if err != nil {
+		ctrl.Log.Error("AuthController.SetActiveRole session not found",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrSupertokensSessionMissing(err))
+		return
+	}
+
+	userRoles, roleErr := getUserRolesFromSession(sess)
+	if roleErr != nil {
+		ctrl.Log.Error("AuthController.SetActiveRole failed to parse user roles",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(roleErr),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(fmt.Errorf("could not verify user roles")))
+		return
+	}
+	if err := validateUserRole(role, userRoles); err != nil {
+		ctrl.Log.Warn("AuthController.SetActiveRole role not assigned",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String("role", role),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrInputValidation(err))
+		return
+	}
+
+	if err := sess.MergeIntoAccessTokenPayload(map[string]interface{}{
+		constvars.SupertokenPayloadActiveRoleKey: role,
+	}); err != nil {
+		ctrl.Log.Error("AuthController.SetActiveRole merge payload failed",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		utils.BuildErrorResponse(ctrl.Log, w, exceptions.BuildNewCustomError(err, http.StatusInternalServerError, "internal server error", "merge into access token payload failed"))
+		return
+	}
+
+	ctrl.Log.Info("AuthController.SetActiveRole succeeded",
+		zap.String(constvars.LoggingRequestIDKey, requestID),
+		zap.String("role", role),
+	)
+	utils.BuildSuccessResponse(w, http.StatusOK, "active role set", nil)
+}
+
+// getUserRolesFromSession extracts the list of role strings from the SuperTokens
+// access token payload. Returns an empty slice if no roles are found.
+func getUserRolesFromSession(sess sessmodels.SessionContainer) ([]string, error) {
+	raw := sess.GetAccessTokenPayload()
+	if raw == nil {
+		return nil, errors.New("empty access token payload")
+	}
+	rolesData, exists := raw[constvars.SupertokenPayloadRolesKey]
+	if !exists {
+		return nil, nil
+	}
+	rolesMap, ok := rolesData.(map[string]interface{})
+	if !ok {
+		return nil, errors.New("roles not a map")
+	}
+	rolesValue, ok := rolesMap[constvars.SupertokenPayloadRolesValueKey]
+	if !ok {
+		return nil, nil
+	}
+	var result []string
+	if rolesList, ok := rolesValue.([]interface{}); ok {
+		result = make([]string, 0, len(rolesList))
+		for _, item := range rolesList {
+			if role, ok := item.(string); ok {
+				result = append(result, role)
+			}
+		}
+	} else if rolesList, ok := rolesValue.([]string); ok {
+		result = rolesList
+	} else {
+		return nil, errors.New("roles value not a list")
+	}
+	return result, nil
 }
 
 // PasswordlessEmailExists exposes the SuperTokens passwordless email lookup
@@ -431,8 +528,8 @@ func (ctrl *AuthController) PasswordlessEmailExists(w http.ResponseWriter, r *ht
 
 	exists := output != nil && output.SupertokenUser != nil
 
-	patientIds := []string{}
-	practitionerIds := []string{}
+	var patientIds []string
+	var practitionerIds []string
 
 	if output != nil {
 		patientIds = output.PatientIds
@@ -454,5 +551,5 @@ func (ctrl *AuthController) PasswordlessEmailExists(w http.ResponseWriter, r *ht
 
 	w.Header().Set(constvars.HeaderContentType, constvars.MIMEApplicationJSON)
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }

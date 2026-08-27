@@ -48,7 +48,7 @@ func (c *BundleFhirClientImpl) PostTransactionBundle(ctx context.Context, bundle
 	if err != nil {
 		return nil, exceptions.ErrSendHTTPRequest(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != constvars.StatusOK && resp.StatusCode != constvars.StatusCreated {
 		bodyBytes, rerr := io.ReadAll(resp.Body)
@@ -68,7 +68,7 @@ func (c *BundleFhirClientImpl) PostTransactionBundle(ctx context.Context, bundle
 			return nil, exceptions.ErrCreateFHIRResource(uerr, "Bundle")
 		}
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.log.Error("bundleFhirClient.PostTransactionBundle FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),

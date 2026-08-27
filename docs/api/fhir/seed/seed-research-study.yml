@@ -1,0 +1,59 @@
+info:
+  name: Seed Research Study
+  type: http
+  seq: 9
+  tags: [research, utility]
+
+http:
+  method: PUT
+  url: "{{process.env.BLAZE_BASE_URL}}/fhir/ResearchStudy/seed-study"
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "ResearchStudy",
+        "id": "seed-study",
+        "status": "active",
+        "title": "Wellbeing Monitoring Study",
+        "description": "Longitudinal wellbeing study using the weekly check-in questionnaire.",
+        "period": {
+          "start": "2026-01-01"
+        },
+        "protocol": [
+          {
+            "reference": "PlanDefinition/{{planDefinitionId}}"
+          }
+        ]
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        bru.setVar("researchStudyId", body.id);
+        bru.runner.setNextRequest("Seed Invoice");
+  assertions:
+    - expression: res.status
+      operator: gte
+      value: "200"
+    - expression: res.status
+      operator: lte
+      value: "201"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Seeds an active ResearchStudy (fixed id `seed-study`, idempotent PUT) dated
+  from 2026-01-01 so `GET /fhir/ResearchStudy?status=active&date=ge2026-01-01`
+  returns it; its `protocol` reference pulls in the PlanDefinition. No
+  `enrollment` Group is set — Blaze enforces referential integrity and rejects
+  dangling references. Captures `researchStudyId` (equals seed-study) and hands
+  off to "Seed Invoice" (the invoice the payment step charges against), which
+  then enters the ownership-violation suite (which seeds foreign identities,
+  runs the 401 scenarios, cleans up, then enters the patient journey). Direct
+  Blaze PUT.

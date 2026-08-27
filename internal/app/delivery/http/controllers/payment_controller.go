@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"context"
-	"encoding/json"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
@@ -35,82 +34,11 @@ func NewPaymentController(logger *zap.Logger, paymentUsecase contracts.PaymentUs
 	})
 	return paymentControllerInstance
 }
-func (ctrl *PaymentController) PaymentRoutingCallback(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	if !ok || requestID == "" {
-		ctrl.Log.Error("Request ID missing from context",
-			zap.String(constvars.LoggingEndpointKey, r.URL.Path),
-			zap.String(constvars.LoggingMethodKey, r.Method),
-			zap.String(constvars.LoggingRemoteAddrKey, r.RemoteAddr),
-		)
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingRequestID(nil))
-		return
-	}
-
-	utils.LogSecurityEvent(ctrl.Log, "payment_callback_received", requestID, "info",
-		zap.String(constvars.LoggingRemoteAddrKey, r.RemoteAddr),
-		zap.String(constvars.LoggingUserAgentKey, r.UserAgent()),
-	)
-
-	ctrl.Log.Debug("Payment callback processing started",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingEndpointKey, r.URL.Path),
-		zap.String(constvars.LoggingMethodKey, r.Method),
-	)
-
-	request := new(requests.PaymentRoutingCallback)
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		ctrl.Log.Error("Failed to parse payment callback request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingErrorTypeKey, "JSON parsing"),
-			zap.Error(err),
-		)
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
-		return
-	}
-	ctrl.Log.Debug("Payment callback request parsed successfully",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String("payment_status", request.PaymentStatus),
-	)
-
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-
-	err := ctrl.PaymentUsecase.PaymentRoutingCallback(ctx, request)
-	if err != nil {
-		ctrl.Log.Error("Failed to process payment callback",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("payment_status", request.PaymentStatus),
-			zap.String(constvars.LoggingErrorTypeKey, "usecase error"),
-			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
-			zap.Error(err),
-		)
-		if err == context.DeadlineExceeded {
-			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
-			return
-		}
-		utils.BuildErrorResponse(ctrl.Log, w, err)
-		return
-	}
-
-	utils.LogBusinessEvent(ctrl.Log, "payment_callback_processed", requestID,
-		zap.String("payment_status", request.PaymentStatus),
-		zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
-	)
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.PaymentRoutingCallbackSuccessfullyCalled, request.PaymentStatus)
-}
 
 func (ctrl *PaymentController) XenditInvoiceCallback(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
-	requestID, ok := r.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	if !ok || requestID == "" {
-		ctrl.Log.Error("Request ID missing from context",
-			zap.String(constvars.LoggingEndpointKey, r.URL.Path),
-			zap.String(constvars.LoggingMethodKey, r.Method),
-			zap.String(constvars.LoggingRemoteAddrKey, r.RemoteAddr),
-		)
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrMissingRequestID(nil))
+	requestID, ok := requireRequestID(ctrl.Log, w, r)
+	if !ok {
 		return
 	}
 
@@ -162,13 +90,7 @@ func (ctrl *PaymentController) XenditInvoiceCallback(w http.ResponseWriter, r *h
 
 	// Parse body
 	body := new(requests.XenditInvoiceCallbackBody)
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		ctrl.Log.Error("Failed to parse Xendit invoice callback request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingErrorTypeKey, "JSON parsing"),
-			zap.Error(err),
-		)
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+	if !decodeJSONBody(ctrl.Log, w, r, requestID, &body, "Failed to parse Xendit invoice callback request", true) {
 		return
 	}
 
@@ -220,12 +142,7 @@ func (ctrl *PaymentController) CreatePay(w http.ResponseWriter, r *http.Request)
 	)
 
 	req := new(requests.CreatePayRequest)
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		ctrl.Log.Error("PaymentController.CreatePay error decoding JSON",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+	if !decodeJSONBody(ctrl.Log, w, r, requestID, &req, "PaymentController.CreatePay error decoding JSON", false) {
 		return
 	}
 
@@ -267,12 +184,7 @@ func (ctrl *PaymentController) HandleAppointmentPayment(w http.ResponseWriter, r
 	)
 
 	req := new(requests.AppointmentPaymentRequest)
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		ctrl.Log.Error("PaymentController.HandleAppointmentPayment error decoding JSON",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrCannotParseJSON(err))
+	if !decodeJSONBody(ctrl.Log, w, r, requestID, &req, "PaymentController.HandleAppointmentPayment error decoding JSON", false) {
 		return
 	}
 
@@ -307,7 +219,7 @@ func (ctrl *PaymentController) HandleAppointmentPayment(w http.ResponseWriter, r
 
 	ctrl.Log.Info("PaymentController.HandleAppointmentPayment succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String("appointmentId", resp.AppointmentID),
+		zap.String("slotId", resp.SlotID),
 	)
-	utils.BuildSuccessResponse(w, constvars.StatusCreated, constvars.AppointmentPaymentSuccessMessage, resp)
+	utils.BuildSuccessResponse(w, constvars.StatusCreated, resp.Message, resp)
 }

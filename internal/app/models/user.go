@@ -1,10 +1,7 @@
 package models
 
 import (
-	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
-	"konsulin-service/internal/pkg/fhir_dto"
-	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -55,9 +52,9 @@ func (u *User) ConvertToBsonM() bson.M {
 		"resetTokenExpiry":   u.ResetTokenExpiry,
 		"whatsAppOtpExpiry":  u.WhatsAppOTPExpiry,
 		"user_role":          u.Role,
-		"createdAt":          u.TimeModel.CreatedAt,
-		"updatedAt":          u.TimeModel.UpdatedAt,
-		"deletedAt":          u.TimeModel.DeletedAt,
+		"createdAt":          u.CreatedAt,
+		"updatedAt":          u.UpdatedAt,
+		"deletedAt":          u.DeletedAt,
 	}
 }
 
@@ -98,92 +95,4 @@ func (u *User) SetWhatsAppOTPExpiryTime(durationInMinutes int) {
 
 func (u *User) IsDeactivated() bool {
 	return u.DeletedAt != nil
-}
-
-func (u *User) ConvertToPatientFhirDeactivationRequest() *fhir_dto.Patient {
-	var extensions []fhir_dto.Extension
-	for _, education := range u.Educations {
-		extensions = append(extensions, fhir_dto.Extension{
-			Url:         "http://example.org/fhir/StructureDefinition/education",
-			ValueString: education,
-		})
-	}
-
-	return &fhir_dto.Patient{
-		ResourceType: constvars.ResourcePatient,
-		ID:           u.PatientID,
-		Active:       false,
-		Name: []fhir_dto.HumanName{
-			{
-				Use:    "official",
-				Family: u.Fullname,
-				Given:  []string{u.Fullname},
-			},
-		},
-		Telecom: []fhir_dto.ContactPoint{
-			{
-				System: fhir_dto.ContactPointSystemEmail,
-				Value:  u.Email,
-				Use:    "home",
-			},
-			{
-				System: fhir_dto.ContactPointSystemPhone,
-				Value:  u.WhatsAppNumber,
-				Use:    "mobile",
-			},
-		},
-		Gender:    u.Gender,
-		BirthDate: u.BirthDate,
-		Address: []fhir_dto.Address{
-			{
-				Use:  "home",
-				Line: strings.Split(u.Address, ", "),
-			},
-		},
-		Extension: extensions,
-	}
-}
-
-func (u *User) ConvertToPractitionerFhirDeactivationRequest() *fhir_dto.Practitioner {
-	var extensions []fhir_dto.Extension
-	for _, education := range u.Educations {
-		extensions = append(extensions, fhir_dto.Extension{
-			Url:         "http://example.org/fhir/StructureDefinition/education",
-			ValueString: education,
-		})
-	}
-
-	return &fhir_dto.Practitioner{
-		ResourceType: constvars.ResourcePatient,
-		ID:           u.PractitionerID,
-		Active:       false,
-		Name: []fhir_dto.HumanName{
-			{
-				Use:    "official",
-				Family: u.Fullname,
-				Given:  []string{u.Fullname},
-			},
-		},
-		Telecom: []fhir_dto.ContactPoint{
-			{
-				System: fhir_dto.ContactPointSystemEmail,
-				Value:  u.Email,
-				Use:    "home",
-			},
-			{
-				System: fhir_dto.ContactPointSystemPhone,
-				Value:  u.WhatsAppNumber,
-				Use:    "mobile",
-			},
-		},
-		Gender:    u.Gender,
-		BirthDate: u.BirthDate,
-		Address: []fhir_dto.Address{
-			{
-				Use:  "home",
-				Line: strings.Split(u.Address, ", "),
-			},
-		},
-		Extension: extensions,
-	}
 }

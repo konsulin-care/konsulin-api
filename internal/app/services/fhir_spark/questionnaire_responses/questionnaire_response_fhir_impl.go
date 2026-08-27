@@ -64,7 +64,7 @@ func (c *questionnaireResponseFhirClient) FindQuestionnaireResponseByID(ctx cont
 		)
 		return nil, exceptions.ErrSendHTTPRequest(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != constvars.StatusOK {
 		bodyBytes, err := io.ReadAll(resp.Body)
@@ -143,7 +143,7 @@ func (c *questionnaireResponseFhirClient) FindQuestionnaireResponsesByIdentifier
 		)
 		return nil, exceptions.ErrSendHTTPRequest(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != constvars.StatusOK && resp.StatusCode != constvars.StatusNotFound {
 		bodyBytes, err := io.ReadAll(resp.Body)

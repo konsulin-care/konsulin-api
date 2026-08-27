@@ -54,8 +54,9 @@ jobs:
     if: github.ref_name == 'develop'
     uses: ./.github/workflows/trigger-coolify.yml
     secrets:
-      COOLIFY_TRIGGER_URL: ${{ secrets.COOLIFY_TRIGGER_URL_DEV }}
-      COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN_DEV }}
+      COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+      COOLIFY_SERVICE: ${{ secrets.COOLIFY_SERVICE_DEV }}
+      COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
 
   deploy-prod:
     name: Deploy to Prod (Coolify)
@@ -63,9 +64,10 @@ jobs:
     if: github.ref_name == 'main'
     uses: ./.github/workflows/trigger-coolify.yml
     secrets:
-      COOLIFY_TRIGGER_URL: ${{ secrets.COOLIFY_TRIGGER_URL_PROD }}
-      COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN_PROD }}
-  
+      COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+      COOLIFY_SERVICE: ${{ secrets.COOLIFY_SERVICE_PROD }}
+      COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+
   deploy-check:
     name: Check Konsulin API Container Status
     needs: [deploy-dev, deploy-prod]

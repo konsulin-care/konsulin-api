@@ -1,0 +1,24 @@
+info:
+  name: Xendit Invoice Callback
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{process.env.APP_BASE_URL}}/api/v1/pay/callback/xendit/invoice"
+  headers:
+    - name: content-type
+      value: application/json
+  body:
+    type: json
+    data: "{}"
+
+runtime:
+  scripts: []
+  assertions: []
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

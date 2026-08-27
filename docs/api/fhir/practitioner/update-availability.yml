@@ -1,0 +1,90 @@
+info:
+  name: "Practitioner: Update Availability"
+  type: http
+  seq: 8
+  tags: [appointment]
+
+http:
+  method: PUT
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  url: "{{process.env.APP_BASE_URL}}/fhir/PractitionerRole/{{practitionerRoleId}}"
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "PractitionerRole",
+        "id": "{{practitionerRoleId}}",
+        "active": true,
+        "practitioner": {
+          "reference": "Practitioner/{{practitionerId}}"
+        },
+        "organization": {
+          "reference": "Organization/{{organizationId}}"
+        },
+        "location": [
+          {
+            "reference": "Location/{{locationId}}"
+          }
+        ],
+        "healthcareService": [
+          {
+            "reference": "HealthcareService/{{healthcareServiceId}}"
+          }
+        ],
+        "availableTime": [
+          {
+            "daysOfWeek": ["mon", "tue", "wed", "thu", "fri"],
+            "availableStartTime": "09:00:00",
+            "availableEndTime": "17:00:00"
+          },
+          {
+            "daysOfWeek": ["sat"],
+            "availableStartTime": "09:00:00",
+            "availableEndTime": "12:00:00"
+          }
+        ]
+      }
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        bru.setVar("activeRole", "Practitioner");
+        await bru.sendRequest({
+          method: "POST",
+          url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
+          headers: {
+            "content-type": "application/json",
+            "Authorization": "Bearer " + bru.getVar("sessionToken")
+          },
+          data: JSON.stringify({ role: bru.getVar("activeRole") })
+        }, function(err, res) {
+          if (err) {
+            console.error("role switch failed: " + err.message);
+          } else if (res && res.headers) {
+            // the active-role response carries the regenerated access token;
+            // capture it so the following request sees the new active role
+            var newToken = res.headers["st-access-token"] || res.headers["front-token"];
+            if (newToken) { bru.setVar("sessionToken", newToken); }
+          }
+        });
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Practitioner: Create SOAP Notes");'
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Saves availability settings via full-resource PUT on the PractitionerRole
+  (fetch-merge-PUT in the frontend): extends `availableTime` with a Saturday
+  morning window. The body's `practitioner` reference must stay on the session
+  practitioner (ownership validation). Pre-request switches to Practitioner.

@@ -8,18 +8,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/ownership"
+	"konsulin-service/internal/pkg/utils"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/exceptions"
-	"konsulin-service/internal/pkg/utils"
-
+	"github.com/casbin/casbin/v2"
 	"go.uber.org/zap"
-
-	"slices"
 
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
@@ -133,204 +133,367 @@ func encodeBodyFromFiltering(body []byte, enc bodyEncoding) ([]byte, error) {
 	}
 }
 
+// doFHIRProxyRequest builds the FHIR proxy URL, creates the HTTP request, and executes it.
+// sanitizeProxyPath validates and sanitizes the proxied path to prevent injection.
+func sanitizeProxyPath(path string) (string, error) {
+	if path == "/fhir" {
+		return "", nil
+	}
+	if strings.Contains(path, "..") {
+		return "", fmt.Errorf("invalid path: path traversal detected")
+	}
+	if strings.HasPrefix(path, "/") {
+		return "", fmt.Errorf("invalid path: unexpected leading slash")
+	}
+	return path, nil
+}
+
+func doFHIRProxyRequest(r *http.Request, target string, client *http.Client) (resp *http.Response, respBody []byte, bodyBytes []byte, err error) {
+	path, err := sanitizeProxyPath(strings.TrimPrefix(r.URL.Path, "/fhir/"))
+	if err != nil {
+		return nil, nil, nil, exceptions.ErrCreateHTTPRequest(err)
+	}
+
+	// Build the URL using url.URL semantics to prevent URL injection.
+	// This properly encodes special characters in the path and separates
+	// query parameters from the path, unlike string concatenation.
+	targetURL, pErr := url.Parse(target)
+	if pErr != nil {
+		return nil, nil, nil, exceptions.ErrCreateHTTPRequest(pErr)
+	}
+	if path != "" {
+		targetURL = targetURL.JoinPath(path)
+	}
+	targetURL.RawQuery = r.URL.RawQuery
+	fullURL := targetURL.String()
+
+	// SSRF protection: verify the final URL host matches the expected target.
+	if verr := validateProxyURLHost(fullURL, target); verr != nil {
+		return nil, nil, nil, exceptions.ErrCreateHTTPRequest(verr)
+	}
+
+	bodyBytes, _ = r.Context().Value(constvars.CONTEXT_RAW_BODY).([]byte)
+	if bodyBytes == nil {
+		bodyBytes = []byte{}
+	}
+
+	var req *http.Request
+	// #nosec — SSRF-safe: fullURL host is validated by validateProxyURLHost
+	// on lines 172-175 and URL is constructed via url.URL.JoinPath which makes
+	// the host immutable. allowedRedirectHost (CheckRedirect) adds transport-level
+	// protection. See sanitizeProxyPath, validateProxyURLHost, allowedRedirectHost.
+	req, err = http.NewRequestWithContext(r.Context(), r.Method, fullURL, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, nil, nil, exceptions.ErrCreateHTTPRequest(err)
+	}
+	req.Header = r.Header.Clone()
+	if r.Method == constvars.MethodPost || r.Method == constvars.MethodPut || r.Method == constvars.MethodPatch {
+		req.Header.Set("Content-Type", "application/fhir+json")
+	}
+	req.Header.Set("Accept", "application/fhir+json")
+
+	resp, err = client.Do(req)
+	if err != nil {
+		return nil, nil, bodyBytes, exceptions.ErrSendHTTPRequest(err)
+	}
+
+	respBody, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		_ = resp.Body.Close()
+		return nil, nil, bodyBytes, exceptions.ErrReadBody(readErr)
+	}
+	_ = resp.Body.Close()
+	resp.Body = io.NopCloser(bytes.NewReader(respBody))
+
+	return resp, respBody, bodyBytes, nil
+}
+
+// filterFHIRResponse applies RBAC and ownership filtering to the FHIR response body.
+func (m *Middlewares) filterFHIRResponse(ctx context.Context, resp *http.Response, respBody []byte) ([]byte, bodyEncoding, bool, error) {
+	roles, _ := ctx.Value(keyRoles).([]string)
+	fhirRole, _ := ctx.Value(keyFHIRRole).(string)
+	fhirID, _ := ctx.Value(keyFHIRID).(string)
+
+	decoded, enc, derr := decodeBodyForFiltering(respBody, resp.Header.Get("Content-Encoding"))
+	if derr != nil {
+		m.Log.Warn("failed to decode response body for filtering; failing closed", zap.Error(derr))
+		return nil, "", false, exceptions.ErrServerProcess(derr)
+	}
+
+	bodyAfterFilters := decoded
+	mutated := false
+
+	filteringRole := determineFilteringRole(roles)
+	if filteringRole == constvars.KonsulinRoleSuperadmin {
+		b, _, err := m.filterResponseResourceAgainstRBAC(bodyAfterFilters, roles)
+		if err != nil {
+			m.Log.Warn("RBAC response filtering failed; failing closed", zap.Error(err))
+			return nil, "", false, exceptions.ErrServerProcess(err)
+		}
+		bodyAfterFilters = b
+		mutated = true
+	}
+
+	if rMethod := resp.Request.Method; rMethod == http.MethodGet && fhirID != "" {
+		var ownershipErr error
+		bodyAfterFilters, mutated, ownershipErr = m.applyOwnershipFilter(ctx, bodyAfterFilters, roles, fhirRole, fhirID)
+		if ownershipErr != nil {
+			return nil, "", false, ownershipErr
+		}
+	}
+
+	// Researcher and Superadmin reads of Communication resources are reduced
+	// to the rule's RedactKeep fields (sender/recipient/sent/received +
+	// envelope). Patient reads scoped to their own sender/recipient keep full
+	// fields. The decision is driven by the ownership engine (rule.RedactKeep).
+	if rMethod := resp.Request.Method; rMethod == http.MethodGet &&
+		shouldStripCommunicationFields(roles, fhirID, resp.Request.URL) {
+		bodyAfterFilters, mutated = stripCommunicationFields(bodyAfterFilters)
+	}
+
+	return bodyAfterFilters, enc, mutated, nil
+}
+
+// shouldStripCommunicationFields reports whether a Communication GET response
+// must be reduced to the ownership rule's RedactKeep fields. Patients scoped
+// to their own sender/recipient keep full fields (ownership-checked);
+// Researcher-coded and Superadmin callers are redacted (the engine decides via
+// the rule's RedactKeep list).
+func shouldStripCommunicationFields(roles []string, fhirID string, u *url.URL) bool {
+	if fhirID != "" && queryHasOwnRef(u.Query(), fhirID, "sender", "recipient") {
+		return false
+	}
+	oc := ownership.NewContext()
+	for _, r := range roles {
+		switch {
+		case strings.EqualFold(r, constvars.KonsulinRoleSuperadmin):
+			oc.HasSuperadminRole = true
+		case strings.EqualFold(r, constvars.KonsulinRoleResearcher):
+			oc.AddCoding(constvars.FhirPractitionerRoleSystemHL7, constvars.FhirPractitionerRoleCodeResearcher)
+		}
+	}
+	return ownership.ShouldRedact(constvars.ResourceCommunication, oc)
+}
+
+// stripCommunicationFields reduces Communication resources in a response body
+// to communicationAllowedFields. A single Communication resource or each
+// Communication entry inside a Bundle is stripped; non-Communication resources
+// are left untouched. Returns (body, mutated) where mutated reports whether any
+// resource was rewritten.
+func stripCommunicationFields(body []byte) ([]byte, bool) {
+	switch extractResourceTypeFromJSON(body) {
+	case constvars.ResourceCommunication:
+		stripped, ok := stripSingleCommunication(body)
+		if !ok {
+			return body, false
+		}
+		return stripped, true
+	case "Bundle":
+		return stripCommunicationBundle(body)
+	default:
+		return body, false
+	}
+}
+
+// stripCommunicationBundle reduces each Communication entry inside a Bundle
+// to communicationAllowedFields; non-Communication entries are left untouched.
+// Returns (body, mutated) where mutated reports whether any resource was
+// rewritten, mirroring stripCommunicationFields' contract for bundles.
+func stripCommunicationBundle(body []byte) ([]byte, bool) {
+	var bundle Bundle
+	if err := json.Unmarshal(body, &bundle); err != nil {
+		return body, false
+	}
+	mutated := false
+	for i := range bundle.Entry {
+		if extractResourceTypeFromJSON(bundle.Entry[i].Resource) != constvars.ResourceCommunication {
+			continue
+		}
+		stripped, ok := stripSingleCommunication(bundle.Entry[i].Resource)
+		if !ok {
+			continue
+		}
+		bundle.Entry[i].Resource = stripped
+		mutated = true
+	}
+	if !mutated {
+		return body, false
+	}
+	out, err := json.Marshal(bundle)
+	if err != nil {
+		return body, false
+	}
+	return out, true
+}
+
+// stripSingleCommunication keeps only the ownership rule's RedactKeep fields
+// from a Communication resource. Returns (nil, false) on parse or marshal
+// failure.
+func stripSingleCommunication(raw json.RawMessage) ([]byte, bool) {
+	keep := ownership.RedactKeepFields(constvars.ResourceCommunication)
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, false
+	}
+	out := make(map[string]json.RawMessage, len(keep))
+	for _, k := range keep {
+		if v, ok := m[k]; ok {
+			out[k] = v
+		}
+	}
+	res, err := json.Marshal(out)
+	if err != nil {
+		return nil, false
+	}
+	return res, true
+}
+
+// applyOwnershipFilter handles bundle and single-resource ownership filtering.
+func (m *Middlewares) applyOwnershipFilter(ctx context.Context, body []byte, roles []string, fhirRole, fhirID string) ([]byte, bool, error) {
+	if bundle, isBundle, _ := decodeBundle(body); isBundle {
+		removed := m.applyOwnershipFilterToBundle(ctx, bundle, roles, fhirRole, fhirID)
+		if removed > 0 {
+			if bundle.Total != nil {
+				v := len(bundle.Entry)
+				bundle.Total = &v
+			}
+			filtered, _ := encodeBundle(bundle)
+			return filtered, true, nil
+		}
+		return body, false, nil
+	}
+
+	filteredBody, allowed, ferr := m.filterSingleResourceByOwnership(ctx, body, roles, fhirRole, fhirID)
+	if ferr != nil {
+		return nil, false, exceptions.ErrServerProcess(ferr)
+	}
+	if !allowed {
+		return nil, false, exceptions.ErrAuthInvalidRole(fmt.Errorf("forbidden: ownership cannot be proven"))
+	}
+	if filteredBody != nil {
+		return filteredBody, true, nil
+	}
+	return body, false, nil
+}
+
+// runPostFHIRProxyHooks executes all registered post-proxy hooks and returns error messages.
+func (m *Middlewares) runPostFHIRProxyHooks(r *http.Request, respBody, bodyBytes []byte) []string {
+	var msgs []string
+	for _, hook := range m.PostFHIRProxyHooks {
+		reqDetail := PostFHIRProxyUserRequestDetail{
+			Context: r.Context(),
+			Method:  r.Method,
+			Path:    r.URL.Path,
+			Body:    bodyBytes,
+		}
+		respDetail := PostFHIRProxyFHIRServerResponse{
+			StatusCode: http.StatusOK,
+			Body:       respBody,
+		}
+		if err := hook(reqDetail, respDetail); err != nil {
+			m.Log.Warn("PostFHIRProxyHook error", zap.Error(err))
+			msgs = append(msgs, err.Error())
+		}
+	}
+	return msgs
+}
+
+// writeBridgeResponse writes the final response headers and body.
+// When mutated is true, the ETag header is stripped to prevent cache poisoning
+// — the response body differs from the upstream original, so the original ETag
+// is no longer valid.
+func (m *Middlewares) writeBridgeResponse(w http.ResponseWriter, resp *http.Response, finalBody []byte, postHookErrMsgs []string, mutated bool) {
+	for k, v := range resp.Header {
+		if strings.EqualFold(k, "Content-Length") {
+			continue
+		}
+		// Strip ETag when the body was mutated: the response differs from
+		// the upstream original, so the original ETag is no longer valid.
+		// Keeping it would cause downstream caches to serve the mutated body
+		// with a stale ETag (cache poisoning).
+		if mutated && strings.EqualFold(k, "ETag") {
+			continue
+		}
+		w.Header()[k] = v
+	}
+	if len(postHookErrMsgs) > 0 {
+		joined := strings.Join(postHookErrMsgs, "; ")
+		if len(joined) > maxPostFHIRHookErrorHeaderLen {
+			joined = joined[:maxPostFHIRHookErrorHeaderLen-3] + "..."
+		}
+		w.Header().Set(headerPostFHIRHookError, joined)
+	}
+	w.Header().Set("Content-Length", strconv.Itoa(len(finalBody)))
+	w.WriteHeader(resp.StatusCode)
+	if _, err := w.Write(finalBody); err != nil {
+		m.Log.Warn("failed writing response body", zap.Error(err))
+	}
+}
+
+// allowedRedirectHost returns a CheckRedirect function that only allows redirects
+// to the exact same host:port as expectedHost. This prevents SSRF via redirect following.
+func allowedRedirectHost(expectedHost string) func(*http.Request, []*http.Request) error {
+	return func(req *http.Request, via []*http.Request) error {
+		if req.URL.Host != expectedHost {
+			return fmt.Errorf("redirect to %q blocked: host must be %q", req.URL.Host, expectedHost)
+		}
+		if len(via) >= 10 {
+			return fmt.Errorf("too many redirects")
+		}
+		return nil
+	}
+}
+
+// validateProxyURLHost checks that the constructed proxy URL's host matches the target.
+// Returns an error if the host does not match, preventing SSRF via URL injection.
+func validateProxyURLHost(fullURL, target string) error {
+	parsedURL, err := url.Parse(fullURL)
+	if err != nil {
+		return fmt.Errorf("invalid proxy URL: %w", err)
+	}
+	parsedTarget, err := url.Parse(target)
+	if err != nil {
+		return fmt.Errorf("invalid target URL: %w", err)
+	}
+	if parsedURL.Host != parsedTarget.Host {
+		return fmt.Errorf("SSRF: proxy URL host %q does not match target host %q", parsedURL.Host, parsedTarget.Host)
+	}
+	return nil
+}
+
 func (m *Middlewares) Bridge(target string) http.Handler {
+	parsedTarget, err := url.Parse(target)
+	if err != nil {
+		panic(fmt.Sprintf("invalid FHIR target URL: %v", err))
+	}
 	client := &http.Client{
-		Timeout:   15 * time.Second,
-		Transport: &http.Transport{MaxIdleConnsPerHost: 100},
+		Timeout:       15 * time.Second,
+		Transport:     &http.Transport{MaxIdleConnsPerHost: 100},
+		CheckRedirect: allowedRedirectHost(parsedTarget.Host),
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path := strings.TrimPrefix(r.URL.Path, "/fhir/")
-
-		if path == "/fhir" {
-			path = ""
-		}
-
-		fullURL := target
-		if path != "" {
-			if !strings.HasSuffix(target, "/") && !strings.HasPrefix(path, "/") {
-				fullURL += "/"
-			}
-			fullURL += path
-		}
-		if r.URL.RawQuery != "" {
-			fullURL += "?" + r.URL.RawQuery
-		}
-
-		bodyBytes, _ := r.Context().Value(constvars.CONTEXT_RAW_BODY).([]byte)
-		if bodyBytes == nil {
-			bodyBytes = []byte{}
-		}
-
-		req, err := http.NewRequestWithContext(r.Context(), r.Method, fullURL, bytes.NewReader(bodyBytes))
+		resp, respBody, bodyBytes, err := doFHIRProxyRequest(r, target, client)
 		if err != nil {
-			utils.BuildErrorResponse(m.Log, w, exceptions.ErrCreateHTTPRequest(err))
+			utils.BuildErrorResponse(m.Log, w, err)
 			return
 		}
-		req.Header = r.Header.Clone()
-
-		if r.Method == "POST" || r.Method == "PUT" || r.Method == "PATCH" {
-			req.Header.Set("Content-Type", "application/fhir+json")
-		}
-		req.Header.Set("Accept", "application/fhir+json")
-
-		resp, err := client.Do(req)
-		if err != nil {
-			utils.BuildErrorResponse(m.Log, w, exceptions.ErrSendHTTPRequest(err))
-			return
-		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode >= http.StatusBadRequest {
-			body, readErr := io.ReadAll(resp.Body)
-			if readErr != nil {
-				utils.BuildErrorResponse(m.Log, w, exceptions.ErrReadBody(readErr))
-				return
-			}
-
-			fhirErr := exceptions.BuildNewCustomError(fmt.Errorf("%s", string(body)), resp.StatusCode, string(body), constvars.ErrDevServerProcess)
+			fhirErr := exceptions.BuildNewCustomError(fmt.Errorf("%s", string(respBody)), resp.StatusCode, string(respBody), constvars.ErrDevServerProcess)
 			utils.BuildErrorResponse(m.Log, w, fhirErr)
 			return
 		}
 
-		respBody, readErr := io.ReadAll(resp.Body)
-		if readErr != nil {
-			utils.BuildErrorResponse(m.Log, w, exceptions.ErrReadBody(readErr))
+		postHookErrMsgs := m.runPostFHIRProxyHooks(r, respBody, bodyBytes)
+
+		bodyAfterOwnership, encForFilters, mutated, ferr := m.filterFHIRResponse(r.Context(), resp, respBody)
+		if ferr != nil {
+			utils.BuildErrorResponse(m.Log, w, ferr)
 			return
 		}
 
-		// Post-FHIR-proxy hooks: run synchronously after successful response, before filtering.
-		// Collect all hook error messages so we can expose them in a single response header (capped).
-		var postHookErrMsgs []string
-		for _, hook := range m.PostFHIRProxyHooks {
-			reqDetail := PostFHIRProxyUserRequestDetail{
-				Context: r.Context(),
-				Method:  r.Method,
-				Path:    r.URL.Path,
-				Body:    bodyBytes,
-			}
-			respDetail := PostFHIRProxyFHIRServerResponse{
-				StatusCode: resp.StatusCode,
-				Body:       respBody,
-			}
-			if err := hook(reqDetail, respDetail); err != nil {
-				m.Log.Warn("PostFHIRProxyHook error", zap.Error(err))
-				postHookErrMsgs = append(postHookErrMsgs, err.Error())
-			}
-		}
-
-		roles, _ := r.Context().Value(keyRoles).([]string)
-		fhirRole, _ := r.Context().Value(keyFHIRRole).(string)
-		fhirID, _ := r.Context().Value(keyFHIRID).(string)
-
-		originalBody := respBody
-		bodyForFilters := respBody
-		encForFilters := bodyEncodingIdentity
-
-		filteringRole := determineFilteringRole(roles)
-		needsRBAC := filteringRole != ""
-		needsOwnership := r.Method == http.MethodGet && fhirID != ""
-
-		if needsRBAC || needsOwnership {
-			decoded, enc, derr := decodeBodyForFiltering(respBody, resp.Header.Get("Content-Encoding"))
-			if derr != nil {
-				m.Log.Warn("failed to decode response body for filtering; failing closed", zap.Error(derr))
-				utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerProcess(derr))
-				return
-			}
-			bodyForFilters = decoded
-			encForFilters = enc
-		}
-
-		bodyAfterRBAC := bodyForFilters
-		filteredRBAC := false
-		removedRBAC := 0
-
-		if needsRBAC {
-			switch filteringRole {
-			case constvars.KonsulinRoleSuperadmin:
-				b, removed, err := m.filterResponseResourceAgainstRBAC(bodyAfterRBAC, roles)
-				if err != nil {
-					m.Log.Warn("RBAC response filtering failed; failing closed", zap.Error(err))
-					utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerProcess(err))
-					return
-				}
-
-				bodyAfterRBAC = b
-				removedRBAC = removed
-				if removed > 0 {
-					filteredRBAC = true
-				}
-			default:
-				// other roles: no RBAC response filtering
-			}
-		}
-
-		// Ownership-based filtering
-		bodyAfterOwnership := bodyAfterRBAC
-		filteredOwnership := false
-		removedOwnership := 0
-
-		if needsOwnership {
-			if bundle, isBundle, _ := decodeBundle(bodyAfterRBAC); isBundle {
-				removedOwnership = m.applyOwnershipFilterToBundle(r.Context(), bundle, roles, fhirRole, fhirID)
-				if removedOwnership > 0 {
-					filteredOwnership = true
-
-					if bundle.Total != nil {
-						v := len(bundle.Entry)
-						bundle.Total = &v
-					}
-
-					fb, eerr := encodeBundle(bundle)
-					if eerr != nil {
-						m.Log.Warn("encodeBundle after ownership filtering failed; failing closed", zap.Error(eerr))
-						utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerProcess(eerr))
-						return
-					}
-
-					bodyAfterOwnership = fb
-				}
-			} else {
-				filteredBody, allowed, ferr := m.filterSingleResourceByOwnership(r.Context(), bodyAfterRBAC, roles, fhirRole, fhirID)
-				if ferr != nil {
-					m.Log.Info(fmt.Sprintf("single-resource ownership filtering failed for {%s/%s}; failing closed", fhirRole, fhirID), zap.Error(ferr))
-					utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerProcess(ferr))
-					return
-				}
-
-				if !allowed {
-					// Deny access when ownership cannot be proven.
-					utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(fmt.Errorf("forbidden: ownership cannot be proven")))
-					return
-				}
-
-				if filteredBody != nil {
-					bodyAfterOwnership = filteredBody
-				}
-			}
-		}
-
-		if filteredRBAC && removedRBAC > 0 {
-			m.Log.Info("RBAC filtered response entries",
-				zap.Int("removed", removedRBAC),
-				zap.String("method", r.Method),
-				zap.String("url", r.URL.RequestURI()),
-				zap.Strings("roles", roles),
-			)
-		}
-		if filteredOwnership && removedOwnership > 0 {
-			m.Log.Info("Ownership filtered response entries",
-				zap.Int("removed", removedOwnership),
-				zap.String("method", r.Method),
-				zap.String("url", r.URL.RequestURI()),
-				zap.String("fhirRole", fhirRole),
-				zap.String("fhirID", fhirID),
-			)
-		}
-
-		mutated := filteredRBAC || filteredOwnership
-
-		finalBody := originalBody
+		finalBody := respBody
 		if mutated {
 			encoded, eerr := encodeBodyFromFiltering(bodyAfterOwnership, encForFilters)
 			if eerr != nil {
@@ -341,32 +504,7 @@ func (m *Middlewares) Bridge(target string) http.Handler {
 			finalBody = encoded
 		}
 
-		for k, v := range resp.Header {
-
-			if strings.EqualFold(k, "Content-Length") {
-				continue
-			}
-			w.Header()[k] = v
-		}
-
-		if mutated {
-			w.Header().Del("ETag")
-		}
-
-		// Value is all error messages joined with "; ", capped to maxPostFHIRHookErrorHeaderLen.
-		if len(postHookErrMsgs) > 0 {
-			joined := strings.Join(postHookErrMsgs, "; ")
-			if len(joined) > maxPostFHIRHookErrorHeaderLen {
-				joined = joined[:maxPostFHIRHookErrorHeaderLen-3] + "..."
-			}
-			w.Header().Set(headerPostFHIRHookError, joined)
-		}
-
-		w.Header().Set("Content-Length", strconv.Itoa(len(finalBody)))
-		w.WriteHeader(resp.StatusCode)
-		if _, err := w.Write(finalBody); err != nil {
-			m.Log.Warn("failed writing response body", zap.Error(err))
-		}
+		m.writeBridgeResponse(w, resp, finalBody, postHookErrMsgs, mutated)
 	})
 }
 
@@ -380,7 +518,6 @@ func determineFilteringRole(roles []string) string {
 }
 
 func (m *Middlewares) filterResponseResourceAgainstRBAC(body []byte, roles []string) ([]byte, int, error) {
-
 	shouldFilter := false
 	for _, role := range roles {
 		if strings.EqualFold(role, constvars.KonsulinRoleSuperadmin) {
@@ -392,68 +529,26 @@ func (m *Middlewares) filterResponseResourceAgainstRBAC(body []byte, roles []str
 		return body, 0, nil
 	}
 
-	var envelope struct {
-		ResourceType string `json:"resourceType"`
-	}
-	if err := json.Unmarshal(body, &envelope); err != nil {
-		// cannot inspect safely -> skip RBAC filtering
+	if !strings.EqualFold(extractResourceTypeFromJSON(body), "Bundle") {
 		return body, 0, nil
 	}
 
-	if !strings.EqualFold(envelope.ResourceType, "Bundle") {
-		return body, 0, nil
-	}
-
-	type entry struct {
-		FullURL  string          `json:"fullUrl,omitempty"`
-		Resource json.RawMessage `json:"resource"`
-		Search   map[string]any  `json:"search,omitempty"`
-	}
 	var bundle struct {
-		ResourceType string  `json:"resourceType"`
-		ID           string  `json:"id,omitempty"`
-		Type         string  `json:"type,omitempty"`
-		Total        *int    `json:"total,omitempty"`
-		Link         any     `json:"link,omitempty"`
-		Entry        []entry `json:"entry"`
+		ResourceType string        `json:"resourceType"`
+		ID           string        `json:"id,omitempty"`
+		Type         string        `json:"type,omitempty"`
+		Total        *int          `json:"total,omitempty"`
+		Link         any           `json:"link,omitempty"`
+		Entry        []BundleEntry `json:"entry"`
 	}
 
 	if err := json.Unmarshal(body, &bundle); err != nil {
 		return body, 0, nil
 	}
 
-	removed := 0
-	filtered := make([]entry, 0, len(bundle.Entry))
-	for _, e := range bundle.Entry {
-		var resEnv struct {
-			ResourceType string `json:"resourceType"`
-		}
-		if err := json.Unmarshal(e.Resource, &resEnv); err != nil {
-			filtered = append(filtered, e)
-			continue
-		}
-		if resEnv.ResourceType == "" {
-			filtered = append(filtered, e)
-			continue
-		}
-
-		allowedForAnyRole := false
-		for _, role := range roles {
-
-			if allowed(m.Enforcer, role, http.MethodGet, "/fhir/"+resEnv.ResourceType) {
-				allowedForAnyRole = true
-				break
-			}
-		}
-		if allowedForAnyRole {
-			filtered = append(filtered, e)
-		} else {
-			removed++
-		}
-	}
+	filtered, removed := filterBundleEntriesByRBAC(bundle.Entry, roles, m.Enforcer)
 
 	if removed == 0 {
-
 		return body, 0, nil
 	}
 
@@ -464,6 +559,46 @@ func (m *Middlewares) filterResponseResourceAgainstRBAC(body []byte, roles []str
 	}
 
 	return filteredJSON, removed, nil
+}
+
+// filterBundleEntriesByRBAC filters Bundle entries by RBAC permission for each resourceType.
+func filterBundleEntriesByRBAC(entries []BundleEntry, roles []string, enf *casbin.Enforcer) ([]BundleEntry, int) {
+	removed := 0
+	filtered := make([]BundleEntry, 0, len(entries))
+	for _, e := range entries {
+		resourceType := extractResourceTypeFromJSON(e.Resource)
+		if resourceType == "" {
+			filtered = append(filtered, e)
+			continue
+		}
+		if rbacAllowedAnyRole(enf, roles, resourceType) {
+			filtered = append(filtered, e)
+		} else {
+			removed++
+		}
+	}
+	return filtered, removed
+}
+
+// rbacAllowedAnyRole checks if any role can access a given FHIR resource type.
+func rbacAllowedAnyRole(enf *casbin.Enforcer, roles []string, resourceType string) bool {
+	for _, role := range roles {
+		if allowed(enf, role, http.MethodGet, "/fhir/"+resourceType) {
+			return true
+		}
+	}
+	return false
+}
+
+// extractResourceTypeFromJSON parses the resource type from a FHIR JSON body.
+func extractResourceTypeFromJSON(body []byte) string {
+	var env struct {
+		ResourceType string `json:"resourceType"`
+	}
+	if err := json.Unmarshal(body, &env); err != nil {
+		return ""
+	}
+	return env.ResourceType
 }
 
 // BundleEntry and Bundle represent a minimal FHIR Bundle envelope for filtering.
@@ -514,69 +649,75 @@ func encodeBundle(bundle *Bundle) ([]byte, error) {
 	return filteredJSON, nil
 }
 
-// ownershipContext describes what FHIR resources (Patient / Practitioner) the caller owns.
-type ownershipContext struct {
-	HasPatientRole      bool
-	HasPractitionerRole bool
-	PatientIDs          map[string]struct{}
-	PractitionerIDs     map[string]struct{}
-	PractitionerRoleIDs []string
+// ownershipContextFromRoles builds a minimal OwnershipContext from session
+// roles, the resolved FHIR role, and the caller's FHIR id. Session roles map
+// to role flags and to the Phase 1 practitioner-role codings (a Researcher
+// session holds the researcher coding; a Clinic Admin session holds the SNOMED
+// administrative-staff coding). No FHIR I/O is performed.
+func ownershipContextFromRoles(roles []string, fhirRole, fhirID string) *ownership.OwnershipContext {
+	oc := ownership.NewContext()
+	for _, r := range roles {
+		switch {
+		case strings.EqualFold(r, constvars.KonsulinRolePatient):
+			oc.HasPatientRole = true
+		case strings.EqualFold(r, constvars.KonsulinRolePractitioner):
+			oc.HasPractitionerRole = true
+			oc.HoldsPractitionerRole = true
+		case strings.EqualFold(r, constvars.KonsulinRoleSuperadmin):
+			oc.HasSuperadminRole = true
+		case strings.EqualFold(r, constvars.KonsulinRoleResearcher):
+			oc.HasPractitionerRole = true
+			oc.AddCoding(constvars.FhirPractitionerRoleSystemHL7, constvars.FhirPractitionerRoleCodeResearcher)
+		case strings.EqualFold(r, constvars.KonsulinRoleClinicAdmin):
+			oc.HasPractitionerRole = true
+			oc.AddCoding(constvars.FhirPractitionerRoleSystemSnomed, constvars.FhirPractitionerRoleCodeAdministrativeStaff)
+		}
+	}
+	if fhirRole == constvars.KonsulinRolePatient && fhirID != "" {
+		oc.AddPatientID(fhirID)
+	}
+	if fhirRole == constvars.KonsulinRolePractitioner && fhirID != "" {
+		oc.AddPractitionerID(fhirID)
+	}
+	return oc
 }
 
-// buildOwnershipContext resolves owned Patient / Practitioner IDs once per request.
+// buildOwnershipContext resolves owned Patient / Practitioner identities and
+// practitioner-role codings once per request into the ownership engine's
+// OwnershipContext. Session roles map directly to role flags and to the
+// Phase 1 practitioner-role codings (a Researcher session holds the researcher
+// coding, a Clinic Admin session holds the SNOMED administrative-staff coding).
 func (m *Middlewares) buildOwnershipContext(
 	ctx context.Context,
 	roles []string,
 	fhirRole, fhirID string,
-) *ownershipContext {
-	oc := &ownershipContext{
-		PatientIDs:          make(map[string]struct{}),
-		PractitionerIDs:     make(map[string]struct{}),
-		PractitionerRoleIDs: make([]string, 0),
+) *ownership.OwnershipContext {
+	oc := ownershipContextFromRoles(roles, fhirRole, fhirID)
+
+	// Relationship-based seeding (own Patient record via the SuperTokens
+	// identifier, PractitionerRole ids and codings) runs only for sessions that
+	// genuinely hold the Practitioner role. Researcher and Clinic Admin sessions
+	// resolve as practitioners but never inherit the practitioner↔patient
+	// relationship: their reads are code-conditioned instead.
+	if oc.HoldsPractitionerRole {
+		m.resolvePractitionerPatientIDs(ctx, oc, fhirID)
 	}
 
-	for _, r := range roles {
-		if strings.EqualFold(r, constvars.KonsulinRolePatient) {
-			oc.HasPatientRole = true
-		}
-		if strings.EqualFold(r, constvars.KonsulinRolePractitioner) {
-			oc.HasPractitionerRole = true
-		}
-	}
-
-	if fhirRole == constvars.KonsulinRolePatient && fhirID != "" {
-		oc.PatientIDs[fhirID] = struct{}{}
-	}
-	if fhirRole == constvars.KonsulinRolePractitioner && fhirID != "" {
-		oc.PractitionerIDs[fhirID] = struct{}{}
-	}
-
-	if oc.HasPractitionerRole && len(oc.PatientIDs) == 0 && fhirID != "" {
-		prac, err := m.PractitionerFhirClient.FindPractitionerByID(ctx, fhirID)
-		if err == nil && prac != nil {
-			emails := prac.GetEmailAddresses()
-			for _, em := range emails {
-				pats, err := m.PatientFhirClient.FindPatientByEmail(ctx, em)
-				if err != nil {
-					continue
-				}
-				for _, p := range pats {
-					if p.ID != "" {
-						oc.PatientIDs[p.ID] = struct{}{}
-					}
-				}
+	// Dual-identity sessions may read resources owned under either identity.
+	// Seed the non-active identity's own resource ID so GET responses pass the
+	// ownership filter under either active role. The secondary lookup runs
+	// only when the other role is actually held (single-role sessions pay
+	// nothing), and it never re-runs the practitioner related-patient/role
+	// resolution above.
+	if uid, _ := ctx.Value(keyUID).(string); uid != "" {
+		if oc.HasPractitionerRole && fhirRole == constvars.KonsulinRolePatient {
+			if pracID := m.resolveSecondaryFHIRID(ctx, uid, fhirRole); pracID != "" {
+				oc.AddPractitionerID(pracID)
 			}
 		}
-
-		practitionerRoles, err := m.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerID(ctx, fhirID)
-		if err != nil {
-			m.Log.Warn("failed to find practitioner roles by practitioner ID. skipping practitioner role population", zap.String("practitionerID", fhirID), zap.Error(err))
-			return oc
-		}
-
-		for _, pr := range practitionerRoles {
-			if pr.ID != "" {
-				oc.PractitionerRoleIDs = append(oc.PractitionerRoleIDs, pr.ID)
+		if oc.HasPatientRole && fhirRole == constvars.KonsulinRolePractitioner {
+			if patID := m.resolveSecondaryFHIRID(ctx, uid, fhirRole); patID != "" {
+				oc.AddPatientID(patID)
 			}
 		}
 	}
@@ -584,146 +725,87 @@ func (m *Middlewares) buildOwnershipContext(
 	return oc
 }
 
-// ownershipChecker is a resource-specific, last-resort ownership function.
-type ownershipChecker func(raw json.RawMessage, oc *ownershipContext) (bool, error)
-
-// resourceSpecificOwnershipCheckers holds resource-specific ownership logic.
-// add your own custom ownership checkers here if needed
-var resourceSpecificOwnershipCheckers = map[string]ownershipChecker{
-	constvars.ResourceInvoice: func(raw json.RawMessage, oc *ownershipContext) (bool, error) {
-		// Invoice is public only if ALL references point to whitelisted resource types.
-		publicResourceIfOwnedByTheseActors := map[string]struct{}{
-			constvars.ResourcePractitioner:     {},
-			constvars.ResourcePractitionerRole: {},
-			constvars.ResourceDevice:           {},
-		}
-
-		var resMap map[string]any
-		if err := json.Unmarshal(raw, &resMap); err != nil {
-			return false, err
-		}
-
-		var refs []string
-		collectReferences(resMap, &refs, 0)
-		if len(refs) == 0 {
-			return false, nil
-		}
-
-		for _, ref := range refs {
-			parts := strings.SplitN(ref, "/", 2)
-			if len(parts) == 0 {
-				return false, nil
-			}
-
-			if _, ok := publicResourceIfOwnedByTheseActors[parts[0]]; !ok {
-				// Found a non-whitelisted reference
-				return false, nil
-			}
-		}
-
-		// All references are whitelisted means the invoice is public.
-		return true, nil
-	},
+// resolvePractitionerPatientIDs populates PatientIDs and PractitionerRoleIDs
+// for a practitioner.
+// resolveOwnPatientBySupertoken seeds the caller's own Patient record — the
+// dual-identity case where the same SuperTokens user holds both Patient and
+// Practitioner identities. Matching by the FhirSupertokenSystemIdentifier (the
+// uid) is exact: one uid maps to at most one Patient record, and email
+// collisions cannot widen access.
+func (m *Middlewares) resolveOwnPatientBySupertoken(ctx context.Context, oc *ownership.OwnershipContext) {
+	uid, _ := ctx.Value(keyUID).(string)
+	if uid == "" {
+		return
+	}
+	pats, err := m.PatientFhirClient.FindPatientByIdentifier(
+		ctx,
+		fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, uid),
+	)
+	if err != nil {
+		m.Log.Warn("failed to resolve own patient by supertoken identifier; skipping patient seeding",
+			zap.String("uid", uid), zap.Error(err))
+		return
+	}
+	for _, p := range pats {
+		oc.AddPatientID(p.ID)
+	}
 }
 
-// resourceOwnedByContext centralizes ownership checks for a single FHIR resource.
-// It is used by both bundle-level and single-resource filters.
+// resolvePractitionerRoleIDs populates PractitionerRoleIDs and the
+// practitioner-role codings for the given practitioner.
+func (m *Middlewares) resolvePractitionerRoleIDs(ctx context.Context, oc *ownership.OwnershipContext, fhirID string) {
+	practitionerRoles, err := m.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerID(ctx, fhirID)
+	if err != nil {
+		m.Log.Warn("failed to find practitioner roles by practitioner ID. skipping practitioner role population", zap.String("practitionerID", fhirID), zap.Error(err))
+		return
+	}
+	for _, pr := range practitionerRoles {
+		oc.AddPractitionerRoleID(pr.ID)
+		for _, cc := range pr.Code {
+			for _, c := range cc.Coding {
+				oc.AddCoding(c.System, c.Code)
+			}
+		}
+	}
+}
+
+func (m *Middlewares) resolvePractitionerPatientIDs(ctx context.Context, oc *ownership.OwnershipContext, fhirID string) {
+	if !oc.HasPractitionerRole || len(oc.PatientIDs) > 0 || fhirID == "" {
+		return
+	}
+	m.resolveOwnPatientBySupertoken(ctx, oc)
+	m.resolvePractitionerRoleIDs(ctx, oc, fhirID)
+}
+
+// resourceOwnedByContext decides ownership for a single FHIR resource using the
+// ownership engine's declarative rules (internal/pkg/ownership). Unclassified
+// and unparseable resources deny (fail-closed flip); per-type strategies
+// (invoice) live in the engine's checker registry.
 func (m *Middlewares) resourceOwnedByContext(
 	raw json.RawMessage,
 	resourceType string,
-	id string,
-	oc *ownershipContext,
+	_ string,
+	oc *ownership.OwnershipContext,
 ) bool {
-	if utils.IsPublicResource(resourceType) {
-		return true
-	}
-
-	requiresPatient := utils.RequiresPatientOwnership(resourceType)
-	requiresPract := utils.RequiresPractitionerOwnership(resourceType)
-	if !requiresPatient && !requiresPract {
-		return true
-	}
-
-	// If a resource requires *only* patient or *only* practitioner ownership,
-	// and we lack the corresponding IDs/roles, we can't prove ownership.
-	if requiresPatient && !requiresPract && len(oc.PatientIDs) == 0 && !oc.HasPatientRole {
+	owned, err := ownership.OwnedBy(raw, resourceType, oc)
+	if err != nil {
+		m.Log.Warn("ownership check failed; denying",
+			zap.String("resourceType", resourceType),
+			zap.Error(err))
 		return false
 	}
-	if requiresPract && !requiresPatient && len(oc.PractitionerIDs) == 0 && !oc.HasPractitionerRole {
-		return false
-	}
-
-	if simpleOwnershipCheck(resourceType, id, oc) {
-		return true
-	}
-
-	if ok, err := genericOwnershipPatterns(raw, oc); err == nil && ok {
-		return true
-	} else if err != nil {
-		if m.failClosedOnErrorFromResource(resourceType, id) {
-			return false
-		}
-
-		m.Log.Warn("resorting to fail open on error from resource",
-			zap.String("resourceType", resourceType),
-			zap.String("id", id),
-			zap.Error(err),
-		)
-		return true
-	}
-
-	if checker, ok := resourceSpecificOwnershipCheckers[resourceType]; ok {
-		if ok2, err := checker(raw, oc); err == nil && ok2 {
-			return true
-		} else if err != nil {
-			if m.failClosedOnErrorFromResource(resourceType, id) {
-				return false
-			}
-
-			m.Log.Warn("resorting to fail open on error from resource",
-				zap.String("resourceType", resourceType),
-				zap.String("id", id),
-				zap.Error(err),
-			)
-		}
-	}
-
-	// If we reach here, we couldn't prove ownership.
-	return false
-}
-
-// failClosedOnErrorFromResource is a function that determines if we should fail closed on error from a resource.
-// this function behaviour comes from this discussion: https://github.com/konsulin-care/konsulin-api/pull/250#discussion_r2559068460
-// This function must be used to determine if we should fail closed on error from a resource.
-func (m *Middlewares) failClosedOnErrorFromResource(resourceType string, resourceID string) bool {
-	if resourceType == "" {
-		return true
-	}
-
-	defaultDenyResources := []string{
-		constvars.ResourcePatient,
-		constvars.ResourceCondition,
-		constvars.ResourceObservation,
-		constvars.ResourceMedicationRequest,
-		constvars.ResourceAllergyIntolerance,
-		constvars.ResourceProcedure,
-		constvars.ResourceCarePlan,
-		constvars.ResourceMedicationAdministration,
-	}
-
-	if slices.Contains(defaultDenyResources, resourceType) {
-		// if the resource is in the default deny list, we fail closed
-		m.Log.Info(fmt.Sprintf("Denying an unauthorized request to {%s/%s}", resourceType, resourceID),
-			zap.String("resourceType", resourceType),
-			zap.String("resourceID", resourceID),
-		)
-		return true
-	}
-
-	return false
+	return owned
 }
 
 // applyOwnershipFilterToBundle mutates bundle.Entry in-place, keeping only owned resources.
+// bundleEntryInfo caches resource metadata for ownership filtering.
+type bundleEntryInfo struct {
+	idx          int
+	owned        bool
+	resourceType string
+	id           string
+}
+
 func (m *Middlewares) applyOwnershipFilterToBundle(
 	ctx context.Context,
 	bundle *Bundle,
@@ -731,51 +813,29 @@ func (m *Middlewares) applyOwnershipFilterToBundle(
 	fhirRole, fhirID string,
 ) int {
 	oc := m.buildOwnershipContext(ctx, roles, fhirRole, fhirID)
+	infos, allowedRefs := m.evaluateBundleOwnership(ctx, bundle, oc)
+	return filterBundleEntries(bundle, infos, allowedRefs, oc, m.Log)
+}
 
-	// struct to cache resource info to avoid double unmarshalling
-	type entryInfo struct {
-		idx          int
-		owned        bool
-		resourceType string
-		id           string
-	}
-
-	infos := make([]entryInfo, len(bundle.Entry))
-	// allowedRefs tracks the IDs of resources that are referenced by owned resources
+// evaluateBundleOwnership determines direct ownership for each bundle entry and collects allowed refs.
+func (m *Middlewares) evaluateBundleOwnership(_ context.Context, bundle *Bundle, oc *ownership.OwnershipContext) ([]bundleEntryInfo, map[string]struct{}) {
+	infos := make([]bundleEntryInfo, len(bundle.Entry))
 	allowedRefs := make(map[string]struct{})
 
-	// Determine direct ownership and collect outgoing references from owned resources
 	for i, e := range bundle.Entry {
 		var env struct {
 			ResourceType string `json:"resourceType"`
 			ID           string `json:"id,omitempty"`
 		}
 		if err := json.Unmarshal(e.Resource, &env); err != nil || env.ResourceType == "" {
-			if m.failClosedOnErrorFromResource(env.ResourceType, env.ID) {
-				infos[i] = entryInfo{idx: i, owned: false}
-			} else {
-				infos[i] = entryInfo{idx: i, owned: true}
-			}
+			// Unparseable entry: deny (fail-closed flip).
+			infos[i] = bundleEntryInfo{idx: i, owned: false}
 			continue
 		}
-
 		owned := m.resourceOwnedByContext(e.Resource, env.ResourceType, env.ID, oc)
-		infos[i] = entryInfo{
-			idx:          i,
-			owned:        owned,
-			resourceType: env.ResourceType,
-			id:           env.ID,
-		}
+		infos[i] = bundleEntryInfo{idx: i, owned: owned, resourceType: env.ResourceType, id: env.ID}
 
-		if owned {
-			// If we own this resource, we should also be allowed to see resources it references.
-			// We scan the owned resource for all "reference" fields.
-			// however, this feature will only be available if the requester has a practitioner role
-			// as per the requirement
-			if !oc.HasPractitionerRole {
-				continue
-			}
-
+		if owned && oc.HoldsPractitionerRole {
 			var resMap map[string]any
 			if err := json.Unmarshal(e.Resource, &resMap); err == nil {
 				var refs []string
@@ -786,130 +846,35 @@ func (m *Middlewares) applyOwnershipFilterToBundle(
 			}
 		}
 	}
+	return infos, allowedRefs
+}
 
+// filterBundleEntries removes entries that are neither owned nor provably kept:
+// referenced entries survive only when OwnedBy confirms the caller owns them
+// (strict referenced-bundle-keep). Public-scope entries are already owned;
+// unknown and internal types fail closed. A co-worker's scoped resource
+// referenced by an owned resource is therefore dropped.
+func filterBundleEntries(bundle *Bundle, infos []bundleEntryInfo, allowedRefs map[string]struct{}, oc *ownership.OwnershipContext, log *zap.Logger) int {
 	removed := 0
 	filtered := make([]BundleEntry, 0, len(bundle.Entry))
-
-	// Filter based on direct ownership OR if referenced by an owned resource
 	for i, e := range bundle.Entry {
 		info := infos[i]
 		if info.owned {
 			filtered = append(filtered, e)
 			continue
 		}
-
-		// If not directly owned, check if this resource was referenced by an owned resource.
-		// We check standard "ResourceType/ID" format.
 		refKey := fmt.Sprintf("%s/%s", info.resourceType, info.id)
-
-		// Check if the resource's relative reference (ResourceType/ID) is in allowed list
-		_, isReferenced := allowedRefs[refKey]
-
-		if isReferenced {
-			filtered = append(filtered, e)
-		} else {
-			m.Log.Info("removing resource from bundle", zap.String("resourceType", info.resourceType), zap.String("resourceID", info.id))
-			removed++
+		if _, isReferenced := allowedRefs[refKey]; isReferenced {
+			if owned, err := ownership.OwnedBy(e.Resource, info.resourceType, oc); err == nil && owned {
+				filtered = append(filtered, e)
+				continue
+			}
 		}
+		log.Info("removing resource from bundle", zap.String("resourceType", info.resourceType), zap.String("resourceID", info.id))
+		removed++
 	}
-
 	bundle.Entry = filtered
 	return removed
-}
-
-// simpleOwnershipCheck performs direct ownership based on resourceType + id.
-func simpleOwnershipCheck(resourceType, id string, oc *ownershipContext) bool {
-	if id == "" {
-		return false
-	}
-
-	switch resourceType {
-	case constvars.ResourcePatient:
-		_, ok := oc.PatientIDs[id]
-		return ok
-	case constvars.ResourcePractitioner:
-		_, ok := oc.PractitionerIDs[id]
-		return ok
-	default:
-		return false
-	}
-}
-
-// genericOwnershipPatterns covers:
-// - subject.reference
-// - patient.reference
-// - recipient.reference
-// - actor.reference
-// - participant[*].actor.reference
-// - plus a full recursive "reference" walk as a safety net.
-func genericOwnershipPatterns(raw json.RawMessage, oc *ownershipContext) (bool, error) {
-	var res map[string]any
-	if err := json.Unmarshal(raw, &res); err != nil {
-		return false, err
-	}
-
-	extractRef := func(v any) string {
-		if m, ok := v.(map[string]any); ok {
-			if s, ok := m["reference"].(string); ok {
-				return s
-			}
-		}
-		return ""
-	}
-
-	// subject.reference
-	if subj, ok := res["subject"]; ok {
-		if ref := extractRef(subj); ref != "" && matchesOwnedRef(ref, oc) {
-			return true, nil
-		}
-	}
-
-	// patient.reference
-	if pat, ok := res["patient"]; ok {
-		if ref := extractRef(pat); ref != "" && matchesOwnedRef(ref, oc) {
-			return true, nil
-		}
-	}
-
-	// recipient.reference
-	if rec, ok := res["recipient"]; ok {
-		if ref := extractRef(rec); ref != "" && matchesOwnedRef(ref, oc) {
-			return true, nil
-		}
-	}
-
-	// actor.reference at root
-	if act, ok := res["actor"]; ok {
-		if ref := extractRef(act); ref != "" && matchesOwnedRef(ref, oc) {
-			return true, nil
-		}
-	}
-
-	// participant[*].actor.reference
-	if parts, ok := res["participant"]; ok {
-		if arr, ok := parts.([]any); ok {
-			for _, item := range arr {
-				if pm, ok := item.(map[string]any); ok {
-					if actor, ok := pm["actor"]; ok {
-						if ref := extractRef(actor); ref != "" && matchesOwnedRef(ref, oc) {
-							return true, nil
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// Fallback: recursive scan of all "reference" fields.
-	var refs []string
-	collectReferences(res, &refs, 0)
-	for _, ref := range refs {
-		if matchesOwnedRef(ref, oc) {
-			return true, nil
-		}
-	}
-
-	return false, nil
 }
 
 // filterSingleResourceByOwnership applies the same ownership rules as the bundle
@@ -955,71 +920,76 @@ func (m *Middlewares) filterSingleResourceByOwnership(
 	return body, true, nil
 }
 
-// matchesOwnedRef checks "Patient/{id}" and "Practitioner/{id}" against ownershipContext.
-func matchesOwnedRef(ref string, oc *ownershipContext) bool {
-	if strings.HasPrefix(ref, "Patient/") {
-		id := strings.TrimPrefix(ref, "Patient/")
-		_, ok := oc.PatientIDs[id]
-		return ok
+// authTxProxyAccess checks RBAC and query params for TxProxy access.
+func (m *Middlewares) authTxProxyAccess(w http.ResponseWriter, r *http.Request) error {
+	roles, ok := r.Context().Value(keyRoles).([]string)
+	if !ok || len(roles) == 0 {
+		utils.BuildErrorResponse(m.Log, w, exceptions.ErrTokenMissing(nil))
+		return fmt.Errorf("no roles")
 	}
-	if strings.HasPrefix(ref, "Practitioner/") {
-		id := strings.TrimPrefix(ref, "Practitioner/")
-		_, ok := oc.PractitionerIDs[id]
-		return ok
-	}
-
-	if strings.HasPrefix(ref, "PractitionerRole/") {
-		id := strings.TrimPrefix(ref, "PractitionerRole/")
-		if slices.Contains(oc.PractitionerRoleIDs, id) {
-			return true
+	for _, role := range roles {
+		if ok, _ := m.Enforcer.Enforce(role, r.Method, r.URL.Path); ok {
+			return nil
 		}
 	}
+	utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(fmt.Errorf("forbidden: role not allowed to access terminology service")))
+	return fmt.Errorf("access denied")
+}
 
-	return false
+// buildTxProxyURL builds the full URL for the terminology server proxy.
+// Uses url.URL semantics to prevent URL injection, mirroring the same
+// SSRF-hardened pattern used in doFHIRProxyRequest. Path segments are
+// properly encoded and any special characters (//, @, etc.) are handled
+// as literal path content, not host/authority separators.
+func buildTxProxyURL(target string, r *http.Request, prefix, version string) string {
+	q := r.URL.Query()
+	hasFilter := strings.TrimSpace(q.Get("filter")) != ""
+	hasCount := strings.TrimSpace(q.Get("count")) != ""
+	if !hasFilter && !hasCount {
+		return ""
+	}
+	relativePath := strings.TrimPrefix(r.URL.Path, fmt.Sprintf("/%s/%s/tx", prefix, version))
+	if relativePath == "" {
+		return target
+	}
+	if strings.Contains(relativePath, "..") {
+		return ""
+	}
+	targetURL, err := url.Parse(target)
+	if err != nil {
+		return ""
+	}
+	targetURL = targetURL.JoinPath(relativePath)
+	targetURL.RawQuery = r.URL.RawQuery
+	return targetURL.String()
 }
 
 func (m *Middlewares) TxProxy(target string) http.Handler {
+	parsedTarget, err := url.Parse(target)
+	if err != nil {
+		panic(fmt.Sprintf("invalid TxProxy target URL: %v", err))
+	}
+	client := &http.Client{
+		Timeout:       15 * time.Second,
+		Transport:     &http.Transport{MaxIdleConnsPerHost: 100},
+		CheckRedirect: allowedRedirectHost(parsedTarget.Host),
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		roles, ok := r.Context().Value(keyRoles).([]string)
-		if !ok || len(roles) == 0 {
-			utils.BuildErrorResponse(m.Log, w, exceptions.ErrTokenMissing(nil))
+		if err := m.authTxProxyAccess(w, r); err != nil {
 			return
 		}
 
-		allowAccess := false
-		path := r.URL.Path
-		method := r.Method
-
-		for _, role := range roles {
-			if ok, _ := m.Enforcer.Enforce(role, method, path); ok {
-				allowAccess = true
-				break
-			}
-		}
-
-		if !allowAccess {
-			utils.BuildErrorResponse(m.Log, w, exceptions.ErrAuthInvalidRole(fmt.Errorf("forbidden: role not allowed to access terminology service")))
-			return
-		}
-
-		// Require at least one of: filter, count query params. If none present, will return 202 without
-		// proxying the request to the terminology server.
-		// This behaviour is requested here: https://github.com/konsulin-care/konsulin-api/pull/291#issuecomment-3728978396
-		q := r.URL.Query()
-		hasFilter := strings.TrimSpace(q.Get("filter")) != ""
-		hasCount := strings.TrimSpace(q.Get("count")) != ""
-		if !hasFilter && !hasCount {
+		fullURL := buildTxProxyURL(target, r, m.InternalConfig.App.EndpointPrefix, m.InternalConfig.App.Version)
+		if fullURL == "" {
 			w.WriteHeader(http.StatusAccepted)
 			return
 		}
 
-		// Remove the /api/v1/tx prefix to get the relative path
-		// We expect the router mount to be at /api/v1/tx, so we trim that prefix
-		relativePath := strings.TrimPrefix(r.URL.Path, fmt.Sprintf("/%s/%s/tx", m.InternalConfig.App.EndpointPrefix, m.InternalConfig.App.Version))
-
-		fullURL := target + relativePath
-		if r.URL.RawQuery != "" {
-			fullURL += "?" + r.URL.RawQuery
+		// SSRF protection: verify the final URL host matches the expected target.
+		if verr := validateProxyURLHost(fullURL, target); verr != nil {
+			m.Log.Error("TxProxy URL validation failed", zap.Error(verr))
+			utils.BuildErrorResponse(m.Log, w, exceptions.ErrCreateHTTPRequest(verr))
+			return
 		}
 
 		bodyBytes, _ := r.Context().Value(constvars.CONTEXT_RAW_BODY).([]byte)
@@ -1027,78 +997,88 @@ func (m *Middlewares) TxProxy(target string) http.Handler {
 			bodyBytes = []byte{}
 		}
 
-		// Hard timeout for upstream terminology server requests.
-		// If a request/connection is ongoing for > 5 minutes, cancel it and return 504.
-		// this behaviour is requested here: https://github.com/konsulin-care/konsulin-api/pull/291#issuecomment-3728978396
-		proxyCtx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
-		defer cancel()
-
-		req, err := http.NewRequestWithContext(proxyCtx, r.Method, fullURL, bytes.NewReader(bodyBytes))
-		if err != nil {
-			utils.BuildErrorResponse(m.Log, w, exceptions.ErrCreateHTTPRequest(err))
-			return
-		}
-
-		req.Header.Set("Accept", "application/fhir+json")
-
-		if contentType := r.Header.Get("Content-Type"); contentType != "" {
-			req.Header.Set("Content-Type", contentType)
-		}
-
-		resp, err := m.HTTPClient.Do(req)
-		if err != nil {
-			// Return 504 on deadline exceeded.
-			if errors.Is(err, context.DeadlineExceeded) || errors.Is(proxyCtx.Err(), context.DeadlineExceeded) {
-				utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerDeadlineExceeded(err))
-				return
-			}
-			utils.BuildErrorResponse(m.Log, w, exceptions.ErrSendHTTPRequest(err))
-			return
-		}
-		defer resp.Body.Close()
-
-		for k, v := range resp.Header {
-			if strings.HasPrefix(k, "Access-Control-") {
-				continue
-			}
-			if k == "Content-Length" || k == "Connection" {
-				continue
-			}
-
-			for _, val := range v {
-				w.Header().Add(k, val)
-			}
-		}
-
-		w.WriteHeader(resp.StatusCode)
-		_, err = io.Copy(w, resp.Body)
-		if err != nil {
-			m.Log.Warn("failed to copy response body", zap.Error(err))
-		}
+		m.doTxProxyRequest(w, r, fullURL, bodyBytes, client)
 	})
 }
 
-// collectReferences walks arbitrary JSON and collects all "reference" string fields.
-func collectReferences(v any, out *[]string, depth int) {
-	// prevent infinite recursion. 30 is arbitrary.
-	if depth > 30 {
+// doTxProxyRequest executes a proxy request to the terminology server and streams the response.
+func (m *Middlewares) doTxProxyRequest(w http.ResponseWriter, r *http.Request, fullURL string, bodyBytes []byte, client *http.Client) {
+	proxyCtx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	defer cancel()
+
+	// #nosec — SSRF-safe: fullURL host is validated by validateProxyURLHost
+	// (called in TxProxy before doTxProxyRequest) and URL is constructed via
+	// buildTxProxyURL using url.URL.JoinPath which makes the host immutable.
+	// allowedRedirectHost (CheckRedirect) adds transport-level protection.
+	req, err := http.NewRequestWithContext(proxyCtx, r.Method, fullURL, bytes.NewReader(bodyBytes))
+	if err != nil {
+		utils.BuildErrorResponse(m.Log, w, exceptions.ErrCreateHTTPRequest(err))
 		return
 	}
 
-	switch t := v.(type) {
-	case map[string]any:
-		for k, vv := range t {
-			if k == "reference" {
-				if s, ok := vv.(string); ok {
-					*out = append(*out, s)
-				}
-			} else {
-				collectReferences(vv, out, depth+1)
-			}
+	req.Header.Set("Accept", "application/fhir+json")
+	if contentType := r.Header.Get("Content-Type"); contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(proxyCtx.Err(), context.DeadlineExceeded) {
+			utils.BuildErrorResponse(m.Log, w, exceptions.ErrServerDeadlineExceeded(err))
+			return
 		}
-	case []any:
-		for _, vv := range t {
+		utils.BuildErrorResponse(m.Log, w, exceptions.ErrSendHTTPRequest(err))
+		return
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	for k, v := range resp.Header {
+		if strings.HasPrefix(k, "Access-Control-") || k == "Content-Length" || k == "Connection" {
+			continue
+		}
+		for _, val := range v {
+			w.Header().Add(k, val)
+		}
+	}
+
+	w.WriteHeader(resp.StatusCode)
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		m.Log.Warn("failed to copy response body", zap.Error(err))
+	}
+}
+
+// collectReferences walks arbitrary JSON and collects all "reference" string fields.
+// collectMapReferences walks a JSON object and collects "reference" fields into out.
+func collectMapReferences(m map[string]any, out *[]string, depth int) {
+	if depth > 30 {
+		return
+	}
+	for k, vv := range m {
+		if k == "reference" {
+			if s, ok := vv.(string); ok {
+				*out = append(*out, s)
+			}
+		} else {
 			collectReferences(vv, out, depth+1)
 		}
+	}
+}
+
+// collectArrayReferences walks a JSON array and collects "reference" fields into out.
+func collectArrayReferences(arr []any, out *[]string, depth int) {
+	if depth > 30 {
+		return
+	}
+	for _, vv := range arr {
+		collectReferences(vv, out, depth+1)
+	}
+}
+
+func collectReferences(v any, out *[]string, depth int) {
+	switch t := v.(type) {
+	case map[string]any:
+		collectMapReferences(t, out, depth)
+	case []any:
+		collectArrayReferences(t, out, depth)
 	}
 }

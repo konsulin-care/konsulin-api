@@ -1,0 +1,83 @@
+info:
+  name: Get Async Service Result
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{process.env.APP_BASE_URL}}/api/v1/service-request/{{serviceId}}/result"
+  headers:
+    - name: content-type
+      value: application/json
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "500"
+    - expression: res.body.success
+      operator: eq
+      value: "false"
+    - expression: res.body.status_code
+      operator: eq
+      value: "500"
+    - expression: res.responseTime
+      operator: lt
+      value: "10000"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples:
+  - name: Success
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/service-request/sr_abc123/result"
+      method: GET
+      headers:
+        - name: content-type
+          value: application/json
+    response:
+      status: 200
+      body:
+        type: json
+        data: '{"success":true,"message":"success","data":{"resourceType":"ServiceRequest","status":"completed","intent":"order","instantiatesUri":["https://example.com/hooks/my-service"],"subject":{"reference":"Patient/123"},"requester":{"reference":"PractitionerRole/456"},"authoredOn":"2026-07-09T10:30:00Z","note":"Result processed"}}'
+  - name: Missing id
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/service-request//result"
+      method: GET
+      headers:
+        - name: content-type
+          value: application/json
+    response:
+      status: 400
+      body:
+        type: json
+        data: '{"success":false,"message":"id is required","status_code":400}'
+  - name: Not found
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/service-request/unknown/result"
+      method: GET
+      headers:
+        - name: content-type
+          value: application/json
+    response:
+      status: 404
+      body:
+        type: json
+        data: '{"success":false,"message":"Not found","status_code":404}'
+
+docs: |
+  Retrieves the stored result of an asynchronous service request by its identifier.
+
+  ### Path Parameters
+  - `id`: (required) the async service request identifier.
+
+  ### Responses
+  - **200 OK**: Result found. Body: `{ "success": true, "message": "success", "data": { "resourceType": "ServiceRequest", "status": "completed", "intent": "order", "instantiatesUri": [...], "subject": {...}, "requester": {...}, "authoredOn": "...", "note": "..." } }`.
+  - **400 Bad Request**: Missing `id` parameter. Body: `{ "success": false, "message": "id is required", "status_code": 400 }`.
+  - **404 Not Found**: No result found for the given ID. Body: `{ "success": false, "message": "Not found", "status_code": 404 }`.
+  - **405 Method Not Allowed**: Non-GET request. Body: `{ "success": false, "message": "Only GET is allowed", "status_code": 405 }`.
+  - **500 Internal Server Error**: Retrieval failure. Body: `{ "success": false, "message": "...", "status_code": 500 }`.

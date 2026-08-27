@@ -1,0 +1,83 @@
+info:
+  name: Seed Healthcare Service
+  type: http
+  seq: 3
+  tags: [clinic, utility]
+
+http:
+  method: PUT
+  url: "{{process.env.BLAZE_BASE_URL}}/fhir/HealthcareService/seed-hs"
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "HealthcareService",
+        "id": "seed-hs",
+        "active": true,
+        "providedBy": {
+          "reference": "Organization/{{organizationId}}"
+        },
+        "location": [
+          {
+            "reference": "Location/{{locationId}}"
+          }
+        ],
+        "name": "Konsulin Tele-Consultation",
+        "type": [
+          {
+            "coding": [
+              {
+                "system": "http://snomed.info/sct",
+                "code": "394602003",
+                "display": "General practice"
+              }
+            ],
+            "text": "Consultation"
+          }
+        ],
+        "extension": [
+          {
+            "url": "https://konsulin.care/StructureDefinition/appointment-duration",
+            "valueDuration": {
+              "value": 30,
+              "unit": "minutes",
+              "code": "min"
+            }
+          },
+          {
+            "url": "https://konsulin.care/StructureDefinition/service-fee",
+            "valueMoney": {
+              "value": 150000,
+              "currency": "IDR"
+            }
+          }
+        ]
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        bru.setVar("healthcareServiceId", body.id);
+        bru.runner.setNextRequest("Seed Practitioner Role");
+  assertions:
+    - expression: res.status
+      operator: gte
+      value: "200"
+    - expression: res.status
+      operator: lte
+      value: "201"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Seeds the HealthcareService (fixed id `seed-hs`, idempotent PUT) for the
+  clinic. Its `appointment-duration` extension (30 minutes) is what clients use
+  to size slots in the dynamic availability model; the fee extension feeds the
+  payment flow. Captures `healthcareServiceId` (equals seed-hs) and chains to
+  "Seed Practitioner Role". Direct Blaze PUT.

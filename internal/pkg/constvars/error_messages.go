@@ -1,6 +1,6 @@
 package constvars
 
-// Validation messages mapper
+// CustomValidationErrorMessages maps validation rule names to human-readable error messages.
 var CustomValidationErrorMessages = map[string]string{
 	"required":             "is required",
 	"username":             "must only contain letters, numbers, underscores, or dots",
@@ -37,7 +37,7 @@ var CustomValidationErrorMessages = map[string]string{
 	"not_past_time":        "the time must not be in the past for today's date.",
 }
 
-// Tags that require parameter substitution
+// TagsWithParams identifies validation tags that require parameter substitution.
 var TagsWithParams = map[string]bool{
 	"min":                  true,
 	"max":                  true,
@@ -117,6 +117,9 @@ const (
 	ErrDevWhatsAppNumberAlreadyExists  = "whatsapp number already exists in database"
 	ErrDevUserNotExists                = "user not exists in our system"
 
+	// Payment messages
+	ErrDevFailedToFetchPractitionerRoles = "failed to fetch practitioner roles"
+
 	// Spark messages
 	ErrDevSparkCreateFHIRResource                 = "failed to create FHIR %s from `BLAZE` service"
 	ErrDevSparkUpdateFHIRResource                 = "failed to update FHIR %s from `BLAZE` service"
@@ -135,7 +138,6 @@ const (
 
 	// Authentication messages
 	ErrDevAuthSigningMethod             = "unexpected signing method"
-	ErrDevAuthTokenInvalidOrExpired     = "invalid or expired token"
 	ErrDevAuthTokenExpired              = "token lifetime already exceed our internal app config"
 	ErrDevAuthTokenMissing              = "token missing"
 	ErrDevAuthSessionTokenMissing       = "session token missing (Authorization header required)"
@@ -147,7 +149,6 @@ const (
 	ErrDevAuthRoleNotExists             = "role doesn't exist on the system"
 	ErrDevAuthWhatsAppOTPExpired        = "whatsapp otp lifetime already exceed our internal app config"
 	ErrDevAuthWhatsAppOTPInvalid        = "whatsapp otp given by user doesn't match with otp in database"
-	ErrDevAuthSessionDataIsMissing      = "session data not found in context"
 	ErrDevAuthRequestIDIsMissing        = "requestID not found in context"
 
 	// Database messages
@@ -187,7 +188,6 @@ const (
 	ErrDevServerBadRequest       = "bad request"
 	ErrDevServerNotFound         = "resource not found"
 	ErrDevServerDeadlineExceeded = "deadline exceeded"
-	ErrDevServerParseSessionData = "failed to parse session data"
 
 	// File handling messages
 	ErrDevFileUploadSuccess = "file uploaded successfully"

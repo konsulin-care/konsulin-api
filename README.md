@@ -22,7 +22,7 @@ The backend aims for a **Clean Architecture** pattern with **API Gateway** desig
 - **FHIR Integration**: Blaze FHIR server for healthcare data storage (FHIR R4 compliant)
 - **Authentication**: SuperTokens with magic link authentication
 - **Authorization**: Role-based access control (RBAC) using Casbin
-- **Payment Processing**: OY! Indonesia payment gateway integration
+- **Payment Processing**: Xendit payment gateway integration
 - **Session Management**: Redis-based session storage
 
 ## Features
@@ -37,9 +37,10 @@ The backend aims for a **Clean Architecture** pattern with **API Gateway** desig
 ## Technology Stack
 
 ### Core Technologies
-- **Language**: Go 1.22.3
+- **Language**: Go 1.26 (managed via mise)
 - **HTTP Router**: Chi v5
 - **Architecture**: Clean Architecture with API Gateway pattern
+- **Toolchain**: [mise](https://mise.jdx.dev) for reproducible, version-pinned tooling (Go, golangci-lint, pre-commit)
 
 ### Data Storage
 - **Primary Data**: Blaze FHIR Server (FHIR R4 compliant)
@@ -53,12 +54,12 @@ The backend aims for a **Clean Architecture** pattern with **API Gateway** desig
 - **API Keys**: Custom implementation for superadmin access
 
 ### External Integrations
-- **Payment Gateway**: OY! Indonesia
+- **Payment Gateway**: Xendit
 - **Messaging**: RabbitMQ (email, WhatsApp notifications)
 
 ## Prerequisites
 
-- Go 1.22.3 or later
+- [mise](https://mise.jdx.dev) — multi-language tool version manager
 - Docker & Docker Compose
 - Git
 
@@ -70,23 +71,53 @@ git clone https://github.com/yourusername/be-konsulin.git
 cd be-konsulin
 ```
 
-### 2. Install Dependencies
+### 2. Install Mise-Managed Tools
+All tool versions are pinned in `.mise.toml` for reproducible environments. Run:
+```bash
+mise install
+```
+This installs Go, golangci-lint, and pre-commit at their pinned versions.
+
+### 3. Install Pre-Commit Hooks
+Quality gates run automatically before every commit:
+```bash
+pre-commit install
+```
+Hooks enforce:
+- **golangci-lint**: gocognit (complexity <15), goconst (duplicate literals), dupl (code duplication), govet, staticcheck, errcheck
+- **gofumpt**: strict Go formatting
+- **go mod tidy**: prevents dependency drift
+- **go test**: runs unit tests on changed modules
+- **pre-commit-hooks**: file size, YAML, EOF, whitespace checks
+
+### 4. Install Go Dependencies
 ```bash
 go mod tidy
 ```
 
-### 3. Configure Environment
+### 5. Configure Environment
 Create a `.env` file in the root directory using `.env.example` as a template:
 ```bash
 cp .env.example .env
 ```
 
+`.env` is the **single source of truth**: it feeds both the API Gateway (loaded at startup via `godotenv`) and `docker compose` (via variable interpolation with sane fallbacks).
+
+`.env.example` documents every variable in four sections:
+
+1. **MINIMUM — copy & run** — the only values needed for local development. The Redis/RabbitMQ credentials are pre-filled to match `docker-compose.yml`; generate your own `APP_JWT_SECRET` and `SUPERADMIN_API_KEY`.
+2. **REQUIRED IN NON-LOCAL** — enforced at boot by `validateNonDevConfig`/`validateNonDevDriverConfig`. Missing any of these outside `local`/`dev`/`test` environments stops the server.
+3. **FUNCTIONALLY REQUIRED** — not boot-validated, but payment callbacks, the webhook service, and dashboard provisioning break without them.
+4. **OPTIONAL** — commented out, each with its baked-in default; uncomment to override.
+
+`APP_ENV` in the MINIMUM section selects the environment. Set it to something other than `local`/`dev`/`development`/`test` and the Section 2 variables (plus the REDIS/RabbitMQ credentials) become mandatory at startup.
+
 **Ask fellow Engineers for .env credentials**
 
-### 4. Start Development Services
+### 6. Start Development Services
 Start the required services (PostgreSQL for SuperTokens, Redis, Blaze FHIR server, SuperTokens):
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 This will start:
@@ -95,7 +126,7 @@ This will start:
 - `blaze-core-konsulin`: Blaze FHIR server for healthcare data (port 8080)
 - `supertokens-core-konsulin`: SuperTokens authentication service (port 3567)
 
-### 5. Run the Backend Service
+### 7. Run the Backend Service
 ```bash
 go run cmd/http/main.go
 ```
@@ -112,7 +143,7 @@ Client Request → API Gateway → Authentication → Authorization → Service 
 ### Route Patterns
 - `/auth/*` - Authentication and user management (SuperTokens)
 - `/fhir/*` - FHIR resources (proxied to Blaze server with RBAC filtering)
-- `/pay/*` - Payment processing (OY! Indonesia integration)
+- `/pay/*` - Payment processing (Xendit integration)
 - `/hook/*` - Webhook handling (internal and external)
 
 ### Authentication & Authorization
@@ -129,7 +160,7 @@ For detailed role permissions, see [`resources/rbac_policy.csv`](resources/rbac_
 
 ## Payment Services
 
-The platform supports service-based pricing through OY! Indonesia payment gateway:
+The platform supports service-based pricing through the Xendit payment gateway:
 
 ### Available Services
 - `analyze`: Patient data analysis (min quantity: 10)
@@ -149,7 +180,7 @@ The platform supports service-based pricing through OY! Indonesia payment gatewa
 {
   "total_item": 3,
   "service": "analyze",
-  "body": { 
+  "body": {
     "email": "user@email.com",
     "additional_data": "..."
   }

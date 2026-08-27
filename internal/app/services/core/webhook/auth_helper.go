@@ -22,51 +22,58 @@ type ExtractAuthContextOutput struct {
 	IsSuperadmin bool
 }
 
-// extractAuthContext reads values set by APIKeyAuth and SessionOptional middlewares.
-// It does not perform any I/O and is safe to call in controllers/handlers.
-func (u *usecase) extractAuthContext(ctx context.Context) *ExtractAuthContextOutput {
-	out := &ExtractAuthContextOutput{
-		UID:   "",
-		Roles: []string{},
-	}
-
-	if v := ctx.Value("api_key_auth"); v != nil {
+// extractAPIKeyAuth reads the API key auth flag from context.
+func extractAPIKeyAuth(ctx context.Context) bool {
+	if v := ctx.Value(constvars.CONTEXT_API_KEY_AUTH); v != nil {
 		if b, ok := v.(bool); ok {
-			out.IsAPIKey = b
+			return b
 		}
 	}
+	return false
+}
 
-	if v := ctx.Value("uid"); v != nil {
+// extractUID reads the user ID from context.
+func extractUID(ctx context.Context) string {
+	if v := ctx.Value(constvars.CONTEXT_UID); v != nil {
 		if s, ok := v.(string); ok {
-			out.UID = s
+			return s
 		}
 	}
+	return ""
+}
 
-	if v := ctx.Value("roles"); v != nil {
-		if list, ok := v.([]string); ok {
-			out.Roles = list
-		} else if anyList, ok := v.([]interface{}); ok {
-			roles := make([]string, 0, len(anyList))
-			for _, it := range anyList {
-				if s, ok := it.(string); ok {
-					roles = append(roles, s)
-				}
+// extractRoles reads the FHIR roles from context, supporting both []string and []interface{}.
+func extractRoles(ctx context.Context) []string {
+	v := ctx.Value(constvars.CONTEXT_FHIR_ROLE)
+	if v == nil {
+		return nil
+	}
+	if list, ok := v.([]string); ok {
+		return list
+	}
+	if anyList, ok := v.([]interface{}); ok {
+		roles := make([]string, 0, len(anyList))
+		for _, it := range anyList {
+			if s, ok := it.(string); ok {
+				roles = append(roles, s)
 			}
-			out.Roles = roles
 		}
+		return roles
 	}
+	return nil
+}
 
-	for _, r := range out.Roles {
+// extractIsSuperadmin returns true if any role is superadmin or API key auth is active.
+func extractIsSuperadmin(ctx context.Context) bool {
+	if extractAPIKeyAuth(ctx) {
+		return true
+	}
+	for _, r := range extractRoles(ctx) {
 		if strings.EqualFold(r, constvars.KonsulinRoleSuperadmin) {
-			out.IsSuperadmin = true
-			break
+			return true
 		}
 	}
-	if out.IsAPIKey {
-		out.IsSuperadmin = true
-	}
-
-	return out
+	return false
 }
 
 // evaluateAuthInput encapsulates inputs needed to evaluate webhook auth.
@@ -77,69 +84,77 @@ type evaluateAuthInput struct {
 
 // evaluateWebhookAuth returns nil if authorized. It supports forwarded JWT header or falls back to API key/session.
 func (u *usecase) evaluateWebhookAuth(ctx context.Context, in *evaluateAuthInput) error {
-	serviceName := in.ServiceName
-	forwardedJWT := in.ForwardedJWT
-	jwtMgr := u.jwtManager
-	log := u.log
-	paidOnlyServicesCSV := u.cfg.Webhook.PaidOnlyServices
-
-	// Normalize paid-only services
-	mustBeForwarded := false
-	if s := strings.TrimSpace(paidOnlyServicesCSV); s != "" {
-		for _, it := range strings.Split(s, ",") {
-			if strings.EqualFold(strings.TrimSpace(it), serviceName) {
-				mustBeForwarded = true
-				break
-			}
-		}
-	}
-	// Forwarded JWT path
-	if strings.TrimSpace(forwardedJWT) != "" {
-		out, err := jwtMgr.VerifyToken(ctx, &jwtmanager.VerifyTokenInput{Token: forwardedJWT})
-		requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-		if err != nil || out == nil || !out.Valid {
-			if log != nil {
-				log.Info("webhook auth: forwarded JWT invalid",
-					zap.String(constvars.LoggingRequestIDKey, requestID),
-				)
-			}
-			return exceptions.BuildNewCustomError(nil, constvars.StatusUnauthorized, "Not authorized", "UNAUTHORIZED_WEBHOOK_CALLER")
-		}
-		// Enforce expected subject for payment-originated requests
-		if sub, ok := out.Claims["sub"].(string); !ok || !strings.EqualFold(sub, PAYMENT_SERVICE_SUB) {
-			if log != nil {
-				log.Info("webhook auth: forwarded JWT subject mismatch",
-					zap.String(constvars.LoggingRequestIDKey, requestID),
-				)
-			}
-			return exceptions.BuildNewCustomError(nil, constvars.StatusUnauthorized, "Not authorized", "INVALID_AUTH_CLAIM")
-		}
-		if log != nil {
-			log.Info("webhook auth: forwarded JWT valid")
-		}
-		return nil
+	if strings.TrimSpace(in.ForwardedJWT) != "" {
+		return u.verifyForwardedJWT(ctx, in.ForwardedJWT)
 	}
 
-	// If service must be forwarded-only and no header provided
-	if mustBeForwarded {
+	if isPaidOnlyService(in.ServiceName, u.cfg.Webhook.PaidOnlyServices) {
 		return exceptions.BuildNewCustomError(nil, constvars.StatusPaymentRequired, "payment required to access this service", "PAYMENT_REQUIRED_FOR_SERVICE")
 	}
 
-	// Fallback to API key / session rules
-	info := u.extractAuthContext(ctx)
-	if info == nil {
+	return evaluateFallbackAuth(ctx)
+}
+
+// isPaidOnlyService checks whether the given service requires forwarded JWT auth.
+func isPaidOnlyService(serviceName, paidOnlyServicesCSV string) bool {
+	if s := strings.TrimSpace(paidOnlyServicesCSV); s != "" {
+		for _, it := range strings.Split(s, ",") {
+			if strings.EqualFold(strings.TrimSpace(it), serviceName) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// verifyForwardedJWT validates a forwarded JWT from payment service.
+func (u *usecase) verifyForwardedJWT(ctx context.Context, token string) error {
+	out, err := u.jwtManager.VerifyToken(ctx, &jwtmanager.VerifyTokenInput{Token: token})
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	if err != nil || out == nil || !out.Valid {
+		u.logger(ctx).Info("webhook auth: forwarded JWT invalid",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
 		return exceptions.BuildNewCustomError(nil, constvars.StatusUnauthorized, "Not authorized", "UNAUTHORIZED_WEBHOOK_CALLER")
 	}
+	if sub, ok := out.Claims["sub"].(string); !ok || !strings.EqualFold(sub, PAYMENT_SERVICE_SUB) {
+		u.logger(ctx).Info("webhook auth: forwarded JWT subject mismatch",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+		)
+		return exceptions.BuildNewCustomError(nil, constvars.StatusUnauthorized, "Not authorized", "INVALID_AUTH_CLAIM")
+	}
+	u.logger(ctx).Info("webhook auth: forwarded JWT valid")
+	return nil
+}
+
+// evaluateFallbackAuth checks API key, superadmin, or any authenticated uid.
+// Anonymous users (empty UID or "anonymous") are denied.
+func evaluateFallbackAuth(ctx context.Context) error {
+	info := extractAuthContextOutput(ctx)
 	if info.IsAPIKey || info.IsSuperadmin {
 		return nil
 	}
-	// Allow anonymous users as well (uid empty or "anonymous")
-	if info.UID == "" || strings.EqualFold(info.UID, "anonymous") {
-		return nil
-	}
-	// Any authenticated uid is allowed
-	if info.UID != "" {
+	// Allow any authenticated uid; deny anonymous users
+	if info.UID != "" && !strings.EqualFold(info.UID, "anonymous") {
 		return nil
 	}
 	return exceptions.BuildNewCustomError(nil, constvars.StatusUnauthorized, "Not authorized", "UNAUTHORIZED_WEBHOOK_CALLER")
+}
+
+// extractAuthContextOutput reads auth values from context into a struct.
+func extractAuthContextOutput(ctx context.Context) *ExtractAuthContextOutput {
+	return &ExtractAuthContextOutput{
+		IsAPIKey:     extractAPIKeyAuth(ctx),
+		UID:          extractUID(ctx),
+		Roles:        extractRoles(ctx),
+		IsSuperadmin: extractIsSuperadmin(ctx),
+	}
+}
+
+// logger returns the usecase logger or a no-op if nil.
+func (u *usecase) logger(_ context.Context) *zap.Logger {
+	if u.log != nil {
+		return u.log
+	}
+	return zap.NewNop()
 }

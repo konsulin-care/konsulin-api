@@ -1,19 +1,49 @@
-name: PR Build Check (Docker)
+name: PR Build Check
 
 on:
   pull_request:
     branches: [develop]
+
+permissions:
+  contents: read
+  pull-requests: read
 
 env:
   IMAGE_NAMESPACE: konsulin
   IMAGE_NAME: konsulin-api
 
 jobs:
+  lint:
+    name: Quality Gate (golangci-lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a
+        with:
+          version: v2.12.2
+          only-new-issues: true
+          args: --timeout=5m
+
+  test:
+    name: Go Test
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - run: go test -race -v ./...
+
   build-docker:
     name: Build Docker Image
     runs-on: ubuntu-latest
+    needs: [lint, test]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Get Short SHA
         run: echo "SHORT_SHA=${GITHUB_SHA::8}" >> $GITHUB_ENV

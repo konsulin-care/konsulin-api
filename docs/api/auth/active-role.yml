@@ -1,0 +1,125 @@
+info:
+  name: Set Active Role
+  type: http
+  seq: 6
+  tags: [auth]
+
+http:
+  method: POST
+  url: "{{process.env.APP_BASE_URL}}/api/v1/auth/active-role"
+  headers:
+    - name: content-type
+      value: application/json
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  body:
+    type: json
+    data: |-
+      {
+        "role": "{{activeRole}}"
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        // The active-role merge regenerates the access token; the response
+        // carries it in the st-access-token / Front-Token headers. Capture it
+        // so later requests see the new active role.
+        var newToken = res.getHeader("st-access-token") || res.getHeader("Front-Token") || res.headers["st-access-token"];
+        if (newToken) {
+          bru.setVar("sessionToken", newToken);
+        }
+        bru.runner.setNextRequest("Seed Organization");
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.success
+      operator: eq
+      value: "true"
+    - expression: res.body.message
+      operator: eq
+      value: active role set
+    - expression: res.responseTime
+      operator: lt
+      value: "5000"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples:
+  - name: Success
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/auth/active-role"
+      method: POST
+      headers:
+        - name: content-type
+          value: application/json
+        - name: Authorization
+          value: Bearer {{sessionToken}}
+      body:
+        type: json
+        data: '{"role":"Patient"}'
+    response:
+      status: 200
+      body:
+        type: json
+        data: '{"success":true,"message":"active role set"}'
+  - name: Missing role
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/auth/active-role"
+      method: POST
+      headers:
+        - name: content-type
+          value: application/json
+        - name: Authorization
+          value: Bearer {{sessionToken}}
+      body:
+        type: json
+        data: "{}"
+    response:
+      status: 400
+      body:
+        type: json
+        data: '{"success":false,"message":"role is required","status_code":400}'
+  - name: Unauthorized
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/auth/active-role"
+      method: POST
+      headers:
+        - name: content-type
+          value: application/json
+      body:
+        type: json
+        data: '{"role":"Patient"}'
+    response:
+      status: 401
+      body:
+        type: json
+        data: "{\"success\":false,\"message\":\"you can't access this feature\",\"status_code\":401}"
+
+docs: |
+  Sets the active role in the SuperTokens session's access token payload.
+  The role value is variable-driven (`{{activeRole}}`), so this single request
+  serves every journey. Journey requests set `activeRole` in their pre-request
+  scripts and invoke the "Switch Active Role" helper via `runNext`; this request
+  itself is the terminal step of the plain auth chain.
+
+  Requires a valid SuperTokens session via `Authorization: Bearer {{sessionToken}}`.
+
+  On completion, chains to "Seed Organization" to start the FHIR journey. The
+  response carries the regenerated access token (st-access-token / Front-Token
+  headers), which is captured as `sessionToken` so subsequent requests observe
+  the new active role.
+
+  ### Request Fields
+  - `role`: (required) the role to activate. Must be assigned to the user.
+
+  ### Responses
+  - **200 OK**: Active role set. Body: `{ "success": true, "message": "active role set" }`.
+  - **400 Bad Request**: Missing/invalid role, role not assigned, or could not verify roles. Body: `{ "success": false, "message": "...", "status_code": 400 }`.
+  - **500 Internal Server Error**: Session not found or access token merge failed. Body: `{ "success": false, "message": "...", "status_code": 500 }`.

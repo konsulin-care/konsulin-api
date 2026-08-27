@@ -1,0 +1,150 @@
+info:
+  name: Xendit Invoice Callback
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{process.env.APP_BASE_URL}}/api/v1/pay/callback/xendit/invoice"
+  headers:
+    - name: content-type
+      value: application/json
+    - name: X-Callback-Token
+      value: "{{process.env.XENDIT_CALLBACK_TOKEN}}"
+    - name: Webhook-Id
+      value: wh_abc123
+  body:
+    type: json
+    data: |-
+      {
+        "id": "inv_abc123",
+        "external_id": "appointment:{{slotId}}:{{practitionerRoleId}}:{{patientId}}:{{invoiceId}}:{{healthcareServiceId}}:{{appointmentId}}",
+        "status": "SETTLED",
+        "amount": 50000,
+        "currency": "IDR",
+        "created": "2026-07-09T10:00:00Z",
+        "updated": "2026-07-09T10:05:00Z"
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Patient: Verify Appointment Booking");'
+      # NOTE: not part of the linear suite chain — nothing hands control here.
+      # A PAID/SETTLED callback creates PaymentNotice/PaymentReconciliation/
+      # slot-adjustment records that a doc-driven teardown cannot sweep, so the
+      # suite verifies the reservation state in-band instead and this request
+      # stays as a manually-runnable reference (see docs).
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples:
+  - name: Payment succeeded
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/pay/callback/xendit/invoice"
+      method: POST
+      headers:
+        - name: content-type
+          value: application/json
+        - name: X-Callback-Token
+          value: "{{process.env.XENDIT_CALLBACK_TOKEN}}"
+        - name: Webhook-Id
+          value: wh_abc123
+      body:
+        type: json
+        data: '{"id":"inv_abc123","external_id":"appointment:{{slotId}}:{{practitionerRoleId}}:{{patientId}}:{{invoiceId}}:{{healthcareServiceId}}:{{appointmentId}}","status":"PAID","amount":50000,"currency":"IDR"}'
+    response:
+      status: 200
+      body:
+        type: json
+        data: '{"success":true,"message":"Xendit invoice callback processed successfully","data":"PAID"}'
+  - name: Payment expired
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/pay/callback/xendit/invoice"
+      method: POST
+      headers:
+        - name: content-type
+          value: application/json
+        - name: X-Callback-Token
+          value: "{{process.env.XENDIT_CALLBACK_TOKEN}}"
+        - name: Webhook-Id
+          value: wh_def456
+      body:
+        type: json
+        data: '{"id":"inv_def456","external_id":"appointment:{{slotId}}:{{practitionerRoleId}}:{{patientId}}:{{invoiceId}}:{{healthcareServiceId}}:{{appointmentId}}","status":"EXPIRED","amount":50000,"currency":"IDR"}'
+    response:
+      status: 200
+      body:
+        type: json
+        data: '{"success":true,"message":"Xendit invoice callback processed successfully","data":"EXPIRED"}'
+  - name: Missing callback token
+    request:
+      url: "{{process.env.BASE_URL}}/api/v1/pay/callback/xendit/invoice"
+      method: POST
+      headers:
+        - name: content-type
+          value: application/json
+        - name: Webhook-Id
+          value: wh_ghi789
+      body:
+        type: json
+        data: '{"id":"inv_ghi789","external_id":"appointment:{{slotId}}:{{practitionerRoleId}}:{{patientId}}:{{invoiceId}}:{{healthcareServiceId}}:{{appointmentId}}","status":"PAID"}'
+    response:
+      status: 400
+      body:
+        type: json
+        data: '{"success":false,"message":"Missing x-callback-token header","status_code":400}'
+
+docs: |
+  Processes Xendit invoice webhook callbacks. This endpoint is called by Xendit when an invoice status changes (PAID, EXPIRED, SETTLED).
+
+  ### Required Headers
+  - `X-Callback-Token`: Xendit callback verification token.
+  - `Webhook-Id`: Xendit webhook event identifier.
+
+  ### Request Body
+  - `id`: Xendit invoice ID.
+  - `external_id`: partner transaction ID. For appointment payments it is the
+    composite key the backend generated when creating the invoice and parses on
+    callback (`parseAppointmentExternalID`):
+
+    ```
+    appointment:{slotId}:{practitionerRoleId}:{patientId}:{invoiceId}:{healthcareServiceId}:{appointmentId}
+    ```
+
+    Seven colon-separated bare FHIR id segments (no resource-type prefixes,
+    matching how the ids were captured by the seeds/booking steps), prefixed by
+    the service marker `appointment` that routes the callback to the
+    appointment payment handler. On PAID/SETTLED the backend flips the
+    appointment to `booked` and the slot to `busy-unavailable` in one
+    transaction bundle; on EXPIRED it deletes the slot, invoice, and
+    appointment atomically.
+  - `status`: One of `PENDING`, `PAID`, `EXPIRED`, `SETTLED`.
+  - `amount`, `currency`, `created`, `updated`: optional metadata.
+
+  ### Chain behavior
+  This request is NOT part of the linear suite chain: posting a `PAID`
+  callback triggers a live Xendit re-verification (`verifyPaymentStatus`
+  fetches the invoice by id), and a doc-driven chain cannot satisfy that
+  without a real paid invoice. `SETTLED` is routed identically to PAID
+  (appointment `pending` → `booked`, slot → `busy-unavailable`) while skipping
+  the live lookup, so it is a convenient manual smoke signal — but the
+  transaction bundle it produces (PaymentNotice, PaymentReconciliation, slot
+  adjustments) cannot be swept by the static purge bundle, so the suite
+  verifies the reservation state (`pending` / `busy-tentative`) in-band after
+  "Handle Appointment Payment", and `scripts/bru-cleanup.sh` sweeps any
+  payment records left by a manual callback. The examples below show the
+  equivalent PAID/EXPIRED payloads a real gateway would send.
+
+  ### Responses
+  - **200 OK**: Callback processed successfully. Body: `{ "success": true, "message": "Xendit invoice callback processed successfully", "data": "PAID" }`.
+  - **400 Bad Request**: Missing `X-Callback-Token` or `Webhook-Id` header, or invalid JSON body. Body: `{ "success": false, "message": "...", "status_code": 400 }`.
+  - **500 Internal Server Error**: Processing failure or timeout. Body: `{ "success": false, "message": "...", "status_code": 500 }`.

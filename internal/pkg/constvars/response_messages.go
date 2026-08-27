@@ -7,19 +7,18 @@ const (
 	ResponseError   = "error"
 
 	// User-related messages
-	CreateUserSuccessMessage                 = "user created successfully"
-	UpdateUserSuccessMessage                 = "user updated successfully"
-	DeleteUserSuccessMessage                 = "user deleted successfully"
-	GetProfileSuccessMessage                 = "get profile successfully"
-	GetEducationLevelSuccessMessage          = "get education levels successfully"
-	GetCitySuccessMessage                    = "get cities successfully"
-	GetAppointmentSuccessMessage             = "get appointments successfully"
-	GetGenderSuccessMessage                  = "get genders successfully"
-	GetClinicsSuccessfully                   = "get clinics successfully"
-	GetCliniciansSuccessfully                = "get clinicians successfully"
-	GetClinicianSummarySuccessfully          = "get clinician summary successfully"
-	VerifyWhatsAppOTPSuccessMessage          = "whatsapp otp successfully verified"
-	PaymentRoutingCallbackSuccessfullyCalled = "payment routing callback successfully called"
+	CreateUserSuccessMessage        = "user created successfully"
+	UpdateUserSuccessMessage        = "user updated successfully"
+	DeleteUserSuccessMessage        = "user deleted successfully"
+	GetProfileSuccessMessage        = "get profile successfully"
+	GetEducationLevelSuccessMessage = "get education levels successfully"
+	GetCitySuccessMessage           = "get cities successfully"
+	GetAppointmentSuccessMessage    = "get appointments successfully"
+	GetGenderSuccessMessage         = "get genders successfully"
+	GetClinicsSuccessfully          = "get clinics successfully"
+	GetCliniciansSuccessfully       = "get clinicians successfully"
+	GetClinicianSummarySuccessfully = "get clinician summary successfully"
+	VerifyWhatsAppOTPSuccessMessage = "whatsapp otp successfully verified"
 
 	// Clinician-related messages
 	CreateClinicianClinicsSuccessMessage              = "clinics successfully created for clinician"
@@ -51,6 +50,7 @@ const (
 
 	// Appointment payment messages
 	AppointmentPaymentSuccessMessage   = "Payment successful and appointment confirmed."
+	AppointmentPaymentPendingMessage   = "Payment invoice created. Please complete payment to confirm your appointment."
 	OnlinePaymentNotImplementedMessage = "Online payment is not yet supported. Please use offline payment."
 	SlotNoLongerAvailableMessage       = "Selected slot is no longer available."
 	InvalidReferenceFormatMessage      = "Invalid reference format. Expected format: ResourceType/ID"
@@ -59,7 +59,6 @@ const (
 	// Auth messages
 	WhatsAppOTPSuccessMessage    = "whatsapp OTP successfully sent to recipient number"
 	LoginSuccessMessage          = "successfully login"
-	LogoutSuccessMessage         = "successfully logout"
 	ForgotPasswordSuccessMessage = "if an account with this email exists, you will receive a password reset link."
 	ResetPasswordSuccessMessage  = "password already reset successfully"
 	MagicLinkSuccessMessage      = "magic link successfully generated"

@@ -19,75 +19,65 @@ type Patient struct {
 
 // FullName returns a best-effort display name for the patient.
 // Preference: official > usual > first; prefer Text, else Prefix+Given+Family.
+// Falls back to the email local part when no name is present.
 func (p Patient) FullName() string {
 	if len(p.Name) == 0 {
-		emails := p.GetEmailAddresses()
-		for _, email := range emails {
-			if strings.Contains(email, "@") {
-				firstPart := strings.Split(email, "@")[0]
-				if firstPart != "" {
-					return firstPart
-				}
-			}
-		}
+		return p.emailFallbackFullName()
+	}
+	return fullName(p.Name)
+}
 
-		return ""
-	}
-	chosen := p.Name[0]
-	for _, n := range p.Name {
+// preferredName selects the best HumanName from a slice.
+// Priority: official > usual > first entry.
+func preferredName(names []HumanName) HumanName {
+	for _, n := range names {
 		if strings.EqualFold(n.Use, "official") {
-			chosen = n
-			break
+			return n
 		}
 	}
-	if !strings.EqualFold(chosen.Use, "official") {
-		for _, n := range p.Name {
-			if strings.EqualFold(n.Use, "usual") {
-				chosen = n
-				break
-			}
+	for _, n := range names {
+		if strings.EqualFold(n.Use, "usual") {
+			return n
 		}
 	}
-	if s := strings.TrimSpace(chosen.Text); s != "" {
-		return s
+	return names[0]
+}
+
+// formatHumanName builds a display string from a HumanName's Prefix+Given+Family.
+func formatHumanName(n HumanName) string {
+	parts := make([]string, 0, 3)
+	if len(n.Prefix) > 0 {
+		parts = append(parts, strings.Join(n.Prefix, " "))
 	}
-	parts := []string{}
-	if len(chosen.Prefix) > 0 {
-		parts = append(parts, strings.Join(chosen.Prefix, " "))
+	if len(n.Given) > 0 {
+		parts = append(parts, strings.Join(n.Given, " "))
 	}
-	if len(chosen.Given) > 0 {
-		parts = append(parts, strings.Join(chosen.Given, " "))
-	}
-	if s := strings.TrimSpace(chosen.Family); s != "" {
+	if s := strings.TrimSpace(n.Family); s != "" {
 		parts = append(parts, s)
 	}
 	return strings.TrimSpace(strings.Join(parts, " "))
 }
 
-// GetEmailAddresses returns all email values from Telecom where system == email.
-func (p Patient) GetEmailAddresses() []string {
-	if len(p.Telecom) == 0 {
-		return nil
-	}
-	emails := make([]string, 0, len(p.Telecom))
-	for _, tp := range p.Telecom {
-		if tp.System == ContactPointSystemEmail && tp.Value != "" {
-			emails = append(emails, tp.Value)
+// emailFallbackFullName returns the local part of the first email address.
+func (p Patient) emailFallbackFullName() string {
+	emails := p.GetEmailAddresses()
+	for _, email := range emails {
+		if strings.Contains(email, "@") {
+			firstPart := strings.Split(email, "@")[0]
+			if firstPart != "" {
+				return firstPart
+			}
 		}
 	}
-	return emails
+	return ""
+}
+
+// GetEmailAddresses returns all email values from Telecom where system == email.
+func (p Patient) GetEmailAddresses() []string {
+	return emailsFromTelecom(p.Telecom)
 }
 
 // GetPhoneNumbers returns all phone values from Telecom where system == phone.
 func (p Patient) GetPhoneNumbers() []string {
-	if len(p.Telecom) == 0 {
-		return nil
-	}
-	phones := make([]string, 0, len(p.Telecom))
-	for _, tp := range p.Telecom {
-		if tp.System == ContactPointSystemPhone && tp.Value != "" {
-			phones = append(phones, tp.Value)
-		}
-	}
-	return phones
+	return phonesFromTelecom(p.Telecom)
 }

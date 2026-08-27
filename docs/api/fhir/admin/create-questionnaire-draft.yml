@@ -1,0 +1,58 @@
+info:
+  name: "Admin: Create Questionnaire Draft"
+  type: http
+  seq: 1
+  tags: [assessment]
+
+http:
+  method: POST
+  url: "{{process.env.APP_BASE_URL}}/fhir/Questionnaire"
+  headers:
+    - name: X-API-Key
+      value: "{{process.env.SUPERADMIN_API_KEY}}"
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "Questionnaire",
+        "status": "draft",
+        "title": "Mood Tracking Assessment (Draft)",
+        "description": "A draft assessment prepared by the clinic.",
+        "subjectType": ["Patient"],
+        "item": [
+          {
+            "linkId": "mood",
+            "text": "How is your mood today?",
+            "type": "choice",
+            "answerOption": [
+              {"valueCoding": {"code": "1", "display": "Low"}},
+              {"valueCoding": {"code": "2", "display": "Balanced"}},
+              {"valueCoding": {"code": "3", "display": "High"}}
+            ]
+          }
+        ]
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        bru.setVar("draftQuestionnaireId", body.id);
+        bru.runner.setNextRequest("Admin: Update Questionnaire");
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "201"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Creates a draft questionnaire as superadmin (X-API-Key). The proxy passes the
+  request straight through (no draft-enforcement handler exists in the current
+  backend). Captures the draft id into `draftQuestionnaireId` (distinct from the
+  seeded `questionnaireId`) and chains to "Admin: Update Questionnaire".

@@ -1,0 +1,26 @@
+info:
+  name: Create Service Payment
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{process.env.APP_BASE_URL}}/api/v1/pay/service"
+  headers:
+    - name: content-type
+      value: application/json
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  body:
+    type: json
+    data: "{}"
+
+runtime:
+  scripts: []
+  assertions: []
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

@@ -1,0 +1,58 @@
+info:
+  name: "Practitioner: Get Roles"
+  type: http
+  seq: 2
+  tags: [profile, clinic]
+
+http:
+  method: GET
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  url: "{{process.env.APP_BASE_URL}}/fhir/PractitionerRole?practitioner=Practitioner/{{practitionerId}}&_include=PractitionerRole:location&_include=PractitionerRole:service"
+  params:
+    - name: practitioner
+      value: "Practitioner/{{practitionerId}}"
+      type: query
+    - name: _include
+      value: PractitionerRole:location
+      type: query
+    - name: _include
+      value: PractitionerRole:service
+      type: query
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        bru.setVar("activeRole", "Practitioner");
+        await bru.sendRequest({
+          method: "POST",
+          url: bru.getProcessEnv("APP_BASE_URL") + "/api/v1/auth/active-role",
+          headers: {
+            "content-type": "application/json",
+            "Authorization": "Bearer " + bru.getVar("sessionToken")
+          },
+          data: JSON.stringify({ role: bru.getVar("activeRole") })
+        }, function(err, res) {
+          if (err) {
+            console.error("role switch failed: " + err.message);
+          } else if (res && res.headers) {
+            // the active-role response carries the regenerated access token;
+            // capture it so the following request sees the new active role
+            var newToken = res.headers["st-access-token"] || res.headers["front-token"];
+            if (newToken) { bru.setVar("sessionToken", newToken); }
+          }
+        });
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Practitioner: Get Schedule");'
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Lists the practitioner's roles with locations and services included. Returns
+  the seeded PractitionerRole. Pre-request switches to Practitioner.

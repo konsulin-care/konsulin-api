@@ -70,7 +70,7 @@ func (c *invoiceFhirClient) Search(ctx context.Context, params contracts.Invoice
 		)
 		return nil, exceptions.ErrSendHTTPRequest(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != constvars.StatusOK {
 		bodyBytes, err := io.ReadAll(resp.Body)
@@ -93,7 +93,7 @@ func (c *invoiceFhirClient) Search(ctx context.Context, params contracts.Invoice
 		}
 
 		if len(outcome.Issue) > 0 {
-			fhirErrorIssue := fmt.Errorf(outcome.Issue[0].Diagnostics)
+			fhirErrorIssue := fmt.Errorf("%s", outcome.Issue[0].Diagnostics)
 			c.Log.Error("invoiceFhirClient.Search FHIR error",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.Error(fhirErrorIssue),

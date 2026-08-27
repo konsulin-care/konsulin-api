@@ -23,7 +23,7 @@ func NewUserMongoRepository(db *mongo.Client, dbName string) contracts.UserRepos
 	}
 }
 
-func (repo *userMongoRepository) GetClient(ctx context.Context) interface{} {
+func (repo *userMongoRepository) GetClient(_ context.Context) interface{} {
 	return repo.Collection.Database().Client()
 }
 
@@ -36,43 +36,18 @@ func (repo *userMongoRepository) CreateUser(ctx context.Context, userModel *mode
 }
 
 func (r *userMongoRepository) FindByEmail(ctx context.Context, email string) (*models.User, error) {
-	var user models.User
-	err := r.Collection.FindOne(ctx, bson.M{"email": email}).Decode(&user)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, nil
-		}
-		return nil, exceptions.ErrMongoDBFindDocument(err)
-	}
-	return &user, nil
+	return r.findOneByFilter(ctx, bson.M{"email": email})
 }
 
 func (r *userMongoRepository) FindByWhatsAppNumber(ctx context.Context, whatsAppNumber string) (*models.User, error) {
-	var user models.User
-	err := r.Collection.FindOne(ctx, bson.M{"whatsAppNumber": whatsAppNumber}).Decode(&user)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, nil
-		}
-		return nil, exceptions.ErrMongoDBFindDocument(err)
-	}
-	return &user, nil
+	return r.findOneByFilter(ctx, bson.M{"whatsAppNumber": whatsAppNumber})
 }
 
 func (r *userMongoRepository) FindByUsername(ctx context.Context, username string) (*models.User, error) {
-	var user models.User
-	err := r.Collection.FindOne(ctx, bson.M{"username": username}).Decode(&user)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, nil
-		}
-		return nil, exceptions.ErrMongoDBFindDocument(err)
-	}
-	return &user, nil
+	return r.findOneByFilter(ctx, bson.M{"username": username})
 }
 
 func (r *userMongoRepository) FindByEmailOrUsername(ctx context.Context, email, username string) (*models.User, error) {
-	var user models.User
 	filter := bson.M{
 		"$or": []bson.M{
 			{"email": email},
@@ -80,23 +55,22 @@ func (r *userMongoRepository) FindByEmailOrUsername(ctx context.Context, email, 
 		},
 	}
 
-	err := r.Collection.FindOne(ctx, filter).Decode(&user)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, nil
-		}
-		return nil, exceptions.ErrMongoDBFindDocument(err)
-	}
-	return &user, nil
+	return r.findOneByFilter(ctx, filter)
 }
 
 func (r *userMongoRepository) FindByID(ctx context.Context, userID string) (*models.User, error) {
-	var user models.User
 	objectID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
 		return nil, exceptions.ErrMongoDBNotObjectID(err)
 	}
-	err = r.Collection.FindOne(ctx, bson.M{"_id": objectID}).Decode(&user)
+	return r.findOneByFilter(ctx, bson.M{constvars.MongoFieldID: objectID})
+}
+
+// findOneByFilter decodes the first document matching filter into a User,
+// returning nil when no document matches.
+func (r *userMongoRepository) findOneByFilter(ctx context.Context, filter bson.M) (*models.User, error) {
+	var user models.User
+	err := r.Collection.FindOne(ctx, filter).Decode(&user)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, nil

@@ -1,0 +1,54 @@
+info:
+  name: Seed Schedule
+  type: http
+  seq: 5
+  tags: [appointment, utility]
+
+http:
+  method: PUT
+  url: "{{process.env.BLAZE_BASE_URL}}/fhir/Schedule/seed-schedule"
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "Schedule",
+        "id": "seed-schedule",
+        "active": true,
+        "actor": [
+          {
+            "reference": "PractitionerRole/{{practitionerRoleId}}"
+          }
+        ],
+        "planningHorizon": {
+          "start": "2026-01-01",
+          "end": "2026-12-31"
+        }
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        bru.setVar("scheduleId", body.id);
+        bru.runner.setNextRequest("Seed Questionnaire");
+  assertions:
+    - expression: res.status
+      operator: gte
+      value: "200"
+    - expression: res.status
+      operator: lte
+      value: "201"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Seeds the Schedule (fixed id `seed-schedule`, idempotent PUT) for the
+  practitioner's role. Clients fetch it (`GET /fhir/Schedule/{id}` and
+  `GET /fhir/Schedule?actor=PractitionerRole/{id}`) for booking context. No
+  slots are seeded: free time is computed dynamically. Captures `scheduleId`
+  (equals seed-schedule) and chains to "Seed Questionnaire". Direct Blaze PUT.

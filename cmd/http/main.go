@@ -6,7 +6,6 @@ import (
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/delivery/http/controllers"
 	"konsulin-service/internal/app/delivery/http/middlewares"
-	"konsulin-service/internal/app/delivery/http/postfhir"
 	"konsulin-service/internal/app/delivery/http/routers"
 	"konsulin-service/internal/app/drivers/database"
 	"konsulin-service/internal/app/drivers/logger"
@@ -14,30 +13,17 @@ import (
 	"konsulin-service/internal/app/services/core/auth"
 	"konsulin-service/internal/app/services/core/organization"
 	"konsulin-service/internal/app/services/core/payments"
-	"konsulin-service/internal/app/services/core/session"
 	"konsulin-service/internal/app/services/core/slot"
 	"konsulin-service/internal/app/services/core/transactions"
 	"konsulin-service/internal/app/services/core/users"
 	"konsulin-service/internal/app/services/core/webhook"
-	bundle "konsulin-service/internal/app/services/fhir_spark/bundle"
-	invoicesFhir "konsulin-service/internal/app/services/fhir_spark/invoices"
-	organizationsFhir "konsulin-service/internal/app/services/fhir_spark/organizations"
-	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
-	"konsulin-service/internal/app/services/fhir_spark/persons"
-	practitionerRoleFhir "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
-	questionnaireResponsesFhir "konsulin-service/internal/app/services/fhir_spark/questionnaire_responses"
-	scheduleFhir "konsulin-service/internal/app/services/fhir_spark/schedules"
 	"konsulin-service/internal/app/services/fhir_spark/service_requests"
-	slotFhir "konsulin-service/internal/app/services/fhir_spark/slots"
 	"konsulin-service/internal/app/services/shared/jwtmanager"
 	"konsulin-service/internal/app/services/shared/locker"
-	"konsulin-service/internal/app/services/shared/mailer"
-	"konsulin-service/internal/app/services/shared/payment_gateway"
 	"konsulin-service/internal/app/services/shared/ratelimiter"
-	redisKonsulin "konsulin-service/internal/app/services/shared/redis"
-	storageKonsulin "konsulin-service/internal/app/services/shared/storage"
 	"konsulin-service/internal/app/services/shared/webhookqueue"
+	"konsulin-service/internal/pkg/buildinfo"
 	"log"
 	"net/http"
 	"os"
@@ -45,15 +31,28 @@ import (
 	"syscall"
 	"time"
 
+	privacy "konsulin-service/internal/app/services/core/privacy"
+
+	bundle "konsulin-service/internal/app/services/fhir_spark/bundle"
+	invoicesFhir "konsulin-service/internal/app/services/fhir_spark/invoices"
+	organizationsFhir "konsulin-service/internal/app/services/fhir_spark/organizations"
+	patientsFhir "konsulin-service/internal/app/services/fhir_spark/patients"
+
+	planDefinitionsFhir "konsulin-service/internal/app/services/fhir_spark/plan_definitions"
+	practitionerRoleFhir "konsulin-service/internal/app/services/fhir_spark/practitioner_role"
+
+	privacyFhir "konsulin-service/internal/app/services/fhir_spark/privacy"
+	questionnaireResponsesFhir "konsulin-service/internal/app/services/fhir_spark/questionnaire_responses"
+	scheduleFhir "konsulin-service/internal/app/services/fhir_spark/schedules"
+
+	slotFhir "konsulin-service/internal/app/services/fhir_spark/slots"
+
+	redisKonsulin "konsulin-service/internal/app/services/shared/redis"
+	storageKonsulin "konsulin-service/internal/app/services/shared/storage"
+
 	"github.com/go-chi/chi/v5"
 	xendit "github.com/xendit/xendit-go/v7"
 )
-
-// Version sets the default build version
-var Version = "develop"
-
-// Tag sets the default latest commit tag
-var Tag = "0.0.1-rc"
 
 func main() {
 	// Load configuration for external drivers (database, redis, etc.)
@@ -63,7 +62,10 @@ func main() {
 	internalConfig := config.NewInternalConfig()
 
 	// Initialize the logger
-	logger := logger.NewZapLogger(driverConfig, internalConfig)
+	logger, err := logger.NewZapLogger(driverConfig, internalConfig)
+	if err != nil {
+		log.Fatalf("Error initializing zap logger: %v", err)
+	}
 
 	// Set the application's timezone
 	location, err := time.LoadLocation(internalConfig.App.Timezone)
@@ -74,10 +76,16 @@ func main() {
 	log.Printf("Successfully set time base to %s", internalConfig.App.Timezone)
 
 	// Initialize Redis connection
-	redis := database.NewRedisClient(driverConfig)
+	redis, err := database.NewRedisClient(driverConfig)
+	if err != nil {
+		log.Fatalf("Error connecting to Redis: %s", err.Error())
+	}
 
 	// Initialize RabbitMQ connection
-	rabbitMQ := messaging.NewRabbitMQ(driverConfig)
+	rabbitMQ, err := messaging.NewRabbitMQ(driverConfig)
+	if err != nil {
+		log.Fatalf("Error connecting to RabbitMQ: %v", err)
+	}
 
 	// Create a new router
 	chiRouter := chi.NewRouter()
@@ -100,14 +108,15 @@ func main() {
 
 	// Create an HTTP server with the router and address configuration
 	server := &http.Server{
-		Addr:    fmt.Sprintf("%s:%s", internalConfig.App.Address, internalConfig.App.Port),
-		Handler: chiRouter,
+		Addr:              fmt.Sprintf("%s:%s", internalConfig.App.Address, internalConfig.App.Port),
+		Handler:           chiRouter,
+		ReadHeaderTimeout: 60 * time.Second,
 	}
 
 	// Start the server in a separate goroutine
 	go func() {
-		log.Printf("Server Version: %s", Version)
-		log.Printf("Server Tag: %s", Tag)
+		log.Printf("Server Version: %s", buildinfo.Version)
+		log.Printf("Server Tag: %s", buildinfo.Tag)
 		log.Printf("Server is running on port: %s", internalConfig.App.Port)
 		err := server.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
@@ -131,16 +140,14 @@ func main() {
 	)
 	defer cancel()
 
-	// Countdown for shutdown
-	for i := internalConfig.App.ShutdownTimeoutInSeconds; i > 0; i-- {
-		time.Sleep(1 * time.Second)
-		log.Printf("Shutting down in %d...", i)
-	}
+	log.Printf("Shutting down server gracefully (timeout: %ds)", internalConfig.App.ShutdownTimeoutInSeconds)
 
 	// Shutdown the HTTP server gracefully
 	err = server.Shutdown(shutdownCtx)
 	if err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
+		log.Printf("Server forced to shutdown: %v", err)
+		cancel()
+		return
 	}
 
 	// Shutdown the bootstrap components gracefully
@@ -160,72 +167,54 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	// Initialize the repository for Redis
 	redisRepository := redisKonsulin.NewRedisRepository(bootstrap.Redis, bootstrap.Logger)
 
-	// Initialize the mailer service with RabbitMQ
-	mailerService, err := mailer.NewMailerService(bootstrap.RabbitMQ, bootstrap.Logger, bootstrap.InternalConfig.RabbitMQ.MailerQueue)
-	if err != nil {
-		return err
-	}
-
-	// Initialize oy service (kept for backward-compatibility; not used for creation)
-	_ = payment_gateway.NewOyService(bootstrap.InternalConfig, bootstrap.Logger)
-
 	// Initialize Xendit client (reusable)
 	xenditClient := xendit.NewClient(bootstrap.InternalConfig.Xendit.APIKey)
 
-	// Initialize session service with Redis repository
-	sessionService := session.NewSessionService(redisRepository, bootstrap.Logger)
-
-	// Initialize session service with Redis repository
 	lockService := locker.NewLockService(redisRepository, bootstrap.Logger)
 
 	// Initialize FHIR clients
 	patientFhirClient := patientsFhir.NewPatientFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	practitionerFhirClient := practitioners.NewPractitionerFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	practitionerRoleClient := practitionerRoleFhir.NewPractitionerRoleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
-	personFhirClient := persons.NewPersonFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	organizationFhirClient := organizationsFhir.NewOrganizationFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	scheduleClient := scheduleFhir.NewScheduleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	slotClient := slotFhir.NewSlotFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	serviceRequestFhirClient := service_requests.NewServiceRequestFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	questionnaireResponseFhirClient := questionnaireResponsesFhir.NewQuestionnaireResponseFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	planDefinitionFhirClient := planDefinitionsFhir.NewPlanDefinitionFinder(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 
 	jwtManager, err := jwtmanager.NewJWTManager(bootstrap.InternalConfig, bootstrap.Logger)
 	if err != nil {
 		return err
 	}
 
-	magicLinkDelivery := webhook.NewMagicLinkDeliveryService(bootstrap.InternalConfig, jwtManager, bootstrap.Logger)
+	magicLinkDelivery := webhook.NewMagicLinkSender(bootstrap.InternalConfig, jwtManager, bootstrap.Logger)
 
 	// Ensure default FHIR Groups exist for ServiceRequest subjects
 	_ = serviceRequestFhirClient.EnsureAllNecessaryGroupsExists(context.Background())
 
-	userUsecase := users.NewUserUsecase(
-		nil, // userMongoRepository, not used yet
-		patientFhirClient,
-		practitionerFhirClient,
-		personFhirClient,
-		practitionerRoleClient,
-		nil, // organizationFhirClient, not used yet
-		redisRepository,
-		sessionService,
-		bootstrap.InternalConfig,
-		bootstrap.Logger,
-		lockService,
-		jwtManager,
-	)
+	userUsecase := users.NewUserFHIRInitializer(users.UserFHIRInitializerDeps{
+		PatientFhirClient:          patientFhirClient,
+		PractitionerFhirClient:     practitionerFhirClient,
+		PractitionerRoleFhirClient: practitionerRoleClient,
+		OrganizationFhirClient:     nil, // not used yet
+		RedisRepository:            redisRepository,
+		InternalConfig:             bootstrap.InternalConfig,
+		Logger:                     bootstrap.Logger,
+		LockerService:              lockService,
+		JWTTokenManager:            jwtManager,
+	})
 
 	bundleClient := bundle.NewBundleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 
 	// Initialize Auth usecase with dependencies
 	authUseCase, err := auth.NewAuthUsecase(
 		redisRepository,
-		sessionService,
 		patientFhirClient,
 		practitionerFhirClient,
 		questionnaireResponseFhirClient,
 		bundleClient,
 		userUsecase,
-		mailerService,
 		magicLinkDelivery,
 		bootstrap.InternalConfig,
 		bootstrap.DriverConfig,
@@ -236,10 +225,9 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	}
 	authController := controllers.NewAuthController(bootstrap.Logger, authUseCase, bootstrap.InternalConfig)
 
-	// Initialize middlewares with logger, session service, and auth usecase
+	// Initialize middlewares
 	middlewares := middlewares.NewMiddlewares(
 		bootstrap.Logger,
-		sessionService,
 		authUseCase,
 		bootstrap.InternalConfig,
 		practitionerFhirClient,
@@ -247,12 +235,13 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		practitionerRoleClient,
 		scheduleClient,
 		questionnaireResponseFhirClient,
+		planDefinitionFhirClient,
 	)
 
 	// Initialize supertokens
 	err = authUseCase.InitializeSupertoken()
 	if err != nil {
-		log.Fatalf("Error initializing supertokens: %v", err)
+		return fmt.Errorf("error initializing supertokens: %w", err)
 	}
 
 	// Initialize webhook components
@@ -262,16 +251,28 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	if err != nil {
 		return err
 	}
-	webhookUsecase := webhook.NewUsecase(bootstrap.Logger, bootstrap.InternalConfig, webhookQueueService, jwtManager, patientFhirClient, practitionerFhirClient, personFhirClient, serviceRequestFhirClient, middlewares.Enforcer)
+	webhookUsecase := webhook.NewUsecase(webhook.Options{
+		Log:                bootstrap.Logger,
+		Config:             bootstrap.InternalConfig,
+		Queue:              webhookQueueService,
+		JWTManager:         jwtManager,
+		PatientFhir:        patientFhirClient,
+		PractitionerFhir:   practitionerFhirClient,
+		ServiceRequestFhir: serviceRequestFhirClient,
+		Enforcer:           middlewares.Enforcer,
+	})
+
+	// Wire in-process forwarders for internal callers (magic link delivery, omnichannel)
+	// to skip the HTTP loopback and call ForwardSynchronousInternal directly.
+	wireWebhookForwarder(magicLinkDelivery, webhookUsecase.ForwardSynchronousInternal)
+	wireWebhookForwarder(userUsecase, webhookUsecase.ForwardSynchronousInternal)
+
 	webhookController := controllers.NewWebhookController(bootstrap.Logger, webhookUsecase, webhookLimiter, resourceLimiter, bootstrap.InternalConfig)
 	// Initialize payment usecase and controller (inject JWT manager)
 	serviceRequestStorage := storageKonsulin.NewServiceRequestStorage(serviceRequestFhirClient, bootstrap.Logger)
 	invoiceFhirClient := invoicesFhir.NewInvoiceFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 
-	slotUsecase := slot.NewSlotUsecase(scheduleClient, lockService, slotClient, practitionerRoleClient, practitionerFhirClient, personFhirClient, bundleClient, bootstrap.InternalConfig, bootstrap.Logger)
-
-	// Register post-FHIR-proxy hook for on-demand slot regeneration when PractitionerRole/Schedule are mutated.
-	middlewares.PostFHIRProxyHooks = append(middlewares.PostFHIRProxyHooks, postfhir.NewSlotRegenerationHook(bootstrap.Logger, slotUsecase))
+	slotUsecase := slot.NewSlotUsecase(scheduleClient, lockService, slotClient, practitionerRoleClient, practitionerFhirClient, bundleClient, bootstrap.InternalConfig, bootstrap.Logger)
 
 	paymentUsecase := payments.NewPaymentUsecase(
 		transactions.NewTransactionPostgresRepository(nil, bootstrap.Logger),
@@ -279,9 +280,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		jwtManager,
 		patientFhirClient,
 		practitionerFhirClient,
-		personFhirClient,
 		serviceRequestStorage,
-		payment_gateway.NewOyService(bootstrap.InternalConfig, bootstrap.Logger),
 		xenditClient,
 		invoiceFhirClient,
 		practitionerRoleClient,
@@ -298,7 +297,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	// Initialize organization usecase and controller
 	orgUsecase := organization.NewOrganizationUsecase(
 		practitionerFhirClient,
-		personFhirClient,
+		practitionerRoleClient,
 		organizationFhirClient,
 		bundleClient,
 		bootstrap.InternalConfig,
@@ -306,19 +305,20 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	)
 	orgController := controllers.NewOrganizationController(bootstrap.Logger, orgUsecase)
 
+	// Initialize purge (erasure) components: FHIR client, account deletion, usecase, controller.
+	purgeFhirClient := privacyFhir.NewPurgeFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
+	accountDeletion := users.NewUserAccountDeleter(bootstrap.Logger)
+	purgeUsecase := privacy.NewPatientDataPurger(purgeFhirClient, bundleClient, accountDeletion, bootstrap.Logger)
+	purgeController := controllers.NewPurgeController(purgeUsecase, middlewares, bootstrap.Logger)
+
 	if err := orgUsecase.InitializeKonsulinOrganizationResource(context.Background()); err != nil {
-		log.Fatalf("Error initializing Konsulin organization resource: %v", err)
+		return fmt.Errorf("error initializing Konsulin organization resource: %w", err)
 	}
 
 	// Start webhook worker ticker (best-effort lock ensures single execution)
 	worker := webhook.NewWorker(bootstrap.Logger, bootstrap.InternalConfig, lockService, webhookQueueService, jwtManager)
 	stopWorker := worker.Start(context.Background())
 	bootstrap.WorkerStop = stopWorker
-
-	// Start slot top-up worker (leader lock inside)
-	slotWorker := slot.NewWorker(bootstrap.Logger, bootstrap.InternalConfig, lockService, practitionerRoleClient, slotUsecase)
-	slotWorker.Start(context.Background())
-	bootstrap.SlotWorkerStop = slotWorker.Stop
 
 	// Setup routes with the router, configuration, middlewares, and controllers
 	routers.SetupRoutes(
@@ -331,7 +331,27 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		webhookController,
 		scheduleController,
 		orgController,
+		purgeController,
 	)
 
 	return nil
+}
+
+// wireWebhookForwarder connects an in-process caller (magic link delivery,
+// omnichannel) to the synchronous webhook service, skipping the HTTP loopback.
+// Targets that do not implement SetWebhookForwarder are left untouched.
+func wireWebhookForwarder(target any, forward func(ctx context.Context, service, method string, body []byte, contentType string) (*webhook.HandleSynchronousWebhookServiceOutput, error)) {
+	f, ok := target.(interface {
+		SetWebhookForwarder(fn func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error))
+	})
+	if !ok {
+		return
+	}
+	f.SetWebhookForwarder(func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
+		out, err := forward(ctx, service, method, body, contentType)
+		if err != nil {
+			return 0, nil, err
+		}
+		return out.StatusCode, out.Body, nil
+	})
 }

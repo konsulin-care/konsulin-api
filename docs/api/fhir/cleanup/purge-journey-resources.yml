@@ -1,0 +1,155 @@
+info:
+  name: "Cleanup: Purge Journey Resources"
+  type: http
+  seq: 1
+  tags: [utility]
+
+http:
+  method: POST
+  url: "{{blazeBaseUrl}}/fhir"
+  headers:
+    - name: content-type
+      value: application/fhir+json
+    - name: Accept
+      value: application/fhir+json
+  body:
+    type: json
+    data: |-
+      {
+        "resourceType": "Bundle",
+        "type": "transaction",
+        "entry": [
+          {
+            "request": {
+              "method": "DELETE",
+              "url": "Appointment/{{appointmentId}}"
+            }
+          },
+          {
+            "request": {
+              "method": "DELETE",
+              "url": "Slot/{{slotId}}"
+            }
+          },
+          {
+            "request": {
+              "method": "DELETE",
+              "url": "QuestionnaireResponse/{{questionnaireResponseId}}"
+            }
+          },
+          {
+            "request": {
+              "method": "DELETE",
+              "url": "QuestionnaireResponse/{{soapQuestionnaireResponseId}}"
+            }
+          },
+          {
+            "request": {
+              "method": "DELETE",
+              "url": "Observation/{{journalId}}"
+            }
+          },
+          {
+            "request": {
+              "method": "DELETE",
+              "url": "Consent/{{consentId}}"
+            }
+          },
+          {
+            "request": {
+              "method": "DELETE",
+              "url": "ResearchSubject/{{researchSubjectId}}"
+            }
+          },
+          {
+            "request": {
+              "method": "DELETE",
+              "url": "Invoice/{{invoiceId}}"
+            }
+          },
+          {
+            "request": {
+              "method": "DELETE",
+              "url": "PractitionerRole/{{practitionerRoleId}}"
+            }
+          },
+          {
+            "request": {
+              "method": "DELETE",
+              "url": "Schedule/{{scheduleId}}"
+            }
+          },
+          {
+            "request": {
+              "method": "DELETE",
+              "url": "HealthcareService/{{healthcareServiceId}}"
+            }
+          },
+          {
+            "request": {
+              "method": "DELETE",
+              "url": "Location/{{locationId}}"
+            }
+          },
+          {
+            "request": {
+              "method": "DELETE",
+              "url": "Questionnaire/seed-soap"
+            }
+          },
+          {
+            "request": {
+              "method": "DELETE",
+              "url": "Questionnaire/{{questionnaireId}}"
+            }
+          },
+          {
+            "request": {
+              "method": "DELETE",
+              "url": "Questionnaire/{{draftQuestionnaireId}}"
+            }
+          },
+          {
+            "request": {
+              "method": "DELETE",
+              "url": "PlanDefinition/{{planDefinitionId}}"
+            }
+          },
+          {
+            "request": {
+              "method": "DELETE",
+              "url": "ResearchStudy/{{researchStudyId}}"
+            }
+          }
+        ]
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: 'bru.runner.setNextRequest("Cleanup: Delete Organization");'
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Purges the resources created during the journey directly against Blaze
+  (`{{blazeBaseUrl}}`, default http://localhost:8080) — a single transaction
+  bundle of DELETE entries. The RBAC policies grant no DELETE on these
+  resource types, so the gateway cannot remove them; Blaze-direct access is
+  the documented teardown path. Children are deleted before parents so Blaze
+  referential integrity never blocks a DELETE. This makes the subsequent API
+  deletions (Organization, Practitioner, Patient) succeed with 200. Chains to
+  "Cleanup: Delete Organization".
+
+  Seeds carry fixed ids (Organization/seed-clinic, Questionnaire/seed-soap,
+  ...), so these entries always target the same resources across runs. The
+  SOAP questionnaire entry deletes `seed-soap` — the suite's own copy — never
+  the real `Questionnaire/soap` that a dev Blaze may hold for QA.

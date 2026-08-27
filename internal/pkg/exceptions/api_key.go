@@ -17,5 +17,5 @@ func ErrRolesRequired(err error) error {
 const (
 	ErrDevInvalidAPIKey  = "INVALID_API_KEY"
 	ErrDevAPIKeyRequired = "API_KEY_REQUIRED"
-	ErrDevRolesRequired  = "The field ⁠ roles is missing"
+	ErrDevRolesRequired  = "The field \u2060 roles is missing"
 )

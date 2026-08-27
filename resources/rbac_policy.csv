@@ -1,11 +1,26 @@
+p, Clinic Admin, GET, /fhir/HealthcareService
+p, Clinic Admin, POST, /fhir/HealthcareService
+p, Clinic Admin, PUT, /fhir/HealthcareService
+p, Clinic Admin, GET, /fhir/Invoice
+p, Clinic Admin, POST, /fhir/Invoice
+p, Clinic Admin, PUT, /fhir/Invoice
+p, Clinic Admin, GET, /fhir/Location
+p, Clinic Admin, POST, /fhir/Location
+p, Clinic Admin, PUT, /fhir/Location
 p, Clinic Admin, GET, /fhir/Organization
+p, Clinic Admin, PUT, /fhir/Organization
+p, Clinic Admin, GET, /fhir/Person
+p, Clinic Admin, PUT, /fhir/Person
 p, Clinic Admin, GET, /fhir/Practitioner
+p, Clinic Admin, POST, /fhir/Practitioner
 p, Clinic Admin, GET, /fhir/PractitionerRole
 p, Clinic Admin, POST, /fhir/PractitionerRole
 p, Clinic Admin, PUT, /fhir/PractitionerRole
 p, Clinic Admin, GET, /fhir/Schedule
 p, Clinic Admin, POST, /fhir/Schedule
 p, Clinic Admin, GET, /fhir/Slot
+p, Clinic Admin, PUT, /fhir/Slot
+p, Clinic Admin, POST, /api/v1/auth/magiclink
 p, Guest, GET, /fhir/Media
 p, Guest, GET, /fhir/HealthcareService
 p, Guest, GET, /fhir/Location
@@ -22,6 +37,12 @@ p, Guest, POST, /hook/synchronous/modify-profile
 p, Guest, POST, /hook/synchronous/send-magiclink
 p, Patient, GET, /fhir/Appointment
 p, Patient, POST, /fhir/Appointment
+p, Patient, GET, /fhir/Communication
+p, Patient, POST, /fhir/Communication
+p, Patient, PUT, /fhir/Communication
+p, Patient, GET, /fhir/Consent
+p, Patient, POST, /fhir/Consent
+p, Patient, PUT, /fhir/Consent
 p, Patient, GET, /fhir/Condition
 p, Patient, POST, /fhir/Condition
 p, Patient, GET, /fhir/HealthcareService
@@ -43,14 +64,20 @@ p, Patient, GET, /fhir/QuestionnaireResponse
 p, Patient, POST, /fhir/QuestionnaireResponse
 p, Patient, PUT, /fhir/QuestionnaireResponse
 p, Patient, GET, /fhir/ResearchStudy
+p, Patient, GET, /fhir/ResearchSubject
+p, Patient, POST, /fhir/ResearchSubject
+p, Patient, PUT, /fhir/ResearchSubject
 p, Patient, GET, /fhir/Slot
+p, Patient, POST, /fhir/Slot
 p, Patient, PUT, /fhir/Slot
 p, Patient, PUT, /fhir/Condition
 p, Patient, POST, /hook/synchronous/modify-profile
 p, Patient, POST, /hook/synchronous/update-avatar
+p, Patient, DELETE, /privacy/purge
 p, Practitioner, GET, /fhir/Appointment
 p, Practitioner, GET, /fhir/Condition
 p, Practitioner, GET, /fhir/HealthcareService
+p, Practitioner, POST, /fhir/HealthcareService
 p, Practitioner, GET, /fhir/Invoice
 p, Practitioner, POST, /fhir/Invoice
 p, Practitioner, PUT, /fhir/Invoice
@@ -84,9 +111,12 @@ p, Researcher, GET, /fhir/Questionnaire
 p, Researcher, POST, /fhir/Questionnaire
 p, Researcher, PUT, /fhir/Questionnaire
 p, Researcher, GET, /fhir/QuestionnaireResponse
+p, Researcher, GET, /fhir/Communication
 p, Researcher, GET, /fhir/ResearchStudy
 p, Researcher, POST, /fhir/ResearchStudy
 p, Researcher, PUT, /fhir/ResearchStudy
+p, Researcher, GET, /fhir/Consent
+p, Researcher, GET, /fhir/ResearchSubject
 p, Superadmin, POST, /fhir/Appointment
 p, Superadmin, PUT, /fhir/Condition
 p, Superadmin, GET, /fhir/HealthcareService
@@ -117,11 +147,15 @@ p, Superadmin, GET, /fhir/Questionnaire
 p, Superadmin, POST, /fhir/Questionnaire
 p, Superadmin, PUT, /fhir/Questionnaire
 p, Superadmin, GET, /fhir/QuestionnaireResponse
+p, Superadmin, GET, /fhir/Communication
 p, Superadmin, GET, /fhir/ResearchStudy
 p, Superadmin, POST, /fhir/ResearchStudy
 p, Superadmin, PUT, /fhir/ResearchStudy
+p, Superadmin, GET, /fhir/Consent
+p, Superadmin, GET, /fhir/ResearchSubject
 p, Superadmin, GET, /fhir/Schedule
 p, Superadmin, POST, /fhir/Schedule
+p, Superadmin, PUT, /fhir/Schedule
 p, Superadmin, GET, /fhir/Slot
 p, Superadmin, PUT, /fhir/Slot
 p, Superadmin, GET, /fhir/metadata
