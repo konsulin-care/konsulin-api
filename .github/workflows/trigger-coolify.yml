@@ -17,5 +17,5 @@ jobs:
       - name: Trigger Coolify Deploy
         run: |
           echo "Triggering Coolify deployment..."
-          curl "${{ secrets.COOLIFY_URL }}/services/${{ secrets.COOLIFY_SERVICE }}/restart?latest=true" \
+          curl -X POST "${{ secrets.COOLIFY_URL }}/services/${{ secrets.COOLIFY_SERVICE }}/restart?latest=true" \
             --header "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}"
