@@ -3,7 +3,7 @@ name: Triggering Coolify deployment
 on:
   workflow_call:
     secrets:
-      COOLIFY_TRIGGER_URL:
+      COOLIFY_SERVICE:
         required: true
       COOLIFY_TOKEN:
         required: true
@@ -15,5 +15,5 @@ jobs:
       - name: Trigger Coolify Deploy
         run: |
           echo "Triggering Coolify deployment..."
-          curl "${{ secrets.COOLIFY_TRIGGER_URL }}" \
+          curl "${{ secrets.COOLIFY_URL }}/services/${{ secrets.COOLIFY_SERVICE }}/restart?latest=true" \
             --header "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}"

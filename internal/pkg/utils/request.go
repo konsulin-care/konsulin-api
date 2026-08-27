@@ -55,7 +55,7 @@ func BuildQueryParamsRequest(r *http.Request) *requests.QueryParams {
 	}
 }
 
-func BuildFhirPatientRegistrationRequest(username, email string) *fhir_dto.Patient {
+func BuildFhirPatientRegistrationRequest(_ string, email string) *fhir_dto.Patient {
 	return &fhir_dto.Patient{
 		ResourceType: constvars.ResourcePatient,
 		Telecom: []fhir_dto.ContactPoint{
@@ -124,7 +124,7 @@ func BuildFhirPatientUpdateProfileRequest(request *requests.UpdateProfile, patie
 	}
 }
 
-func BuildFhirPractitionerRegistrationRequest(username, email string) *fhir_dto.Practitioner {
+func BuildFhirPractitionerRegistrationRequest(_ string, email string) *fhir_dto.Practitioner {
 	return &fhir_dto.Practitioner{
 		ResourceType: constvars.ResourcePractitioner,
 		Telecom: []fhir_dto.ContactPoint{

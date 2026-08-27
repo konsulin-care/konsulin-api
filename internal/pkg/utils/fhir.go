@@ -96,7 +96,7 @@ func ExtractOrganizationIDsFromPractitionerRoles(practitionerRoles []fhir_dto.Pr
 }
 
 func ExtractQualifications(qualifications []fhir_dto.Qualification) []string {
-	qualificationsResponse := []string{}
+	var qualificationsResponse []string
 	for _, qualification := range qualifications {
 		for _, coding := range qualification.Code.Coding {
 			qualificationsResponse = append(qualificationsResponse, coding.Display)
@@ -106,7 +106,7 @@ func ExtractQualifications(qualifications []fhir_dto.Qualification) []string {
 }
 
 func ExtractSpecialties(specialties []fhir_dto.CodeableConcept) []string {
-	qualificationsResponse := []string{}
+	var qualificationsResponse []string
 	for _, specialty := range specialties {
 		for _, coding := range specialty.Coding {
 			qualificationsResponse = append(qualificationsResponse, coding.Display)
@@ -116,7 +116,7 @@ func ExtractSpecialties(specialties []fhir_dto.CodeableConcept) []string {
 }
 
 func ExtractSpecialtiesText(specialties []fhir_dto.CodeableConcept) []string {
-	qualificationsResponse := []string{}
+	var qualificationsResponse []string
 	for _, specialty := range specialties {
 		qualificationsResponse = append(qualificationsResponse, specialty.Text)
 	}

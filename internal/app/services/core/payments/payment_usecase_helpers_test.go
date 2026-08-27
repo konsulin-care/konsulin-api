@@ -58,7 +58,6 @@ func TestLookupIdentityByService(t *testing.T) {
 
 // to Patient/<id>, other services map to configured Group subjects, case-insensitively.
 func TestDetermineServiceRequestSubject(t *testing.T) {
-	uc := &paymentUsecase{}
 	tests := []struct {
 		name      string
 		service   string
@@ -74,7 +73,7 @@ func TestDetermineServiceRequestSubject(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := uc.determineServiceRequestSubject(tt.service, tt.patientID); got != tt.want {
+			if got := determineServiceRequestSubject(tt.service, tt.patientID); got != tt.want {
 				t.Errorf("determineServiceRequestSubject(%q, %q) = %q, want %q", tt.service, tt.patientID, got, tt.want)
 			}
 		})

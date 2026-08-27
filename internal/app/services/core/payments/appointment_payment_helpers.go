@@ -413,8 +413,9 @@ func (uc *paymentUsecase) findCrossRoleOverlap(
 		overlap *fhir_dto.Slot
 	)
 	for _, role := range roles {
+		r := role
 		g.Go(func() error {
-			hit, err := uc.checkRoleOverlap(gctx, role, bookedScheduleID, start, end, overlapParams)
+			hit, err := uc.checkRoleOverlap(gctx, r, bookedScheduleID, start, end, overlapParams)
 			if err != nil {
 				return err
 			}

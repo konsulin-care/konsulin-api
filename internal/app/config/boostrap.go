@@ -21,7 +21,7 @@ type Bootstrap struct {
 	WorkerStop func()
 }
 
-func (b *Bootstrap) Shutdown(ctx context.Context) error {
+func (b *Bootstrap) Shutdown(_ context.Context) error {
 	if b.WorkerStop != nil {
 		b.WorkerStop()
 		log.Println("Successfully stopped background workers")
