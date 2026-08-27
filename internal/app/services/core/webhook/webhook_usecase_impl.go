@@ -579,7 +579,7 @@ func (u *usecase) GetAsyncServiceResult(ctx context.Context, id string) (*GetAsy
 	return output, nil
 }
 
-func (u *usecase) authorizeSynchronous(ctx context.Context, roles []string, method, service string) error {
+func (u *usecase) authorizeSynchronous(_ context.Context, roles []string, method, service string) error {
 	if u.enforcer == nil {
 		return exceptions.BuildNewCustomError(nil, constvars.StatusForbidden, "Not authorized", "WEBHOOK_SYNC_RBAC_DISABLED")
 	}
