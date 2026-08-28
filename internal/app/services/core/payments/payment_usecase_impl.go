@@ -497,19 +497,19 @@ func (uc *paymentUsecase) handleAppointmentPaymentExpired(
 		"entry": []map[string]any{
 			{
 				constvars.FhirFieldRequest: map[string]any{
-					constvars.FhirFieldMethod: "DELETE",
+					constvars.FhirFieldMethod: constvars.MethodDelete,
 					constvars.FhirFieldURL:    constvars.ResourceSlot + "/" + fields.SlotID,
 				},
 			},
 			{
 				constvars.FhirFieldRequest: map[string]any{
-					constvars.FhirFieldMethod: "DELETE",
+					constvars.FhirFieldMethod: constvars.MethodDelete,
 					constvars.FhirFieldURL:    constvars.ResourceInvoice + "/" + fields.InvoiceID,
 				},
 			},
 			{
 				constvars.FhirFieldRequest: map[string]any{
-					constvars.FhirFieldMethod: "DELETE",
+					constvars.FhirFieldMethod: constvars.MethodDelete,
 					constvars.FhirFieldURL:    constvars.ResourceAppointment + "/" + fields.AppointmentID,
 				},
 			},

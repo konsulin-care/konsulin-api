@@ -1,4 +1,4 @@
-name: Docker Build and Push 
+name: Docker Build and Push
 
 on:
   workflow_call:
@@ -135,5 +135,3 @@ jobs:
             echo "No valid environment specified. in productions need 2 conditions: branch is main and tag starts with v"
             exit 1
           fi
-
-

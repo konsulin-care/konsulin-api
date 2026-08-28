@@ -452,7 +452,7 @@ func (m *Middlewares) rbacClients() rbacClients {
 }
 
 func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []string, uid string, fhirIDsByRole map[string]string, clients rbacClients) error {
-	if gjson.GetBytes(raw, "resourceType").String() != "Bundle" {
+	if gjson.GetBytes(raw, "resourceType").String() != constvars.ResourceBundle {
 		return fmt.Errorf("invalid bundle")
 	}
 	entries := gjson.GetBytes(raw, "entry").Array()
@@ -860,11 +860,11 @@ func isBundle(r *http.Request) bool {
 	}
 
 	if bodyBytes, ok := r.Context().Value(constvars.CONTEXT_RAW_BODY).([]byte); ok && len(bodyBytes) > 0 {
-		return strings.EqualFold(gjson.GetBytes(bodyBytes, "resourceType").String(), "Bundle")
+		return strings.EqualFold(gjson.GetBytes(bodyBytes, "resourceType").String(), constvars.ResourceBundle)
 	}
 
 	var peek [2048]byte
 	n, _ := r.Body.Read(peek[:])
 	r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(peek[:n]), r.Body))
-	return strings.EqualFold(gjson.GetBytes(peek[:n], "resourceType").String(), "Bundle")
+	return strings.EqualFold(gjson.GetBytes(peek[:n], "resourceType").String(), constvars.ResourceBundle)
 }
