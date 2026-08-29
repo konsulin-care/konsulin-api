@@ -7,6 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/services/shared/jwtmanager"
@@ -14,11 +20,6 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/utils"
-	"net/http"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
 
 	"go.uber.org/zap"
 )
