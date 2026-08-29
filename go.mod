@@ -2,6 +2,11 @@ module konsulin-service
 
 go 1.26
 
+tool (
+	golang.org/x/vuln/cmd/govulncheck
+	mvdan.cc/gofumpt
+)
+
 require (
 	github.com/andybalholm/brotli v1.2.2
 	github.com/casbin/casbin/v2 v2.135.0
@@ -19,6 +24,8 @@ require (
 	go.uber.org/zap v1.28.0
 	golang.org/x/crypto v0.55.0
 	golang.org/x/sync v0.22.0
+	golang.org/x/vuln v1.7.0 // tool: govulncheck
+	mvdan.cc/gofumpt v0.11.0 // tool: gofumpt
 )
 
 require (
@@ -53,8 +60,11 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/net v0.57.0 // indirect
+	golang.org/x/mod v0.39.0 // indirect
+	golang.org/x/net v0.58.0 // indirect
+	golang.org/x/telemetry v0.0.0-20260811182544-a038080d80e5 // indirect
 	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/tools v0.49.0 // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
 	gopkg.in/alexcesaro/quotedprintable.v3 v3.0.0-20150716171945-2caba252f4dc // indirect
 	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df // indirect
