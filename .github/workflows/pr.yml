@@ -168,6 +168,10 @@ jobs:
   integration:
     name: Integration and API security tests
     runs-on: ubuntu-latest
+    environment: "Pull Request Screening"
+    # Secrets are unavailable on fork PRs, so skip the secret-requiring suite for
+    # contributors; the full gate runs for same-repo PRs and on the default branch.
+    if: github.event.pull_request.head.repo.full_name == github.repository
     needs: [quality]
     steps:
       - uses: actions/checkout@v7
@@ -187,6 +191,13 @@ jobs:
         uses: ./.github/actions/ci-env
         with:
           xendit-sandbox-api-key: ${{ secrets.XENDIT_SANDBOX_API_KEY }}
+          ci-postgres-password: ${{ secrets.CI_POSTGRES_PASSWORD }}
+          ci-redis-password: ${{ secrets.CI_REDIS_PASSWORD }}
+          ci-rabbitmq-password: ${{ secrets.CI_RABBITMQ_PASSWORD }}
+          ci-supertoken-api-key: ${{ secrets.CI_SUPERTOKEN_API_KEY }}
+          ci-superadmin-api-key: ${{ secrets.CI_SUPERADMIN_API_KEY }}
+          ci-xendit-callback-token: ${{ secrets.CI_XENDIT_CALLBACK_TOKEN }}
+          ci-jwt-hook-key: ${{ secrets.CI_JWT_HOOK_KEY }}
           organization: ci-${{ github.run_id }}-org
 
       # Full Bruno chain in one required run: auth (magiclink via local stub,
