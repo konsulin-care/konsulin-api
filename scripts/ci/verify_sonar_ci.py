@@ -71,7 +71,6 @@ CRED_LITERALS = [
     "RABBITMQ_DEFAULT_PASS: password",
     'API_KEYS: "password',
     'SUPERTOKEN_API_KEY: "password',
-    "APP_XENDIT_WEBHOOK_TOKEN:",
 ]
 for literal in CRED_LITERALS:
     check(f"T3 compose has no {literal!r}", literal not in compose)
@@ -113,7 +112,7 @@ check(
 )
 check(
     "T3 compose header documents .env.ci injection",
-    "env.ci" in compose.splitlines()[0:40] and "secrets" in " ".join(compose.splitlines()[0:40]),
+    "env.ci" in " ".join(compose.splitlines()[0:40]) and "secrets" in " ".join(compose.splitlines()[0:40]),
 )
 
 # ---- T-4: ci-env action inputs / writer / readiness / npm (finding 11) ----

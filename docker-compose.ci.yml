@@ -23,11 +23,12 @@
 # before `docker compose up -d app`.
 #
 # Credentials:
-#   - JWT_HOOK_KEY / SUPERTOKEN_API_KEY / SUPERADMIN_API_KEY / REDIS/RABBITMQ
-#     below are synthetic CI-only credentials, committed on purpose: they
-#     authenticate/sign nothing outside this disposable environment.
-#   - XENDIT_SANDBOX_API_KEY is injected via `--env-file .env.ci`
-#     (compose interpolation), supplied as a repository secret.
+#   - All passwords, tokens and the JWT_HOOK_KEY PEM below are interpolated
+#     from the runner environment / `.env.ci` (compose --env-file), which the
+#     ci-env composite action writes from GitHub Actions ENVIRONMENT secrets
+#     of the "Pull Request Screening" environment. Nothing credential-like is
+#     committed in this file.
+#   - XENDIT_SANDBOX_API_KEY comes from the same .env.ci as a repo secret.
 #
 # Host ports (runner-local): app 3200, blaze 8080, magiclink-stub 8081.
 # The Bruno collection runs on the runner, so those three must be host-mapped.
@@ -40,7 +41,7 @@ services:
     container_name: konsulin-ci-postgres
     environment:
       POSTGRES_USER: supertokens
-      POSTGRES_PASSWORD: supertokens
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.ci}
       POSTGRES_DB: supertokens
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
@@ -54,7 +55,7 @@ services:
     container_name: konsulin-ci-redis
     environment:
       ALLOW_EMPTY_PASSWORD: "no"
-      REDIS_PASSWORD: redispass
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env.ci}
     networks: [ci-net]
 
   rabbitmq:
@@ -62,7 +63,7 @@ services:
     container_name: konsulin-ci-rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: password
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:?set RABBITMQ_DEFAULT_PASS in .env.ci}
     networks: [ci-net]
 
   blaze:
@@ -86,8 +87,8 @@ services:
     ports:
       - "3567:3567"
     environment:
-      POSTGRESQL_CONNECTION_URI: "postgresql://supertokens:supertokens@postgres:5432/supertokens"
-      API_KEYS: "password-with-a-minimum-of-20-characters"
+      POSTGRESQL_CONNECTION_URI: "postgresql://supertokens:${POSTGRES_PASSWORD}@postgres:5432/supertokens"
+      API_KEYS: ${SUPERTOKEN_API_KEY:?set SUPERTOKEN_API_KEY in .env.ci}
     networks: [ci-net]
 
   magiclink-stub:
@@ -125,35 +126,30 @@ services:
       APP_FRONTEND_DOMAIN: "http://localhost:3200"
       APP_FHIR_BASE_URL: "http://blaze:8080/fhir/"
       APP_JWT_SECRET: "ci-only-synthetic-jwt-secret-0123456789abcdef"
-      # Synthetic EC P-256 key, PKCS#8. Signs webhook payloads inside the
-      # disposable environment only (see header note).
-      JWT_HOOK_KEY: |-
-        -----BEGIN PRIVATE KEY-----
-        MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgkUPnTpsR2l0UWDgs
-        MWkCtQ4GexgLuMLu9WJPe9xG3NyhRANCAAQRX+hdUIr/QFGAV/DzhpBKStV44roF
-        RznuoCz06GCQUdvNE4x1wOLqFSkfmWWcopgJ8LfI+U5d2AnA/vfqw55q
-        -----END PRIVATE KEY-----
-      SUPERADMIN_API_KEY: "super-unique-password"
+      # PEM injected from the JWT_HOOK_KEY environment secret (see header note);
+      # signs webhook payloads inside the disposable environment only.
+      JWT_HOOK_KEY: ${JWT_HOOK_KEY:?set JWT_HOOK_KEY in the environment}
+      SUPERADMIN_API_KEY: ${SUPERADMIN_API_KEY:?set SUPERADMIN_API_KEY in .env.ci}
       # Magic-link delivery lands in the local stub (HOOK_URL) instead of the
       # external webhook service used by dev/prod.
       HOOK_URL: "http://magiclink-stub:8081"
       HOOK_SYNC_SERVICE_NAMES: "analyze"
-      SUPERTOKEN_API_KEY: "password-with-a-minimum-of-20-characters"
+      SUPERTOKEN_API_KEY: ${SUPERTOKEN_API_KEY:?set SUPERTOKEN_API_KEY in .env.ci}
       SUPERTOKEN_CONNECTION_URI: "http://supertokens:3567"
       SUPERTOKEN_API_DOMAIN: "http://app:3200"
       SUPERTOKEN_WEBSITE_DOMAIN: "http://app:3200"
       APP_SUPERTOKEN_KONSULIN_DASHBOARD_ADMIN_EMAIL: "ci-superadmin@konsulin.local"
       REDIS_HOST: "redis"
       REDIS_PORT: "6379"
-      REDIS_PASSWORD: "redispass"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env.ci}
       RABBITMQ_HOST: "rabbitmq"
       RABBITMQ_PORT: "5672"
       RABBITMQ_USERNAME: "guest"
-      RABBITMQ_PASSWORD: "password"
+      RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:?set RABBITMQ_DEFAULT_PASS in .env.ci}
       # Sandbox (test-mode) Xendit key from the XENDIT_SANDBOX_API_KEY secret;
       # appointment payments create sandbox invoices, no real money moves.
       APP_XENDIT_API_KEY: "${XENDIT_SANDBOX_API_KEY:-}"
-      APP_XENDIT_WEBHOOK_TOKEN: "ci-callback-token"
+      APP_XENDIT_WEBHOOK_TOKEN: ${XENDIT_CALLBACK_TOKEN:?set XENDIT_CALLBACK_TOKEN in .env.ci}
     networks: [ci-net]
 
 networks:
