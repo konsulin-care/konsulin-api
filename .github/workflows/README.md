@@ -1,6 +1,6 @@
-# CI/CD Pipeline
+# CI/CD Pipelines
 
-Deployment is fully automated via GitHub Actions and Coolify.
+Deployment and PR gating are fully automated via GitHub Actions.
 
 ## Flow
 
@@ -10,33 +10,113 @@ push to develop/main
       ▼
 main.yml ──► docker-build.yml ──► trigger-coolify.yml ──► deploy.yml
  (orchestrator)  (build & push image)   (Coolify webhook)   (SSH status check)
+
+pull request to develop/main
+      │
+      ▼
+pr.yml ──► quality / static-security / codeql / integration / build
+ (authoritative PR gate; all jobs are required checks)
+
+weekly (cron Mon 03:00 UTC)
+      │
+      ▼
+security-weekly.yml ──► zap-and-regression + fuzz jobs
 ```
 
 ## Workflows
 
-- **`main.yml`** — Entry point. Triggered on push to `develop` or `main`.
-  - `docker` job: calls `docker-build.yml` with version/build inputs.
-  - `deploy-dev` job: calls `trigger-coolify.yml` on `develop` pushes.
-  - `deploy-prod` job: calls `trigger-coolify.yml` on `main` pushes.
-  - `deploy-check` job: calls `deploy.yml` to verify the deployed container is running.
+### PR gate — `pr.yml` (authoritative, cannot be bypassed with `--no-verify`)
 
-- **`docker-build.yml`** — Reusable build job. Builds the vendor image, rewrites the
-  Dockerfile `FROM` to it, builds the app image, and pushes to Docker Hub
-  (`nightly`/dev-sha for develop, `latest`/git-tag for main).
+Every pull request to `develop`/`main` runs five independent jobs. **All five
+are configured as required status checks** in branch protection for
+`develop`/`main`, so a PR cannot merge unless every gate is green.
 
-- **`trigger-coolify.yml`** — Reusable deploy job. Calls the Coolify deploy webhook
-  (`COOLIFY_TRIGGER_URL`) with a bearer token (`COOLIFY_TOKEN`).
+| Job | Checks |
+|---|---|
+| `quality` | gofumpt (changed files), `go mod tidy`, golangci-lint (new issues), `go vet`, `go test`, `go test -race` |
+| `static-security` | govulncheck (blocking), Trivy vuln scan (blocking, HIGH/CRITICAL), Trivy secrets/config (SARIF, non-blocking) |
+| `codeql` | CodeQL Go analysis (SARIF into Code Scanning) |
+| `integration` | disposable Docker env (`ci-env` action) + full Bruno suite (auth, RBAC, ownership-violation). An expected-4xx ownership test that starts returning 2xx fails the PR. |
+| `build` | vendor + app image build, then a blocking Trivy **image** scan (OS-level CVEs) with SARIF |
 
-- **`deploy.yml`** — Reusable verification job. SSHes into the host and runs
-  `docker ps | grep konsulin-api` to confirm the container is up.
+### Weekly security — `security-weekly.yml` (scheduled, non-blocking for PRs)
 
-- **`pr-build-check.yml`** — PR gate for pull requests to `develop`: golangci-lint,
-  `go test -race ./...`, and a Docker build smoke check.
+Runs Mondays 03:00 UTC on the default branch (also `workflow_dispatch`):
+
+- **`zap-and-regression` job**: disposable env → full Bruno regression suite →
+  OWASP ZAP active API scan (informational, SARIF) → govulncheck + Trivy
+  freshness scans (SARIF). ZAP *complements* the Bruno authorization tests; it
+  never replaces them.
+- **`fuzz` job**: coverage-guided Go fuzzing over the service-layer parse
+  entry points (FHIR bundle/invoice responses, Xendit callbacks, webhook
+  bodies), 2m budget per package. A crasher fails the run — triage the saved
+  `testdata/fuzz` corpus and fix the bug.
+
+Active DAST and fuzzing stay off the blocking PR path: the PR gate must remain
+fast and deterministic.
+
+### Deployment — `main.yml`, `docker-build.yml`, `trigger-coolify.yml`, `deploy.yml`
+
+- `main.yml` — orchestrator on push to `develop`/`main`: builds, deploys to
+  dev (`develop`) or prod (`main`), then verifies the container is running.
+- `docker-build.yml` — reusable build: vendor image, then app image (dev:
+  `nightly`/`dev-$SHA`; prod: `latest`/git tag), pushes to Docker Hub.
+- `trigger-coolify.yml` — reusable deploy trigger (Coolify restart webhook).
+- `deploy.yml` — reusable SSH container status check.
 
 ## Required repository secrets
 
-- `DOCKER_USERNAME`, `DOCKER_PASSWORD` — Docker Hub credentials (used by `docker-build.yml`).
-- `COOLIFY_TRIGGER_URL_DEV`, `COOLIFY_TOKEN_DEV` — Coolify dev deploy (used by `main.yml`).
-- `COOLIFY_TRIGGER_URL_PROD`, `COOLIFY_TOKEN_PROD` — Coolify prod deploy (used by `main.yml`).
-- `SSH_HOST`, `SSH_USERNAME`, `SSH_KEY` — host access for the container status check
-  (used by `main.yml` via `deploy.yml`).
+| Secret | Used by |
+|---|---|
+| `DOCKER_USERNAME`, `DOCKER_PASSWORD` | `docker-build.yml` |
+| `COOLIFY_URL`, `COOLIFY_SERVICE_DEV`, `COOLIFY_SERVICE_PROD`, `COOLIFY_TOKEN` | `main.yml` → `trigger-coolify.yml` |
+| `SSH_HOST`, `SSH_USERNAME`, `SSH_KEY` | `main.yml` → `deploy.yml` |
+| `XENDIT_SANDBOX_API_KEY` | `pr.yml` / `security-weekly.yml` (integration env) |
+
+## Tooling decisions and boundaries
+
+- **Semgrep runs via the GitHub App, not CI.** The Semgrep GitHub App posts
+  findings on every open PR through its own check run, so a CI step would be
+  redundant. Configured app behavior lives in the Semgrep dashboard.
+- **DeepSource is retained deliberately.** It previously found issues that
+  DeepScan, Codacy, and SonarCloud all missed; this demonstrated value is the
+  topic-level exception to tool consolidation (config: `.deepsource.toml`).
+  Revisit only if it starts producing duplicate/low-value findings.
+- **CodeRabbit** remains the PR review assistant (`.coderabbit.yaml`), not a
+  blocking gate.
+
+### Pinning policy
+
+Security-relevant tool versions are pinned, not floating:
+
+| Tool | Pin | Kept fresh by |
+|---|---|---|
+| `gofumpt` | `v0.11.0` | manual (not a dependabot ecosystem) |
+| `govulncheck` | `v1.7.0` | manual (vuln DB refreshes each run regardless) |
+| `trivy-action` | commit SHA `ed142fd…` `# v0.36.0` | dependabot (github-actions) |
+| Trivy binary version | `v0.74.0` (action input) | manual |
+| `actionlint` (pre-commit) | `v1.7.12` | dependabot updates the rev via pre-commit autoupdate manually — treat as manual |
+| ZAP image | `ghcr.io/zaproxy/zaproxy:v2.17.0` | manual |
+
+**SHA + tag comment pattern.** `trivy-action` is pinned to a full commit SHA
+with a `# v0.36.0` comment because the March 2026 supply-chain incident
+published a malicious Trivy `v0.69.4` release and re-tagged action refs. The
+SHA makes the pin immutable; the tag comment lets Dependabot (github-actions
+ecosystem) bump it to the next release. Follow this pattern for any action
+that pulls a binary or image.
+
+**Dependabot boundaries.** Dependabot updates: GitHub Actions refs (including
+SHA-pinned-with-comment), Docker images inside `Dockerfile`s, and `go.mod`
+modules. It does **not** touch `go install ...@version` lines in workflow
+steps or plain image tags inside `docker run`/`uses`-input strings — those are
+bumped manually (quarterly review, or via dependabot PRs for the action
+refs).
+
+## Validation strategy
+
+- `actionlint` (pre-commit hook) validates every workflow on each commit.
+- `act` is a manual smoke test for workflow edits — **not** wired into hooks,
+  because it cannot fully emulate GitHub and would gate pushes on false
+  negatives.
+- The authoritative check is the PR itself: for `pull_request` events GitHub
+  executes the head-branch version of the workflow.

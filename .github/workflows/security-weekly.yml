@@ -1,0 +1,156 @@
+name: Weekly Security Scan
+
+# Scheduled, deeper security testing that stays OFF the blocking PR path.
+# Runs against the disposable CI environment on the default branch:
+#   - full Bruno security regression suite (auth, RBAC, ownership violations)
+#   - OWASP ZAP active API scan (DAST)
+#   - coverage-guided Go fuzzing (service-layer parse entry points)
+#   - govulncheck + Trivy freshness scans (dependencies drift on stale code)
+#
+# AI-assisted security review is deliberately not part of this pipeline: it is
+# not a reproducible gate. Semgrep findings arrive via the GitHub App on PRs.
+#
+# PR-time scanning (CodeQL, Trivy, govulncheck) runs in pr.yml.
+
+on:
+  schedule:
+    - cron: "0 3 * * 1" # Mondays 03:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write # SARIF uploads
+
+env:
+  GO_VERSION: "1.26"
+
+jobs:
+  zap-and-regression:
+    name: ZAP active scan and security regression
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Start disposable CI environment
+        uses: ./.github/actions/ci-env
+        with:
+          xendit-sandbox-api-key: ${{ secrets.XENDIT_SANDBOX_API_KEY }}
+          organization: weekly-${{ github.run_id }}-org
+
+      - name: Run Bruno security regression suite
+        run: |
+          export BRU_OUTPUT="${GITHUB_WORKSPACE}/bru-report.xml"
+          bash scripts/bru-run.sh --required
+
+      - name: Upload Bruno JUnit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bru-regression-report
+          path: bru-report.xml
+          if-no-files-found: ignore
+
+      # Active API scan against the disposable environment. Unauthenticated
+      # against magic-link-protected routes on purpose: ZAP augments (does not
+      # replace) the application-specific authorization tests, which only run
+      # inside Bruno. Reports written to /zap/wrk (mounted at ./zap). The scan
+      # is tolerated on failure: it is informational, and whatever report was
+      # produced is still uploaded.
+      - name: OWASP ZAP full active scan
+        run: |
+          mkdir -p zap
+          docker run --rm \
+            --network konsulin-ci-net \
+            -v "$PWD/zap:/zap/wrk" \
+            ghcr.io/zaproxy/zaproxy:v2.17.0 \
+            zap-full-scan.py -t http://app:3200 \
+            -J /zap/wrk/zap-report.json \
+            -r /zap/wrk/zap-report.html || true
+          echo "--- zap artifacts ---"
+          find zap -type f
+
+      - name: Convert ZAP report to SARIF
+        if: hashFiles('zap/zap-report.json') != ''
+        run: python3 scripts/ci/zap2sarif.py zap/zap-report.json zap/zap-report.sarif
+
+      - name: Upload ZAP scan artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zap-scan
+          path: zap/*
+
+      - name: Upload ZAP SARIF to Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        if: hashFiles('zap/*.sarif') != ''
+        with:
+          sarif_file: zap
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: govulncheck (fresh scan)
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+          govulncheck ./...
+
+      # Same pinned action as pr.yml; the weekly re-scan catches drift on
+      # stale code (dependencies that only exist on the default branch).
+      - name: Trivy vulnerability scan (SARIF)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          version: v0.74.0
+          severity: HIGH,CRITICAL
+          scanners: vuln,secret,config
+          format: sarif
+          output: trivy/trivy-weekly.sarif
+
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: hashFiles('trivy/trivy-weekly.sarif') != ''
+        with:
+          sarif_file: trivy/trivy-weekly.sarif
+
+      - name: Capture environment logs on failure
+        if: failure()
+        run: docker compose --env-file .env.ci -f docker-compose.ci.yml logs --tail=300 > weekly-logs.txt || true
+
+      - name: Upload environment logs
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: weekly-env-logs
+          path: weekly-logs.txt
+          if-no-files-found: ignore
+
+      - name: Teardown disposable environment
+        if: always()
+        run: docker compose --env-file .env.ci -f docker-compose.ci.yml down -v --remove-orphans
+
+  fuzz:
+    name: Extended Go fuzzing (crashers fail weekly)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      # Coverage-guided fuzzing of the service-layer parse entry points (FHIR
+      # bundle/invoice responses, Xendit callbacks, webhook bodies). A crasher
+      # fails the run: triage the saved testdata/fuzz corpus and fix the bug.
+      # `go test -fuzz` accepts only one package per invocation, so fuzz each
+      # parse-entry-point package sequentially; add any new fuzz package here.
+      - name: Fuzz service-layer parsers (2m per package)
+        run: |
+          for pkg in \
+            ./internal/app/services/fhir_spark/bundle \
+            ./internal/app/services/fhir_spark/invoices \
+            ./internal/app/services/core/payments \
+            ./internal/app/services/core/webhook; do
+            go test -run='^$' -fuzz='^Fuzz' -fuzztime=2m "$pkg" || exit 1
+          done

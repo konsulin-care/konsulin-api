@@ -1,0 +1,272 @@
+name: PR Quality and Security
+
+# Authoritative quality + security gate for pull requests. Independent of local
+# Git hooks (git commit/push --no-verify cannot bypass these checks).
+#
+# Jobs:
+#   quality          — gofumpt, golangci-lint, go vet, go test, go test -race
+#   static-security  — govulncheck (blocking), Trivy vuln (blocking),
+#                      Trivy secrets/config (SARIF, non-blocking). Semgrep
+#                      runs via the GitHub App, not in CI.
+#   codeql           — CodeQL Go analysis (SARIF; status lives in Code Scanning)
+#   integration      — disposable Docker env + full Bruno suite (auth, RBAC,
+#                      ownership-violation) — the API security regression gate
+#   build            — Docker image smoke build (vendor + app) + Trivy image scan
+#
+# Keep PR-time jobs deterministic: no active scanners, no external mailboxes,
+# no noisy DAST. Deeper ZAP/fuzz runs live in security-weekly.yml.
+#
+# Enable in repository settings (Settings → Code security and analysis):
+#   - GitHub Advanced Security / CodeQL
+#   - Secret scanning + push protection
+
+on:
+  pull_request:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+  pull-requests: read
+  security-events: write # SARIF uploads (CodeQL, Trivy)
+
+concurrency:
+  group: pr-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.26"
+
+jobs:
+  quality:
+    name: Quality (format, lint, vet, tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      # Formatting gate on changed files only — mirrors the "new issues"
+      # philosophy of the golangci-lint gate below so pre-existing legacy files
+      # never block a PR, while new code must be gofumpt-clean.
+      - name: gofumpt formatting check (changed files)
+        run: |
+          go install mvdan.cc/gofumpt@v0.11.0
+          base=$(git merge-base HEAD "origin/${{ github.base_ref }}" 2>/dev/null || echo HEAD)
+          files=$(git diff --name-only "$base" HEAD -- '*.go' || true)
+          if [ -n "$files" ]; then
+            violations=$(gofumpt -l $files)
+            test -z "$violations" || { echo "gofumpt violations:"; echo "$violations"; exit 1; }
+          else
+            echo "no Go files changed vs $base"
+          fi
+
+      - name: go mod tidy check
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: golangci-lint (new issues only)
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a
+        with:
+          version: v2.12.2
+          only-new-issues: true
+          args: --timeout=5m
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test ./...
+
+      - name: go test -race
+        run: go test -race ./...
+
+  static-security:
+    name: Static security (govulncheck, Trivy)
+    runs-on: ubuntu-latest
+    needs: [quality]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: govulncheck (blocking)
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+          govulncheck ./...
+
+      # Blocking: HIGH/CRITICAL vulnerabilities in the Go module graph.
+      # Uses aquasecurity/trivy-action pinned by commit SHA (post March-2026
+      # supply-chain incident) with an explicit clean Trivy version. The `#
+      # v0.36.0` tag comment lets Dependabot bump the pin safely.
+      - name: Trivy vulnerability scan (blocking)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          version: v0.74.0
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          hide-progress: true
+
+      # Non-blocking: repository secrets + misconfiguration hygiene. Reported
+      # as SARIF into Code Scanning instead of hard-failing the PR (push
+      # protection already blocks committed secrets at the source).
+      - name: Trivy secrets & config scan (SARIF)
+        if: always()
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          version: v0.74.0
+          severity: HIGH,CRITICAL
+          scanners: secret,config
+          format: sarif
+          output: trivy/trivy-secret-config.sarif
+
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: hashFiles('trivy/trivy-secret-config.sarif') != ''
+        with:
+          sarif_file: trivy/trivy-secret-config.sarif
+
+      # No Semgrep CI step: the Semgrep GitHub App posts its findings on every
+      # PR via its own check run (see workflows README).
+
+  codeql:
+    name: CodeQL (Go)
+    runs-on: ubuntu-latest
+    needs: [quality]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: go
+
+      - run: go build ./...
+
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:go"
+
+  integration:
+    name: Integration and API security tests
+    runs-on: ubuntu-latest
+    needs: [quality]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Require Xendit sandbox key secret
+        run: |
+          if [ -z "${{ secrets.XENDIT_SANDBOX_API_KEY }}" ]; then
+            echo "::error::XENDIT_SANDBOX_API_KEY secret is missing. Add a Xendit sandbox (test-mode) API key under repository secrets." >&2
+            exit 1
+          fi
+
+      # Isolated disposable environment: infra + app + deterministic
+      # magic-link stub. Synthetic accounts/data only.
+      - name: Start disposable CI environment
+        uses: ./.github/actions/ci-env
+        with:
+          xendit-sandbox-api-key: ${{ secrets.XENDIT_SANDBOX_API_KEY }}
+          organization: ci-${{ github.run_id }}-org
+
+      # Full Bruno chain in one required run: auth (magiclink via local stub,
+      # anonymous sessions, role switching) → seeds → ownership-violation suite
+      # (16 security requests; expected-4xx regressions fail the PR) → patient
+      # journey → practitioner journey → admin (API-key superadmin) → cleanup.
+      # BRU_OUTPUT writes a JUnit report for artifacts.
+      - name: Run Bruno API security suite (auth, RBAC, ownership)
+        run: |
+          export BRU_OUTPUT="${GITHUB_WORKSPACE}/bru-report.xml"
+          bash scripts/bru-run.sh --required
+
+      - name: Upload Bruno JUnit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bru-report
+          path: bru-report.xml
+          if-no-files-found: ignore
+
+      - name: Capture environment logs on failure
+        if: failure()
+        run: docker compose --env-file .env.ci -f docker-compose.ci.yml logs --tail=300 > ci-env-logs.txt || true
+
+      - name: Upload environment logs
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ci-env-logs
+          path: ci-env-logs.txt
+          if-no-files-found: ignore
+
+      - name: Teardown disposable environment
+        if: always()
+        run: docker compose --env-file .env.ci -f docker-compose.ci.yml down -v --remove-orphans
+
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: [quality]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Get Short SHA
+        run: echo "SHORT_SHA=${GITHUB_SHA::8}" >> "$GITHUB_ENV"
+
+      - name: Build Vendor Image
+        run: |
+          docker build \
+            -t konsulin/konsulin-api-vendor:pr-${{ env.SHORT_SHA }} \
+            -f Dockerfile-vendor .
+
+      - name: Replace FROM to use local vendor pr-tag
+        run: |
+          sed -i -E "s|^[[:space:]]*FROM[[:space:]]+.*[[:space:]]+[Aa][Ss][[:space:]]+gobuild|FROM konsulin/konsulin-api-vendor:pr-${SHORT_SHA} as gobuild|" Dockerfile
+
+      - name: Verify FROM replacement
+        run: |
+          echo "Dockerfile gobuild line after sed:"
+          grep -i "from" Dockerfile | grep gobuild
+
+      - name: Build Main Docker Image
+        run: |
+          docker build \
+            -t konsulin/konsulin-api:pr-${{ env.SHORT_SHA }} \
+            -f Dockerfile .
+
+      - name: Verify Built Images
+        run: |
+          docker images | grep konsulin-api
+
+      # Blocking image scan: catches OS-level CVEs in the runtime base image
+      # that `trivy fs` (source tree) cannot see. SARIF is uploaded even when
+      # the scan fails so findings always surface in Code Scanning.
+      - name: Trivy image scan (blocking + SARIF)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: konsulin/konsulin-api:pr-${{ env.SHORT_SHA }}
+          version: v0.74.0
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          format: sarif
+          output: trivy/trivy-image.sarif
+
+      - name: Upload Trivy image SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy/trivy-image.sarif

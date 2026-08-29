@@ -727,6 +727,11 @@ func parseBodyFields(body []byte, contentType string) (email, phone, chatwoot st
 func parseJSONBodyFields(body []byte) (email, phone, chatwoot string, err error) {
 	var tmp map[string]interface{}
 	if err := json.Unmarshal(body, &tmp); err != nil {
+		// Valid JSON that isn't an object (number, string, bool, array)
+		// carries no contact fields — accept it as empty rather than 400.
+		if json.Valid(body) {
+			return "", "", "", nil
+		}
 		return "", "", "", exceptions.ErrCannotParseJSON(err)
 	}
 	return rootString(tmp, "email"), rootString(tmp, "phone_number"), rootString(tmp, "chatwoot_id"), nil

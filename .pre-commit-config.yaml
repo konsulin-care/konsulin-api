@@ -28,6 +28,15 @@ repos:
         args: [--failure-threshold, error]
         types: [dockerfile]
 
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      # Lints all GitHub Actions workflow files (.github/workflows/*).
+      # Catches invalid on: triggers, job/step key typos, and malformed uses:
+      # refs before the push reaches GitHub.
+      - id: actionlint
+        name: "[quality] actionlint (workflow lint)"
+
   - repo: local
     hooks:
       # golangci-lint on the current change only. Uses the same --new-from-patch

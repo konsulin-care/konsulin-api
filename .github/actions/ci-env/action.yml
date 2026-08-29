@@ -1,0 +1,90 @@
+# Starts the disposable Docker-based integration environment used for API
+# security testing:
+#   1. installs the pinned Bruno CLI;
+#   2. builds the vendor + app Docker images (with the CI FROM-rewrite);
+#   3. writes the collection env (docs/api/.env) and compose interpolation env
+#      (.env.ci) using synthetic per-run credentials;
+#   4. starts the infrastructure group (postgres/redis/rabbitmq/blaze/
+#      supertokens/magiclink-stub), probes readiness from the runner;
+#   5. starts the app and waits for /health.
+#
+# Never starts/uses production credentials or real patient data. The caller is
+# responsible for tearing the environment down (`docker compose ... down -v`)
+# and uploading artifacts.
+
+name: Start disposable CI environment
+
+description: Builds and starts the isolated Docker-based integration environment with synthetic data.
+
+inputs:
+  xendit-sandbox-api-key:
+    description: Xendit sandbox API key (synthetic test credential) for appointment payment tests.
+    required: false
+    default: ""
+  organization:
+    description: Unique per-run organization name used as the synthetic magic-link mailbox.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Install Bruno CLI (pinned to dev toolchain)
+      shell: bash
+      run: npm install -g @usebruno/cli@3.5.1
+
+    - name: Build vendor and app images
+      shell: bash
+      run: |
+        docker build -t konsulin/konsulin-api-vendor:pr-ci -f Dockerfile-vendor .
+        sed -i -E "s|^[[:space:]]*FROM[[:space:]]+.*[[:space:]]+[Aa][Ss][[:space:]]+gobuild|FROM konsulin/konsulin-api-vendor:pr-ci as gobuild|" Dockerfile
+        docker build -t konsulin/konsulin-api:pr-ci -f Dockerfile .
+
+    - name: Write CI env files
+      shell: bash
+      run: |
+        printf 'XENDIT_SANDBOX_API_KEY=%s\n' "${{ inputs.xendit-sandbox-api-key }}" > .env.ci
+        printf 'APP_BASE_URL=http://localhost:3200\nBLAZE_BASE_URL=http://localhost:8080\nSUPERADMIN_API_KEY=super-unique-password\nORGANIZATION=%s\nMAILINATOR_BASE_URL=http://localhost:8081/api/v2\nXENDIT_CALLBACK_TOKEN=ci-callback-token\n' "${{ inputs.organization }}" > docs/api/.env
+        echo "wrote .env.ci and docs/api/.env"
+
+    - name: Start infrastructure group
+      shell: bash
+      run: docker compose --env-file .env.ci -f docker-compose.ci.yml up -d postgres redis rabbitmq blaze supertokens magiclink-stub
+
+    - name: Wait for infrastructure readiness
+      shell: bash
+      run: |
+        ok=0
+        for _ in $(seq 1 60); do
+          curl -fsS http://localhost:8080/fhir/metadata >/dev/null 2>&1 || { sleep 5; continue; }
+          curl -fsS http://localhost:3567/hello >/dev/null 2>&1 || { sleep 5; continue; }
+          docker compose -f docker-compose.ci.yml exec -T redis redis-cli -a redispass ping >/dev/null 2>&1 || { sleep 5; continue; }
+          docker compose -f docker-compose.ci.yml exec -T rabbitmq rabbitmq-diagnostics -q ping >/dev/null 2>&1 || { sleep 5; continue; }
+          ok=1
+          break
+        done
+        if [ "$ok" != 1 ]; then
+          docker compose -f docker-compose.ci.yml logs --tail=200 postgres redis rabbitmq blaze supertokens 2>/dev/null || true
+          echo "::error::Infrastructure did not become ready in time" >&2
+          exit 1
+        fi
+
+    - name: Start API gateway
+      shell: bash
+      run: docker compose --env-file .env.ci -f docker-compose.ci.yml up -d app
+
+    - name: Wait for API health
+      shell: bash
+      run: |
+        ok=0
+        for _ in $(seq 1 60); do
+          if curl -fsS http://localhost:3200/health >/dev/null 2>&1; then
+            ok=1
+            break
+          fi
+          sleep 5
+        done
+        if [ "$ok" != 1 ]; then
+          docker compose -f docker-compose.ci.yml logs --tail=300 app 2>/dev/null || true
+          echo "::error::API gateway did not become healthy in time" >&2
+          exit 1
+        fi

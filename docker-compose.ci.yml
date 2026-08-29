@@ -1,0 +1,164 @@
+# Disposable CI integration environment for API security testing.
+#
+# Ephemeral, isolated, synthetic-only: no production credentials, no real
+# patient data. Started/stopped exclusively by GitHub Actions workflows
+# (.github/workflows/pr.yml, .github/workflows/security-weekly.yml) via the
+# composite action .github/actions/ci-env/action.yml — NOT for local
+# development (see docker-compose.yml for that).
+#
+# Layout:
+#   postgres      — SuperTokens core database
+#   redis         — gateway session/cache store
+#   rabbitmq      — webhook async queue
+#   blaze         — FHIR R4 server (seeded with synthetic resources)
+#   supertokens   — passwordless auth core (magic links)
+#   magiclink-stub — deterministic replacement for the external magic-link
+#                    delivery webhook AND the Mailinator inbox
+#                    (scripts/ci/magiclink-stub.mjs)
+#   app           — the Konsulin API gateway image, pre-built by the workflow
+#
+# The app is started AFTER the infrastructure group, because the gateway
+# performs boot-time FHIR and SuperTokens initialization and fatals otherwise.
+# The workflow probes Blaze, SuperTokens, Redis and RabbitMQ from the runner
+# before `docker compose up -d app`.
+#
+# Credentials:
+#   - JWT_HOOK_KEY / SUPERTOKEN_API_KEY / SUPERADMIN_API_KEY / REDIS/RABBITMQ
+#     below are synthetic CI-only credentials, committed on purpose: they
+#     authenticate/sign nothing outside this disposable environment.
+#   - XENDIT_SANDBOX_API_KEY is injected via `--env-file .env.ci`
+#     (compose interpolation), supplied as a repository secret.
+#
+# Host ports (runner-local): app 3200, blaze 8080, magiclink-stub 8081.
+# The Bruno collection runs on the runner, so those three must be host-mapped.
+
+name: konsulin-ci
+
+services:
+  postgres:
+    image: postgres:16.5-alpine
+    container_name: konsulin-ci-postgres
+    environment:
+      POSTGRES_USER: supertokens
+      POSTGRES_PASSWORD: supertokens
+      POSTGRES_DB: supertokens
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [ci-net]
+
+  redis:
+    image: bitnami/redis:latest
+    container_name: konsulin-ci-redis
+    environment:
+      ALLOW_EMPTY_PASSWORD: "no"
+      REDIS_PASSWORD: redispass
+    networks: [ci-net]
+
+  rabbitmq:
+    image: rabbitmq:4.0-management-alpine
+    container_name: konsulin-ci-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: password
+    networks: [ci-net]
+
+  blaze:
+    image: samply/blaze:latest
+    container_name: konsulin-ci-blaze
+    ports:
+      - "8080:8080"
+    environment:
+      BASE_URL: "http://localhost:8080"
+      CONTEXT_PATH: "/fhir"
+    volumes:
+      - blaze_ci_data:/app/data
+    networks: [ci-net]
+
+  supertokens:
+    image: registry.supertokens.io/supertokens/supertokens-postgresql:latest
+    container_name: konsulin-ci-supertokens
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3567:3567"
+    environment:
+      POSTGRESQL_CONNECTION_URI: "postgresql://supertokens:supertokens@postgres:5432/supertokens"
+      API_KEYS: "password-with-a-minimum-of-20-characters"
+    networks: [ci-net]
+
+  magiclink-stub:
+    image: node:24-alpine
+    container_name: konsulin-ci-magiclink-stub
+    ports:
+      - "8081:8081"
+    environment:
+      PORT: "8081"
+    volumes:
+      - ./scripts/ci:/app/scripts/ci:ro
+    command: ["node", "/app/scripts/ci/magiclink-stub.mjs"]
+    networks: [ci-net]
+
+  app:
+    image: konsulin/konsulin-api:pr-ci
+    pull_policy: never
+    container_name: konsulin-ci-app
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+      - blaze
+      - supertokens
+      - magiclink-stub
+    ports:
+      - "3200:3200"
+    environment:
+      # test env: skips non-dev credential validation while keeping the
+      # SuperTokens SDK behaviour identical to dev.
+      APP_ENV: "test"
+      APP_ADDRESS: "0.0.0.0"
+      APP_PORT: "3200"
+      APP_BASE_URL: "http://localhost:3200"
+      APP_FRONTEND_DOMAIN: "http://localhost:3200"
+      APP_FHIR_BASE_URL: "http://blaze:8080/fhir/"
+      APP_JWT_SECRET: "ci-only-synthetic-jwt-secret-0123456789abcdef"
+      # Synthetic EC P-256 key, PKCS#8. Signs webhook payloads inside the
+      # disposable environment only (see header note).
+      JWT_HOOK_KEY: |-
+        -----BEGIN PRIVATE KEY-----
+        MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgkUPnTpsR2l0UWDgs
+        MWkCtQ4GexgLuMLu9WJPe9xG3NyhRANCAAQRX+hdUIr/QFGAV/DzhpBKStV44roF
+        RznuoCz06GCQUdvNE4x1wOLqFSkfmWWcopgJ8LfI+U5d2AnA/vfqw55q
+        -----END PRIVATE KEY-----
+      SUPERADMIN_API_KEY: "super-unique-password"
+      # Magic-link delivery lands in the local stub (HOOK_URL) instead of the
+      # external webhook service used by dev/prod.
+      HOOK_URL: "http://magiclink-stub:8081"
+      HOOK_SYNC_SERVICE_NAMES: "analyze"
+      SUPERTOKEN_API_KEY: "password-with-a-minimum-of-20-characters"
+      SUPERTOKEN_CONNECTION_URI: "http://supertokens:3567"
+      SUPERTOKEN_API_DOMAIN: "http://app:3200"
+      SUPERTOKEN_WEBSITE_DOMAIN: "http://app:3200"
+      APP_SUPERTOKEN_KONSULIN_DASHBOARD_ADMIN_EMAIL: "ci-superadmin@konsulin.local"
+      REDIS_HOST: "redis"
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: "redispass"
+      RABBITMQ_HOST: "rabbitmq"
+      RABBITMQ_PORT: "5672"
+      RABBITMQ_USERNAME: "guest"
+      RABBITMQ_PASSWORD: "password"
+      # Sandbox (test-mode) Xendit key from the XENDIT_SANDBOX_API_KEY secret;
+      # appointment payments create sandbox invoices, no real money moves.
+      APP_XENDIT_API_KEY: "${XENDIT_SANDBOX_API_KEY:-}"
+      APP_XENDIT_WEBHOOK_TOKEN: "ci-callback-token"
+    networks: [ci-net]
+
+networks:
+  ci-net:
+    name: konsulin-ci-net
+
+volumes:
+  blaze_ci_data:
