@@ -24,13 +24,41 @@ inputs:
   organization:
     description: Unique per-run organization name used as the synthetic magic-link mailbox.
     required: true
+  ci-postgres-password:
+    description: "Secret: disposable postgres password shared by the postgres service and SuperTokens URI."
+    required: false
+    default: ""
+  ci-redis-password:
+    description: "Secret: disposable redis password used by the redis service and gateway sessions."
+    required: false
+    default: ""
+  ci-rabbitmq-password:
+    description: "Secret: disposable rabbitmq password for the webhook async queue."
+    required: false
+    default: ""
+  ci-supertoken-api-key:
+    description: "Secret: SuperTokens API key shared between the core container and the gateway SDK."
+    required: false
+    default: ""
+  ci-superadmin-api-key:
+    description: "Secret: superadmin API key for Bruno fhir/admin and cleanup requests."
+    required: false
+    default: ""
+  ci-xendit-callback-token:
+    description: "Secret: Xendit webhook callback token used by the gateway and Bruno callback tests."
+    required: false
+    default: ""
+  ci-jwt-hook-key:
+    description: "Secret: EC P-256 PEM signing webhook JWTs inside the disposable environment."
+    required: false
+    default: ""
 
 runs:
   using: composite
   steps:
     - name: Install Bruno CLI (pinned to dev toolchain)
       shell: bash
-      run: npm install -g @usebruno/cli@3.5.1
+      run: npm install -g --ignore-scripts @usebruno/cli@3.5.1
 
     - name: Build vendor and app images
       shell: bash
@@ -42,8 +70,26 @@ runs:
     - name: Write CI env files
       shell: bash
       run: |
-        printf 'XENDIT_SANDBOX_API_KEY=%s\n' "${{ inputs.xendit-sandbox-api-key }}" > .env.ci
-        printf 'APP_BASE_URL=http://localhost:3200\nBLAZE_BASE_URL=http://localhost:8080\nSUPERADMIN_API_KEY=super-unique-password\nORGANIZATION=%s\nMAILINATOR_BASE_URL=http://localhost:8081/api/v2\nXENDIT_CALLBACK_TOKEN=ci-callback-token\n' "${{ inputs.organization }}" > docs/api/.env
+        # Scalar credentials -> .env.ci for compose ${VAR:?} interpolation.
+        {
+          printf 'XENDIT_SANDBOX_API_KEY=%s\n' "${{ inputs.xendit-sandbox-api-key }}"
+          printf 'POSTGRES_PASSWORD=%s\n' "${{ inputs.ci-postgres-password }}"
+          printf 'REDIS_PASSWORD=%s\n' "${{ inputs.ci-redis-password }}"
+          printf 'RABBITMQ_DEFAULT_PASS=%s\n' "${{ inputs.ci-rabbitmq-password }}"
+          printf 'SUPERTOKEN_API_KEY=%s\n' "${{ inputs.ci-supertoken-api-key }}"
+          printf 'SUPERADMIN_API_KEY=%s\n' "${{ inputs.ci-superadmin-api-key }}"
+          printf 'XENDIT_CALLBACK_TOKEN=%s\n' "${{ inputs.ci-xendit-callback-token }}"
+        } > .env.ci
+
+        # Bruno collection env (same synthetic values, sourced from the same inputs).
+        printf 'APP_BASE_URL=http://localhost:3200\nBLAZE_BASE_URL=http://localhost:8080\nSUPERADMIN_API_KEY=%s\nORGANIZATION=%s\nMAILINATOR_BASE_URL=http://localhost:8081/api/v2\nXENDIT_CALLBACK_TOKEN=%s\n' \
+          "${{ inputs.ci-superadmin-api-key }}" "${{ inputs.organization }}" "${{ inputs.ci-xendit-callback-token }}" > docs/api/.env
+
+        # The multiline PEM cannot live in a .env file; export it to the job
+        # environment so compose interpolation of ${JWT_HOOK_KEY} sees it.
+        {
+          printf 'JWT_HOOK_KEY<<EOF\n%s\nEOF\n' "${{ inputs.ci-jwt-hook-key }}"
+        } >> "$GITHUB_ENV"
         echo "wrote .env.ci and docs/api/.env"
 
     - name: Start infrastructure group
@@ -57,7 +103,7 @@ runs:
         for _ in $(seq 1 60); do
           curl -fsS http://localhost:8080/fhir/metadata >/dev/null 2>&1 || { sleep 5; continue; }
           curl -fsS http://localhost:3567/hello >/dev/null 2>&1 || { sleep 5; continue; }
-          docker compose -f docker-compose.ci.yml exec -T redis redis-cli -a redispass ping >/dev/null 2>&1 || { sleep 5; continue; }
+          docker compose -f docker-compose.ci.yml exec -T redis redis-cli -a "${{ inputs.ci-redis-password }}" ping >/dev/null 2>&1 || { sleep 5; continue; }
           docker compose -f docker-compose.ci.yml exec -T rabbitmq rabbitmq-diagnostics -q ping >/dev/null 2>&1 || { sleep 5; continue; }
           ok=1
           break
