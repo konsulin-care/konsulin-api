@@ -54,7 +54,7 @@ code with fork-influenced inputs and is a known secret-leak vector.
 | `quality` | gofumpt (changed files), `go mod tidy`, golangci-lint (new issues), `go vet`, `go test`, `go test -race` |
 | `static-security` | govulncheck (blocking), Trivy vuln scan (blocking, HIGH/CRITICAL), Trivy secrets/config (SARIF, non-blocking) |
 | `codeql` | CodeQL Go analysis (SARIF into Code Scanning) |
-| `integration` | disposable Docker env (`ci-env` action) + full Bruno suite (auth, RBAC, ownership-violation). An expected-4xx ownership test that starts returning 2xx fails the PR. |
+| `integration` | disposable Docker env (`ci-env` action) + full Bruno suite (auth, RBAC, ownership-violation). An expected-4xx ownership test that starts returning 2xx fails the PR. **Skipped on fork PRs** (see above). |
 | `build` | vendor + app image build, then a blocking Trivy **image** scan (OS-level CVEs) with SARIF |
 
 ### Weekly security — `security-weekly.yml` (scheduled, non-blocking for PRs)
@@ -84,12 +84,23 @@ fast and deterministic.
 
 ## Required repository secrets
 
-| Secret | Used by |
-|---|---|
-| `DOCKER_USERNAME`, `DOCKER_PASSWORD` | `docker-build.yml` |
-| `COOLIFY_URL`, `COOLIFY_SERVICE_DEV`, `COOLIFY_SERVICE_PROD`, `COOLIFY_TOKEN` | `main.yml` → `trigger-coolify.yml` |
-| `SSH_HOST`, `SSH_USERNAME`, `SSH_KEY` | `main.yml` → `deploy.yml` |
-| `XENDIT_SANDBOX_API_KEY` | `pr.yml` / `security-weekly.yml` (integration env) |
+| Secret | Used by | Scope |
+|---|---|---|
+| `DOCKER_USERNAME`, `DOCKER_PASSWORD` | `docker-build.yml` | repo |
+| `COOLIFY_URL`, `COOLIFY_SERVICE_DEV`, `COOLIFY_SERVICE_PROD`, `COOLIFY_TOKEN` | `main.yml` → `trigger-coolify.yml` | repo |
+| `SSH_HOST`, `SSH_USERNAME`, `SSH_KEY` | `main.yml` → `deploy.yml` | repo |
+| `XENDIT_SANDBOX_API_KEY` | `pr.yml` / `security-weekly.yml` (integration env) | repo |
+| `CI_POSTGRES_PASSWORD` | `ci-env` action → `.env.ci` (postgres + SuperTokens URI) | env `Pull Request Screening` |
+| `CI_REDIS_PASSWORD` | `ci-env` action → `.env.ci` (redis + gateway sessions) | env `Pull Request Screening` |
+| `CI_RABBITMQ_PASSWORD` | `ci-env` action → `.env.ci` (rabbitmq) | env `Pull Request Screening` |
+| `CI_SUPERTOKEN_API_KEY` | `ci-env` action → `.env.ci` (SuperTokens core + SDK) | env `Pull Request Screening` |
+| `CI_SUPERADMIN_API_KEY` | `ci-env` action → `.env.ci` + `docs/api/.env` (Bruno admin) | env `Pull Request Screening` |
+| `CI_XENDIT_CALLBACK_TOKEN` | `ci-env` action → `.env.ci` + `docs/api/.env` (Bruno callbacks) | env `Pull Request Screening` |
+| `CI_JWT_HOOK_KEY` | `ci-env` action → job env (webhook JWT signing) | env `Pull Request Screening` |
+
+Environment secrets live under **Settings → Environments → "Pull Request
+Screening"**; only jobs that declare `environment: "Pull Request Screening"`
+(`integration`, `zap-and-regression`) can read them.
 
 ## Tooling decisions and boundaries
 
@@ -109,8 +120,8 @@ Security-relevant tool versions are pinned, not floating:
 
 | Tool | Pin | Kept fresh by |
 |---|---|---|
-| `gofumpt` | `v0.11.0` | manual (not a dependabot ecosystem) |
-| `govulncheck` | `v1.7.0` | manual (vuln DB refreshes each run regardless) |
+| `gofumpt` | `v0.11.0` | dependabot (`go.mod` via `tools/tools.go`) |
+| `govulncheck` | `v1.7.0` | dependabot (`go.mod` via `tools/tools.go`) |
 | `trivy-action` | commit SHA `ed142fd…` `# v0.36.0` | dependabot (github-actions) |
 | Trivy binary version | `v0.74.0` (action input) | manual |
 | `actionlint` (pre-commit) | `v1.7.12` | dependabot updates the rev via pre-commit autoupdate manually — treat as manual |
@@ -125,10 +136,10 @@ that pulls a binary or image.
 
 **Dependabot boundaries.** Dependabot updates: GitHub Actions refs (including
 SHA-pinned-with-comment), Docker images inside `Dockerfile`s, and `go.mod`
-modules. It does **not** touch `go install ...@version` lines in workflow
-steps or plain image tags inside `docker run`/`uses`-input strings — those are
-bumped manually (quarterly review, or via dependabot PRs for the action
-refs).
+modules. CI tools (`gofumpt`, `govulncheck`) are pinned in `go.mod`
+(`tools/tools.go` + `tool` directives) and invoked via `go tool`, so dependabot
+keeps them fresh as regular modules. Image tags inside `docker run` inputs
+(e.g. the ZAP image) are bumped manually.
 
 ## Validation strategy
 
