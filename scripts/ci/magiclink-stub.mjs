@@ -75,7 +75,7 @@ const server = http.createServer((req, res) => {
   }
 
   // Mailinator-shaped public inbox API consumed by consume-code.yml.
-  const inboxMatch = path.match(/^\/api\/v2\/domains\/public\/inboxes\/([^/]+)$/);
+  const inboxMatch = /^\/api\/v2\/domains\/public\/inboxes\/([^/]+)$/.exec(path);
   if (req.method === "GET" && inboxMatch) {
     const msgs = (inboxes.get(inboxMatch[1]) || []).map((m) => ({
       id: m.id,
@@ -84,7 +84,7 @@ const server = http.createServer((req, res) => {
     return json(res, 200, { msgs });
   }
 
-  const linksMatch = path.match(/^\/api\/v2\/domains\/public\/messages\/([^/]+)\/links$/);
+  const linksMatch = /^\/api\/v2\/domains\/public\/messages\/([^/]+)\/links$/.exec(path);
   if (req.method === "GET" && linksMatch) {
     let links = [];
     for (const msgs of inboxes.values()) {
