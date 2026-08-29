@@ -1,6 +1,7 @@
 [tools]
 go = "1.26.7"
 golangci-lint = "2.12.2"
+gofumpt = "0.11.0"
 node = "26"
 "npm:@usebruno/cli" = "3.5.1"
 pre-commit = { version = "4.2", backend = "pipx" }

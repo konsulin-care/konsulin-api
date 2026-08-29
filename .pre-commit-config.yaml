@@ -58,6 +58,16 @@ repos:
         pass_filenames: false
         types: [go]
 
+      # gofumpt on staged .go files, whole-file — same semantics as CI's
+      # gofumpt -l step. Prevents pre-commit/CI disagreement on files that
+      # carry pre-existing formatting debt (import grouping, etc.).
+      - id: gofumpt
+        name: "[quality] gofumpt (whole-file, staged .go)"
+        entry: bash -c 'export PATH="$HOME/.local/bin:$PATH"; files=$(git diff --cached --name-only --diff-filter=ACM -- "*.go"); if [ -n "$files" ]; then v=$(mise exec gofumpt -- gofumpt -l $files); test -z "$v" || { echo "gofumpt violations:"; echo "$v"; exit 1; }; fi'
+        language: system
+        pass_filenames: false
+        types: [go]
+
       # Pre-push: full test suite with race detection
       - id: go-test-all
         name: "[functional] go test -race (all packages)"
@@ -82,6 +92,16 @@ repos:
       - id: golangci-lint-branch
         name: "[quality] golangci-lint (new vs develop)"
         entry: bash -c 'export PATH="$HOME/.local/bin:$PATH"; base=$(git merge-base HEAD origin/develop 2>/dev/null || echo HEAD); p=$(mktemp); git diff "$base" -- . ":(exclude).pi/sandbox.json" > "$p"; CGO_ENABLED=0 mise exec golangci-lint -- golangci-lint run --new-from-patch="$p" --timeout=5m'
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      # Pre-push: whole-file gofumpt on every .go file changed vs develop —
+      # exact replica of CI's gofumpt step so the push gate and the CI gate
+      # check identical files with identical semantics.
+      - id: gofumpt-branch
+        name: "[quality] gofumpt (whole-file, changed vs develop)"
+        entry: bash -c 'export PATH="$HOME/.local/bin:$PATH"; base=$(git merge-base HEAD origin/develop 2>/dev/null || echo HEAD); files=$(git diff --name-only "$base" HEAD -- "*.go"); if [ -n "$files" ]; then v=$(mise exec gofumpt -- gofumpt -l $files); test -z "$v" || { echo "gofumpt violations:"; echo "$v"; exit 1; }; fi'
         language: system
         pass_filenames: false
         stages: [pre-push]
