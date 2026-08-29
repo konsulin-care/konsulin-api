@@ -31,6 +31,24 @@ Every pull request to `develop`/`main` runs five independent jobs. **All five
 are configured as required status checks** in branch protection for
 `develop`/`main`, so a PR cannot merge unless every gate is green.
 
+### Fork pull requests
+
+The `integration` job references the `Pull Request Screening` environment to
+receive its CI credentials, and GitHub does **not** expose any secrets
+(repository or environment) to workflows triggered by `pull_request` events
+from forks. The job therefore **skips itself on fork PRs**
+(`github.event.pull_request.head.repo.full_name == github.repository`):
+
+- Same-repo PRs (feature branches pushed to `konsulin-care/konsulin-api`): the
+  full suite runs with the environment secrets resolved.
+- Fork PRs (external contributors): the job shows as skipped instead of
+  failing on missing secrets. The suite still runs for those commits after
+  merge, on `develop`, where the environment is available.
+
+Keep secret-using jobs behind this guard; never switch them to
+`pull_request_target` to "fix" fork coverage — that runs base-branch workflow
+code with fork-influenced inputs and is a known secret-leak vector.
+
 | Job | Checks |
 |---|---|
 | `quality` | gofumpt (changed files), `go mod tidy`, golangci-lint (new issues), `go vet`, `go test`, `go test -race` |

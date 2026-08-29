@@ -36,7 +36,7 @@ payment flow test those rules for real.
 |---|---|---|
 | `APP_BASE_URL` | API gateway base (health-checked before the run) | `http://localhost:3200` |
 | `BLAZE_BASE_URL` | Blaze FHIR base for direct seeds and cleanup | `http://localhost:8080` |
-| `SUPERADMIN_API_KEY` | Gateway API key for `fhir/admin/*`, `cleanup/delete-organization` | `super-unique-password` |
+| `SUPERADMIN_API_KEY` | Gateway API key for `fhir/admin/*`, `cleanup/delete-organization` | set in `docs/api/.env` (CI: `CI_SUPERADMIN_API_KEY` environment secret) |
 | `ORGANIZATION` | Boot organization name | `organization-name` |
 
 `docs/api/.env` holds these (untracked; `.env.example` is the template).
