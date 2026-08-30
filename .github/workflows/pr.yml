@@ -249,7 +249,7 @@ jobs:
       - name: Build Vendor Image
         run: |
           docker build \
-            -t konsulin/konsulin-api-vendor:pr-${{ env.SHORT_SHA }} \
+            -t konsulin/konsulin-api-vendor:pr-${SHORT_SHA} \
             -f Dockerfile-vendor .
 
       - name: Replace FROM to use local vendor pr-tag
@@ -264,7 +264,7 @@ jobs:
       - name: Build Main Docker Image
         run: |
           docker build \
-            -t konsulin/konsulin-api:pr-${{ env.SHORT_SHA }} \
+            -t konsulin/konsulin-api:pr-${SHORT_SHA} \
             -f Dockerfile .
 
       - name: Verify Built Images

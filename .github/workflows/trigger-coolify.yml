@@ -15,7 +15,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Coolify Deploy
+        env:
+          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+          COOLIFY_SERVICE: ${{ secrets.COOLIFY_SERVICE }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
         run: |
           echo "Triggering Coolify deployment..."
-          curl -X POST "${{ secrets.COOLIFY_URL }}/services/${{ secrets.COOLIFY_SERVICE }}/restart?latest=true" \
-            --header "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}"
+          curl -X POST "$COOLIFY_URL/services/$COOLIFY_SERVICE/restart?latest=true" \
+            --header "Authorization: Bearer $COOLIFY_TOKEN"
