@@ -26,7 +26,7 @@ Exit code is non-zero if any check fails.
 import os
 import re
 import stat
-import subprocess
+import subprocess  # nosec B404 - check_behavior executes repo-owned scripts in a temp dir
 import sys
 import tempfile
 from pathlib import Path
@@ -192,15 +192,15 @@ def check_task3():
 
 
 HOSTILE = {
-    "PAYLOAD_XENDIT": 'x"; touch injected-marker; echo "',
-    "PAYLOAD_POSTGRES": "p'w$d",
-    "PAYLOAD_REDIS": "r3$()",
-    "PAYLOAD_RABBITMQ": "r4`id`",
-    "PAYLOAD_SUPERTOKEN": "S${T}ecret",
-    "PAYLOAD_SUPERADMIN": 'sa"dmin "$(id)"',
-    "PAYLOAD_XENDIT_TOKEN": "tok$};x",
-    "PAYLOAD_JWT_HOOK": 'line1\nline2 "$(id)" $USER',
-    "PAYLOAD_ORGANIZATION": 'org"; date > owned; #',
+    "PAYLOAD_XENDIT": 'x"; touch injected-marker; echo "',  # nosec B105 - intentional injection payload fixture
+    "PAYLOAD_POSTGRES": "p'w$d",  # nosec B105
+    "PAYLOAD_REDIS": "r3$()",  # nosec B105
+    "PAYLOAD_RABBITMQ": "r4`id`",  # nosec B105
+    "PAYLOAD_SUPERTOKEN": "S${T}ecret",  # nosec B105
+    "PAYLOAD_SUPERADMIN": 'sa"dmin "$(id)"',  # nosec B105
+    "PAYLOAD_XENDIT_TOKEN": "tok$};x",  # nosec B105
+    "PAYLOAD_JWT_HOOK": 'line1\nline2 "$(id)" $USER',  # nosec B105
+    "PAYLOAD_ORGANIZATION": 'org"; date > owned; #',  # nosec B105
 }
 
 # Bind each hostile payload to the env var name the ci-env action's run
@@ -258,7 +258,7 @@ def check_behavior():
         env = dict(os.environ)
         env.update({name: HOSTILE[payload] for name, payload in HOSTILE_ENV.items()})
         env["GITHUB_ENV"] = str(d / "GITHUB_ENV")
-        proc = subprocess.run(
+        proc = subprocess.run(  # nosec B603 - script from this repo's ci-env action, isolated temp dir, no shell
             [exe, "-c", script], cwd=d, env=env,
             capture_output=True, text=True, timeout=30,
         )
