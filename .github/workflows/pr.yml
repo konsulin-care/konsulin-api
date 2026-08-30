@@ -52,8 +52,10 @@ jobs:
       # philosophy of the golangci-lint gate below so pre-existing legacy files
       # never block a PR, while new code must be gofumpt-clean.
       - name: gofumpt formatting check (changed files)
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          base=$(git merge-base HEAD "origin/${{ github.base_ref }}" 2>/dev/null || echo HEAD)
+          base=$(git merge-base HEAD "origin/$BASE_REF" 2>/dev/null || echo HEAD)
           files=$(git diff --name-only "$base" HEAD -- '*.go' || true)
           if [ -n "$files" ]; then
             violations=$(go tool gofumpt -l $files)
