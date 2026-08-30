@@ -113,7 +113,7 @@ runs:
         CI_REDIS_PASSWORD: ${{ inputs.ci-redis-password }}
       run: |
         ok=0
-        for _ in $(seq 1 60); do
+        for _ in $(seq 1 120); do
           curl -fsS http://localhost:8080/fhir/metadata >/dev/null 2>&1 || { sleep 5; continue; }
           curl -fsS http://localhost:3567/hello >/dev/null 2>&1 || { sleep 5; continue; }
           docker compose -f docker-compose.ci.yml exec -T redis redis-cli -a "$CI_REDIS_PASSWORD" ping >/dev/null 2>&1 || { sleep 5; continue; }

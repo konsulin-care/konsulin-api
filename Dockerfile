@@ -12,15 +12,12 @@ WORKDIR /app
 
 ARG TZ_ARG
 
-# CERT PACKAGES (upgrade first so OS packages are current at build time)
 RUN apt-get update && \
     apt-get upgrade -y && \
-    apt-get install -y ca-certificates
-
-RUN apt-get update && \
-    apt-get install -yq tzdata && \
+    apt-get install -y --no-install-recommends ca-certificates tzdata && \
     ln -fs /usr/share/zoneinfo/Asia/Jakarta /etc/localtime && \
-    dpkg-reconfigure -f noninteractive tzdata
+    dpkg-reconfigure -f noninteractive tzdata && \
+    rm -rf /var/lib/apt/lists/*
 ENV TZ=$TZ_ARG
 
 #FROM repository.konsulin.care/repository/private/be-konsulin:latest as gobuild
