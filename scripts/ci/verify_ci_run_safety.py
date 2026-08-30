@@ -40,6 +40,7 @@ OPEN = "${{"
 WORKFLOW_RELS = sorted(str(p.relative_to(ROOT)) for p in (GH / "workflows").glob("*.yml"))
 ACTION_RELS = sorted(str(p.relative_to(ROOT)) for p in (GH / "actions").glob("**/action.y*ml"))
 ALL_RELS = WORKFLOW_RELS + ACTION_RELS
+CI_ENV_ACTION_REL = ".github/actions/ci-env/action.yml"
 
 FAILED = []
 
@@ -156,7 +157,7 @@ ENV_CI_KEYS = (
 
 
 def check_task2():
-    rel = ".github/actions/ci-env/action.yml"
+    rel = CI_ENV_ACTION_REL
     step = get_step(rel, "Write CI env files")
     check("T-2 write-ci-env step found", step is not None)
     if step is None:
@@ -178,7 +179,7 @@ def check_task2():
 
 
 def check_task3():
-    rel = ".github/actions/ci-env/action.yml"
+    rel = CI_ENV_ACTION_REL
     step = get_step(rel, "Wait for infrastructure readiness")
     check("T-3 readiness step found", step is not None)
     if step is None:
@@ -191,49 +192,63 @@ def check_task3():
 
 
 HOSTILE = {
-    "XENDIT_SANDBOX_API_KEY": 'x"; touch injected-marker; echo "',
-    "CI_POSTGRES_PASSWORD": "p'w$d",
-    "CI_REDIS_PASSWORD": "r3$()",
-    "CI_RABBITMQ_PASSWORD": "r4`id`",
-    "CI_SUPERTOKEN_API_KEY": "S${T}ecret",
-    "CI_SUPERADMIN_API_KEY": 'sa"dmin "$(id)"',
-    "CI_XENDIT_CALLBACK_TOKEN": "tok$};x",
-    "CI_JWT_HOOK_KEY": 'line1\nline2 "$(id)" $USER',
-    "ORGANIZATION": 'org"; date > owned; #',
+    "PAYLOAD_XENDIT": 'x"; touch injected-marker; echo "',
+    "PAYLOAD_POSTGRES": "p'w$d",
+    "PAYLOAD_REDIS": "r3$()",
+    "PAYLOAD_RABBITMQ": "r4`id`",
+    "PAYLOAD_SUPERTOKEN": "S${T}ecret",
+    "PAYLOAD_SUPERADMIN": 'sa"dmin "$(id)"',
+    "PAYLOAD_XENDIT_TOKEN": "tok$};x",
+    "PAYLOAD_JWT_HOOK": 'line1\nline2 "$(id)" $USER',
+    "PAYLOAD_ORGANIZATION": 'org"; date > owned; #',
+}
+
+# Bind each hostile payload to the env var name the ci-env action's run
+# blocks read. Values are payload-identifiers, never secrets themselves.
+HOSTILE_ENV = {
+    "XENDIT_SANDBOX_API_KEY": "PAYLOAD_XENDIT",
+    "CI_POSTGRES_PASSWORD": "PAYLOAD_POSTGRES",
+    "CI_REDIS_PASSWORD": "PAYLOAD_REDIS",
+    "CI_RABBITMQ_PASSWORD": "PAYLOAD_RABBITMQ",
+    "CI_SUPERTOKEN_API_KEY": "PAYLOAD_SUPERTOKEN",
+    "CI_SUPERADMIN_API_KEY": "PAYLOAD_SUPERADMIN",
+    "CI_XENDIT_CALLBACK_TOKEN": "PAYLOAD_XENDIT_TOKEN",
+    "CI_JWT_HOOK_KEY": "PAYLOAD_JWT_HOOK",
+    "ORGANIZATION": "PAYLOAD_ORGANIZATION",
 }
 
 EXPECTED_ENV_CI = (
-    "XENDIT_SANDBOX_API_KEY=" + HOSTILE["XENDIT_SANDBOX_API_KEY"]
-    + "\nPOSTGRES_PASSWORD=" + HOSTILE["CI_POSTGRES_PASSWORD"]
-    + "\nREDIS_PASSWORD=" + HOSTILE["CI_REDIS_PASSWORD"]
-    + "\nRABBITMQ_DEFAULT_PASS=" + HOSTILE["CI_RABBITMQ_PASSWORD"]
-    + "\nSUPERTOKEN_API_KEY=" + HOSTILE["CI_SUPERTOKEN_API_KEY"]
-    + "\nSUPERADMIN_API_KEY=" + HOSTILE["CI_SUPERADMIN_API_KEY"]
-    + "\nXENDIT_CALLBACK_TOKEN=" + HOSTILE["CI_XENDIT_CALLBACK_TOKEN"]
+    "XENDIT_SANDBOX_API_KEY=" + HOSTILE["PAYLOAD_XENDIT"]
+    + "\nPOSTGRES_PASSWORD=" + HOSTILE["PAYLOAD_POSTGRES"]
+    + "\nREDIS_PASSWORD=" + HOSTILE["PAYLOAD_REDIS"]
+    + "\nRABBITMQ_DEFAULT_PASS=" + HOSTILE["PAYLOAD_RABBITMQ"]
+    + "\nSUPERTOKEN_API_KEY=" + HOSTILE["PAYLOAD_SUPERTOKEN"]
+    + "\nSUPERADMIN_API_KEY=" + HOSTILE["PAYLOAD_SUPERADMIN"]
+    + "\nXENDIT_CALLBACK_TOKEN=" + HOSTILE["PAYLOAD_XENDIT_TOKEN"]
     + "\n"
 )
 
 EXPECTED_DOCS_ENV = (
     "APP_BASE_URL=http://localhost:3200"
     + "\nBLAZE_BASE_URL=http://localhost:8080"
-    + "\nSUPERADMIN_API_KEY=" + HOSTILE["CI_SUPERADMIN_API_KEY"]
-    + "\nORGANIZATION=" + HOSTILE["ORGANIZATION"]
+    + "\nSUPERADMIN_API_KEY=" + HOSTILE["PAYLOAD_SUPERADMIN"]
+    + "\nORGANIZATION=" + HOSTILE["PAYLOAD_ORGANIZATION"]
     + "\nMAILINATOR_BASE_URL=http://localhost:8081/api/v2"
-    + "\nXENDIT_CALLBACK_TOKEN=" + HOSTILE["CI_XENDIT_CALLBACK_TOKEN"]
+    + "\nXENDIT_CALLBACK_TOKEN=" + HOSTILE["PAYLOAD_XENDIT_TOKEN"]
     + "\n"
 )
 
 EXPECTED_GITHUB_ENV = (
     "PREEXISTING=1"
     + "\nJWT_HOOK_KEY<<EOF"
-    + "\n" + HOSTILE["CI_JWT_HOOK_KEY"]
+    + "\n" + HOSTILE["PAYLOAD_JWT_HOOK"]
     + "\nEOF"
     + "\n"
 )
 
 
 def check_behavior():
-    step = get_step(".github/actions/ci-env/action.yml", "Write CI env files")
+    step = get_step(CI_ENV_ACTION_REL, "Write CI env files")
     script = step["run"] if step else ""
     exe = "bash" if Path("/bin/bash").exists() else "sh"
     with tempfile.TemporaryDirectory() as d:
@@ -241,7 +256,7 @@ def check_behavior():
         (d / "docs/api").mkdir(parents=True)
         (d / "GITHUB_ENV").write_text("PREEXISTING=1\n", encoding="utf-8")
         env = dict(os.environ)
-        env.update(HOSTILE)
+        env.update({name: HOSTILE[payload] for name, payload in HOSTILE_ENV.items()})
         env["GITHUB_ENV"] = str(d / "GITHUB_ENV")
         proc = subprocess.run(
             [exe, "-c", script], cwd=d, env=env,
