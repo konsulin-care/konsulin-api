@@ -69,26 +69,37 @@ runs:
 
     - name: Write CI env files
       shell: bash
+      env:
+        XENDIT_SANDBOX_API_KEY: ${{ inputs.xendit-sandbox-api-key }}
+        CI_POSTGRES_PASSWORD: ${{ inputs.ci-postgres-password }}
+        CI_REDIS_PASSWORD: ${{ inputs.ci-redis-password }}
+        CI_RABBITMQ_PASSWORD: ${{ inputs.ci-rabbitmq-password }}
+        CI_SUPERTOKEN_API_KEY: ${{ inputs.ci-supertoken-api-key }}
+        CI_SUPERADMIN_API_KEY: ${{ inputs.ci-superadmin-api-key }}
+        CI_XENDIT_CALLBACK_TOKEN: ${{ inputs.ci-xendit-callback-token }}
+        CI_JWT_HOOK_KEY: ${{ inputs.ci-jwt-hook-key }}
+        ORGANIZATION: ${{ inputs.organization }}
       run: |
+        umask 077
         # Scalar credentials -> .env.ci for compose ${VAR:?} interpolation.
         {
-          printf 'XENDIT_SANDBOX_API_KEY=%s\n' "${{ inputs.xendit-sandbox-api-key }}"
-          printf 'POSTGRES_PASSWORD=%s\n' "${{ inputs.ci-postgres-password }}"
-          printf 'REDIS_PASSWORD=%s\n' "${{ inputs.ci-redis-password }}"
-          printf 'RABBITMQ_DEFAULT_PASS=%s\n' "${{ inputs.ci-rabbitmq-password }}"
-          printf 'SUPERTOKEN_API_KEY=%s\n' "${{ inputs.ci-supertoken-api-key }}"
-          printf 'SUPERADMIN_API_KEY=%s\n' "${{ inputs.ci-superadmin-api-key }}"
-          printf 'XENDIT_CALLBACK_TOKEN=%s\n' "${{ inputs.ci-xendit-callback-token }}"
+          printf 'XENDIT_SANDBOX_API_KEY=%s\n' "$XENDIT_SANDBOX_API_KEY"
+          printf 'POSTGRES_PASSWORD=%s\n' "$CI_POSTGRES_PASSWORD"
+          printf 'REDIS_PASSWORD=%s\n' "$CI_REDIS_PASSWORD"
+          printf 'RABBITMQ_DEFAULT_PASS=%s\n' "$CI_RABBITMQ_PASSWORD"
+          printf 'SUPERTOKEN_API_KEY=%s\n' "$CI_SUPERTOKEN_API_KEY"
+          printf 'SUPERADMIN_API_KEY=%s\n' "$CI_SUPERADMIN_API_KEY"
+          printf 'XENDIT_CALLBACK_TOKEN=%s\n' "$CI_XENDIT_CALLBACK_TOKEN"
         } > .env.ci
 
         # Bruno collection env (same synthetic values, sourced from the same inputs).
         printf 'APP_BASE_URL=http://localhost:3200\nBLAZE_BASE_URL=http://localhost:8080\nSUPERADMIN_API_KEY=%s\nORGANIZATION=%s\nMAILINATOR_BASE_URL=http://localhost:8081/api/v2\nXENDIT_CALLBACK_TOKEN=%s\n' \
-          "${{ inputs.ci-superadmin-api-key }}" "${{ inputs.organization }}" "${{ inputs.ci-xendit-callback-token }}" > docs/api/.env
+          "$CI_SUPERADMIN_API_KEY" "$ORGANIZATION" "$CI_XENDIT_CALLBACK_TOKEN" > docs/api/.env
 
         # The multiline PEM cannot live in a .env file; export it to the job
         # environment so compose interpolation of ${JWT_HOOK_KEY} sees it.
         {
-          printf 'JWT_HOOK_KEY<<EOF\n%s\nEOF\n' "${{ inputs.ci-jwt-hook-key }}"
+          printf 'JWT_HOOK_KEY<<EOF\n%s\nEOF\n' "$CI_JWT_HOOK_KEY"
         } >> "$GITHUB_ENV"
         echo "wrote .env.ci and docs/api/.env"
 
@@ -98,12 +109,14 @@ runs:
 
     - name: Wait for infrastructure readiness
       shell: bash
+      env:
+        CI_REDIS_PASSWORD: ${{ inputs.ci-redis-password }}
       run: |
         ok=0
         for _ in $(seq 1 60); do
           curl -fsS http://localhost:8080/fhir/metadata >/dev/null 2>&1 || { sleep 5; continue; }
           curl -fsS http://localhost:3567/hello >/dev/null 2>&1 || { sleep 5; continue; }
-          docker compose -f docker-compose.ci.yml exec -T redis redis-cli -a "${{ inputs.ci-redis-password }}" ping >/dev/null 2>&1 || { sleep 5; continue; }
+          docker compose -f docker-compose.ci.yml exec -T redis redis-cli -a "$CI_REDIS_PASSWORD" ping >/dev/null 2>&1 || { sleep 5; continue; }
           docker compose -f docker-compose.ci.yml exec -T rabbitmq rabbitmq-diagnostics -q ping >/dev/null 2>&1 || { sleep 5; continue; }
           ok=1
           break
