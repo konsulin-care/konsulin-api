@@ -105,6 +105,9 @@ jobs:
 
       # Same pinned action as pr.yml; the weekly re-scan catches drift on
       # stale code (dependencies that only exist on the default branch).
+      - name: Ensure trivy out dir
+        run: mkdir -p trivy
+
       - name: Trivy vulnerability scan (SARIF)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
