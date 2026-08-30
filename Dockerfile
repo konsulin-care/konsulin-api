@@ -6,15 +6,16 @@ ARG TAG
 ARG BUILD_TIME
 ARG RUN_NUMBER
 
-FROM uzie17/debian:stable-Jakarta AS base
+FROM debian:stable-slim AS base
 LABEL maintainer="Muhammad Febrian Ardiansyah <mfardiansyah.id@gmail.com>"
 WORKDIR /app
 
 ARG TZ_ARG
 
-# CERT PACKAGES
-RUN apt-get update
-RUN apt-get install -y ca-certificates
+# CERT PACKAGES (upgrade first so OS packages are current at build time)
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y ca-certificates
 
 RUN apt-get update && \
     apt-get install -yq tzdata && \
