@@ -280,6 +280,42 @@ def check_behavior():
         )
 
 
+def check_task4():
+    """Task 4: Trivy image scan must ignore unfixed CVEs."""
+    step = get_step(".github/workflows/pr.yml", "Trivy image scan (blocking + SARIF)")
+    check("T-4 Trivy image scan step found", step is not None)
+    if step is None:
+        return
+    with_ = step.get("with") or {}
+    check("T-4 ignore-unfixed is true", str(with_.get("ignore-unfixed")).lower() == "true")
+
+
+def check_task5():
+    """Task 5: CodeQL actions must be v4, not v3."""
+    text = (ROOT / ".github/workflows/pr.yml").read_text(encoding="utf-8")
+    v3_refs = re.findall(r"codeql-action/\w+@v3", text)
+    check("T-5 no codeql-action v3 refs in pr.yml", len(v3_refs) == 0, str(v3_refs))
+
+
+def check_task6():
+    """Task 6: pr.yml on: block must include both push and pull_request triggers."""
+    doc = load_yaml(".github/workflows/pr.yml")
+    # PyYAML parses YAML 'on:' as boolean True, not string 'on'
+    on_block = doc.get("on") or doc.get(True) or {}
+    check("T-6 push trigger present", "push" in on_block)
+    check("T-6 pull_request trigger present", "pull_request" in on_block)
+    if "push" in on_block:
+        push_branches = on_block["push"].get("branches") or []
+        check("T-6 push branches include develop and main",
+              "develop" in push_branches and "main" in push_branches)
+
+
+def check_task7():
+    """Task 7: Dockerfile-vendor Go version must be 1.26 to match go.mod."""
+    line1 = (ROOT / "Dockerfile-vendor").read_text(encoding="utf-8").splitlines()[0]
+    check("T-7 Dockerfile-vendor uses golang:1.26", "golang:1.26" in line1, line1)
+
+
 def main():
     print("YAML validity")
     check_yaml_valid()
@@ -289,6 +325,10 @@ def main():
     check_task1()
     check_task2()
     check_task3()
+    check_task4()
+    check_task5()
+    check_task6()
+    check_task7()
     print("\nBehavior check (hostile values)")
     check_behavior()
     print()
