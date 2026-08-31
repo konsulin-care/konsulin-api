@@ -1,0 +1,10 @@
+# Trivy ignore file for CVEs without available fixes in the Alpine base image.
+# Review quarterly and remove entries once upstream patches land.
+#
+# To add a new entry:
+#   1. Get the CVE ID from the Trivy SARIF output or CI logs
+#   2. Verify no fix is available (check Alpine security advisories)
+#   3. Add the CVE ID here with a comment explaining why
+#
+# Example:
+# CVE-2026-XXXXX  # <description> — no upstream fix as of YYYY-MM-DD

@@ -116,13 +116,13 @@ runs:
         for _ in $(seq 1 120); do
           curl -fsS http://localhost:8080/fhir/metadata >/dev/null 2>&1 || { sleep 5; continue; }
           curl -fsS http://localhost:3567/hello >/dev/null 2>&1 || { sleep 5; continue; }
-          docker compose -f docker-compose.ci.yml exec -T redis redis-cli -a "$CI_REDIS_PASSWORD" ping >/dev/null 2>&1 || { sleep 5; continue; }
-          docker compose -f docker-compose.ci.yml exec -T rabbitmq rabbitmq-diagnostics -q ping >/dev/null 2>&1 || { sleep 5; continue; }
+          docker compose --env-file .env.ci -f docker-compose.ci.yml exec -T redis redis-cli -a "$CI_REDIS_PASSWORD" ping >/dev/null 2>&1 || { sleep 5; continue; }
+          docker compose --env-file .env.ci -f docker-compose.ci.yml exec -T rabbitmq rabbitmq-diagnostics -q ping >/dev/null 2>&1 || { sleep 5; continue; }
           ok=1
           break
         done
         if [ "$ok" != 1 ]; then
-          docker compose -f docker-compose.ci.yml logs --tail=200 postgres redis rabbitmq blaze supertokens 2>/dev/null || true
+          docker compose --env-file .env.ci -f docker-compose.ci.yml logs --tail=200 postgres redis rabbitmq blaze supertokens 2>/dev/null || true
           echo "::error::Infrastructure did not become ready in time" >&2
           exit 1
         fi
@@ -143,7 +143,7 @@ runs:
           sleep 5
         done
         if [ "$ok" != 1 ]; then
-          docker compose -f docker-compose.ci.yml logs --tail=300 app 2>/dev/null || true
+          docker compose --env-file .env.ci -f docker-compose.ci.yml logs --tail=300 app 2>/dev/null || true
           echo "::error::API gateway did not become healthy in time" >&2
           exit 1
         fi

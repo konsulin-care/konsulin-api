@@ -6,18 +6,15 @@ ARG TAG
 ARG BUILD_TIME
 ARG RUN_NUMBER
 
-FROM debian:stable-slim AS base
+FROM alpine:3.23 AS base
 LABEL maintainer="Muhammad Febrian Ardiansyah <mfardiansyah.id@gmail.com>"
 WORKDIR /app
 
 ARG TZ_ARG
 
-RUN apt-get update && \
-    apt-get upgrade -y && \
-    apt-get install -y --no-install-recommends ca-certificates tzdata && \
+RUN apk add --no-cache ca-certificates tzdata && \
     ln -fs /usr/share/zoneinfo/Asia/Jakarta /etc/localtime && \
-    dpkg-reconfigure -f noninteractive tzdata && \
-    rm -rf /var/lib/apt/lists/*
+    echo "Asia/Jakarta" > /etc/timezone
 ENV TZ=$TZ_ARG
 
 #FROM repository.konsulin.care/repository/private/be-konsulin:latest as gobuild
