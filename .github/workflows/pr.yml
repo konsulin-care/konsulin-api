@@ -208,11 +208,9 @@ jobs:
       # anonymous sessions, role switching) → seeds → ownership-violation suite
       # (16 security requests; expected-4xx regressions fail the PR) → patient
       # journey → practitioner journey → admin (API-key superadmin) → cleanup.
-      # BRU_OUTPUT writes a JUnit report for artifacts.
+      # Uses bru-run.sh for consistency with pre-push hook.
       - name: Run Bruno API security suite (auth, RBAC, ownership)
-        run: |
-          export BRU_OUTPUT="${GITHUB_WORKSPACE}/bru-report.xml"
-          bash scripts/bru-run.sh --required
+        run: bash scripts/bru-run.sh --required
 
       - name: Upload Bruno JUnit report
         uses: actions/upload-artifact@v5
