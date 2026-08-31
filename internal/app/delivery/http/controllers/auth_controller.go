@@ -47,13 +47,6 @@ func NewAuthController(logger *zap.Logger, authUsecase contracts.AuthUsecase, in
 }
 
 func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Request) {
-	// TODO: temporary debug log - remove after pr check succeeds
-	ctrl.Log.Info("DEBUG: magiclink request headers",
-		zap.String("origin", r.Header.Get("Origin")),
-		zap.String("host", r.Host),
-		zap.String("content_type", r.Header.Get("Content-Type")),
-	)
-
 	start := time.Now()
 	requestID, ok := requireRequestID(ctrl.Log, w, r)
 	if !ok {

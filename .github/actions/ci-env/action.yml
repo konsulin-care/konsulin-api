@@ -56,9 +56,10 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Install Bruno CLI (pinned to dev toolchain)
-      shell: bash
-      run: npm install -g --ignore-scripts @usebruno/cli@3.5.1
+    - name: Install tools via mise
+      uses: jdx/mise-action@v2
+      with:
+        install: true
 
     - name: Build vendor and app images
       shell: bash
