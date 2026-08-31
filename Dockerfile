@@ -13,12 +13,13 @@ WORKDIR /app
 ARG TZ_ARG
 
 RUN apk add --no-cache ca-certificates tzdata && \
+    apk upgrade --no-cache && \
     ln -fs /usr/share/zoneinfo/Asia/Jakarta /etc/localtime && \
     echo "Asia/Jakarta" > /etc/timezone
 ENV TZ=$TZ_ARG
 
 #FROM repository.konsulin.care/repository/private/be-konsulin:latest as gobuild
-FROM konsulin/rest-backend-vendor:develop AS gobuild
+FROM konsulin/konsulin-api-vendor:pr-ci as gobuild
 LABEL stage=gobuild
 
 # captures argument
@@ -63,6 +64,9 @@ RUN go build -o api-service \
         -X konsulin-service/internal/pkg/buildinfo.CommitHash=$GIT_COMMIT" \
     /go/src/github.com/konsulin-id/be-konsulin/cmd/http
 #    /go/src/github.com/konsulin-id/be-konsulin/cmd/example
+
+# Remove secrets that leaked via earlier COPY steps
+RUN rm -f .env
 
 FROM base AS release
 
