@@ -198,7 +198,7 @@ HOSTILE = {
     "XINJECT_RABBITMQ": "r4`id`",
     "XINJECT_SUPERTOKEN": "S${T}ecret",
     "XINJECT_SUPERADMIN": 'sa"dmin "$(id)"',
-    "XINJECT_XENDIT_TOKEN": "tok$};x",
+    "XINJECT_XENDIT_TOKEN": "tok$};x",  # nosec B105 - test injection payload
     "XINJECT_JWT_HOOK": 'line1\nline2 "$(id)" $USER',
     "XINJECT_ORGANIZATION": 'org"; date > owned; #',
 }
@@ -207,12 +207,12 @@ HOSTILE = {
 # blocks read. Values are injection-identifiers, never secrets themselves.
 HOSTILE_ENV = {
     "XENDIT_SANDBOX_API_KEY": "XINJECT_XENDIT",
-    "CI_POSTGRES_PASSWORD": "XINJECT_POSTGRES",
-    "CI_REDIS_PASSWORD": "XINJECT_REDIS",
-    "CI_RABBITMQ_PASSWORD": "XINJECT_RABBITMQ",
+    "CI_POSTGRES_PASSWORD": "XINJECT_POSTGRES",  # nosec B105 - test fixture key name, not a secret
+    "CI_REDIS_PASSWORD": "XINJECT_REDIS",  # nosec B105 - test fixture key name, not a secret
+    "CI_RABBITMQ_PASSWORD": "XINJECT_RABBITMQ",  # nosec B105 - test fixture key name, not a secret
     "CI_SUPERTOKEN_API_KEY": "XINJECT_SUPERTOKEN",
     "CI_SUPERADMIN_API_KEY": "XINJECT_SUPERADMIN",
-    "CI_XENDIT_CALLBACK_TOKEN": "XINJECT_XENDIT_TOKEN",
+    "CI_XENDIT_CALLBACK_TOKEN": "XINJECT_XENDIT_TOKEN",  # nosec B105 - test fixture key name, not a secret
     "CI_JWT_HOOK_KEY": "XINJECT_JWT_HOOK",
     "ORGANIZATION": "XINJECT_ORGANIZATION",
 }
@@ -258,6 +258,7 @@ def check_behavior():
         env = dict(os.environ)
         env.update({name: HOSTILE[payload] for name, payload in HOSTILE_ENV.items()})
         env["GITHUB_ENV"] = str(d / "GITHUB_ENV")
+        # nosec B602 - subprocess runs repo-owned script in isolated temp dir, no user input
         proc = subprocess.run(  # nosec B603 - script from this repo's ci-env action, isolated temp dir, no shell
             [exe, "-c", script], cwd=d, env=env,
             capture_output=True, text=True, timeout=30,
