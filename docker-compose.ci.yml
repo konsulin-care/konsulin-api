@@ -136,8 +136,8 @@ services:
       HOOK_SYNC_SERVICE_NAMES: "analyze"
       SUPERTOKEN_API_KEY: ${SUPERTOKEN_API_KEY:?set SUPERTOKEN_API_KEY in .env.ci}
       SUPERTOKEN_CONNECTION_URI: "http://supertokens:3567"
-      SUPERTOKEN_API_DOMAIN: "http://app:3200"
-      SUPERTOKEN_WEBSITE_DOMAIN: "http://app:3200"
+      SUPERTOKEN_API_DOMAIN: "http://localhost:3200"
+      SUPERTOKEN_WEBSITE_DOMAIN: "http://localhost:3200"
       APP_SUPERTOKEN_KONSULIN_DASHBOARD_ADMIN_EMAIL: "ci-superadmin@konsulin.local"
       REDIS_HOST: "redis"
       REDIS_PORT: "6379"
