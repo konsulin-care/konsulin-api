@@ -2,7 +2,7 @@ info:
   name: Send Magic Link
   type: http
   seq: 1
-  tags: [auth]
+  tags: [PR, auth]
 
 http:
   method: POST

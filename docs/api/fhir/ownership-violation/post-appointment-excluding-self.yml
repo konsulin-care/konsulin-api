@@ -2,7 +2,7 @@ info:
   name: "Ownership Violation: Post Appointment Excluding Self"
   type: http
   seq: 11
-  tags: [ownership]
+  tags: [PR, ownership]
 
 http:
   method: POST

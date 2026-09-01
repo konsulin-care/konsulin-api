@@ -2,7 +2,7 @@ info:
   name: "Ownership Violation: Delete Other Patient By Query"
   type: http
   seq: 15
-  tags: [ownership]
+  tags: [PR, ownership]
 
 http:
   method: DELETE

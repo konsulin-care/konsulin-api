@@ -77,10 +77,12 @@ repos:
         stages: [pre-push]
 
       # Pre-push: Bruno API collection tests REQUIRED — fail if the API server
-      # is down or any test fails. Includes ownership-violation/RBAC tests.
+      # is down or any PR-tagged test fails. Includes ownership-violation/RBAC
+      # tests. Only `PR`-tagged requests run; teardown is handled by
+      # scripts/bru-cleanup.sh, which bru-run.sh invokes after the suite.
       - id: bru-run-required
         name: "[functional] bru run — required (ownership tests)"
-        entry: bash scripts/bru-run.sh --required
+        entry: bash scripts/bru-run.sh --required --tag PR
         language: system
         pass_filenames: false
         stages: [pre-push]

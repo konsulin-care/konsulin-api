@@ -2,7 +2,7 @@ info:
   name: "Practitioner: Update Availability"
   type: http
   seq: 8
-  tags: [appointment]
+  tags: [PR, appointment]
 
 http:
   method: PUT

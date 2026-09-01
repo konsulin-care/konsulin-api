@@ -2,7 +2,7 @@ info:
   name: Seed SOAP Questionnaire
   type: http
   seq: 7
-  tags: [assessment, utility]
+  tags: [PR, assessment, utility]
 
 http:
   method: PUT

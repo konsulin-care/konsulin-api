@@ -2,7 +2,7 @@ info:
   name: Seed Organization
   type: http
   seq: 1
-  tags: [clinic, utility]
+  tags: [PR, clinic, utility]
 
 http:
   method: PUT

@@ -2,7 +2,7 @@ info:
   name: "Practitioner: Get Roles"
   type: http
   seq: 2
-  tags: [profile, clinic]
+  tags: [PR, profile, clinic]
 
 http:
   method: GET

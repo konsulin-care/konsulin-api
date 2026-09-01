@@ -2,7 +2,7 @@ info:
   name: "Cleanup: Delete Organization"
   type: http
   seq: 1
-  tags: [utility]
+  tags: [utility, cleanup]
 
 http:
   method: DELETE

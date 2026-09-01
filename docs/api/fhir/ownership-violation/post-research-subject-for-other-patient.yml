@@ -2,7 +2,7 @@ info:
   name: "Ownership Violation: Post Research Subject For Other Patient"
   type: http
   seq: 9
-  tags: [ownership]
+  tags: [PR, ownership]
 
 http:
   method: POST

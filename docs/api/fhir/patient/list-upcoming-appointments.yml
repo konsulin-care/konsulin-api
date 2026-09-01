@@ -2,7 +2,7 @@ info:
   name: "Patient: List Upcoming Appointments"
   type: http
   seq: 12
-  tags: [appointment]
+  tags: [PR, appointment]
 
 http:
   method: GET

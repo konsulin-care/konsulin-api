@@ -2,7 +2,7 @@ info:
   name: Seed Research Study
   type: http
   seq: 9
-  tags: [research, utility]
+  tags: [PR, research, utility]
 
 http:
   method: PUT

@@ -2,7 +2,7 @@ info:
   name: "Ownership Violation: Delete Other Practitioner"
   type: http
   seq: 16
-  tags: [ownership]
+  tags: [PR, ownership]
 
 http:
   method: DELETE

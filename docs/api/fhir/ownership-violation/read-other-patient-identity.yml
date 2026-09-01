@@ -2,7 +2,7 @@ info:
   name: "Ownership Violation: Read Other Patient's Identity"
   type: http
   seq: 2
-  tags: [ownership]
+  tags: [PR, ownership]
 
 http:
   method: GET

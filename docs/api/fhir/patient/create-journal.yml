@@ -2,7 +2,7 @@ info:
   name: "Patient: Create Journal"
   type: http
   seq: 10
-  tags: [record]
+  tags: [PR, record]
 
 http:
   method: POST

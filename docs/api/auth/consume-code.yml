@@ -2,7 +2,7 @@ info:
   name: Consume Code
   type: http
   seq: 4
-  tags: [auth]
+  tags: [PR, auth]
 
 http:
   method: POST

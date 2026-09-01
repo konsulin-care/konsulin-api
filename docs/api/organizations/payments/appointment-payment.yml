@@ -2,6 +2,7 @@ info:
   name: Handle Appointment Payment
   type: http
   seq: 1
+  tags: [PR, payment]
 
 http:
   method: POST

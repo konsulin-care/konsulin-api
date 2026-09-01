@@ -2,7 +2,7 @@ info:
   name: "Patient: Get Completion Total"
   type: http
   seq: 6
-  tags: [research, assessment]
+  tags: [PR, research, assessment]
 
 http:
   method: GET

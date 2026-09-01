@@ -4,8 +4,14 @@ set -euo pipefail
 # Runs the Bruno API collection (docs/api) as a commit/push gate.
 #
 # Usage:
-#   bash scripts/bru-run.sh            # pre-commit: skip if API server is down
-#   bash scripts/bru-run.sh --required # pre-push: fail if API server is down
+#   bash scripts/bru-run.sh                 # run all; skip if API server is down
+#   bash scripts/bru-run.sh --required      # fail if API server is down
+#   bash scripts/bru-run.sh --required --tag PR
+#                                           # run only requests tagged `PR`
+#
+# --tag <T> narrows the run to requests carrying tag <T> (a single Bruno
+# `--tags=<T>` flag). Omit it to run the whole collection. Teardown of seeded
+# FHIR resources is handled by scripts/bru-cleanup.sh after the suite.
 #
 # Environment:
 #   BRU_COLLECTION_DIR  override the collection directory (default: docs/api)
@@ -13,9 +19,18 @@ set -euo pipefail
 #                       http://localhost:8080; the collection .env may set it)
 
 REQUIRED=0
-if [[ "${1:-}" == "--required" ]]; then
-  REQUIRED=1
-fi
+TAG=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --required) REQUIRED=1; shift ;;
+    --tag)
+      TAG="${2:-}"
+      [[ -n "${TAG}" ]] || { echo "ERROR: --tag requires a value" >&2; exit 1; }
+      shift 2
+      ;;
+    *) shift ;;
+  esac
+done
 
 # Resolve the script's own directory before any `cd` below, so the decoupled
 # cleanup can always be found regardless of the current working directory.
@@ -77,7 +92,11 @@ if RESPONSE="$(curl -sf --max-time 5 "${HEALTH_URL}")"; then
   # workflow can upload it for debugging.
   BRU_REPORT="bru-report.json"
   CLI_RC=0
-  bru run --bail --reporter-json "${BRU_REPORT}" || CLI_RC=$?
+  if [[ -n "${TAG}" ]]; then
+    bru run --bail --tags="${TAG}" --reporter-json "${BRU_REPORT}" || CLI_RC=$?
+  else
+    bru run --bail --reporter-json "${BRU_REPORT}" || CLI_RC=$?
+  fi
 
   # Parse the report and fail CI if any assertions/tests/requests failed.
   # This guards against bru CLI exit-code regressions (issue #155) where

@@ -2,7 +2,7 @@ info:
   name: "Ownership Violation: Post Consent For Other Patient"
   type: http
   seq: 8
-  tags: [ownership]
+  tags: [PR, ownership]
 
 http:
   method: POST

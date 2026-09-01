@@ -2,7 +2,7 @@ info:
   name: "Ownership Violation: Read Other Person"
   type: http
   seq: 6
-  tags: [ownership]
+  tags: [PR, ownership]
 
 http:
   method: GET

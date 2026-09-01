@@ -2,7 +2,7 @@ info:
   name: "Ownership Violation: Read Appointment Include Drops Stranger"
   type: http
   seq: 14
-  tags: [ownership]
+  tags: [PR, ownership]
 
 http:
   method: GET

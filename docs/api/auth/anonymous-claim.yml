@@ -2,7 +2,7 @@ info:
   name: Claim Anonymous Resources
   type: http
   seq: 5
-  tags: [auth]
+  tags: [PR, auth]
 
 http:
   method: PATCH

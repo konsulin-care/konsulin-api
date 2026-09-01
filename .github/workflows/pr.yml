@@ -208,10 +208,11 @@ jobs:
       # seed-clinic via direct-Blaze PUT) → auth (magiclink via local stub,
       # anonymous sessions, role switching) → rest of seeds → ownership-violation
       # suite (16 security requests; expected-4xx regressions fail the PR) →
-      # patient journey → practitioner journey → admin (API-key superadmin) →
-      # cleanup. Uses bru-run.sh for consistency with pre-push hook.
+      # patient journey → practitioner journey → admin (API-key superadmin).
+      # Only requests tagged `PR` run (teardown is excluded and left to
+      # scripts/bru-cleanup.sh, invoked by bru-run.sh after the suite).
       - name: Run Bruno API security suite (auth, RBAC, ownership)
-        run: bash scripts/bru-run.sh --required
+        run: bash scripts/bru-run.sh --required --tag PR
 
       - name: Upload Bruno JSON report
         uses: actions/upload-artifact@v5

@@ -2,7 +2,7 @@ info:
   name: "Patient: Update Journal"
   type: http
   seq: 11
-  tags: [record]
+  tags: [PR, record]
 
 http:
   method: PUT

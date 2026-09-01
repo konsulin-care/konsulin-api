@@ -2,7 +2,7 @@ info:
   name: Set Active Role
   type: http
   seq: 6
-  tags: [auth]
+  tags: [PR, auth]
 
 http:
   method: POST

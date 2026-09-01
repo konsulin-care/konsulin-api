@@ -2,7 +2,7 @@ info:
   name: Seed Plan Definition
   type: http
   seq: 8
-  tags: [research, utility]
+  tags: [PR, research, utility]
 
 http:
   method: PUT

@@ -2,7 +2,7 @@ info:
   name: "Practitioner: List Practitioner Slots"
   type: http
   seq: 4
-  tags: [appointment]
+  tags: [PR, appointment]
 
 http:
   method: GET

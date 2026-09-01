@@ -2,7 +2,7 @@ info:
   name: "Ownership Violation: Read Other Patient's Invoice"
   type: http
   seq: 5
-  tags: [ownership]
+  tags: [PR, ownership]
 
 http:
   method: GET

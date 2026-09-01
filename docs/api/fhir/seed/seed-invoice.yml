@@ -2,7 +2,7 @@ info:
   name: Seed Invoice
   type: http
   seq: 10
-  tags: [payment, utility]
+  tags: [PR, payment, utility]
 
 http:
   method: PUT

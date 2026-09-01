@@ -2,7 +2,7 @@ info:
   name: "Admin: Update Questionnaire"
   type: http
   seq: 2
-  tags: [assessment]
+  tags: [PR, assessment]
 
 http:
   method: PUT

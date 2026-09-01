@@ -2,7 +2,7 @@ info:
   name: "Ownership Violation: Read Other Patient's Appointment"
   type: http
   seq: 4
-  tags: [ownership]
+  tags: [PR, ownership]
 
 http:
   method: GET

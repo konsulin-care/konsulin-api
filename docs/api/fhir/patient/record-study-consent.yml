@@ -2,7 +2,7 @@ info:
   name: "Patient: Record Study Consent"
   type: http
   seq: 3
-  tags: [research]
+  tags: [PR, research]
 
 http:
   method: POST

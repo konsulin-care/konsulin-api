@@ -2,7 +2,7 @@ info:
   name: "Patient: Get Circle Stats"
   type: http
   seq: 17
-  tags: [referral, research]
+  tags: [PR, referral, research]
 
 http:
   method: GET

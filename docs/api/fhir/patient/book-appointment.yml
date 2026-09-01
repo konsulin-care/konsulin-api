@@ -2,7 +2,7 @@ info:
   name: "Patient: Book Appointment"
   type: http
   seq: 14
-  tags: [appointment]
+  tags: [PR, appointment]
 
 http:
   method: POST

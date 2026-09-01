@@ -2,7 +2,7 @@ info:
   name: Seed Location
   type: http
   seq: 2
-  tags: [clinic, utility]
+  tags: [PR, clinic, utility]
 
 http:
   method: PUT

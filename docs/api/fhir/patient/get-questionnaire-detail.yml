@@ -2,7 +2,7 @@ info:
   name: "Patient: Get Questionnaire Detail"
   type: http
   seq: 7
-  tags: [assessment]
+  tags: [PR, assessment]
 
 http:
   method: GET
