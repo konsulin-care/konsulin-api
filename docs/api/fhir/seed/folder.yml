@@ -8,10 +8,14 @@ request: {}
 docs: |
   Seeds a clean backend with the FHIR resources the journeys depend on.
   Every request PUTs directly to the Blaze FHIR server
-  (`{{process.env.BLAZE_BASE_URL}}` — no gateway, no auth headers) and chains
-  linearly: Organization → Location → HealthcareService → PractitionerRole →
-  Schedule → Questionnaire → SOAP Questionnaire → PlanDefinition → ResearchStudy →
-  Invoice.
+  (`{{process.env.BLAZE_BASE_URL}}` — no gateway, no auth headers). The
+  Organization seed doubles as the suite ENTRY: because the fhir folder sorts
+  before auth (`seq: 1`), `seed-organization.yml` is the first request the
+  runner executes; it captures `organizationId` and chains into the auth flow
+  ("Send Magic Link"), which resumes the seed chain at Location after the auth
+  steps complete: Organization → (auth chain) → Location → HealthcareService →
+  PractitionerRole → Schedule → Questionnaire → SOAP Questionnaire →
+  PlanDefinition → ResearchStudy → Invoice.
 
   Every seed is a PUT with a fixed id (`seed-clinic`, `seed-location`, `seed-hs`,
   `seed-role`, `seed-schedule`, `seed-wellbeing`, `seed-soap`, `seed-protocol`,

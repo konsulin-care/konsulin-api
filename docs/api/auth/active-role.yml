@@ -30,7 +30,7 @@ runtime:
         if (newToken) {
           bru.setVar("sessionToken", newToken);
         }
-        bru.runner.setNextRequest("Seed Organization");
+        bru.runner.setNextRequest("Seed Location");
   assertions:
     - expression: res.status
       operator: eq
@@ -111,7 +111,8 @@ docs: |
 
   Requires a valid SuperTokens session via `Authorization: Bearer {{sessionToken}}`.
 
-  On completion, chains to "Seed Organization" to start the FHIR journey. The
+  On completion, chains to "Seed Location" to resume the FHIR journey seeds
+  (the Organization was already seeded by the suite's entry request). The
   response carries the regenerated access token (st-access-token / Front-Token
   headers), which is captured as `sessionToken` so subsequent requests observe
   the new active role.

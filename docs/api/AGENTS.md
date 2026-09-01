@@ -68,10 +68,17 @@ Run from anywhere — `bru-run.sh` resolves its own dir before any `cd`.
 
 ## The Seed Chain
 
-`fhir/seed/folder.yml` chains 10 fixed-id, idempotent PUTs (Blaze ignores
-client-supplied ids on POST, so PUT is required for deterministic ids):
+The suite entry is the Organization seed, not the auth chain: the fhir folder
+carries `seq: 1` (auth is `seq: 2`), so the runner's first request is
+`fhir/seed/seed-organization.yml` (`Organization/seed-clinic`). It captures
+`organizationId` and chains into "Send Magic Link"; after the auth flow
+finishes, "Set Active Role" resumes the seed chain at `seed-location`.
 
-`seed-clinic` (Organization) → `seed-location` → `seed-hs`
+`fhir/seed/folder.yml` chains 10 fixed-id, idempotent PUTs (Blaze ignores
+client-supplied ids on POST, so PUT is required for deterministic ids), split
+by the auth flow in between:
+
+`seed-clinic` (Organization, entry) → [auth chain] → `seed-location` → `seed-hs`
 (HealthcareService) → `seed-role` (PractitionerRole) → `seed-schedule` →
 `seed-wellbeing` (Questionnaire) → `seed-soap` → `seed-protocol`
 (PlanDefinition) → `seed-study` (ResearchStudy) → `seed-invoice`.
@@ -79,7 +86,10 @@ client-supplied ids on POST, so PUT is required for deterministic ids):
 The SOAP questionnaire is deliberately `seed-soap`, never `soap`: a dev Blaze
 may hold the real SOAP questionnaire and the suite must not overwrite it.
 Slots are not seeded — free time is computed dynamically. The Practitioner and
-Patient identities come from the auth magic-link flow, not from seeds.
+Patient identities come from the auth magic-link flow, not from seeds. The
+magic-link request values its `organizationId` from the seeded org var
+(`{{organizationId}}` = `seed-clinic`), so a fresh Blaze always has the
+Organization before any PractitionerRole is created.
 
 ## Content-Type
 

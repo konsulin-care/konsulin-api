@@ -204,11 +204,12 @@ jobs:
           ci-jwt-hook-key: ${{ secrets.CI_JWT_HOOK_KEY }}
           organization: ci-${{ github.run_id }}-org
 
-      # Full Bruno chain in one required run: auth (magiclink via local stub,
-      # anonymous sessions, role switching) → seeds → ownership-violation suite
-      # (16 security requests; expected-4xx regressions fail the PR) → patient
-      # journey → practitioner journey → admin (API-key superadmin) → cleanup.
-      # Uses bru-run.sh for consistency with pre-push hook.
+      # Full Bruno chain in one required run: seed org (entry; Organization/
+      # seed-clinic via direct-Blaze PUT) → auth (magiclink via local stub,
+      # anonymous sessions, role switching) → rest of seeds → ownership-violation
+      # suite (16 security requests; expected-4xx regressions fail the PR) →
+      # patient journey → practitioner journey → admin (API-key superadmin) →
+      # cleanup. Uses bru-run.sh for consistency with pre-push hook.
       - name: Run Bruno API security suite (auth, RBAC, ownership)
         run: bash scripts/bru-run.sh --required
 
