@@ -50,8 +50,11 @@ the `.env` lacks it.
 The canonical entrypoint is the repo script, not `bru run` alone:
 
 ```bash
-bash scripts/bru-run.sh            # pre-commit: SKIPs if the API is down
-bash scripts/bru-run.sh --required # pre-push: FAILS if the API is down
+bash scripts/bru-run.sh            # local: SKIPs if the API is down
+bash scripts/bru-run.sh --required # gated: FAILS if the API is down
+bash scripts/bru-run.sh --required --skip-cleanup
+                                   # gated runs (pre-push hook, CI): full
+                                   # journey, no chained teardown
 ```
 
 Flow per run:
@@ -59,7 +62,10 @@ Flow per run:
 1. Refuse tracked `.env`; load/export collection env.
 2. Health-check `${APP_BASE_URL%/}/health` (HTTP 200, build info).
 3. `cd docs/api && bru run --bail` — collection runs its `setNextRequest`
-   chain linearly; `--bail` stops at the first failed assertion.
+   chain linearly; `--bail` stops at the first failed assertion. When run with
+   `--skip-cleanup` (or any `--tag`), `--env-var skipCleanup=true` is passed so
+   the journey ends at `Admin: Update Questionnaire` without the chained
+   teardown.
 4. Always run `scripts/bru-cleanup.sh` (via `bash`, non-fatal) — a
    Blaze-direct sweep that deletes the fixed-id seeds and anything referencing
    them, so a failed run never leaves seed litter.

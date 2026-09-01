@@ -209,10 +209,11 @@ jobs:
       # anonymous sessions, role switching) → rest of seeds → ownership-violation
       # suite (16 security requests; expected-4xx regressions fail the PR) →
       # patient journey → practitioner journey → admin (API-key superadmin).
-      # Only requests tagged `PR` run (teardown is excluded and left to
-      # scripts/bru-cleanup.sh, invoked by bru-run.sh after the suite).
+      # The journey terminates without the chained teardown (--skip-cleanup
+      # sets skipCleanup=true); scripts/bru-cleanup.sh sweeps the seeds after
+      # the suite.
       - name: Run Bruno API security suite (auth, RBAC, ownership)
-        run: bash scripts/bru-run.sh --required --tag PR
+        run: bash scripts/bru-run.sh --required --skip-cleanup
 
       - name: Upload Bruno JSON report
         uses: actions/upload-artifact@v5

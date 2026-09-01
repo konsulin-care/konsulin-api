@@ -6,12 +6,22 @@ set -euo pipefail
 # Usage:
 #   bash scripts/bru-run.sh                 # run all; skip if API server is down
 #   bash scripts/bru-run.sh --required      # fail if API server is down
+#   bash scripts/bru-run.sh --required --skip-cleanup
+#                                           # full run without the chained teardown
 #   bash scripts/bru-run.sh --required --tag PR
 #                                           # run only requests tagged `PR`
 #
 # --tag <T> narrows the run to requests carrying tag <T> (a single Bruno
 # `--tags=<T>` flag). Omit it to run the whole collection. Teardown of seeded
 # FHIR resources is handled by scripts/bru-cleanup.sh after the suite.
+#
+# --skip-cleanup (and any --tag) pass --env-var skipCleanup=true to Bruno, so
+# the journey's final request (`Admin: Update Questionnaire`) terminates the
+# run instead of chaining into the teardown requests — which a tag-filtered
+# run does not contain and would otherwise dangle on (Bruno prints "Could not
+# find request" and advances to the next run-set request, looping the
+# ownership→patient→practitioner→admin sub-chain forever). Untagged runs
+# without --skip-cleanup keep the full chained teardown + "Sign Out".
 #
 # Environment:
 #   BRU_COLLECTION_DIR  override the collection directory (default: docs/api)
@@ -20,9 +30,11 @@ set -euo pipefail
 
 REQUIRED=0
 TAG=""
+SKIP_CLEANUP=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --required) REQUIRED=1; shift ;;
+    --skip-cleanup) SKIP_CLEANUP=1; shift ;;
     --tag)
       TAG="${2:-}"
       [[ -n "${TAG}" ]] || { echo "ERROR: --tag requires a value" >&2; exit 1; }
@@ -92,11 +104,17 @@ if RESPONSE="$(curl -sf --max-time 5 "${HEALTH_URL}")"; then
   # workflow can upload it for debugging.
   BRU_REPORT="bru-report.json"
   CLI_RC=0
+  BRU_ARGS=(run --bail --reporter-json "${BRU_REPORT}")
   if [[ -n "${TAG}" ]]; then
-    bru run --bail --tags="${TAG}" --reporter-json "${BRU_REPORT}" || CLI_RC=$?
-  else
-    bru run --bail --reporter-json "${BRU_REPORT}" || CLI_RC=$?
+    BRU_ARGS+=(--tags="${TAG}")
   fi
+  # A tag-filtered run never contains the chained teardown requests, so the
+  # journey's final setNextRequest("Cleanup: ...") would dangle and loop the
+  # runner; --tag therefore always implies skipping the chained teardown.
+  if [[ "${SKIP_CLEANUP}" -eq 1 || -n "${TAG}" ]]; then
+    BRU_ARGS+=(--env-var skipCleanup=true)
+  fi
+  bru "${BRU_ARGS[@]}" || CLI_RC=$?
 
   # Parse the report and fail CI if any assertions/tests/requests failed.
   # This guards against bru CLI exit-code regressions (issue #155) where
