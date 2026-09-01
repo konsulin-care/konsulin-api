@@ -2,6 +2,11 @@ supertokens_db_cleaning.sh
 .env
 .env.ci
 
+# Bruno CLI run artifacts (scripts/bru-run.sh writes these on every run)
+docs/api/.env
+docs/api/bru-report.json
+docs/api/report.json
+
 *.log
 
 .air.toml

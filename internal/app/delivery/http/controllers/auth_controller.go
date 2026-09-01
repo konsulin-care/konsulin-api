@@ -129,6 +129,18 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
 			return
 		}
+		// Wrap non-CustomError failures so dev/test environments see the actual
+		// cause (SuperTokens, FHIR, webhook) in the response body. Production
+		// hides devMessage via APP_ENV check in BuildErrorResponse.
+		if _, ok := err.(*exceptions.CustomError); !ok {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.BuildNewCustomError(
+				err,
+				http.StatusInternalServerError,
+				"failed to process your request",
+				fmt.Sprintf("CreateMagicLink usecase error: %v", err),
+			))
+			return
+		}
 		utils.BuildErrorResponse(ctrl.Log, w, err)
 		return
 	}

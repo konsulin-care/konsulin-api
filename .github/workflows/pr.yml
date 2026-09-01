@@ -212,25 +212,25 @@ jobs:
       - name: Run Bruno API security suite (auth, RBAC, ownership)
         run: bash scripts/bru-run.sh --required
 
-      - name: Upload Bruno JUnit report
+      - name: Upload Bruno JSON report
         uses: actions/upload-artifact@v5
         if: always()
         with:
           name: bru-report
-          path: bru-report.xml
-          if-no-files-found: ignore
+          path: docs/api/bru-report.json
+          if-no-files-found: warn
 
-      - name: Capture environment logs on failure
-        if: failure()
-        run: docker compose --env-file .env.ci -f docker-compose.ci.yml logs --tail=300 > ci-env-logs.txt || true
+      - name: Capture environment logs
+        if: always()
+        run: docker compose --env-file .env.ci -f docker-compose.ci.yml logs --tail=300 app supertokens magiclink-stub > ci-env-logs.txt 2>&1 || true
 
       - name: Upload environment logs
         uses: actions/upload-artifact@v5
-        if: failure()
+        if: always()
         with:
           name: ci-env-logs
           path: ci-env-logs.txt
-          if-no-files-found: ignore
+          if-no-files-found: warn
 
       - name: Teardown disposable environment
         if: always()

@@ -101,6 +101,12 @@ services:
     volumes:
       - ./scripts/ci:/app/scripts/ci:ro
     command: ["node", "/app/scripts/ci/magiclink-stub.mjs"]
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('net').createConnection(8081,'localhost').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))\""]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
     networks: [ci-net]
 
   app:
@@ -108,12 +114,18 @@ services:
     pull_policy: never
     container_name: konsulin-ci-app
     depends_on:
-      - postgres
-      - redis
-      - rabbitmq
-      - blaze
-      - supertokens
-      - magiclink-stub
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+      blaze:
+        condition: service_started
+      supertokens:
+        condition: service_started
+      magiclink-stub:
+        condition: service_healthy
     ports:
       - "3200:3200"
     environment:

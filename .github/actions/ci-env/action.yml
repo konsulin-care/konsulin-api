@@ -134,6 +134,8 @@ runs:
 
     - name: Wait for API health
       shell: bash
+      env:
+        CI_SUPERADMIN_API_KEY: ${{ inputs.ci-superadmin-api-key }}
       run: |
         ok=0
         for _ in $(seq 1 60); do
@@ -148,3 +150,14 @@ runs:
           echo "::error::API gateway did not become healthy in time" >&2
           exit 1
         fi
+
+        # SuperTokens-backed end-to-end smoke: exercises the same SDK call
+        # path (GetUserByEmail -> core) the Bruno auth chain depends on.
+        # Catches a broken app<->core connection before the bru suite bails.
+        if ! curl -fsS "http://localhost:3200/api/v1/auth/passwordless/email/exists?email=smoke@konsulin.local" \
+          -H "X-API-Key: ${CI_SUPERADMIN_API_KEY}" >/dev/null 2>&1; then
+          docker compose --env-file .env.ci -f docker-compose.ci.yml logs --tail=200 app supertokens 2>/dev/null || true
+          echo "::error::SuperTokens-backed endpoint failed — app cannot reach SuperTokens core" >&2
+          exit 1
+        fi
+        echo "SuperTokens SDK smoke test passed"

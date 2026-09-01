@@ -71,10 +71,42 @@ HEALTH_URL="${APP_BASE_URL%/}/health"
 if RESPONSE="$(curl -sf --max-time 5 "${HEALTH_URL}")"; then
   echo "API healthy at ${HEALTH_URL}: ${RESPONSE}"
   cd "${COLLECTION_DIR}"
+
+  # Run Bruno collection with JSON report for CI artifact upload.
+  # --reporter-json always produces the file (even on failure) so the
+  # workflow can upload it for debugging.
+  BRU_REPORT="bru-report.json"
+  bru run --bail --reporter-json "${BRU_REPORT}" || true
+
+  # Parse the report and fail CI if any assertions/tests/requests failed.
+  # This guards against bru CLI exit-code regressions (issue #155) where
+  # the process may exit 0 despite failures.
   BRU_RC=0
-  if ! bru run --bail; then
-    BRU_RC=$?
+  if [[ -f "${BRU_REPORT}" ]]; then
+    # Quick grep: look for "fail" in assertion/test/request status fields.
+    # The JSON summary has top-level counts; check if any are > 0.
+    if command -v node >/dev/null 2>&1; then
+      FAILED=$(node -e "
+        const r = require('./${BRU_REPORT}');
+        const s = r.summary || {};
+        const n = (s.failedAssertions||0) + (s.failedTests||0) + (s.failedRequests||0) + (s.errorRequests||0);
+        process.exit(n > 0 ? 1 : 0);
+      " 2>/dev/null) || BRU_RC=$?
+    else
+      # Fallback: grep for failure indicators in the raw JSON (pretty-printed,
+      # so allow optional whitespace around the colon).
+      if grep -qE '"status"\s*:\s*"fail"' "${BRU_REPORT}" 2>/dev/null; then
+        BRU_RC=1
+      fi
+    fi
+    if [[ "${BRU_RC}" -ne 0 ]]; then
+      echo "Bruno tests failed (see ${BRU_REPORT} for details)" >&2
+    fi
+  else
+    echo "WARNING: ${BRU_REPORT} not produced — treating as failure" >&2
+    BRU_RC=1
   fi
+
   # Decoupled cleanup: runs after the suite whether it passed or failed, so a
   # mid-run failure can never leave the fixed-id seed resources behind. The
   # cleanup is Blaze-direct and non-fatal (see scripts/bru-cleanup.sh).

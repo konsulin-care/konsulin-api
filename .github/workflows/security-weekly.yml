@@ -48,17 +48,15 @@ jobs:
           organization: weekly-${{ github.run_id }}-org
 
       - name: Run Bruno security regression suite
-        run: |
-          export BRU_OUTPUT="${GITHUB_WORKSPACE}/bru-report.xml"
-          bash scripts/bru-run.sh --required
+        run: bash scripts/bru-run.sh --required
 
-      - name: Upload Bruno JUnit report
+      - name: Upload Bruno JSON report
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: bru-regression-report
-          path: bru-report.xml
-          if-no-files-found: ignore
+          path: docs/api/bru-report.json
+          if-no-files-found: warn
 
       # Active API scan against the disposable environment. Unauthenticated
       # against magic-link-protected routes on purpose: ZAP augments (does not
@@ -125,17 +123,17 @@ jobs:
         with:
           sarif_file: trivy/trivy-weekly.sarif
 
-      - name: Capture environment logs on failure
-        if: failure()
-        run: docker compose --env-file .env.ci -f docker-compose.ci.yml logs --tail=300 > weekly-logs.txt || true
+      - name: Capture environment logs
+        if: always()
+        run: docker compose --env-file .env.ci -f docker-compose.ci.yml logs --tail=300 app supertokens magiclink-stub > weekly-logs.txt 2>&1 || true
 
       - name: Upload environment logs
         uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
           name: weekly-env-logs
           path: weekly-logs.txt
-          if-no-files-found: ignore
+          if-no-files-found: warn
 
       - name: Teardown disposable environment
         if: always()
