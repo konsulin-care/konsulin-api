@@ -47,8 +47,11 @@ jobs:
           ci-jwt-hook-key: ${{ secrets.CI_JWT_HOOK_KEY }}
           organization: weekly-${{ github.run_id }}-org
 
+      # Run only `PR`-tagged journey requests (auth/RBAC/ownership). Teardown
+      # of seeded resources is handled by bru-cleanup.sh inside bru-run.sh, so
+      # the walk-in chained teardown never blocks this scan.
       - name: Run Bruno security regression suite
-        run: bash scripts/bru-run.sh --required
+        run: bash scripts/bru-run.sh --required --tag PR
 
       - name: Upload Bruno JSON report
         uses: actions/upload-artifact@v4
