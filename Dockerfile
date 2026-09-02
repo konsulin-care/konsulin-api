@@ -19,7 +19,7 @@ RUN apk add --no-cache ca-certificates tzdata && \
 ENV TZ=$TZ_ARG
 
 #FROM repository.konsulin.care/repository/private/be-konsulin:latest as gobuild
-FROM konsulin/konsulin-api-vendor:pr-ci as gobuild
+FROM konsulin/konsulin-api-vendor:pr-ci AS gobuild
 LABEL stage=gobuild
 
 # captures argument

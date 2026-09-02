@@ -41,6 +41,7 @@ WORKFLOW_RELS = sorted(str(p.relative_to(ROOT)) for p in (GH / "workflows").glob
 ACTION_RELS = sorted(str(p.relative_to(ROOT)) for p in (GH / "actions").glob("**/action.y*ml"))
 ALL_RELS = WORKFLOW_RELS + ACTION_RELS
 CI_ENV_ACTION_REL = ".github/actions/ci-env/action.yml"
+PR_WORKFLOW_REL = ".github/workflows/pr.yml"
 
 FAILED = []
 
@@ -122,7 +123,7 @@ def check_repo_wide_no_interpolation():
 
 
 def check_task1():
-    step = get_step(".github/workflows/pr.yml", "gofumpt formatting check (changed files)")
+    step = get_step(PR_WORKFLOW_REL, "gofumpt formatting check (changed files)")
     check("T-1 gofumpt step found", step is not None)
     if step is None:
         return
@@ -283,7 +284,7 @@ def check_behavior():
 
 def check_task4():
     """Task 4: Trivy image scan must ignore unfixed CVEs."""
-    step = get_step(".github/workflows/pr.yml", "Trivy image scan (blocking + SARIF)")
+    step = get_step(PR_WORKFLOW_REL, "Trivy image scan (blocking + SARIF)")
     check("T-4 Trivy image scan step found", step is not None)
     if step is None:
         return
@@ -293,14 +294,14 @@ def check_task4():
 
 def check_task5():
     """Task 5: CodeQL actions must be v4, not v3."""
-    text = (ROOT / ".github/workflows/pr.yml").read_text(encoding="utf-8")
+    text = (ROOT / PR_WORKFLOW_REL).read_text(encoding="utf-8")
     v3_refs = re.findall(r"codeql-action/\w+@v3", text)
     check("T-5 no codeql-action v3 refs in pr.yml", len(v3_refs) == 0, str(v3_refs))
 
 
 def check_task6():
     """Task 6: pr.yml on: block must include both push and pull_request triggers."""
-    doc = load_yaml(".github/workflows/pr.yml")
+    doc = load_yaml(PR_WORKFLOW_REL)
     # PyYAML parses YAML 'on:' as boolean True, not string 'on'
     on_block = doc.get("on") or doc.get(True) or {}
     check("T-6 push trigger present", "push" in on_block)

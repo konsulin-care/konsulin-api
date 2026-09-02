@@ -16,11 +16,11 @@
 #   - missing or unparseable report files exit 1 (fail closed);
 #   - bru-run.sh delegates to the gate module so pre-push and CI share it.
 #
-# Requires node. Exits non-zero when any assertion fails. POSIX-compatible body
-# (runs under `bash scripts/...` or `sh scripts/...`).
+# Requires node and bash. Exits non-zero when any assertion fails.
+# Run with: bash scripts/test-bru-run-gate.sh
 
 SCRIPT_DIR="$(dirname "$0")"
-[ "${SCRIPT_DIR}" = "." ] && SCRIPT_DIR="$(pwd)"
+[[ "${SCRIPT_DIR}" = "." ]] && SCRIPT_DIR="$(pwd)"
 GATE="${SCRIPT_DIR}/bru-report-gate.mjs"
 TMP="${TMPDIR:-/tmp}/bru-gate-test-$$"
 mkdir -p "${TMP}"
@@ -29,7 +29,10 @@ trap 'rm -rf "${TMP}"' EXIT
 FAILED=0
 
 write_fixture() {
-  printf '%s' "$2" > "${TMP}/$1"
+  local name="$1"
+  local content="$2"
+  printf '%s' "${content}" > "${TMP}/${name}"
+  return 0
 }
 
 expect_rc() {
@@ -38,7 +41,7 @@ expect_rc() {
   path="$3"
   node "${GATE}" "${path}" >/dev/null 2>&1
   rc=$?
-  if [ "${rc}" -eq "${expected}" ]; then
+  if [[ "${rc}" -eq "${expected}" ]]; then
     echo "PASS: ${label} (rc=${rc})"
   else
     echo "FAIL: ${label} — expected rc=${expected}, got ${rc}"
@@ -89,7 +92,7 @@ else
   FAILED=1
 fi
 
-if [ "${FAILED}" = "1" ]; then
+if [[ "${FAILED}" = "1" ]]; then
   echo "FAILED: one or more gate assertions did not hold"
   exit 1
 fi

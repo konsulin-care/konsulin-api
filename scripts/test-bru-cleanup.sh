@@ -137,7 +137,7 @@ if [[ "$FAILED" = "1" ]]; then
 fi
 
 echo "== run scripts/bru-cleanup.sh (first pass) =="
-sh scripts/bru-cleanup.sh
+bash scripts/bru-cleanup.sh
 
 echo "== assertions after first pass =="
 check_absent "seed-clinic org" Organization/seed-clinic
@@ -160,7 +160,7 @@ check_code "QA location preserved" 200 Location/zz-qa-location
 
 SOAP_BEFORE="$(code Questionnaire/soap)"
 echo "== run scripts/bru-cleanup.sh (second pass, idempotency) =="
-sh scripts/bru-cleanup.sh
+bash scripts/bru-cleanup.sh
 SOAP_AFTER="$(code Questionnaire/soap)"
 if [[ "$SOAP_BEFORE" = "$SOAP_AFTER" ]]; then
   echo "PASS: Questionnaire/soap untouched across both passes ($SOAP_BEFORE)"

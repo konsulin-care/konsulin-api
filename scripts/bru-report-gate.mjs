@@ -19,6 +19,8 @@
 //   2  usage error.
 
 import { readFileSync } from 'node:fs';
+import { resolve, sep } from 'node:path';
+import { tmpdir } from 'node:os';
 
 const file = process.argv[2];
 if (!file) {
@@ -26,17 +28,30 @@ if (!file) {
   process.exit(2);
 }
 
+// Only read reports inside the working directory (bru-run.sh writes
+// bru-report.json in the collection dir) or the temp dir (test fixtures), so
+// a faulty CLI argument cannot escape the file system sandbox.
+const reportPath = resolve(file);
+const safeRoots = [resolve('.'), resolve(tmpdir())];
+const isSafe = safeRoots.some(
+  (root) => reportPath === root || reportPath.startsWith(root + sep),
+);
+if (!isSafe) {
+  console.error(`bru-report-gate: refusing to read report outside working/temp dirs: ${file}`);
+  process.exit(2);
+}
+
 let reports;
 try {
-  reports = JSON.parse(readFileSync(file, 'utf-8'));
+  reports = JSON.parse(readFileSync(reportPath, 'utf-8'));
 } catch (err) {
-  console.error(`bru-report-gate: cannot read or parse ${file}: ${err.message}`);
+  console.error(`bru-report-gate: cannot read or parse ${reportPath}: ${err.message}`);
   process.exit(1);
 }
 
 const list = Array.isArray(reports) ? reports : [reports];
 const failed = list.reduce((acc, it) => {
-  const s = (it && it.summary) || {};
+  const s = it?.summary ?? {};
   return acc
     + (s.failedAssertions || 0)
     + (s.failedTests || 0)

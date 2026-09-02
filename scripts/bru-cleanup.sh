@@ -213,7 +213,7 @@ phase_a_fixed_ids() {
   # Remove the session patient (and its patient-scoped resources). The patient
   # carries the suite's mailinator email; the seed-other-identities fixture
   # shares it, which is fine — both are suite-owned and cleaned idempotently.
-  if [ -n "${ORGANIZATION:-}" ]; then
+  if [[ -n "${ORGANIZATION:-}" ]]; then
     local session_email="${ORGANIZATION}@mailinator.com"
     local pid
     for pid in $(ids Patient email "${session_email}"); do

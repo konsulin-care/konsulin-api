@@ -20,10 +20,10 @@
 #     process.env.ORGANIZATION mailbox value;
 #   - nothing anywhere still targets "Seed Organization" as a next request.
 #
-# POSIX-compatible body (runs under `bash scripts/...` or `sh scripts/...`).
+# Bash-only body (uses [[ ]]); run with: bash scripts/test-bru-chain.sh
 
 ROOT="$(dirname "$0")"
-[ "${ROOT}" = "." ] && ROOT="$(pwd)"
+[[ "${ROOT}" = "." ]] && ROOT="$(pwd)"
 ROOT="$(cd "${ROOT}/.." && pwd)"
 
 FAILED=0
@@ -77,6 +77,6 @@ for f in docs/api/auth/*.yml docs/api/fhir/seed/*.yml; do
     FAILED=1
   fi
 done
-if [ "${FAILED}" = "1" ]; then echo "FAILED: one or more chain assertions did not hold"; exit 1; fi
+if [[ "${FAILED}" = "1" ]]; then echo "FAILED: one or more chain assertions did not hold"; exit 1; fi
 echo "PASS: no resource targets 'Seed Organization' as next"
 echo "ALL PASS"
