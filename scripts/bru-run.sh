@@ -125,7 +125,7 @@ if RESPONSE="$(curl -sf --max-time 5 "${HEALTH_URL}")"; then
   BRU_RC=0
   if [[ -f "${BRU_REPORT}" ]]; then
     if command -v node >/dev/null 2>&1; then
-      node "${SCRIPT_DIR}/bru-report-gate.mjs" "${BRU_REPORT}" || BRU_RC=$?
+      node "${SCRIPT_DIR}/bru-report-gate.mjs" < "${BRU_REPORT}" || BRU_RC=$?
     else
       # Fallback: grep for failure indicators in the raw JSON (pretty-printed,
       # so allow optional whitespace around the colon).

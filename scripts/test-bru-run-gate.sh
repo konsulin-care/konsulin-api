@@ -39,7 +39,7 @@ expect_rc() {
   expected="$1"
   label="$2"
   path="$3"
-  node "${GATE}" "${path}" >/dev/null 2>&1
+  node "${GATE}" < "${path}" >/dev/null 2>&1
   rc=$?
   if [[ "${rc}" -eq "${expected}" ]]; then
     echo "PASS: ${label} (rc=${rc})"
@@ -60,7 +60,7 @@ write_fixture "pass-array.json" '[{"iterationIndex":0,"results":[],"summary":{"t
 
 # Older/object-root schema robustness.
 write_fixture "fail-object.json" '{"summary":{"totalRequests":10,"passedRequests":8,"failedRequests":2,"errorRequests":0,"skippedRequests":0,"skippedByBail":0,"totalAssertions":20,"passedAssertions":18,"failedAssertions":2,"totalTests":0,"passedTests":0,"failedTests":0,"totalPreRequestTests":0,"passedPreRequestTests":0,"failedPreRequestTests":0,"failedPostResponseTests":0,"totalPostResponseTests":0,"passedPostResponseTests":0}}'
-write_fixture "pass-object.json" '{"summary":{"totalRequests":10,"passedRequests":10,"failedRequests":0,"errorRequests":0,"skippedRequests":0,"skippedByBail":0,"totalAssertions":20,"passedAssertions":20,"failedAssertions":0,"totalTests":0,"passedTests":0,"failedTests":0,"totalPreRequestTests":0,"passedPreRequestTests":0,"failedPreRequestTests":0,"failedPostResponseTests":0,"totalPostResponseTests":0,"passedPostResponseTests":0}}'
+write_fixture "pass-object.json" '{"summary":{"totalRequests":10,"passedRequests":10,"failedRequests":0,"errorRequests":0,"skippedRequests":0,"skippedByBail":0,"totalAssertions":20,"passedAssertions":20,"failedAssertions":0,"totalTests":10,"passedTests":10,"failedTests":0,"totalPreRequestTests":0,"passedPreRequestTests":0,"failedPreRequestTests":0,"failedPostResponseTests":0,"totalPostResponseTests":0,"passedPostResponseTests":0}}'
 
 # Bail-only: every count zero except skippedByBail — must still fail (incomplete run).
 write_fixture "bail-only.json" '[{"iterationIndex":0,"results":[],"summary":{"totalRequests":83,"passedRequests":0,"failedRequests":0,"errorRequests":0,"skippedRequests":82,"skippedByBail":82,"totalAssertions":0,"passedAssertions":0,"failedAssertions":0,"totalTests":0,"passedTests":0,"failedTests":0,"totalPreRequestTests":0,"passedPreRequestTests":0,"failedPreRequestTests":0,"failedPostResponseTests":0,"totalPostResponseTests":0,"passedPostResponseTests":0}}]'
@@ -81,7 +81,7 @@ expect_rc 1 "object report with failures" "${TMP}/fail-object.json"
 echo "== bail is a hard failure =="
 expect_rc 1 "skippedByBail only" "${TMP}/bail-only.json"
 echo "== fail closed =="
-expect_rc 1 "missing report file" "${TMP}/does-not-exist.json"
+expect_rc 1 "missing report file (empty stdin)" "/dev/null"
 expect_rc 1 "unparseable report file" "${TMP}/not-json.txt"
 
 echo "== wiring: bru-run.sh delegates to the gate module =="
