@@ -296,7 +296,7 @@ jobs:
           output: trivy/trivy-image.sarif
 
       - name: Upload Trivy image SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: hashFiles('trivy/trivy-image.sarif') != ''
         with:
           sarif_file: trivy/trivy-image.sarif

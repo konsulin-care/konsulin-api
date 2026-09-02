@@ -24,7 +24,7 @@ import { tmpdir } from 'node:os';
 
 const file = process.argv[2];
 if (!file) {
-  console.error('usage: bru-report-gate.mjs <bru-report.json>');
+  console.error('usage: bru-report-gate.mjs [bru-report.json]');
   process.exit(2);
 }
 
@@ -43,6 +43,9 @@ if (!isSafe) {
 
 let reports;
 try {
+  // nosemgrep: detect-non-literal-fs-filename
+  // Path is CLI-controlled but sandbox-checked above (resolve + safeRoots
+  // against cwd/tmp); semgrep cannot trace past the guard.
   reports = JSON.parse(readFileSync(reportPath, 'utf-8'));
 } catch (err) {
   console.error(`bru-report-gate: cannot read or parse ${reportPath}: ${err.message}`);

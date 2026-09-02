@@ -123,6 +123,8 @@ Security-relevant tool versions are pinned, not floating:
 | `gofumpt` | `v0.11.0` | dependabot (`go.mod` via `tools/tools.go`) |
 | `govulncheck` | `v1.7.0` | dependabot (`go.mod` via `tools/tools.go`) |
 | `trivy-action` | commit SHA `ed142fd…` `# v0.36.0` | dependabot (github-actions) |
+| `mise-action` | commit SHA `c37c932…` `# v2` | dependabot (github-actions) |
+| `ssh-action` | commit SHA `0ff4204d…` `# v1.2.5` | dependabot (github-actions) |
 | Trivy binary version | `v0.74.0` (action input) | manual |
 | `actionlint` (pre-commit) | `v1.7.12` | dependabot updates the rev via pre-commit autoupdate manually — treat as manual |
 | ZAP image | `ghcr.io/zaproxy/zaproxy:v2.17.0` | manual |
