@@ -99,12 +99,13 @@ if RESPONSE="$(curl -sf --max-time 5 "${HEALTH_URL}")"; then
   echo "API healthy at ${HEALTH_URL}: ${RESPONSE}"
   cd "${COLLECTION_DIR}"
 
-  # Run Bruno collection with JSON report for CI artifact upload.
-  # --reporter-json always produces the file (even on failure) so the
-  # workflow can upload it for debugging.
+  # Run Bruno collection with JSON + JUnit reports for CI artifact upload.
+  # --reporter-json and --reporter-junit always produce their files (even on
+  # failure) so the workflow can upload them for debugging.
   BRU_REPORT="bru-report.json"
+  BRU_JUNIT="bru-report.xml"
   CLI_RC=0
-  BRU_ARGS=(run --bail --reporter-json "${BRU_REPORT}")
+  BRU_ARGS=(run --bail --reporter-json "${BRU_REPORT}" --reporter-junit "${BRU_JUNIT}")
   if [[ -n "${TAG}" ]]; then
     BRU_ARGS+=(--tags="${TAG}")
   fi

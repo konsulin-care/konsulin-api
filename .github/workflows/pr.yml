@@ -174,8 +174,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: "Pull Request Screening"
     # Secrets are unavailable on fork PRs, so skip the secret-requiring suite for
-    # contributors; the full gate runs for same-repo PRs and on the default branch.
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    # contributors; the full gate runs for same-repo PRs and on push (develop/main).
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     needs: [quality]
     steps:
       - uses: actions/checkout@v7
@@ -220,7 +220,7 @@ jobs:
         if: always()
         with:
           name: bru-report
-          path: docs/api/bru-report.json
+          path: docs/api/bru-report.*
           if-no-files-found: warn
 
       - name: Capture environment logs

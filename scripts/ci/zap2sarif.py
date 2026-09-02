@@ -46,8 +46,9 @@ def convert(zap_json, out_path):
                 "id": rule_id,
                 "name": title,
                 "shortDescription": {"text": (alert.get("desc") or "")[:400]},
-                "helpUri": reference.split()[0] if reference else None,
             }
+            if reference:
+                rules[rule_id]["helpUri"] = reference.split()[0]
             level = RISK_LEVEL.get(str(alert.get("riskcode", "0")), "none")
             for inst in alert.get("instances", []):
                 uri = inst.get("uri") or "unknown"

@@ -100,6 +100,64 @@ class ConvertTests(ChdirTestCase):
         with self.assertRaises(SystemExit):
             zap2sarif.main(["zap2sarif.py", "only-one"])
 
+    def test_helpuri_omitted_when_reference_missing(self):
+        with tempfile.TemporaryDirectory() as d:
+            zap = {
+                "@version": "X",
+                "site": [
+                    {
+                        "alerts": [
+                            {
+                                "pluginid": "1",
+                                "alert": "title",
+                                "desc": "desc",
+                                "riskcode": "2",
+                                "instances": [
+                                    {"uri": "http://example.test/"}
+                                ],
+                            }
+                        ]
+                    }
+                ],
+            }
+            out = Path(d) / "zap-report.sarif"
+            zap2sarif.convert(zap, out)
+            raw = out.read_text(encoding="utf-8")
+            sarif = json.loads(raw)
+            rule = sarif["runs"][0]["tool"]["driver"]["rules"][0]
+            self.assertNotIn("helpUri", rule)
+            self.assertNotIn('"helpUri": null', raw)
+
+    def test_helpuri_is_first_reference_token_when_present(self):
+        with tempfile.TemporaryDirectory() as d:
+            zap = {
+                "@version": "X",
+                "site": [
+                    {
+                        "alerts": [
+                            {
+                                "pluginid": "2",
+                                "alert": "title",
+                                "desc": "desc",
+                                "reference": (
+                                    "https://first.example.test/ref "
+                                    "https://second.example.test/"
+                                ),
+                                "riskcode": "2",
+                                "instances": [
+                                    {"uri": "http://example.test/"}
+                                ],
+                            }
+                        ]
+                    }
+                ],
+            }
+            out = Path(d) / "zap-report.sarif"
+            zap2sarif.convert(zap, out)
+            sarif = json.loads(out.read_text(encoding="utf-8"))
+            rule = sarif["runs"][0]["tool"]["driver"]["rules"][0]
+            self.assertEqual(rule["helpUri"], "https://first.example.test/ref")
+
 
 if __name__ == "__main__":
     unittest.main()

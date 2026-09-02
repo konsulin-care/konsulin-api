@@ -42,6 +42,15 @@ jobs:
     env:
       IMAGE_NAMESPACE: ${{ secrets.DOCKER_USERNAME }}
       IMAGE_NAME: konsulin-api
+      TZ_ARG: ${{ inputs.TZ_ARG }}
+      AUTHOR: ${{ inputs.AUTHOR }}
+      BUILD_VERSION_ARG: ${{ inputs.VERSION }}
+      BUILD_TAG_ARG: ${{ inputs.TAG }}
+      GIT_COMMIT: ${{ inputs.GIT_COMMIT }}
+      BUILD_TIME: ${{ inputs.BUILD_TIME }}
+      RUN_NUMBER: ${{ inputs.RUN_NUMBER }}
+      IS_DEV: ${{ inputs.IS_DEV }}
+      IS_PROD: ${{ inputs.IS_PROD }}
 
     steps:
       - name: Debug - Display Input Variables
