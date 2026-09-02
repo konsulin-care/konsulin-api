@@ -101,15 +101,27 @@ func handleMessageLinks(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"links": links})
 }
 
-// extractOrg pulls the local-part (before @) from an email address to use as
-// the org key in the mailbox.
+// extractOrg derives the org identifier from an email address by extracting
+// the domain prefix — the substring between '@' and the first '.'.
+// e.g. "user@myorg.example.com" → "myorg"
 func extractOrg(email string) string {
+	atIdx := -1
 	for i, c := range email {
 		if c == '@' {
-			return email[:i]
+			atIdx = i
+			break
 		}
 	}
-	return email
+	if atIdx < 0 {
+		return email
+	}
+	domain := email[atIdx+1:]
+	for i, c := range domain {
+		if c == '.' {
+			return domain[:i]
+		}
+	}
+	return domain
 }
 
 // writeJSON encodes payload as JSON and writes it to w.
