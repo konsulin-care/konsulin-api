@@ -40,6 +40,10 @@ inputs:
     description: "Superadmin API key for Bruno fhir/admin and cleanup requests."
     required: false
     default: ""
+  ci-xendit-sandbox-api-key:
+    description: "Xendit sandbox API key used by the gateway for test payment calls."
+    required: false
+    default: ""
   ci-xendit-callback-token:
     description: "Xendit webhook callback token used by the gateway and Bruno callback tests."
     required: false
@@ -67,7 +71,7 @@ runs:
     - name: Write CI env files
       shell: bash
       env:
-        XENDIT_SANDBOX_API_KEY: ${{ vars.CI_XENDIT_SANDBOX_API_KEY }}
+        XENDIT_SANDBOX_API_KEY: ${{ inputs.ci-xendit-sandbox-api-key }}
         CI_POSTGRES_PASSWORD: ${{ inputs.ci-postgres-password }}
         CI_REDIS_PASSWORD: ${{ inputs.ci-redis-password }}
         CI_RABBITMQ_PASSWORD: ${{ inputs.ci-rabbitmq-password }}

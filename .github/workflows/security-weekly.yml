@@ -42,6 +42,7 @@ jobs:
           ci-supertoken-api-key: ${{ vars.CI_SUPERTOKEN_API_KEY }}
           ci-superadmin-api-key: ${{ vars.CI_SUPERADMIN_API_KEY }}
           ci-xendit-callback-token: ${{ vars.CI_XENDIT_CALLBACK_TOKEN }}
+          ci-xendit-sandbox-api-key: ${{ vars.CI_XENDIT_SANDBOX_API_KEY }}
           ci-jwt-hook-key: ${{ vars.CI_JWT_HOOK_KEY }}
           organization: weekly-${{ github.run_id }}-org
 
