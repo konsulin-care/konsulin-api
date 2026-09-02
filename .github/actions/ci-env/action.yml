@@ -5,7 +5,7 @@
 #   3. writes the collection env (docs/api/.env) and compose interpolation env
 #      (.env.ci) using synthetic per-run credentials;
 #   4. starts the infrastructure group (postgres/redis/rabbitmq/blaze/
-#      supertokens/magiclink-stub), probes readiness from the runner;
+#      supertokens/ci-stub), probes readiness from the runner;
 #   5. starts the app and waits for /health.
 #
 # Never starts/uses production credentials or real patient data. The caller is
@@ -17,39 +17,35 @@ name: Start disposable CI environment
 description: Builds and starts the isolated Docker-based integration environment with synthetic data.
 
 inputs:
-  xendit-sandbox-api-key:
-    description: Xendit sandbox API key (synthetic test credential) for appointment payment tests.
-    required: false
-    default: ""
   organization:
     description: Unique per-run organization name used as the synthetic magic-link mailbox.
     required: true
   ci-postgres-password:
-    description: "Secret: disposable postgres password shared by the postgres service and SuperTokens URI."
+    description: "Disposable postgres password shared by the postgres service and SuperTokens URI."
     required: false
     default: ""
   ci-redis-password:
-    description: "Secret: disposable redis password used by the redis service and gateway sessions."
+    description: "Disposable redis password used by the redis service and gateway sessions."
     required: false
     default: ""
   ci-rabbitmq-password:
-    description: "Secret: disposable rabbitmq password for the webhook async queue."
+    description: "Disposable rabbitmq password for the webhook async queue."
     required: false
     default: ""
   ci-supertoken-api-key:
-    description: "Secret: SuperTokens API key shared between the core container and the gateway SDK."
+    description: "SuperTokens API key shared between the core container and the gateway SDK."
     required: false
     default: ""
   ci-superadmin-api-key:
-    description: "Secret: superadmin API key for Bruno fhir/admin and cleanup requests."
+    description: "Superadmin API key for Bruno fhir/admin and cleanup requests."
     required: false
     default: ""
   ci-xendit-callback-token:
-    description: "Secret: Xendit webhook callback token used by the gateway and Bruno callback tests."
+    description: "Xendit webhook callback token used by the gateway and Bruno callback tests."
     required: false
     default: ""
   ci-jwt-hook-key:
-    description: "Secret: EC P-256 PEM signing webhook JWTs inside the disposable environment."
+    description: "EC P-256 PEM signing webhook JWTs inside the disposable environment."
     required: false
     default: ""
 
@@ -71,7 +67,7 @@ runs:
     - name: Write CI env files
       shell: bash
       env:
-        XENDIT_SANDBOX_API_KEY: ${{ inputs.xendit-sandbox-api-key }}
+        XENDIT_SANDBOX_API_KEY: ${{ vars.CI_XENDIT_SANDBOX_API_KEY }}
         CI_POSTGRES_PASSWORD: ${{ inputs.ci-postgres-password }}
         CI_REDIS_PASSWORD: ${{ inputs.ci-redis-password }}
         CI_RABBITMQ_PASSWORD: ${{ inputs.ci-rabbitmq-password }}
@@ -106,7 +102,7 @@ runs:
 
     - name: Start infrastructure group
       shell: bash
-      run: docker compose --env-file .env.ci -f docker-compose.ci.yml up -d postgres redis rabbitmq blaze supertokens magiclink-stub
+      run: docker compose --env-file .env.ci -f docker-compose.ci.yml up -d postgres redis rabbitmq blaze supertokens ci-stub
 
     - name: Wait for infrastructure readiness
       shell: bash

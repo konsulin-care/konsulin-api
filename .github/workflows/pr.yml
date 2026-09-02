@@ -172,36 +172,22 @@ jobs:
   integration:
     name: Integration and API security tests
     runs-on: ubuntu-latest
-    environment: "Pull Request Screening"
-    # Secrets are unavailable on fork PRs, so skip the secret-requiring suite for
-    # contributors; the full gate runs for same-repo PRs and on push (develop/main).
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     needs: [quality]
     steps:
       - uses: actions/checkout@v7
 
-      - name: Require Xendit sandbox key secret
-        env:
-          XENDIT_SANDBOX_API_KEY: ${{ secrets.XENDIT_SANDBOX_API_KEY }}
-        run: |
-          if [ -z "$XENDIT_SANDBOX_API_KEY" ]; then
-            echo "::error::XENDIT_SANDBOX_API_KEY secret is missing. Add a Xendit sandbox (test-mode) API key under repository secrets." >&2
-            exit 1
-          fi
-
-      # Isolated disposable environment: infra + app + deterministic
-      # magic-link stub. Synthetic accounts/data only.
+      # Isolated disposable environment: infra + app + unified Go stub
+      # (magiclink + xendit). Synthetic accounts/data only.
       - name: Start disposable CI environment
         uses: ./.github/actions/ci-env
         with:
-          xendit-sandbox-api-key: ${{ secrets.XENDIT_SANDBOX_API_KEY }}
-          ci-postgres-password: ${{ secrets.CI_POSTGRES_PASSWORD }}
-          ci-redis-password: ${{ secrets.CI_REDIS_PASSWORD }}
-          ci-rabbitmq-password: ${{ secrets.CI_RABBITMQ_PASSWORD }}
-          ci-supertoken-api-key: ${{ secrets.CI_SUPERTOKEN_API_KEY }}
-          ci-superadmin-api-key: ${{ secrets.CI_SUPERADMIN_API_KEY }}
-          ci-xendit-callback-token: ${{ secrets.CI_XENDIT_CALLBACK_TOKEN }}
-          ci-jwt-hook-key: ${{ secrets.CI_JWT_HOOK_KEY }}
+          ci-postgres-password: ${{ vars.CI_POSTGRES_PASSWORD }}
+          ci-redis-password: ${{ vars.CI_REDIS_PASSWORD }}
+          ci-rabbitmq-password: ${{ vars.CI_RABBITMQ_PASSWORD }}
+          ci-supertoken-api-key: ${{ vars.CI_SUPERTOKEN_API_KEY }}
+          ci-superadmin-api-key: ${{ vars.CI_SUPERADMIN_API_KEY }}
+          ci-xendit-callback-token: ${{ vars.CI_XENDIT_CALLBACK_TOKEN }}
+          ci-jwt-hook-key: ${{ vars.CI_JWT_HOOK_KEY }}
           organization: ci-${{ github.run_id }}-org
 
       # Full Bruno chain in one required run: seed org (entry; Organization/
@@ -225,7 +211,7 @@ jobs:
 
       - name: Capture environment logs
         if: always()
-        run: docker compose --env-file .env.ci -f docker-compose.ci.yml logs --tail=300 app supertokens magiclink-stub > ci-env-logs.txt 2>&1 || true
+        run: docker compose --env-file .env.ci -f docker-compose.ci.yml logs --tail=300 app supertokens ci-stub > ci-env-logs.txt 2>&1 || true
 
       - name: Upload environment logs
         uses: actions/upload-artifact@v5
