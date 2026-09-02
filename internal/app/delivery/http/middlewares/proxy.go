@@ -8,15 +8,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/exceptions"
-	"konsulin-service/internal/pkg/ownership"
-	"konsulin-service/internal/pkg/utils"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
+	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/ownership"
+	"konsulin-service/internal/pkg/utils"
 
 	"github.com/casbin/casbin/v2"
 	"go.uber.org/zap"
@@ -288,7 +289,7 @@ func stripCommunicationFields(body []byte) ([]byte, bool) {
 			return body, false
 		}
 		return stripped, true
-	case "Bundle":
+	case constvars.ResourceBundle:
 		return stripCommunicationBundle(body)
 	default:
 		return body, false
@@ -529,7 +530,7 @@ func (m *Middlewares) filterResponseResourceAgainstRBAC(body []byte, roles []str
 		return body, 0, nil
 	}
 
-	if !strings.EqualFold(extractResourceTypeFromJSON(body), "Bundle") {
+	if !strings.EqualFold(extractResourceTypeFromJSON(body), constvars.ResourceBundle) {
 		return body, 0, nil
 	}
 
@@ -628,7 +629,7 @@ func decodeBundle(body []byte) (*Bundle, bool, error) {
 		return nil, false, nil
 	}
 
-	if !strings.EqualFold(envelope.ResourceType, "Bundle") {
+	if !strings.EqualFold(envelope.ResourceType, constvars.ResourceBundle) {
 		return nil, false, nil
 	}
 

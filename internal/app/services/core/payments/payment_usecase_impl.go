@@ -7,6 +7,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"net/http"
+	"net/url"
+	"path"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/services/core/webhook"
@@ -18,15 +28,6 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/fhir_http_client"
-	"math"
-	"net/http"
-	"net/url"
-	"path"
-	"slices"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
 
 	bundleSvc "konsulin-service/internal/app/services/fhir_spark/bundle"
 
@@ -497,19 +498,19 @@ func (uc *paymentUsecase) handleAppointmentPaymentExpired(
 		"entry": []map[string]any{
 			{
 				constvars.FhirFieldRequest: map[string]any{
-					constvars.FhirFieldMethod: "DELETE",
+					constvars.FhirFieldMethod: constvars.MethodDelete,
 					constvars.FhirFieldURL:    constvars.ResourceSlot + "/" + fields.SlotID,
 				},
 			},
 			{
 				constvars.FhirFieldRequest: map[string]any{
-					constvars.FhirFieldMethod: "DELETE",
+					constvars.FhirFieldMethod: constvars.MethodDelete,
 					constvars.FhirFieldURL:    constvars.ResourceInvoice + "/" + fields.InvoiceID,
 				},
 			},
 			{
 				constvars.FhirFieldRequest: map[string]any{
-					constvars.FhirFieldMethod: "DELETE",
+					constvars.FhirFieldMethod: constvars.MethodDelete,
 					constvars.FhirFieldURL:    constvars.ResourceAppointment + "/" + fields.AppointmentID,
 				},
 			},

@@ -2,7 +2,7 @@ info:
   name: "Patient: Get Research Progress"
   type: http
   seq: 4
-  tags: [research]
+  tags: [PR, research]
 
 http:
   method: POST

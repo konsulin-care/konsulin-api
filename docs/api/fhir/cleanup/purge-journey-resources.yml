@@ -2,7 +2,7 @@ info:
   name: "Cleanup: Purge Journey Resources"
   type: http
   seq: 1
-  tags: [utility]
+  tags: [utility, cleanup]
 
 http:
   method: POST

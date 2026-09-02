@@ -2,7 +2,7 @@ info:
   name: "Cleanup: Delete Practitioner Profile"
   type: http
   seq: 2
-  tags: [utility]
+  tags: [utility, cleanup]
 
 http:
   method: DELETE

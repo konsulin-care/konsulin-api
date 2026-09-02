@@ -2,7 +2,7 @@ info:
   name: "Practitioner: Create SOAP Notes"
   type: http
   seq: 9
-  tags: [assessment]
+  tags: [PR, assessment]
 
 http:
   method: POST

@@ -1,0 +1,163 @@
+# Starts the disposable Docker-based integration environment used for API
+# security testing:
+#   1. installs the pinned Bruno CLI;
+#   2. builds the vendor + app Docker images (with the CI FROM-rewrite);
+#   3. writes the collection env (docs/api/.env) and compose interpolation env
+#      (.env.ci) using synthetic per-run credentials;
+#   4. starts the infrastructure group (postgres/redis/rabbitmq/blaze/
+#      supertokens/magiclink-stub), probes readiness from the runner;
+#   5. starts the app and waits for /health.
+#
+# Never starts/uses production credentials or real patient data. The caller is
+# responsible for tearing the environment down (`docker compose ... down -v`)
+# and uploading artifacts.
+
+name: Start disposable CI environment
+
+description: Builds and starts the isolated Docker-based integration environment with synthetic data.
+
+inputs:
+  xendit-sandbox-api-key:
+    description: Xendit sandbox API key (synthetic test credential) for appointment payment tests.
+    required: false
+    default: ""
+  organization:
+    description: Unique per-run organization name used as the synthetic magic-link mailbox.
+    required: true
+  ci-postgres-password:
+    description: "Secret: disposable postgres password shared by the postgres service and SuperTokens URI."
+    required: false
+    default: ""
+  ci-redis-password:
+    description: "Secret: disposable redis password used by the redis service and gateway sessions."
+    required: false
+    default: ""
+  ci-rabbitmq-password:
+    description: "Secret: disposable rabbitmq password for the webhook async queue."
+    required: false
+    default: ""
+  ci-supertoken-api-key:
+    description: "Secret: SuperTokens API key shared between the core container and the gateway SDK."
+    required: false
+    default: ""
+  ci-superadmin-api-key:
+    description: "Secret: superadmin API key for Bruno fhir/admin and cleanup requests."
+    required: false
+    default: ""
+  ci-xendit-callback-token:
+    description: "Secret: Xendit webhook callback token used by the gateway and Bruno callback tests."
+    required: false
+    default: ""
+  ci-jwt-hook-key:
+    description: "Secret: EC P-256 PEM signing webhook JWTs inside the disposable environment."
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Install tools via mise
+      uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2
+      with:
+        install: true
+
+    - name: Build vendor and app images
+      shell: bash
+      run: |
+        docker build -t konsulin/konsulin-api-vendor:pr-ci -f Dockerfile-vendor .
+        sed -i -E "s|^[[:space:]]*FROM[[:space:]]+.*[[:space:]]+[Aa][Ss][[:space:]]+gobuild|FROM konsulin/konsulin-api-vendor:pr-ci as gobuild|" Dockerfile
+        docker build -t konsulin/konsulin-api:pr-ci -f Dockerfile .
+
+    - name: Write CI env files
+      shell: bash
+      env:
+        XENDIT_SANDBOX_API_KEY: ${{ inputs.xendit-sandbox-api-key }}
+        CI_POSTGRES_PASSWORD: ${{ inputs.ci-postgres-password }}
+        CI_REDIS_PASSWORD: ${{ inputs.ci-redis-password }}
+        CI_RABBITMQ_PASSWORD: ${{ inputs.ci-rabbitmq-password }}
+        CI_SUPERTOKEN_API_KEY: ${{ inputs.ci-supertoken-api-key }}
+        CI_SUPERADMIN_API_KEY: ${{ inputs.ci-superadmin-api-key }}
+        CI_XENDIT_CALLBACK_TOKEN: ${{ inputs.ci-xendit-callback-token }}
+        CI_JWT_HOOK_KEY: ${{ inputs.ci-jwt-hook-key }}
+        ORGANIZATION: ${{ inputs.organization }}
+      run: |
+        umask 077
+        # Scalar credentials -> .env.ci for compose ${VAR:?} interpolation.
+        {
+          printf 'XENDIT_SANDBOX_API_KEY=%s\n' "$XENDIT_SANDBOX_API_KEY"
+          printf 'POSTGRES_PASSWORD=%s\n' "$CI_POSTGRES_PASSWORD"
+          printf 'REDIS_PASSWORD=%s\n' "$CI_REDIS_PASSWORD"
+          printf 'RABBITMQ_DEFAULT_PASS=%s\n' "$CI_RABBITMQ_PASSWORD"
+          printf 'SUPERTOKEN_API_KEY=%s\n' "$CI_SUPERTOKEN_API_KEY"
+          printf 'SUPERADMIN_API_KEY=%s\n' "$CI_SUPERADMIN_API_KEY"
+          printf 'XENDIT_CALLBACK_TOKEN=%s\n' "$CI_XENDIT_CALLBACK_TOKEN"
+        } > .env.ci
+
+        # Bruno collection env (same synthetic values, sourced from the same inputs).
+        printf 'APP_BASE_URL=http://localhost:3200\nBLAZE_BASE_URL=http://localhost:8080\nSUPERADMIN_API_KEY=%s\nORGANIZATION=%s\nMAILINATOR_BASE_URL=http://localhost:8081/api/v2\nXENDIT_CALLBACK_TOKEN=%s\n' \
+          "$CI_SUPERADMIN_API_KEY" "$ORGANIZATION" "$CI_XENDIT_CALLBACK_TOKEN" > docs/api/.env
+
+        # The multiline PEM cannot live in a .env file; export it to the job
+        # environment so compose interpolation of ${JWT_HOOK_KEY} sees it.
+        {
+          printf 'JWT_HOOK_KEY<<EOF\n%s\nEOF\n' "$CI_JWT_HOOK_KEY"
+        } >> "$GITHUB_ENV"
+        echo "wrote .env.ci and docs/api/.env"
+
+    - name: Start infrastructure group
+      shell: bash
+      run: docker compose --env-file .env.ci -f docker-compose.ci.yml up -d postgres redis rabbitmq blaze supertokens magiclink-stub
+
+    - name: Wait for infrastructure readiness
+      shell: bash
+      env:
+        CI_REDIS_PASSWORD: ${{ inputs.ci-redis-password }}
+      run: |
+        ok=0
+        for _ in $(seq 1 120); do
+          curl -fsS http://localhost:8080/fhir/metadata >/dev/null 2>&1 || { sleep 5; continue; }
+          curl -fsS http://localhost:3567/hello >/dev/null 2>&1 || { sleep 5; continue; }
+          docker compose --env-file .env.ci -f docker-compose.ci.yml exec -T redis redis-cli -a "$CI_REDIS_PASSWORD" ping >/dev/null 2>&1 || { sleep 5; continue; }
+          docker compose --env-file .env.ci -f docker-compose.ci.yml exec -T rabbitmq rabbitmq-diagnostics -q ping >/dev/null 2>&1 || { sleep 5; continue; }
+          ok=1
+          break
+        done
+        if [ "$ok" != 1 ]; then
+          docker compose --env-file .env.ci -f docker-compose.ci.yml logs --tail=200 postgres redis rabbitmq blaze supertokens 2>/dev/null || true
+          echo "::error::Infrastructure did not become ready in time" >&2
+          exit 1
+        fi
+
+    - name: Start API gateway
+      shell: bash
+      run: docker compose --env-file .env.ci -f docker-compose.ci.yml up -d app
+
+    - name: Wait for API health
+      shell: bash
+      env:
+        CI_SUPERADMIN_API_KEY: ${{ inputs.ci-superadmin-api-key }}
+      run: |
+        ok=0
+        for _ in $(seq 1 60); do
+          if curl -fsS http://localhost:3200/health >/dev/null 2>&1; then
+            ok=1
+            break
+          fi
+          sleep 5
+        done
+        if [ "$ok" != 1 ]; then
+          docker compose --env-file .env.ci -f docker-compose.ci.yml logs --tail=300 app 2>/dev/null || true
+          echo "::error::API gateway did not become healthy in time" >&2
+          exit 1
+        fi
+
+        # SuperTokens-backed end-to-end smoke: exercises the same SDK call
+        # path (GetUserByEmail -> core) the Bruno auth chain depends on.
+        # Catches a broken app<->core connection before the bru suite bails.
+        if ! curl -fsS "http://localhost:3200/api/v1/auth/passwordless/email/exists?email=smoke@konsulin.local" \
+          -H "X-API-Key: ${CI_SUPERADMIN_API_KEY}" >/dev/null 2>&1; then
+          docker compose --env-file .env.ci -f docker-compose.ci.yml logs --tail=200 app supertokens 2>/dev/null || true
+          echo "::error::SuperTokens-backed endpoint failed — app cannot reach SuperTokens core" >&2
+          exit 1
+        fi
+        echo "SuperTokens SDK smoke test passed"

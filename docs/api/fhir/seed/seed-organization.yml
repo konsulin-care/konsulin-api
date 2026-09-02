@@ -2,7 +2,7 @@ info:
   name: Seed Organization
   type: http
   seq: 1
-  tags: [clinic, utility]
+  tags: [PR, clinic, utility]
 
 http:
   method: PUT
@@ -40,7 +40,7 @@ runtime:
       code: |-
         const body = res.getBody();
         bru.setVar("organizationId", body.id);
-        bru.runner.setNextRequest("Seed Location");
+        bru.runner.setNextRequest("Send Magic Link");
   assertions:
     - expression: res.status
       operator: gte

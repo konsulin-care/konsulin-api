@@ -2,7 +2,7 @@ info:
   name: "Ownership Violation: Post Communication With Foreign Sender"
   type: http
   seq: 10
-  tags: [ownership]
+  tags: [PR, ownership]
 
 http:
   method: POST

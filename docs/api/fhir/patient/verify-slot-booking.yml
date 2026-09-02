@@ -2,7 +2,7 @@ info:
   name: "Patient: Verify Slot Booking"
   type: http
   seq: 16
-  tags: [appointment]
+  tags: [PR, appointment]
 
 http:
   method: GET

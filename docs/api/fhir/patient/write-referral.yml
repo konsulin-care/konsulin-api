@@ -2,7 +2,7 @@ info:
   name: "Patient: Write Referral"
   type: http
   seq: 16
-  tags: [referral]
+  tags: [PR, referral]
 
 http:
   method: PUT

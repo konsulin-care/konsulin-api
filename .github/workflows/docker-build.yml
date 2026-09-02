@@ -1,4 +1,4 @@
-name: Docker Build and Push 
+name: Docker Build and Push
 
 on:
   workflow_call:
@@ -42,21 +42,30 @@ jobs:
     env:
       IMAGE_NAMESPACE: ${{ secrets.DOCKER_USERNAME }}
       IMAGE_NAME: konsulin-api
+      TZ_ARG: ${{ inputs.TZ_ARG }}
+      AUTHOR: ${{ inputs.AUTHOR }}
+      BUILD_VERSION_ARG: ${{ inputs.VERSION }}
+      BUILD_TAG_ARG: ${{ inputs.TAG }}
+      GIT_COMMIT: ${{ inputs.GIT_COMMIT }}
+      BUILD_TIME: ${{ inputs.BUILD_TIME }}
+      RUN_NUMBER: ${{ inputs.RUN_NUMBER }}
+      IS_DEV: ${{ inputs.IS_DEV }}
+      IS_PROD: ${{ inputs.IS_PROD }}
 
     steps:
       - name: Debug - Display Input Variables
         run: |
           echo "=== DOCKER BUILD INPUT VARIABLES ==="
-          echo "TZ_ARG: ${{ inputs.TZ_ARG }}"
-          echo "AUTHOR: ${{ inputs.AUTHOR }}"
-          echo "GIT_COMMIT: ${{ inputs.GIT_COMMIT }}"
-          echo "BUILD_TIME: ${{ inputs.BUILD_TIME }}"
-          echo "RUN_NUMBER: ${{ inputs.RUN_NUMBER }}"
-          echo "IS_DEV: ${{ inputs.IS_DEV }}"
-          echo "IS_PROD: ${{ inputs.IS_PROD }}"
+          echo "TZ_ARG: $TZ_ARG"
+          echo "AUTHOR: $AUTHOR"
+          echo "GIT_COMMIT: $GIT_COMMIT"
+          echo "BUILD_TIME: $BUILD_TIME"
+          echo "RUN_NUMBER: $RUN_NUMBER"
+          echo "IS_DEV: $IS_DEV"
+          echo "IS_PROD: $IS_PROD"
           echo ""
           echo "=== SECRETS (masked) ==="
-          echo "DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}"
+          echo "DOCKER_USERNAME: $IMAGE_NAMESPACE"
           echo "DOCKER_PASSWORD: [MASKED]"
 
       - name: Checkout Source
@@ -83,12 +92,12 @@ jobs:
       - name: Build Vendor Image
         run: |
           docker build \
-            -t ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}-vendor:latest \
+            -t $IMAGE_NAMESPACE/$IMAGE_NAME-vendor:latest \
             -f Dockerfile-vendor .
 
       - name: Push Vendor Image
         run: |
-          docker push ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}-vendor:latest
+          docker push $IMAGE_NAMESPACE/$IMAGE_NAME-vendor:latest
 
       - name: Replace FROM in Dockerfile with image from ENV
         run: |
@@ -96,44 +105,42 @@ jobs:
 
       - name: Build and Push Docker Images
         run: |
-          if [ "${{ inputs.IS_DEV }}" == "true" ]; then
+          if [ "$IS_DEV" == "true" ]; then
             echo "Development build..."
-            VERSION="dev-${{ env.SHORT_SHA }}"
+            VERSION="dev-${SHORT_SHA}"
             docker build \
-              -t ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}:nightly \
-              -t ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}:${VERSION} \
+              -t $IMAGE_NAMESPACE/$IMAGE_NAME:nightly \
+              -t $IMAGE_NAMESPACE/$IMAGE_NAME:${VERSION} \
               -f Dockerfile \
-              --build-arg TZ_ARG=${{ inputs.TZ_ARG }} \
-              --build-arg VERSION=${{ inputs.VERSION }} \
-              --build-arg GIT_COMMIT=${{ inputs.GIT_COMMIT }} \
-              --build-arg TAG=${{ inputs.TAG }} \
-              --build-arg AUTHOR=${{ inputs.AUTHOR }} \
-              --build-arg RUN_NUMBER=${{ inputs.RUN_NUMBER }} \
-              --build-arg BUILD_TIME=${{ inputs.BUILD_TIME }} .
+              --build-arg TZ_ARG="$TZ_ARG" \
+              --build-arg VERSION="$BUILD_VERSION_ARG" \
+              --build-arg GIT_COMMIT="$GIT_COMMIT" \
+              --build-arg TAG="$BUILD_TAG_ARG" \
+              --build-arg AUTHOR="$AUTHOR" \
+              --build-arg RUN_NUMBER="$RUN_NUMBER" \
+              --build-arg BUILD_TIME="$BUILD_TIME" .
 
-            docker push ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}:nightly
-            docker push ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}:${VERSION}
+            docker push $IMAGE_NAMESPACE/$IMAGE_NAME:nightly
+            docker push $IMAGE_NAMESPACE/$IMAGE_NAME:${VERSION}
 
-          elif [ "${{ inputs.IS_PROD }}" == "true" ]; then
+          elif [ "$IS_PROD" == "true" ]; then
             echo "Production build..."
             VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "latest")
             docker build \
-              -t ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}:latest \
-              -t ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}:${VERSION} \
+              -t $IMAGE_NAMESPACE/$IMAGE_NAME:latest \
+              -t $IMAGE_NAMESPACE/$IMAGE_NAME:${VERSION} \
               -f Dockerfile \
-              --build-arg TZ_ARG=${{ inputs.TZ_ARG }} \
-              --build-arg VERSION=${{ inputs.VERSION }} \
-              --build-arg GIT_COMMIT=${{ inputs.GIT_COMMIT }} \
-              --build-arg TAG=${{ inputs.TAG }} \
-              --build-arg AUTHOR=${{ inputs.AUTHOR }} \
-              --build-arg RUN_NUMBER=${{ inputs.RUN_NUMBER }} \
-              --build-arg BUILD_TIME=${{ inputs.BUILD_TIME }} .
+              --build-arg TZ_ARG="$TZ_ARG" \
+              --build-arg VERSION="$BUILD_VERSION_ARG" \
+              --build-arg GIT_COMMIT="$GIT_COMMIT" \
+              --build-arg TAG="$BUILD_TAG_ARG" \
+              --build-arg AUTHOR="$AUTHOR" \
+              --build-arg RUN_NUMBER="$RUN_NUMBER" \
+              --build-arg BUILD_TIME="$BUILD_TIME" .
 
-            docker push ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}:latest
-            docker push ${{ env.IMAGE_NAMESPACE }}/${{ env.IMAGE_NAME }}:${VERSION}
+            docker push $IMAGE_NAMESPACE/$IMAGE_NAME:latest
+            docker push $IMAGE_NAMESPACE/$IMAGE_NAME:${VERSION}
           else
             echo "No valid environment specified. in productions need 2 conditions: branch is main and tag starts with v"
             exit 1
           fi
-
-

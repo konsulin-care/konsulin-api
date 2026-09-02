@@ -2,7 +2,7 @@ info:
   name: Seed Healthcare Service
   type: http
   seq: 3
-  tags: [clinic, utility]
+  tags: [PR, clinic, utility]
 
 http:
   method: PUT

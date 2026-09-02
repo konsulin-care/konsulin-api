@@ -36,7 +36,7 @@ payment flow test those rules for real.
 |---|---|---|
 | `APP_BASE_URL` | API gateway base (health-checked before the run) | `http://localhost:3200` |
 | `BLAZE_BASE_URL` | Blaze FHIR base for direct seeds and cleanup | `http://localhost:8080` |
-| `SUPERADMIN_API_KEY` | Gateway API key for `fhir/admin/*`, `cleanup/delete-organization` | `super-unique-password` |
+| `SUPERADMIN_API_KEY` | Gateway API key for `fhir/admin/*`, `cleanup/delete-organization` | set in `docs/api/.env` (CI: `CI_SUPERADMIN_API_KEY` environment secret) |
 | `ORGANIZATION` | Boot organization name | `organization-name` |
 
 `docs/api/.env` holds these (untracked; `.env.example` is the template).
@@ -50,8 +50,11 @@ the `.env` lacks it.
 The canonical entrypoint is the repo script, not `bru run` alone:
 
 ```bash
-bash scripts/bru-run.sh            # pre-commit: SKIPs if the API is down
-bash scripts/bru-run.sh --required # pre-push: FAILS if the API is down
+bash scripts/bru-run.sh            # local: SKIPs if the API is down
+bash scripts/bru-run.sh --required # gated: FAILS if the API is down
+bash scripts/bru-run.sh --required --skip-cleanup
+                                   # gated runs (pre-push hook, CI): full
+                                   # journey, no chained teardown
 ```
 
 Flow per run:
@@ -59,7 +62,10 @@ Flow per run:
 1. Refuse tracked `.env`; load/export collection env.
 2. Health-check `${APP_BASE_URL%/}/health` (HTTP 200, build info).
 3. `cd docs/api && bru run --bail` — collection runs its `setNextRequest`
-   chain linearly; `--bail` stops at the first failed assertion.
+   chain linearly; `--bail` stops at the first failed assertion. When run with
+   `--skip-cleanup` (or any `--tag`), `--env-var skipCleanup=true` is passed so
+   the journey ends at `Admin: Update Questionnaire` without the chained
+   teardown.
 4. Always run `scripts/bru-cleanup.sh` (via `bash`, non-fatal) — a
    Blaze-direct sweep that deletes the fixed-id seeds and anything referencing
    them, so a failed run never leaves seed litter.
@@ -68,10 +74,17 @@ Run from anywhere — `bru-run.sh` resolves its own dir before any `cd`.
 
 ## The Seed Chain
 
-`fhir/seed/folder.yml` chains 10 fixed-id, idempotent PUTs (Blaze ignores
-client-supplied ids on POST, so PUT is required for deterministic ids):
+The suite entry is the Organization seed, not the auth chain: the fhir folder
+carries `seq: 1` (auth is `seq: 2`), so the runner's first request is
+`fhir/seed/seed-organization.yml` (`Organization/seed-clinic`). It captures
+`organizationId` and chains into "Send Magic Link"; after the auth flow
+finishes, "Set Active Role" resumes the seed chain at `seed-location`.
 
-`seed-clinic` (Organization) → `seed-location` → `seed-hs`
+`fhir/seed/folder.yml` chains 10 fixed-id, idempotent PUTs (Blaze ignores
+client-supplied ids on POST, so PUT is required for deterministic ids), split
+by the auth flow in between:
+
+`seed-clinic` (Organization, entry) → [auth chain] → `seed-location` → `seed-hs`
 (HealthcareService) → `seed-role` (PractitionerRole) → `seed-schedule` →
 `seed-wellbeing` (Questionnaire) → `seed-soap` → `seed-protocol`
 (PlanDefinition) → `seed-study` (ResearchStudy) → `seed-invoice`.
@@ -79,7 +92,10 @@ client-supplied ids on POST, so PUT is required for deterministic ids):
 The SOAP questionnaire is deliberately `seed-soap`, never `soap`: a dev Blaze
 may hold the real SOAP questionnaire and the suite must not overwrite it.
 Slots are not seeded — free time is computed dynamically. The Practitioner and
-Patient identities come from the auth magic-link flow, not from seeds.
+Patient identities come from the auth magic-link flow, not from seeds. The
+magic-link request values its `organizationId` from the seeded org var
+(`{{organizationId}}` = `seed-clinic`), so a fresh Blaze always has the
+Organization before any PractitionerRole is created.
 
 ## Content-Type
 

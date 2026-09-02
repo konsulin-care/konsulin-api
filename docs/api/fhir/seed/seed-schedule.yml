@@ -2,7 +2,7 @@ info:
   name: Seed Schedule
   type: http
   seq: 5
-  tags: [appointment, utility]
+  tags: [PR, appointment, utility]
 
 http:
   method: PUT

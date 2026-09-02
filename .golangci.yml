@@ -20,6 +20,3 @@ linters:
     paths:
       - ".*_test\\.go$"
       - vendor
-formatters:
-  enable:
-    - gofumpt

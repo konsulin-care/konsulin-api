@@ -1,7 +1,7 @@
 info:
   name: fhir
   type: folder
-  seq: 2
+  seq: 1
 
 request:
   headers:
@@ -58,11 +58,22 @@ docs: |
   manual helper request.
 
   ## Chain overview
-  auth (magiclink → … → Set Active Role) → seed (10 direct-Blaze idempotent
-  PUTs, fixed ids seed-clinic … seed-invoice) → patient (17 requests) → practitioner
+  Seed Organization (suite entry; fhir folder sorts before auth, so the first
+  request in tree order is `fhir/seed/seed-organization.yml`) → auth (magiclink → …
+  → Set Active Role) → seed (9 remaining direct-Blaze idempotent PUTs, fixed ids
+  seed-location … seed-invoice) → patient (17 requests) → practitioner
   (9 requests) → admin (2 requests) → cleanup (3 deletions) → Sign Out. Each
   request chains to the next via `bru.runner.setNextRequest("<next>")`;
   chaining works across subfolders.
+
+  ## Tag-based runs
+  Journey requests (seed → auth → ownership-violation → patient → practitioner
+  → admin) carry the `PR` tag; the teardown chain (cleanup/* and Sign Out)
+  carries `cleanup` instead. `bru run --tags=PR` therefore runs the journey and
+  gracefully skips the teardown handoff (Bruno logs `Could not find request`
+  when a PR request chains into the excluded cleanup request, but the run stays
+  green). Authoritative teardown is `scripts/bru-cleanup.sh`, invoked by
+  `scripts/bru-run.sh` after every run.
 
   ## Cleanup
   RBAC only permits deleting Patient, Practitioner and Organization via the API.

@@ -2,7 +2,7 @@ info:
   name: "Practitioner: Get Busy Slots"
   type: http
   seq: 5
-  tags: [appointment]
+  tags: [PR, appointment]
 
 http:
   method: GET

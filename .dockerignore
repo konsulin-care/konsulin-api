@@ -1,0 +1,32 @@
+# Secrets — never bake into the image
+.env
+.env.*
+
+# Version control
+.git
+.github
+
+# Pi coding agent (local tooling, not needed for build)
+.pi
+
+# Documentation & scripts (not needed for build)
+docs
+scripts
+*.md
+
+# Temporary & build artifacts
+tmp
+*.log
+
+# Docker compose files (not needed inside image)
+docker-compose*.yml
+
+# IDE & editor files
+.vscode
+.idea
+
+# Misc config files
+.air.toml
+.DS_Store
+.pre-commit-config.yaml.bak
+.trivyignore

@@ -2,7 +2,7 @@ info:
   name: "Patient: Submit Questionnaire Response"
   type: http
   seq: 8
-  tags: [assessment]
+  tags: [PR, assessment]
 
 http:
   method: POST

@@ -4,17 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"slices"
+	"strings"
+	"sync"
+	"time"
+
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
-	"net/http"
-	"slices"
-	"strings"
-	"sync"
-	"time"
 
 	"github.com/goccy/go-json"
 	"github.com/supertokens/supertokens-golang/recipe/session"
@@ -128,6 +129,18 @@ func (ctrl *AuthController) CreateMagicLink(w http.ResponseWriter, r *http.Reque
 			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
 			return
 		}
+		// Wrap non-CustomError failures so dev/test environments see the actual
+		// cause (SuperTokens, FHIR, webhook) in the response body. Production
+		// hides devMessage via APP_ENV check in BuildErrorResponse.
+		if _, ok := err.(*exceptions.CustomError); !ok {
+			utils.BuildErrorResponse(ctrl.Log, w, exceptions.BuildNewCustomError(
+				err,
+				http.StatusInternalServerError,
+				"failed to process your request",
+				fmt.Sprintf("CreateMagicLink usecase error: %v", err),
+			))
+			return
+		}
 		utils.BuildErrorResponse(ctrl.Log, w, err)
 		return
 	}
@@ -162,7 +175,34 @@ func (ctrl *AuthController) normalizeAndValidateMagicLinkRequest(request *reques
 		)
 	}
 
-	// Enforce mutually-exclusive email or phone (exactly one must be set).
+	phoneDigits, err := normalizeAndValidateContact(request)
+	if err != nil {
+		return "", err
+	}
+
+	if err := validateOrganizationForRoles(request); err != nil {
+		return "", err
+	}
+
+	// Struct tag validation (email format, roles).
+	if err := utils.ValidateStruct(request); err != nil {
+		ctrl.Log.Error("Request validation failed",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingEmailKey, request.Email),
+			zap.String("phone", request.Phone),
+			zap.String(constvars.LoggingErrorTypeKey, "input validation"),
+			zap.Error(err),
+		)
+		return "", exceptions.ErrInputValidation(err)
+	}
+	return phoneDigits, nil
+}
+
+// normalizeAndValidateContact enforces mutually-exclusive email or phone (exactly
+// one must be set), normalizes the phone to digits-only, and validates it against
+// the international phone format. On success it persists the digits-only phone on
+// request.Phone and returns the normalized digits.
+func normalizeAndValidateContact(request *requests.SupertokenPasswordlessCreateMagicLink) (string, error) {
 	hasEmail := strings.TrimSpace(request.Email) != ""
 	phoneDigits := ""
 	if strings.TrimSpace(request.Phone) != "" {
@@ -184,30 +224,22 @@ func (ctrl *AuthController) normalizeAndValidateMagicLinkRequest(request *reques
 
 	// Persist normalized phone for downstream use (repo expects digits-only without '+').
 	request.Phone = phoneDigits
+	return phoneDigits, nil
+}
 
-	// Clinic Admin and Researcher map to org-scoped PractitionerRole resources,
-	// so an organization must be provided alongside those roles.
+// validateOrganizationForRoles rejects requests that select Clinic Admin or
+// Researcher without an organization, since those roles map to org-scoped
+// PractitionerRole resources.
+func validateOrganizationForRoles(request *requests.SupertokenPasswordlessCreateMagicLink) error {
 	for _, role := range request.Roles {
 		if role == constvars.KonsulinRoleClinicAdmin || role == constvars.KonsulinRoleResearcher {
 			if strings.TrimSpace(request.OrganizationID) == "" {
-				return "", exceptions.ErrInputValidation(fmt.Errorf("organizationId is required when %s or %s role is selected", constvars.KonsulinRoleClinicAdmin, constvars.KonsulinRoleResearcher))
+				return exceptions.ErrInputValidation(fmt.Errorf("organizationId is required when %s or %s role is selected", constvars.KonsulinRoleClinicAdmin, constvars.KonsulinRoleResearcher))
 			}
 			break
 		}
 	}
-
-	// Struct tag validation (email format, roles).
-	if err := utils.ValidateStruct(request); err != nil {
-		ctrl.Log.Error("Request validation failed",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingEmailKey, request.Email),
-			zap.String("phone", request.Phone),
-			zap.String(constvars.LoggingErrorTypeKey, "input validation"),
-			zap.Error(err),
-		)
-		return "", exceptions.ErrInputValidation(err)
-	}
-	return phoneDigits, nil
+	return nil
 }
 
 // writeUsecaseError logs a usecase failure and writes the error response,

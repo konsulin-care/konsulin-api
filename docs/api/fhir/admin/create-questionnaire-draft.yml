@@ -2,7 +2,7 @@ info:
   name: "Admin: Create Questionnaire Draft"
   type: http
   seq: 1
-  tags: [assessment]
+  tags: [PR, assessment]
 
 http:
   method: POST

@@ -4,17 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net/http"
+	"regexp"
+	"strings"
+	"sync"
+	"time"
+
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/services/core/webhook"
 	"konsulin-service/internal/app/services/shared/ratelimiter"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
-	"net/http"
-	"regexp"
-	"strings"
-	"sync"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
@@ -211,6 +212,11 @@ func extractServiceName(path string) (string, error) {
 func validateJSONBody(raw []byte) error {
 	var tmp map[string]interface{}
 	if err := json.Unmarshal(raw, &tmp); err != nil {
+		// Valid JSON that isn't an object (number, string, bool, array)
+		// is accepted and forwarded as-is, consistent with parseJSONBodyFields.
+		if json.Valid(raw) {
+			return nil
+		}
 		return exceptions.ErrCannotParseJSON(err)
 	}
 	return nil

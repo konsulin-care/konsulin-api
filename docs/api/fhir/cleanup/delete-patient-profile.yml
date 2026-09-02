@@ -2,7 +2,7 @@ info:
   name: "Cleanup: Delete Patient Profile"
   type: http
   seq: 3
-  tags: [utility]
+  tags: [utility, cleanup]
 
 http:
   method: DELETE

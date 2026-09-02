@@ -2,7 +2,7 @@ info:
   name: "Patient: List Research Studies"
   type: http
   seq: 2
-  tags: [research]
+  tags: [PR, research]
 
 http:
   method: GET

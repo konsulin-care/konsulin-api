@@ -2,7 +2,7 @@ info:
   name: "Practitioner: Get Today Sessions"
   type: http
   seq: 7
-  tags: [appointment]
+  tags: [PR, appointment]
 
 http:
   method: GET

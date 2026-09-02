@@ -2,7 +2,7 @@ info:
   name: "Ownership Violation: Cleanup Seeded Identities"
   type: http
   seq: 18
-  tags: [ownership, utility]
+  tags: [PR, ownership, utility]
 
 http:
   method: POST

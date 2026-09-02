@@ -2,7 +2,7 @@ info:
   name: "Ownership Violation: Post Patient With Foreign Id"
   type: http
   seq: 12
-  tags: [ownership]
+  tags: [PR, ownership]
 
 http:
   method: POST

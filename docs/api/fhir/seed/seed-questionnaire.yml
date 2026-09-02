@@ -2,7 +2,7 @@ info:
   name: Seed Questionnaire
   type: http
   seq: 6
-  tags: [assessment, utility]
+  tags: [PR, assessment, utility]
 
 http:
   method: PUT

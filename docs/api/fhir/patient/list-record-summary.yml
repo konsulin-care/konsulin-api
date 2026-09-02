@@ -2,7 +2,7 @@ info:
   name: "Patient: List Record Summary"
   type: http
   seq: 9
-  tags: [record, assessment]
+  tags: [PR, record, assessment]
 
 http:
   method: POST

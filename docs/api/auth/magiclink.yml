@@ -2,7 +2,7 @@ info:
   name: Send Magic Link
   type: http
   seq: 1
-  tags: [auth]
+  tags: [PR, auth]
 
 http:
   method: POST
@@ -18,7 +18,7 @@ http:
       {
         "email": "{{process.env.ORGANIZATION}}@mailinator.com",
         "roles": ["Patient", "Practitioner", "Clinic Admin", "Researcher"],
-        "organizationId": "{{process.env.ORGANIZATION}}"
+        "organizationId": "{{organizationId}}"
       }
 
 runtime:
@@ -76,7 +76,7 @@ docs: |
   ### Request Fields
   - `email`: Mailinator public inbox for automated retrieval for testing purpose. In production, any email address can be used.
   - `roles`: All four roles are assigned to enable testing across RBAC scenarios.
-  - `organizationId`: Optional for Patient/Practitioner-only invites, but **required** when `Clinic Admin` or `Researcher` is in `roles`; the created PractitionerRole resources link to this Organization.
+  - `organizationId`: Optional for Patient/Practitioner-only invites, but **required** when `Clinic Admin` or `Researcher` is in `roles`; the created PractitionerRole resources link to this Organization. The id comes from the `organizationId` runtime var set by the suite's entry request ("Seed Organization", `Organization/seed-clinic`) — never from the mailbox `ORGANIZATION` env value, so a fresh Blaze always has the Organization before the PractitionerRoles are created.
 
   ### Responses
   - **200 OK**: Magic link generated. Body: `{ "success": true, "message": "magic link successfully generated" }`.

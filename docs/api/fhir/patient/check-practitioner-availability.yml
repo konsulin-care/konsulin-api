@@ -2,7 +2,7 @@ info:
   name: "Patient: Check Practitioner Availability"
   type: http
   seq: 13
-  tags: [appointment]
+  tags: [PR, appointment]
 
 http:
   method: GET

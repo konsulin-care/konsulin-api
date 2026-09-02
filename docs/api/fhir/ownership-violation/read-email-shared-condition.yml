@@ -2,7 +2,7 @@ info:
   name: "Ownership Violation: Read Email Shared Condition"
   type: http
   seq: 13
-  tags: [ownership]
+  tags: [PR, ownership]
 
 http:
   method: GET

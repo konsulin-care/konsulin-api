@@ -2,7 +2,7 @@ info:
   name: "Patient: List Questionnaires"
   type: http
   seq: 5
-  tags: [assessment]
+  tags: [PR, assessment]
 
 http:
   method: GET

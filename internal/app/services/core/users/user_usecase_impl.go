@@ -7,6 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/services/shared/jwtmanager"
@@ -14,11 +20,6 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/utils"
-	"net/http"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
 
 	"go.uber.org/zap"
 )
@@ -94,37 +95,82 @@ func (uc *userUsecase) InitializeNewUserFHIRResources(ctx context.Context, input
 	practitionerID := ""
 
 	for _, plan := range input.Resources() {
-		switch plan.ResourceType {
-		case constvars.ResourcePractitioner:
-			if practitionerID != "" {
-				// The plan carries at most one Practitioner entry; guard anyway.
-				continue
-			}
-			practitioner, err := uc.createPractitionerIfNotExists(ctx, input.Email, input.Phone, input.SuperTokenUserID)
-			if err != nil {
-				return nil, err
-			}
-			practitionerID = practitioner.ID
-			output.PractitionerID = practitioner.ID
-		case constvars.ResourcePatient:
-			patient, err := uc.createPatientIfNotExists(ctx, input.Email, input.Phone, input.SuperTokenUserID)
-			if err != nil {
-				return nil, err
-			}
-			output.PatientID = patient.ID
-		case constvars.ResourcePractitionerRole:
-			if practitionerID == "" {
-				return nil, errors.New("practitioner must be created before PractitionerRole")
-			}
-			role, err := uc.createPractitionerRoleIfNotExists(ctx, practitionerID, input.OrganizationID,
-				plan.CodingSystem, plan.CodingCode, plan.CodingDisplay)
-			if err != nil {
-				return nil, err
-			}
-			output.PractitionerRoleIDs = append(output.PractitionerRoleIDs, role.ID)
+		id, err := uc.applyResourcePlan(ctx, input, plan, practitionerID, output)
+		if err != nil {
+			return nil, err
 		}
+		practitionerID = id
 	}
 	return output, nil
+}
+
+// applyResourcePlan creates the FHIR resource described by a single plan entry,
+// enforcing the Practitioner dedup guard and the PractitionerRole ordering
+// constraint. It returns the practitioner FHIR ID to carry forward: the newly
+// created ID when this entry created a Practitioner, or the input value otherwise.
+func (uc *userUsecase) applyResourcePlan(ctx context.Context, input *contracts.InitializeNewUserFHIRResourcesInput, plan contracts.FHIRResourcePlan, practitionerID string, output *contracts.InitializeNewUserFHIRResourcesOutput) (string, error) {
+	switch plan.ResourceType {
+	case constvars.ResourcePractitioner:
+		if practitionerID != "" {
+			// The plan carries at most one Practitioner entry; guard anyway.
+			return practitionerID, nil
+		}
+		id, err := uc.createPractitionerResource(ctx, input.Email, input.Phone, input.SuperTokenUserID)
+		if err != nil {
+			return practitionerID, err
+		}
+		output.PractitionerID = id
+		return id, nil
+	case constvars.ResourcePatient:
+		id, err := uc.createPatientResource(ctx, input.Email, input.Phone, input.SuperTokenUserID)
+		if err != nil {
+			return practitionerID, err
+		}
+		output.PatientID = id
+		return practitionerID, nil
+	case constvars.ResourcePractitionerRole:
+		if practitionerID == "" {
+			return practitionerID, errors.New("practitioner must be created before PractitionerRole")
+		}
+		id, err := uc.createPractitionerRoleResource(ctx, practitionerID, input.OrganizationID,
+			plan.CodingSystem, plan.CodingCode, plan.CodingDisplay)
+		if err != nil {
+			return practitionerID, err
+		}
+		output.PractitionerRoleIDs = append(output.PractitionerRoleIDs, id)
+		return practitionerID, nil
+	}
+	return practitionerID, nil
+}
+
+// createPractitionerResource creates the user's Practitioner resource
+// (create-if-not-exists) and returns its FHIR ID.
+func (uc *userUsecase) createPractitionerResource(ctx context.Context, email, phone, superTokenUserID string) (string, error) {
+	practitioner, err := uc.createPractitionerIfNotExists(ctx, email, phone, superTokenUserID)
+	if err != nil {
+		return "", err
+	}
+	return practitioner.ID, nil
+}
+
+// createPatientResource creates the user's Patient resource (create-if-not-exists)
+// and returns its FHIR ID.
+func (uc *userUsecase) createPatientResource(ctx context.Context, email, phone, superTokenUserID string) (string, error) {
+	patient, err := uc.createPatientIfNotExists(ctx, email, phone, superTokenUserID)
+	if err != nil {
+		return "", err
+	}
+	return patient.ID, nil
+}
+
+// createPractitionerRoleResource creates the PractitionerRole for the given
+// practitioner and coding (create-if-not-exists) and returns its FHIR ID.
+func (uc *userUsecase) createPractitionerRoleResource(ctx context.Context, practitionerID, organizationID, system, code, display string) (string, error) {
+	role, err := uc.createPractitionerRoleIfNotExists(ctx, practitionerID, organizationID, system, code, display)
+	if err != nil {
+		return "", err
+	}
+	return role.ID, nil
 }
 
 // createPractitionerRoleIfNotExists looks up an existing PractitionerRole for the

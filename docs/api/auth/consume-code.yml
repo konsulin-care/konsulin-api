@@ -2,7 +2,7 @@ info:
   name: Consume Code
   type: http
   seq: 4
-  tags: [auth]
+  tags: [PR, auth]
 
 http:
   method: POST
@@ -25,11 +25,13 @@ runtime:
     - type: before-request
       code: |-
         const org = bru.getProcessEnv("ORGANIZATION");
+        const mailinatorBase =
+          bru.getProcessEnv("MAILINATOR_BASE_URL") || "https://api.mailinator.com/api/v2";
 
         await bru.sendRequest(
           {
             method: "GET",
-            url: `https://api.mailinator.com/api/v2/domains/public/inboxes/${org}`
+            url: `${mailinatorBase}/domains/public/inboxes/${org}`
           },
           function(err, res) {
             if (err) {
@@ -38,7 +40,12 @@ runtime:
             }
             const retries = parseInt(bru.getVar("mailinator_retry") || "0", 10);
             const body = res.data;
-            const msgs = body && body.msgs;
+            const msgs = (body && body.msgs) || [];
+            if (msgs.length === 0) {
+              throw new Error(
+                "no magic-link message in inbox — check HOOK_URL delivery to magiclink-stub"
+              );
+            }
             const newest = msgs.reduce(
               (a, b) => a.seconds_ago < b.seconds_ago? a : b
             );
@@ -51,7 +58,7 @@ runtime:
         await bru.sendRequest(
           {
             method: "GET",
-            url: `https://api.mailinator.com/api/v2/domains/public/messages/${messageId}/links`,
+            url: `${mailinatorBase}/domains/public/messages/${messageId}/links`,
           },
           function(err, res) {
             if (err) {

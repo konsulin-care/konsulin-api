@@ -2,7 +2,7 @@ info:
   name: "Ownership Violation: Seed Other Identities"
   type: http
   seq: 1
-  tags: [ownership, utility]
+  tags: [PR, ownership, utility]
 
 http:
   method: POST

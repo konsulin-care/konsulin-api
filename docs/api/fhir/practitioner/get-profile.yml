@@ -2,7 +2,7 @@ info:
   name: "Practitioner: Get Profile"
   type: http
   seq: 1
-  tags: [profile]
+  tags: [PR, profile]
 
 http:
   method: GET

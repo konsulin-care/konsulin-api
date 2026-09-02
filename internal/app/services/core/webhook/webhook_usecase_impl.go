@@ -7,13 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"konsulin-service/internal/app/config"
-	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/app/services/shared/jwtmanager"
-	"konsulin-service/internal/app/services/shared/webhookqueue"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/exceptions"
-	"konsulin-service/internal/pkg/fhir_dto"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -21,6 +14,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"konsulin-service/internal/app/config"
+	"konsulin-service/internal/app/contracts"
+	"konsulin-service/internal/app/services/shared/jwtmanager"
+	"konsulin-service/internal/app/services/shared/webhookqueue"
+	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/fhir_dto"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/go-playground/validator/v10"
@@ -727,6 +728,11 @@ func parseBodyFields(body []byte, contentType string) (email, phone, chatwoot st
 func parseJSONBodyFields(body []byte) (email, phone, chatwoot string, err error) {
 	var tmp map[string]interface{}
 	if err := json.Unmarshal(body, &tmp); err != nil {
+		// Valid JSON that isn't an object (number, string, bool, array)
+		// carries no contact fields — accept it as empty rather than 400.
+		if json.Valid(body) {
+			return "", "", "", nil
+		}
 		return "", "", "", exceptions.ErrCannotParseJSON(err)
 	}
 	return rootString(tmp, "email"), rootString(tmp, "phone_number"), rootString(tmp, "chatwoot_id"), nil

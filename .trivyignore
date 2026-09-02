@@ -1,0 +1,4 @@
+# fast-uri vulnerabilities are in dev-only Bruno CLI dependencies (node_modules),
+# not in the runtime Go binary. Safe to ignore until upstream updates.
+CVE-2026-16221
+CVE-2026-18446

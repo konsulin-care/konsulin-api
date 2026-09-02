@@ -6,24 +6,20 @@ ARG TAG
 ARG BUILD_TIME
 ARG RUN_NUMBER
 
-FROM uzie17/debian:stable-Jakarta AS base
+FROM alpine:3.23 AS base
 LABEL maintainer="Muhammad Febrian Ardiansyah <mfardiansyah.id@gmail.com>"
 WORKDIR /app
 
 ARG TZ_ARG
 
-# CERT PACKAGES
-RUN apt-get update
-RUN apt-get install -y ca-certificates
-
-RUN apt-get update && \
-    apt-get install -yq tzdata && \
+RUN apk add --no-cache ca-certificates tzdata && \
+    apk upgrade --no-cache && \
     ln -fs /usr/share/zoneinfo/Asia/Jakarta /etc/localtime && \
-    dpkg-reconfigure -f noninteractive tzdata
+    echo "Asia/Jakarta" > /etc/timezone
 ENV TZ=$TZ_ARG
 
 #FROM repository.konsulin.care/repository/private/be-konsulin:latest as gobuild
-FROM konsulin/rest-backend-vendor:develop AS gobuild
+FROM konsulin/konsulin-api-vendor:pr-ci AS gobuild
 LABEL stage=gobuild
 
 # captures argument
@@ -68,6 +64,9 @@ RUN go build -o api-service \
         -X konsulin-service/internal/pkg/buildinfo.CommitHash=$GIT_COMMIT" \
     /go/src/github.com/konsulin-id/be-konsulin/cmd/http
 #    /go/src/github.com/konsulin-id/be-konsulin/cmd/example
+
+# Remove secrets that leaked via earlier COPY steps
+RUN rm -f .env
 
 FROM base AS release
 

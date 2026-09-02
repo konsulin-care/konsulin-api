@@ -2,7 +2,7 @@ info:
   name: "Admin: Update Questionnaire"
   type: http
   seq: 2
-  tags: [assessment]
+  tags: [PR, assessment]
 
 http:
   method: PUT
@@ -37,7 +37,12 @@ http:
 runtime:
   scripts:
     - type: after-response
-      code: 'bru.runner.setNextRequest("Cleanup: Purge Journey Resources");'
+      code: |-
+        if (bru.getEnvVar("skipCleanup") === "true") {
+          bru.runner.setNextRequest(null);
+        } else {
+          bru.runner.setNextRequest("Cleanup: Purge Journey Resources");
+        }
   assertions:
     - expression: res.status
       operator: eq
@@ -51,4 +56,8 @@ settings:
 
 docs: |
   Publishes the draft questionnaire by full-resource PUT (status
-  `draft` → `active`). Superadmin X-API-Key. Hand-off to the cleanup phase.
+  `draft` → `active`). Superadmin X-API-Key. Hand-off to the cleanup phase:
+  interactive/untagged runs chain into the cleanup requests; gated runs
+  (scripts/bru-run.sh --skip-cleanup, or any --tag) set `skipCleanup=true` and
+  terminate the iteration here — teardown is then handled by
+  scripts/bru-cleanup.sh.

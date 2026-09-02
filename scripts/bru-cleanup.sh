@@ -12,6 +12,14 @@
 #   - canonical references (e.g. QuestionnaireResponse.questionnaire) are not
 #     enforced by Blaze, so patient data never blocks a seed delete.
 #
+# Phase A also fully removes the suite's synthetic identity resources created
+# by the magic-link FHIR init: the session Practitioner (discovered from every
+# PractitionerRole pointing at the seed org, before those roles are deleted)
+# and the session Patient (discovered by the suite's mailinator email from
+# ORGANIZATION). Their referencing resources (QuestionnaireResponse,
+# Observation, Consent, ResearchSubject, Appointment, Schedule) are purged
+# first so the deletes keep Blaze referential integrity happy.
+#
 # A failed bru run leaves ResearchSubject/Slot/Appointment resources that
 # reference the seed ids (fixed ids are shared across runs); deleting a
 # referenced seed would 409, so Phase A also deletes resources that directly
@@ -124,10 +132,53 @@ delete_study_graph() {
   return 0
 }
 
+# delete_patient_graph <id> — delete patient-scoped resources
+# (QuestionnaireResponse, Observation, Consent, ResearchSubject, Appointment)
+# referencing the patient first, then the patient itself.
+delete_patient_graph() {
+  local id="$1"
+  delete_each QuestionnaireResponse subject "Patient/${id}"
+  delete_each QuestionnaireResponse author "Patient/${id}"
+  delete_each Observation subject "Patient/${id}"
+  delete_each Consent patient "Patient/${id}"
+  delete_each ResearchSubject individual "Patient/${id}"
+  delete_each Appointment actor "Patient/${id}"
+  delete_ref "Patient/${id}"
+  return 0
+}
+
+# delete_practitioner_graph <id> — delete appointments and schedules referencing
+# the practitioner first, then the practitioner itself. PractitionerRoles
+# referencing it are removed by delete_org_graph before this runs.
+delete_practitioner_graph() {
+  local id="$1"
+  delete_each Appointment actor "Practitioner/${id}"
+  delete_each Schedule actor "Practitioner/${id}"
+  delete_ref "Practitioner/${id}"
+  return 0
+}
+
+# practitioner_ids_for_org <orgId> — Practitioner/{id} references (deduped)
+# from every PractitionerRole pointing at the given org. Used to find the
+# session practitioner created by the magic-link FHIR init before those roles
+# are deleted.
+practitioner_ids_for_org() {
+  curl -s -G "${FHIR}/PractitionerRole" --data-urlencode "organization=Organization/${1}" --data-urlencode "_count=1000" \
+    | jq -r '.entry[]?.resource.practitioner.reference // empty' | sort -u
+  return 0
+}
+
 # phase_a_fixed_ids — the suite's current seed ids (post-idempotent conversion)
 # plus every resource that directly references them.
 phase_a_fixed_ids() {
   echo "[phase A] fixed seed ids"
+
+  # The magic-link FHIR init creates one PractitionerRole per Clinic Admin /
+  # Researcher coding that references the seed org. Capture the session
+  # practitioner id from those roles before the roles are deleted below.
+  local practitioner_refs pid
+  practitioner_refs="$(practitioner_ids_for_org seed-clinic)"
+
   delete_study_graph seed-study
   delete_schedule_graph seed-schedule
   # Payment records a manual appointment-payment callback (PAID/SETTLED) may
@@ -147,6 +198,29 @@ phase_a_fixed_ids() {
   delete_ref "HealthcareService/seed-hs"
   delete_ref "Location/seed-location"
   delete_org_graph seed-clinic
+
+  # Remove the session practitioner(s) and any schedules/appointments that
+  # reference them (roles were deleted above; the Practitioner resource itself
+  # is not part of the org graph).
+  local ref
+  for ref in ${practitioner_refs}; do
+    case "${ref}" in
+      Practitioner/*) delete_practitioner_graph "${ref#Practitioner/}" ;;
+      *) : ;;
+    esac
+  done
+
+  # Remove the session patient (and its patient-scoped resources). The patient
+  # carries the suite's mailinator email; the seed-other-identities fixture
+  # shares it, which is fine — both are suite-owned and cleaned idempotently.
+  if [[ -n "${ORGANIZATION:-}" ]]; then
+    local session_email="${ORGANIZATION}@mailinator.com"
+    local pid
+    for pid in $(ids Patient email "${session_email}"); do
+      delete_patient_graph "${pid}"
+    done
+  fi
+
   return 0
 }
 
