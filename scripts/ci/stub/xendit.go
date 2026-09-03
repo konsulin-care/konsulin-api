@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"konsulin-service/internal/pkg/dto/requests"
 )
 
 // xenditStore holds in-memory state for stubbed Xendit invoices.
@@ -48,7 +50,7 @@ func handleCreateInvoice(w http.ResponseWriter, r *http.Request) {
 	inv := &xenditInvoice{
 		ID:         fmt.Sprintf("inv_stub_%d", time.Now().UnixNano()),
 		ExternalID: payload.ExternalID,
-		Status:     "PENDING",
+		Status:     string(requests.XenditInvoiceStatusPending),
 		InvoiceURL: fmt.Sprintf("http://localhost:8082/pay/approve/inv_stub_%d", time.Now().UnixNano()),
 		Amount:     payload.Amount,
 		Currency:   payload.Currency,
@@ -79,8 +81,8 @@ func handleGetInvoice(w http.ResponseWriter, r *http.Request) {
 	// Return a copy, advancing PENDING to PAID. Preserve other statuses
 	// (EXPIRED, etc.) so lifecycle tests can assert them.
 	resp := *inv
-	if resp.Status == "PENDING" {
-		resp.Status = "PAID"
+	if resp.Status == string(requests.XenditInvoiceStatusPending) {
+		resp.Status = string(requests.XenditInvoiceStatusPaid)
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -94,7 +96,7 @@ func handleExpireInvoice(w http.ResponseWriter, r *http.Request) {
 	xendit.mu.Lock()
 	inv, ok := xendit.invoices[id]
 	if ok {
-		inv.Status = "EXPIRED"
+		inv.Status = string(requests.XenditInvoiceStatusExpired)
 	}
 	xendit.mu.Unlock()
 
