@@ -41,10 +41,10 @@ func handleSendMagiclink(w http.ResponseWriter, r *http.Request) {
 	}
 
 	org := extractOrg(payload.Email)
-	msgID := fmt.Sprintf("msg_%d", store.nextMsgID)
-	store.nextMsgID++
 
 	store.mu.Lock()
+	msgID := fmt.Sprintf("msg_%d", store.nextMsgID)
+	store.nextMsgID++
 	store.inboxes[org] = append(store.inboxes[org], magiclinkMessage{
 		ID:         msgID,
 		SecondsAgo: 0,

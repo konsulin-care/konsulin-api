@@ -76,9 +76,12 @@ func handleGetInvoice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return a copy with PAID status (never modify the stored original)
+	// Return a copy, advancing PENDING to PAID. Preserve other statuses
+	// (EXPIRED, etc.) so lifecycle tests can assert them.
 	resp := *inv
-	resp.Status = "PAID"
+	if resp.Status == "PENDING" {
+		resp.Status = "PAID"
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 

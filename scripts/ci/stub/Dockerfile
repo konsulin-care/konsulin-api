@@ -19,6 +19,7 @@ FROM alpine:3.20
 RUN apk add --no-cache ca-certificates
 RUN adduser -D -u 1000 stub
 COPY --from=builder /ci-stub /ci-stub
+RUN chown stub:stub /ci-stub
 
 EXPOSE 8081
 
