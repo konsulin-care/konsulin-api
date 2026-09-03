@@ -27,11 +27,15 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 )
 
 func main() {
@@ -52,11 +56,33 @@ func main() {
 	}
 
 	mux := newRouter()
-	log.Printf("ci-stub listening on %s", *addr)
-	// Codacy false-positive: CI-internal stub, TLS not applicable.
-	if err := http.ListenAndServe(*addr, mux); err != nil {
-		log.Fatalf("ci-stub: %v", err)
+	srv := &http.Server{
+		Addr:              *addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       30 * time.Second,
 	}
+
+	go func() {
+		log.Printf("ci-stub listening on %s", *addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("ci-stub: %v", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	sig := <-quit
+	log.Printf("received %s, shutting down ci-stub", sig)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalf("ci-stub shutdown: %v", err)
+	}
+	log.Println("ci-stub stopped")
 }
 
 // newRouter creates an http.ServeMux with all stub routes registered.
