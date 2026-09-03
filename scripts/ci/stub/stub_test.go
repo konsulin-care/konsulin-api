@@ -16,7 +16,7 @@ func setupTestServer() *http.ServeMux {
 
 func TestHealthReturns200(t *testing.T) {
 	mux := setupTestServer()
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health", http.NoBody)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -87,7 +87,7 @@ func TestInboxListingReturnsMsgs(t *testing.T) {
 	}
 
 	// Then, query the inbox
-	req := httptest.NewRequest(http.MethodGet, "/magiclink/api/v2/domains/public/inboxes/myorg", nil)
+	req := httptest.NewRequest(http.MethodGet, "/magiclink/api/v2/domains/public/inboxes/myorg", http.NoBody)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -115,7 +115,7 @@ func TestInboxListingReturnsMsgs(t *testing.T) {
 func TestInboxListingEmpty(t *testing.T) {
 	mux := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/magiclink/api/v2/domains/public/inboxes/nonexistent", nil)
+	req := httptest.NewRequest(http.MethodGet, "/magiclink/api/v2/domains/public/inboxes/nonexistent", http.NoBody)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -151,7 +151,7 @@ func TestMessageLinksReturnsURLs(t *testing.T) {
 	mux.ServeHTTP(sendW, sendReq)
 
 	// Get the inbox to find the message ID
-	inboxReq := httptest.NewRequest(http.MethodGet, "/magiclink/api/v2/domains/public/inboxes/linkorg", nil)
+	inboxReq := httptest.NewRequest(http.MethodGet, "/magiclink/api/v2/domains/public/inboxes/linkorg", http.NoBody)
 	inboxW := httptest.NewRecorder()
 	mux.ServeHTTP(inboxW, inboxReq)
 
@@ -164,7 +164,7 @@ func TestMessageLinksReturnsURLs(t *testing.T) {
 	msgID := inboxResp.Msgs[0].ID
 
 	// Query links for that message
-	req := httptest.NewRequest(http.MethodGet, "/magiclink/api/v2/domains/public/messages/"+msgID+"/links", nil)
+	req := httptest.NewRequest(http.MethodGet, "/magiclink/api/v2/domains/public/messages/"+msgID+"/links", http.NoBody)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -189,7 +189,7 @@ func TestMessageLinksReturnsURLs(t *testing.T) {
 func TestMessageLinksNotFound(t *testing.T) {
 	mux := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/magiclink/api/v2/domains/public/messages/nonexistent/links", nil)
+	req := httptest.NewRequest(http.MethodGet, "/magiclink/api/v2/domains/public/messages/nonexistent/links", http.NoBody)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -269,7 +269,7 @@ func TestGetInvoiceReturnsPaid(t *testing.T) {
 	json.Unmarshal(createW.Body.Bytes(), &createResp)
 
 	// GET the invoice — should return PAID (re-verification)
-	req := httptest.NewRequest(http.MethodGet, "/v2/invoices/"+createResp.ID, nil)
+	req := httptest.NewRequest(http.MethodGet, "/v2/invoices/"+createResp.ID, http.NoBody)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -291,7 +291,7 @@ func TestGetInvoiceReturnsPaid(t *testing.T) {
 func TestGetInvoiceNotFound(t *testing.T) {
 	mux := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/v2/invoices/inv_nonexistent", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v2/invoices/inv_nonexistent", http.NoBody)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -321,7 +321,7 @@ func TestExpireInvoiceReturnsExpired(t *testing.T) {
 	json.Unmarshal(createW.Body.Bytes(), &createResp)
 
 	// Expire it
-	req := httptest.NewRequest(http.MethodPost, "/v2/invoices/"+createResp.ID+"/expire", nil)
+	req := httptest.NewRequest(http.MethodPost, "/v2/invoices/"+createResp.ID+"/expire", http.NoBody)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -345,7 +345,7 @@ func TestExpireInvoiceReturnsExpired(t *testing.T) {
 func TestUnknownRouteReturns404(t *testing.T) {
 	mux := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/unknown/path", nil)
+	req := httptest.NewRequest(http.MethodGet, "/unknown/path", http.NoBody)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 

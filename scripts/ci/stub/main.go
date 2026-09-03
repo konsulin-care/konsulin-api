@@ -82,7 +82,7 @@ func main() {
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Printf("ci-stub shutdown: %v", err)
-		os.Exit(1)
+		return
 	}
 	log.Println("ci-stub stopped")
 }
