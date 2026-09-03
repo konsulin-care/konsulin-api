@@ -68,7 +68,8 @@ func main() {
 	go func() {
 		log.Printf("ci-stub listening on %s", *addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("ci-stub: %v", err)
+			log.Printf("ci-stub: %v", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -80,7 +81,8 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("ci-stub shutdown: %v", err)
+		log.Printf("ci-stub shutdown: %v", err)
+		os.Exit(1)
 	}
 	log.Println("ci-stub stopped")
 }
