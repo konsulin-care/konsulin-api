@@ -11,8 +11,13 @@
 
 # Documentation & scripts (not needed for build)
 docs
-scripts
 *.md
+
+# Scripts — exclude everything EXCEPT scripts/ci/stub/ (used by ci-stub Dockerfile)
+scripts/*.sh
+scripts/*.mjs
+scripts/ci/*.py
+scripts/ci/__pycache__
 
 # Temporary & build artifacts
 tmp
