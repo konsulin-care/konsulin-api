@@ -17,7 +17,13 @@ RUN CGO_ENABLED=0 go build -o /ci-stub ./scripts/ci/stub/
 FROM alpine:3.20
 
 RUN apk add --no-cache ca-certificates
+RUN adduser -D -u 1000 stub
 COPY --from=builder /ci-stub /ci-stub
 
 EXPOSE 8081
+
+HEALTHCHECK --interval=5s --timeout=3s --retries=5 --start-period=5s \
+  CMD ["/ci-stub", "-healthcheck"]
+
 ENTRYPOINT ["/ci-stub"]
+USER stub
