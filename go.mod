@@ -1,6 +1,6 @@
 module konsulin-service
 
-go 1.26
+go 1.26.0
 
 toolchain go1.26.7
 
@@ -24,7 +24,7 @@ require (
 	github.com/tidwall/gjson v1.19.0
 	github.com/xendit/xendit-go/v7 v7.0.0
 	go.uber.org/zap v1.28.0
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.56.0
 	golang.org/x/sync v0.22.0
 	golang.org/x/vuln v1.7.0 // tool: govulncheck
 	mvdan.cc/gofumpt v0.11.0 // tool: gofumpt
