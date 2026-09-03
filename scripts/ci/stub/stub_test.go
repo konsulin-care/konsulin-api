@@ -6,8 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"konsulin-service/internal/pkg/dto/requests"
 )
 
 func setupTestServer() *http.ServeMux {
@@ -242,7 +240,7 @@ func TestCreateInvoiceReturnsPending(t *testing.T) {
 	if resp.ExternalID != "order_123" {
 		t.Fatalf("expected external_id=order_123, got %s", resp.ExternalID)
 	}
-	if resp.Status != string(requests.XenditInvoiceStatusPending) {
+	if resp.Status != statusPending {
 		t.Fatalf("expected status=PENDING, got %s", resp.Status)
 	}
 	if resp.InvoiceURL == "" {
@@ -285,7 +283,7 @@ func TestGetInvoiceReturnsPaid(t *testing.T) {
 	}
 	json.Unmarshal(w.Body.Bytes(), &resp)
 
-	if resp.Status != string(requests.XenditInvoiceStatusPaid) {
+	if resp.Status != statusPaid {
 		t.Fatalf("expected status=PAID, got %s", resp.Status)
 	}
 }
@@ -337,7 +335,7 @@ func TestExpireInvoiceReturnsExpired(t *testing.T) {
 	}
 	json.Unmarshal(w.Body.Bytes(), &resp)
 
-	if resp.Status != string(requests.XenditInvoiceStatusExpired) {
+	if resp.Status != statusExpired {
 		t.Fatalf("expected status=EXPIRED, got %s", resp.Status)
 	}
 }
