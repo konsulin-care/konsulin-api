@@ -41,7 +41,11 @@ func main() {
 
 	if *healthcheck {
 		resp, err := http.Get("http://localhost" + *addr + "/health")
-		if err != nil || resp.StatusCode != http.StatusOK {
+		if err != nil {
+			os.Exit(1)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
 			os.Exit(1)
 		}
 		os.Exit(0)
@@ -49,6 +53,7 @@ func main() {
 
 	mux := newRouter()
 	log.Printf("ci-stub listening on %s", *addr)
+	// Codacy false-positive: CI-internal stub, TLS not applicable.
 	if err := http.ListenAndServe(*addr, mux); err != nil {
 		log.Fatalf("ci-stub: %v", err)
 	}
