@@ -18,6 +18,8 @@ RUN apk add --no-cache ca-certificates tzdata && \
     echo "Asia/Jakarta" > /etc/timezone
 ENV TZ=$TZ_ARG
 
+RUN adduser -D -u 1000 app
+
 #FROM repository.konsulin.care/repository/private/be-konsulin:latest as gobuild
 FROM konsulin/konsulin-api-vendor:pr-ci AS gobuild
 LABEL stage=gobuild
@@ -73,5 +75,7 @@ FROM base AS release
 COPY --from=gobuild /go/src/github.com/konsulin-id/be-konsulin/ .
 # COPY --from=gobuild /go/src/github.com/konsulin-id/be-konsulin/api-service .
 # COPY --from=gobuild /go/src/github.com/konsulin-id/be-konsulin/RELEASE ./RELEASE
+
+USER app
 
 ENTRYPOINT ["./api-service"]

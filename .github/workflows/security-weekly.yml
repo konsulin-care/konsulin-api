@@ -27,7 +27,6 @@ jobs:
   zap-and-regression:
     name: ZAP active scan and security regression
     runs-on: ubuntu-latest
-    environment: "Pull Request Screening"
     permissions:
       contents: read
       security-events: write
@@ -37,14 +36,14 @@ jobs:
       - name: Start disposable CI environment
         uses: ./.github/actions/ci-env
         with:
-          xendit-sandbox-api-key: ${{ secrets.XENDIT_SANDBOX_API_KEY }}
-          ci-postgres-password: ${{ secrets.CI_POSTGRES_PASSWORD }}
-          ci-redis-password: ${{ secrets.CI_REDIS_PASSWORD }}
-          ci-rabbitmq-password: ${{ secrets.CI_RABBITMQ_PASSWORD }}
-          ci-supertoken-api-key: ${{ secrets.CI_SUPERTOKEN_API_KEY }}
-          ci-superadmin-api-key: ${{ secrets.CI_SUPERADMIN_API_KEY }}
-          ci-xendit-callback-token: ${{ secrets.CI_XENDIT_CALLBACK_TOKEN }}
-          ci-jwt-hook-key: ${{ secrets.CI_JWT_HOOK_KEY }}
+          ci-postgres-password: ${{ vars.CI_POSTGRES_PASSWORD }}
+          ci-redis-password: ${{ vars.CI_REDIS_PASSWORD }}
+          ci-rabbitmq-password: ${{ vars.CI_RABBITMQ_PASSWORD }}
+          ci-supertoken-api-key: ${{ vars.CI_SUPERTOKEN_API_KEY }}
+          ci-superadmin-api-key: ${{ vars.CI_SUPERADMIN_API_KEY }}
+          ci-xendit-callback-token: ${{ vars.CI_XENDIT_CALLBACK_TOKEN }}
+          ci-xendit-sandbox-api-key: ${{ vars.CI_XENDIT_SANDBOX_API_KEY }}
+          ci-jwt-hook-key: ${{ vars.CI_JWT_HOOK_KEY }}
           organization: weekly-${{ github.run_id }}-org
 
       # Run the full journey (auth/RBAC/ownership) without the chained
@@ -129,7 +128,7 @@ jobs:
 
       - name: Capture environment logs
         if: always()
-        run: docker compose --env-file .env.ci -f docker-compose.ci.yml logs --tail=300 app supertokens magiclink-stub > weekly-logs.txt 2>&1 || true
+        run: docker compose --env-file .env.ci -f docker-compose.ci.yml logs --tail=300 app supertokens ci-stub > weekly-logs.txt 2>&1 || true
 
       - name: Upload environment logs
         uses: actions/upload-artifact@v4

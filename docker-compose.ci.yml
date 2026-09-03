@@ -12,9 +12,9 @@
 #   rabbitmq      — webhook async queue
 #   blaze         — FHIR R4 server (seeded with synthetic resources)
 #   supertokens   — passwordless auth core (magic links)
-#   magiclink-stub — deterministic replacement for the external magic-link
-#                    delivery webhook AND the Mailinator inbox
-#                    (scripts/ci/magiclink-stub.mjs)
+#   ci-stub       — unified Go stub server replacing both the external
+#                    magic-link delivery webhook AND the Xendit payment API
+#                    (scripts/ci/stub/)
 #   app           — the Konsulin API gateway image, pre-built by the workflow
 #
 # The app is started AFTER the infrastructure group, because the gateway
@@ -25,12 +25,10 @@
 # Credentials:
 #   - All passwords, tokens and the JWT_HOOK_KEY PEM below are interpolated
 #     from the runner environment / `.env.ci` (compose --env-file), which the
-#     ci-env composite action writes from GitHub Actions ENVIRONMENT secrets
-#     of the "Pull Request Screening" environment. Nothing credential-like is
-#     committed in this file.
-#   - XENDIT_SANDBOX_API_KEY comes from the same .env.ci as a repo secret.
+#     ci-env composite action writes from GitHub Actions repository variables
+#     (vars.*). Nothing credential-like is committed in this file.
 #
-# Host ports (runner-local): app 3200, blaze 8080, magiclink-stub 8081.
+# Host ports (runner-local): app 3200, blaze 8080, ci-stub 8081.
 # The Bruno collection runs on the runner, so those three must be host-mapped.
 
 name: konsulin-ci
@@ -91,18 +89,15 @@ services:
       API_KEYS: ${SUPERTOKEN_API_KEY:?set SUPERTOKEN_API_KEY in .env.ci}
     networks: [ci-net]
 
-  magiclink-stub:
-    image: node:24-alpine
-    container_name: konsulin-ci-magiclink-stub
+  ci-stub:
+    build:
+      context: .
+      dockerfile: scripts/ci/stub/Dockerfile
+    container_name: konsulin-ci-stub
     ports:
       - "8081:8081"
-    environment:
-      PORT: "8081"
-    volumes:
-      - ./scripts/ci:/app/scripts/ci:ro
-    command: ["node", "/app/scripts/ci/magiclink-stub.mjs"]
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"require('net').createConnection(8081,'localhost').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))\""]
+      test: ["CMD", "/ci-stub", "-healthcheck"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -124,7 +119,7 @@ services:
         condition: service_started
       supertokens:
         condition: service_started
-      magiclink-stub:
+      ci-stub:
         condition: service_healthy
     ports:
       - "3200:3200"
@@ -144,7 +139,7 @@ services:
       SUPERADMIN_API_KEY: ${SUPERADMIN_API_KEY:?set SUPERADMIN_API_KEY in .env.ci}
       # Magic-link delivery lands in the local stub (HOOK_URL) instead of the
       # external webhook service used by dev/prod.
-      HOOK_URL: "http://magiclink-stub:8081"
+      HOOK_URL: "http://ci-stub:8081/magiclink"
       HOOK_SYNC_SERVICE_NAMES: "analyze"
       SUPERTOKEN_API_KEY: ${SUPERTOKEN_API_KEY:?set SUPERTOKEN_API_KEY in .env.ci}
       SUPERTOKEN_CONNECTION_URI: "http://supertokens:3567"
@@ -158,9 +153,9 @@ services:
       RABBITMQ_PORT: "5672"
       RABBITMQ_USERNAME: "guest"
       RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:?set RABBITMQ_DEFAULT_PASS in .env.ci}
-      # Sandbox (test-mode) Xendit key from the XENDIT_SANDBOX_API_KEY secret;
-      # appointment payments create sandbox invoices, no real money moves.
-      APP_XENDIT_API_KEY: "${XENDIT_SANDBOX_API_KEY:-}"
+      # Xendit API key — only used for SDK initialization; the stub ignores
+      # the Authorization header. Set via repository variable.
+      APP_XENDIT_API_KEY: "${XENDIT_SANDBOX_API_KEY:?set XENDIT_SANDBOX_API_KEY in .env.ci}"
       APP_XENDIT_WEBHOOK_TOKEN: ${XENDIT_CALLBACK_TOKEN:?set XENDIT_CALLBACK_TOKEN in .env.ci}
     networks: [ci-net]
 
