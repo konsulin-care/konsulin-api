@@ -287,3 +287,13 @@ jobs:
         if: hashFiles('trivy/trivy-image.sarif') != ''
         with:
           sarif_file: trivy/trivy-image.sarif
+
+      # Always upload SARIF as artifact so CVEs are inspectable when the
+      # blocking scan fails (Trivy may exit before writing Code Scanning output).
+      - name: Upload Trivy image report artifact
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: trivy-image-report
+          path: trivy/trivy-image.sarif
+          if-no-files-found: warn
