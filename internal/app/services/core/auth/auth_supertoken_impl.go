@@ -189,6 +189,18 @@ func ensureRoleExists(role string) error {
 	return nil
 }
 
+// rolesForCreateCode returns the roles that decide which FHIR resources the create-code
+// flow initializes. A user's existing SuperTokens roles replace the default Patient role;
+// Patient is only assumed for a first-time user with no roles yet, matching
+// resolveRolesForConsumeCode. Appending instead would give every Practitioner, Clinic
+// Admin or Superadmin a Patient resource on each magic-link request.
+func rolesForCreateCode(fetched []string) []string {
+	if len(fetched) > 0 {
+		return fetched
+	}
+	return []string{constvars.KonsulinRolePatient}
+}
+
 // lookupUserForCreateCode resolves user details and roles during the create-code flow.
 func (uc *authUsecase) lookupUserForCreateCode(email *string, phoneNumber *string, normalizedPhoneNumber string) (userEmail, userPhoneNumber, userID string, userRoles []string, err error) {
 	userRecord := &plessmodels.User{}
@@ -220,7 +232,7 @@ func (uc *authUsecase) lookupUserForCreateCode(email *string, phoneNumber *strin
 		return
 	}
 
-	userRoles = []string{constvars.KonsulinRolePatient}
+	userRoles = rolesForCreateCode(nil)
 	userID = ""
 
 	if userRecord != nil {
@@ -236,7 +248,7 @@ func (uc *authUsecase) lookupUserForCreateCode(email *string, phoneNumber *strin
 		}
 
 		if userRolesResp.OK != nil {
-			userRoles = append(userRoles, userRolesResp.OK.Roles...)
+			userRoles = rolesForCreateCode(userRolesResp.OK.Roles)
 		}
 	}
 
