@@ -71,6 +71,7 @@ func (m *MockUserFHIRInitializer) InitializeNewUserFHIRResources(ctx context.Con
 	return out, args.Error(1)
 }
 
+// LookupUserFHIRResourceIDs records the call and returns the configured output and error.
 func (m *MockUserFHIRInitializer) LookupUserFHIRResourceIDs(ctx context.Context, input *contracts.LookupUserFHIRResourceIDsInput) (*contracts.InitializeNewUserFHIRResourcesOutput, error) {
 	args := m.Called(ctx, input)
 	var out *contracts.InitializeNewUserFHIRResourcesOutput

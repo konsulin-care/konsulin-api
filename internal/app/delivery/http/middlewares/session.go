@@ -66,6 +66,10 @@ func buildSessionAuth(sess sessmodels.SessionContainer) (uid string, roles []str
 	return
 }
 
+// SessionOptional resolves the SuperTokens session when one is present and seeds the
+// request context with the caller's uid, roles, active role and FHIR resource ID, under
+// both the local keys and the typed constvars keys. Requests without a session continue
+// as the anonymous guest; API-key requests pass through untouched.
 func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if apiKeyAuth, ok := r.Context().Value(ContextAPIKeyAuth).(bool); ok && apiKeyAuth {
@@ -131,6 +135,9 @@ func (m *Middlewares) CreateAnonymousSessionIfNeeded(next http.Handler) http.Han
 	})
 }
 
+// EnsureAnonymousSession seeds guest auth context (anonymous uid, Guest role, empty FHIR
+// resource ID) for requests without a SuperTokens session, publishing the same typed keys
+// as SessionOptional. Requests with a session or API-key auth pass through unchanged.
 func (m *Middlewares) EnsureAnonymousSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if apiKeyAuth, ok := r.Context().Value(ContextAPIKeyAuth).(bool); ok && apiKeyAuth {

@@ -34,6 +34,9 @@ const (
 	supertokenAccessTokenPayloadFhirResourceId = "fhirResourceId"
 )
 
+// InitializeSupertoken configures the SuperTokens recipes (passwordless, user roles,
+// session, dashboard) and ensures every Konsulin role exists. It returns an error if the
+// SDK fails to initialize or any role cannot be created.
 func (uc *authUsecase) InitializeSupertoken() error {
 	apiBasePath := fmt.Sprintf("%s/%s%s", uc.InternalConfig.App.EndpointPrefix, uc.InternalConfig.App.Version, uc.DriverConfig.Supertoken.ApiBasePath)
 	websiteBasePath := uc.DriverConfig.Supertoken.WebsiteBasePath

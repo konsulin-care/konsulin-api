@@ -141,6 +141,8 @@ type LookupUserFHIRResourceIDsInput struct {
 	SuperTokenUserID string
 }
 
+// UserFHIRInitializer creates and looks up the FHIR resources (Patient, Practitioner,
+// PractitionerRole) that back a SuperTokens user.
 type UserFHIRInitializer interface {
 	InitializeNewUserFHIRResources(ctx context.Context, input *InitializeNewUserFHIRResourcesInput) (*InitializeNewUserFHIRResourcesOutput, error)
 	// LookupUserFHIRResourceIDs queries existing FHIR resources by SuperTokenUserID.
