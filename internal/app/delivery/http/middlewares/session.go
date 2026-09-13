@@ -2,8 +2,9 @@ package middlewares
 
 import (
 	"context"
-	"konsulin-service/internal/pkg/constvars"
 	"net/http"
+
+	"konsulin-service/internal/pkg/constvars"
 
 	"github.com/supertokens/supertokens-golang/recipe/session"
 	"github.com/supertokens/supertokens-golang/recipe/session/sessmodels"
@@ -14,11 +15,12 @@ import (
 type contextKey string
 
 const (
-	keyFHIRRole   contextKey = "fhirRole"
-	keyFHIRID     contextKey = "fhirID"
-	keyRoles      contextKey = "roles"
-	keyUID        contextKey = "uid"
-	keyActiveRole contextKey = "activeRole"
+	keyFHIRRole       contextKey = "fhirRole"
+	keyFHIRID         contextKey = "fhirID"
+	keyRoles          contextKey = "roles"
+	keyUID            contextKey = "uid"
+	keyActiveRole     contextKey = "activeRole"
+	keyFHIRResourceID contextKey = "fhirResourceId"
 )
 
 // extractRolesFromAccessToken extracts the roles list from a SuperTokens access token payload.
@@ -48,18 +50,26 @@ func extractRolesFromAccessToken(raw map[string]interface{}) []string {
 	return roles
 }
 
-// buildSessionAuth extracts uid, roles and activeRole from a SuperTokens session.
-func buildSessionAuth(sess sessmodels.SessionContainer) (uid string, roles []string, activeRole string) {
+// buildSessionAuth extracts uid, roles, activeRole and the FHIR resource ID from
+// a SuperTokens session.
+func buildSessionAuth(sess sessmodels.SessionContainer) (uid string, roles []string, activeRole, fhirResourceID string) {
 	uid = sess.GetUserID()
 	if raw := sess.GetAccessTokenPayload(); raw != nil {
 		roles = extractRolesFromAccessToken(raw)
 		if v, ok := raw[constvars.SupertokenPayloadActiveRoleKey].(string); ok && v != "" {
 			activeRole = v
 		}
+		if v, ok := raw[constvars.SupertokenPayloadFhirResourceIDKey].(string); ok {
+			fhirResourceID = v
+		}
 	}
 	return
 }
 
+// SessionOptional resolves the SuperTokens session when one is present and seeds the
+// request context with the caller's uid, roles, active role and FHIR resource ID, under
+// both the local keys and the typed constvars keys. Requests without a session continue
+// as the anonymous guest; API-key requests pass through untouched.
 func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if apiKeyAuth, ok := r.Context().Value(ContextAPIKeyAuth).(bool); ok && apiKeyAuth {
@@ -73,9 +83,10 @@ func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
 		var roles []string
 		uid := ""
 		activeRole := ""
+		fhirResourceID := ""
 
 		if sess != nil {
-			uid, roles, activeRole = buildSessionAuth(sess)
+			uid, roles, activeRole, fhirResourceID = buildSessionAuth(sess)
 		} else {
 			uid = "anonymous"
 			roles = []string{constvars.KonsulinRoleGuest}
@@ -89,11 +100,13 @@ func (m *Middlewares) SessionOptional(next http.Handler) http.Handler {
 
 		ctx := context.WithValue(r.Context(), keyRoles, roles)
 		ctx = context.WithValue(ctx, keyUID, uid)
+		ctx = context.WithValue(ctx, keyFHIRResourceID, fhirResourceID)
 		if activeRole != "" {
 			ctx = context.WithValue(ctx, keyActiveRole, activeRole)
 		}
 		ctx = context.WithValue(ctx, constvars.CONTEXT_FHIR_ROLE, roles)
 		ctx = context.WithValue(ctx, constvars.CONTEXT_UID, uid)
+		ctx = context.WithValue(ctx, constvars.CONTEXT_FHIR_RESOURCE_ID, fhirResourceID)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -122,6 +135,9 @@ func (m *Middlewares) CreateAnonymousSessionIfNeeded(next http.Handler) http.Han
 	})
 }
 
+// EnsureAnonymousSession seeds guest auth context (anonymous uid, Guest role, empty FHIR
+// resource ID) for requests without a SuperTokens session, publishing the same typed keys
+// as SessionOptional. Requests with a session or API-key auth pass through unchanged.
 func (m *Middlewares) EnsureAnonymousSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if apiKeyAuth, ok := r.Context().Value(ContextAPIKeyAuth).(bool); ok && apiKeyAuth {
@@ -137,8 +153,10 @@ func (m *Middlewares) EnsureAnonymousSession(next http.Handler) http.Handler {
 
 			ctx := context.WithValue(r.Context(), keyRoles, []string{constvars.KonsulinRoleGuest})
 			ctx = context.WithValue(ctx, keyUID, "anonymous")
+			ctx = context.WithValue(ctx, keyFHIRResourceID, "")
 			ctx = context.WithValue(ctx, constvars.CONTEXT_FHIR_ROLE, []string{constvars.KonsulinRoleGuest})
 			ctx = context.WithValue(ctx, constvars.CONTEXT_UID, "anonymous")
+			ctx = context.WithValue(ctx, constvars.CONTEXT_FHIR_RESOURCE_ID, "")
 
 			m.Log.Info("Ensuring anonymous session for request",
 				zap.String("ip", r.RemoteAddr),

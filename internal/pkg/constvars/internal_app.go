@@ -58,6 +58,7 @@ const (
 	CONTEXT_RAW_BODY                 ContextKey = "raw_body"
 	CONTEXT_FHIR_ROLE                ContextKey = "fhir_role"
 	CONTEXT_UID                      ContextKey = "uid"
+	CONTEXT_FHIR_RESOURCE_ID         ContextKey = "fhir_resource_id"
 	CONTEXT_API_KEY_AUTH             ContextKey = "api_key_auth"
 )
 
@@ -85,4 +86,7 @@ const (
 	SupertokenPayloadRolesKey      = "st-role"
 	SupertokenPayloadRolesValueKey = "v"
 	SupertokenPayloadActiveRoleKey = "st-active-role"
+	// SupertokenPayloadFhirResourceIDKey carries the "ResourceType/id" of the FHIR
+	// resource backing the session's user, stamped at session creation.
+	SupertokenPayloadFhirResourceIDKey = "fhirResourceId"
 )

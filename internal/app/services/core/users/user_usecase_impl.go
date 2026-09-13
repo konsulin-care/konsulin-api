@@ -104,6 +104,60 @@ func (uc *userUsecase) InitializeNewUserFHIRResources(ctx context.Context, input
 	return output, nil
 }
 
+// LookupUserFHIRResourceIDs queries existing FHIR resources by SuperTokenUserID.
+// Unlike InitializeNewUserFHIRResources, this is a read-only operation that will not create any resources.
+// It looks up the Practitioner and Patient resources carrying the SuperTokenUserID identifier.
+//
+// Error contract: returns an error when the input is empty or when any lookup fails.
+// It never returns a partial result alongside an error, so callers can treat a nil
+// error as "every lookup completed". Finding no matching resources is not an error:
+// that returns an output with empty IDs and a nil error.
+func (uc *userUsecase) LookupUserFHIRResourceIDs(ctx context.Context, input *contracts.LookupUserFHIRResourceIDsInput) (*contracts.InitializeNewUserFHIRResourcesOutput, error) {
+	if input.SuperTokenUserID == "" {
+		return nil, exceptions.ErrInvalidFormat(nil, "superTokenUserID is required for lookup")
+	}
+
+	output := &contracts.InitializeNewUserFHIRResourcesOutput{}
+	// Collect errors to return if we fail to find the specific resource or if critical failures occur
+	var errs []error
+
+	// Look up Practitioner by SuperTokenUserID identifier
+	practitioners, err := uc.PractitionerFhirClient.FindPractitionerByIdentifier(ctx, constvars.FhirSupertokenSystemIdentifier, input.SuperTokenUserID)
+	if err != nil {
+		uc.Log.Error(logPrefix+"LookupUserFHIRResourceIDs error looking up practitioner",
+			zap.String("super_token_user_id", input.SuperTokenUserID),
+			zap.Error(err),
+		)
+		errs = append(errs, err)
+	}
+	if len(practitioners) > 0 {
+		output.PractitionerID = practitioners[0].ID
+	}
+
+	// Look up Patient by SuperTokenUserID identifier
+	patientIdentifier := fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, input.SuperTokenUserID)
+	patients, err := uc.PatientFhirClient.FindPatientByIdentifier(ctx, patientIdentifier)
+	if err != nil {
+		uc.Log.Error(logPrefix+"LookupUserFHIRResourceIDs error looking up patient",
+			zap.String("super_token_user_id", input.SuperTokenUserID),
+			zap.Error(err),
+		)
+		errs = append(errs, err)
+	}
+	if len(patients) > 0 {
+		output.PatientID = patients[0].ID
+	}
+
+	// Critical: surface lookup failures instead of swallowing them. A silently
+	// failed Practitioner lookup would otherwise demote the caller to the
+	// Patient branch and stamp the wrong FHIR resource ID on the session.
+	if len(errs) > 0 {
+		return nil, errors.Join(errs...)
+	}
+
+	return output, nil
+}
+
 // applyResourcePlan creates the FHIR resource described by a single plan entry,
 // enforcing the Practitioner dedup guard and the PractitionerRole ordering
 // constraint. It returns the practitioner FHIR ID to carry forward: the newly
