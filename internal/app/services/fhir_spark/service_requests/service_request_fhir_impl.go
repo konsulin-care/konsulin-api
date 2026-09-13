@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
@@ -14,6 +15,9 @@ import (
 
 	"go.uber.org/zap"
 )
+
+// logPrefix namespaces every log entry emitted by this FHIR client.
+const logPrefix = "serviceRequestFhirClient."
 
 var (
 	serviceRequestFhirClientInstance contracts.ServiceRequestFhirClient
@@ -38,54 +42,40 @@ func NewServiceRequestFhirClient(baseUrl string, logger *zap.Logger) contracts.S
 
 func (c *serviceRequestFhirClient) CreateServiceRequest(ctx context.Context, request *fhir_dto.CreateServiceRequestInput) (*fhir_dto.CreateServiceRequestOutput, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	c.Log.Info("serviceRequestFhirClient.CreateServiceRequest called",
+	c.Log.Info(logPrefix+"CreateServiceRequest called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
 
 	requestJSON, err := json.Marshal(request)
 	if err != nil {
-		c.Log.Error("serviceRequestFhirClient.CreateServiceRequest error marshaling JSON",
+		c.Log.Error(logPrefix+"CreateServiceRequest error marshaling JSON",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
 		return nil, exceptions.ErrCannotMarshalJSON(err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, constvars.MethodPost, c.BaseUrl, bytes.NewBuffer(requestJSON))
+	req, err := c.newRequest(ctx, constvars.MethodPost, c.BaseUrl, "CreateServiceRequest", bytes.NewBuffer(requestJSON))
 	if err != nil {
-		c.Log.Error("serviceRequestFhirClient.CreateServiceRequest error creating HTTP request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrCreateHTTPRequest(err)
+		return nil, err
 	}
-	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := c.sendRequest(req, "CreateServiceRequest")
 	if err != nil {
-		c.Log.Error("serviceRequestFhirClient.CreateServiceRequest error sending HTTP request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrSendHTTPRequest(err)
+		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != constvars.StatusCreated {
 		return nil, exceptions.ErrCreateFHIRResource(nil, constvars.ResourceServiceRequest)
 	}
 
 	serviceRequest := new(fhir_dto.CreateServiceRequestOutput)
-	if err := json.NewDecoder(resp.Body).Decode(&serviceRequest); err != nil {
-		c.Log.Error("serviceRequestFhirClient.CreateServiceRequest error decoding response",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourceServiceRequest)
+	if err := c.decodeResponse(ctx, resp, serviceRequest, "CreateServiceRequest"); err != nil {
+		return nil, err
 	}
 
-	c.Log.Info("serviceRequestFhirClient.CreateServiceRequest succeeded",
+	c.Log.Info(logPrefix+"CreateServiceRequest succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String("service_request_id", serviceRequest.ID),
 	)
@@ -94,48 +84,34 @@ func (c *serviceRequestFhirClient) CreateServiceRequest(ctx context.Context, req
 
 func (c *serviceRequestFhirClient) GetServiceRequestByIDAndVersion(ctx context.Context, id string, version string) (*fhir_dto.GetServiceRequestOutput, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	c.Log.Info("serviceRequestFhirClient.GetServiceRequestVersion called",
+	c.Log.Info(logPrefix+"GetServiceRequestVersion called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String("id", id),
 		zap.String("version", version),
 	)
 
 	url := c.BaseUrl + "/" + id + "/_history/" + version
-	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, url, nil)
+	req, err := c.newRequest(ctx, constvars.MethodGet, url, "GetServiceRequestVersion", nil)
 	if err != nil {
-		c.Log.Error("serviceRequestFhirClient.GetServiceRequestVersion error creating HTTP request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrCreateHTTPRequest(err)
+		return nil, err
 	}
-	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := c.sendRequest(req, "GetServiceRequestVersion")
 	if err != nil {
-		c.Log.Error("serviceRequestFhirClient.GetServiceRequestVersion error sending HTTP request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrSendHTTPRequest(err)
+		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != constvars.StatusOK {
 		return nil, exceptions.ErrGetFHIRResource(nil, constvars.ResourceServiceRequest)
 	}
 
 	out := new(fhir_dto.GetServiceRequestOutput)
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		c.Log.Error("serviceRequestFhirClient.GetServiceRequestVersion error decoding response",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourceServiceRequest)
+	if err := c.decodeResponse(ctx, resp, out, "GetServiceRequestVersion"); err != nil {
+		return nil, err
 	}
 
-	c.Log.Info("serviceRequestFhirClient.GetServiceRequestVersion succeeded",
+	c.Log.Info(logPrefix+"GetServiceRequestVersion succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String("service_request_id", out.ID),
 		zap.String("version", out.Meta.VersionId),
@@ -146,7 +122,7 @@ func (c *serviceRequestFhirClient) GetServiceRequestByIDAndVersion(ctx context.C
 // Search queries ServiceRequest resources by search parameters and returns an array of results.
 func (c *serviceRequestFhirClient) Search(ctx context.Context, input *fhir_dto.SearchServiceRequestInput) ([]fhir_dto.GetServiceRequestOutput, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	c.Log.Info("serviceRequestFhirClient.Search called",
+	c.Log.Info(logPrefix+"Search called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String("id", input.ID),
 	)
@@ -155,29 +131,19 @@ func (c *serviceRequestFhirClient) Search(ctx context.Context, input *fhir_dto.S
 	queryParams := input.ToQueryString()
 	url := c.BaseUrl + "?" + queryParams.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, constvars.MethodGet, url, nil)
+	req, err := c.newRequest(ctx, constvars.MethodGet, url, "Search", nil)
 	if err != nil {
-		c.Log.Error("serviceRequestFhirClient.Search error creating HTTP request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrCreateHTTPRequest(err)
+		return nil, err
 	}
-	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := c.sendRequest(req, "Search")
 	if err != nil {
-		c.Log.Error("serviceRequestFhirClient.Search error sending HTTP request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrSendHTTPRequest(err)
+		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != constvars.StatusOK {
-		c.Log.Error("serviceRequestFhirClient.Search received non-OK status",
+		c.Log.Error(logPrefix+"Search received non-OK status",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Int("status_code", resp.StatusCode),
 		)
@@ -185,12 +151,8 @@ func (c *serviceRequestFhirClient) Search(ctx context.Context, input *fhir_dto.S
 	}
 
 	bundle := new(fhir_dto.ServiceRequestBundle)
-	if err := json.NewDecoder(resp.Body).Decode(&bundle); err != nil {
-		c.Log.Error("serviceRequestFhirClient.Search error decoding response",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourceServiceRequest)
+	if err := c.decodeResponse(ctx, resp, bundle, "Search"); err != nil {
+		return nil, err
 	}
 
 	// Extract resources from bundle entries
@@ -199,7 +161,7 @@ func (c *serviceRequestFhirClient) Search(ctx context.Context, input *fhir_dto.S
 		results = append(results, entry.Resource)
 	}
 
-	c.Log.Info("serviceRequestFhirClient.Search succeeded",
+	c.Log.Info(logPrefix+"Search succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.Int("result_count", len(results)),
 	)
@@ -209,14 +171,14 @@ func (c *serviceRequestFhirClient) Search(ctx context.Context, input *fhir_dto.S
 // Update performs a PUT request to update an existing ServiceRequest resource.
 func (c *serviceRequestFhirClient) Update(ctx context.Context, id string, input *fhir_dto.UpdateServiceRequestInput) (*fhir_dto.GetServiceRequestOutput, error) {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	c.Log.Info("serviceRequestFhirClient.Update called",
+	c.Log.Info(logPrefix+"Update called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String("id", id),
 	)
 
 	requestJSON, err := json.Marshal(input)
 	if err != nil {
-		c.Log.Error("serviceRequestFhirClient.Update error marshaling JSON",
+		c.Log.Error(logPrefix+"Update error marshaling JSON",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
 		)
@@ -224,29 +186,19 @@ func (c *serviceRequestFhirClient) Update(ctx context.Context, id string, input 
 	}
 
 	url := c.BaseUrl + "/" + id
-	req, err := http.NewRequestWithContext(ctx, constvars.MethodPut, url, bytes.NewBuffer(requestJSON))
+	req, err := c.newRequest(ctx, constvars.MethodPut, url, "Update", bytes.NewBuffer(requestJSON))
 	if err != nil {
-		c.Log.Error("serviceRequestFhirClient.Update error creating HTTP request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrCreateHTTPRequest(err)
+		return nil, err
 	}
-	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := c.sendRequest(req, "Update")
 	if err != nil {
-		c.Log.Error("serviceRequestFhirClient.Update error sending HTTP request",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrSendHTTPRequest(err)
+		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != constvars.StatusOK && resp.StatusCode != constvars.StatusCreated {
-		c.Log.Error("serviceRequestFhirClient.Update received error status",
+		c.Log.Error(logPrefix+"Update received error status",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Int("status_code", resp.StatusCode),
 		)
@@ -254,15 +206,11 @@ func (c *serviceRequestFhirClient) Update(ctx context.Context, id string, input 
 	}
 
 	out := new(fhir_dto.GetServiceRequestOutput)
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		c.Log.Error("serviceRequestFhirClient.Update error decoding response",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, exceptions.ErrDecodeResponse(err, constvars.ResourceServiceRequest)
+	if err := c.decodeResponse(ctx, resp, out, "Update"); err != nil {
+		return nil, err
 	}
 
-	c.Log.Info("serviceRequestFhirClient.Update succeeded",
+	c.Log.Info(logPrefix+"Update succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String("service_request_id", out.ID),
 	)
@@ -272,7 +220,7 @@ func (c *serviceRequestFhirClient) Update(ctx context.Context, id string, input 
 // EnsureGroupExists checks if Group/{groupID} exists; if not, it creates it via PUT.
 func (c *serviceRequestFhirClient) ensureGroupExists(ctx context.Context, groupID string) error {
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	c.Log.Info("serviceRequestFhirClient.EnsureGroupExists called",
+	c.Log.Info(logPrefix+"EnsureGroupExists called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String("group_id", groupID),
 	)
@@ -350,6 +298,51 @@ func (c *serviceRequestFhirClient) EnsureAllNecessaryGroupsExists(ctx context.Co
 		if err := c.ensureGroupExists(ctx, g); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// newRequest builds a FHIR JSON request, logging creation failures with the
+// operation name.
+func (c *serviceRequestFhirClient) newRequest(ctx context.Context, method, url, opName string, body io.Reader) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, method, url, body)
+	if err != nil {
+		requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+		c.Log.Error(logPrefix+opName+" error creating HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrCreateHTTPRequest(err)
+	}
+	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationFHIRJSON)
+	return req, nil
+}
+
+// sendRequest performs req, logging sending failures with the operation name.
+func (c *serviceRequestFhirClient) sendRequest(req *http.Request, opName string) (*http.Response, error) {
+	requestID, _ := req.Context().Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		c.Log.Error(logPrefix+opName+" error sending HTTP request",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return nil, exceptions.ErrSendHTTPRequest(err)
+	}
+	return resp, nil
+}
+
+// decodeResponse decodes the response body into out, logging failures with the
+// operation name.
+func (c *serviceRequestFhirClient) decodeResponse(ctx context.Context, resp *http.Response, out any, opName string) error {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		c.Log.Error(logPrefix+opName+" error decoding response",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.Error(err),
+		)
+		return exceptions.ErrDecodeResponse(err, constvars.ResourceServiceRequest)
 	}
 	return nil
 }

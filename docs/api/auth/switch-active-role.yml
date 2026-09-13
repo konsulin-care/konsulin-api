@@ -1,0 +1,56 @@
+info:
+  name: Switch Active Role
+  type: http
+  seq: 8
+  tags: [auth]
+
+http:
+  method: POST
+  url: "{{process.env.APP_BASE_URL}}/api/v1/auth/active-role"
+  headers:
+    - name: content-type
+      value: application/json
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  body:
+    type: json
+    data: |-
+      {
+        "role": "{{activeRole}}"
+      }
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.success
+      operator: eq
+      value: "true"
+    - expression: res.body.message
+      operator: eq
+      value: active role set
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Helper request for manual use — the automated journey does NOT invoke it.
+  Journey requests switch roles in their pre-request scripts by calling the
+  active-role endpoint directly via `bru.sendRequest` (the `bru.runner.runNext`
+  helper is not available in pre-request scripts on all Bruno versions).
+
+  It calls the same endpoint as "Set Active Role" but never touches the runner
+  chain (no `setNextRequest`), so it is safe to run standalone before a
+  journey segment.
+
+  ### Request Fields
+  - `role`: (required) taken from the `{{activeRole}}` variable set by the caller.
+
+  ### Responses
+  - **200 OK**: Active role set. Body: `{ "success": true, "message": "active role set" }`.
+  - **400 Bad Request**: Missing/invalid role, role not assigned, or could not verify roles.
+  - **500 Internal Server Error**: Session not found or access token merge failed.

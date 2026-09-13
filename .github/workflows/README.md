@@ -1,218 +1,153 @@
-# BE-KONSULIN DEPLOYMENT METHOD
-
-## Development Workflow
-
-The  GitHub Actions workflow automates the process of containerizing and deploying a project on the `develop` branch. It can be triggered manually or by a push to the `develop` branch.
-
-## Production Workflow
-
-### Step 1: Create Release
-
-This step is to create a release on the GitHub repository, when a new release is created, the `prod-build.yml` workflow will run a Docker build process to build and tag the release image directly on the server.
-
-Step to create a release:
-
-1. Go to the GitHub repository.
-2. Click on the "Releases" tab.
-3. Click on the "Draft a new release" button.
-4. Enter the release tag name. Example: `v1.0.0`.
-5. Name the release. Example: `v1.0.0`.
-6. Ensure the release tag and release name are same.
-7. Optionally, you can generate a release note automatically by clicking on the "Generate release notes" button.
-8. Set the target branch to `develop` or trunk branch you want to deploy.
-9. Set the release as a `Set as the latest release` option.
-10. Click on the "Publish release" button.
-
-### Rules
-
-1. The allowed format for the release tag is `v1.0.0`.
-2. The allowed format for the release name is `v1.0.0`.
-3. Release name and release tag must be same.
-
-### Example of Accpetable Release Name
-
-- `v1.0.0`
-- `v1.0.0-beta-1`
-- `release-v1.0.0`
-
-### Example of Not Acceptable Release Name
-
-- `Release v1.0.0`
-- `v1.0.0 Release`
-- `v1.0.0-beta.1+build.123`
-- `v1.0.0-beta.1`
-
-### Step 2: Deploy a Release
-
-This step is to deploy a release on the server, when a new release is created, the `prod-release.yml` workflow will run a deployment process.
-
-Step to deploy a release:
-
-1. Go to the GitHub Actions page.
-2. Go to [Deploy Production](https://github.com/konsulin-care/be-konsulin/actions/workflows/prod-release.yml) workflow.
-3. Click on the `Run workflow` button.
-4. Fill in the `RELEASE_NAME` input with the release name you want to deploy. See the example of correct release name above [here](#example-of-correct-release-name).
-5. Click on the `Run workflow` button.
-
-## WORKFLOW
-
-1. **Containerization (Docker) on Self-Hosted Runner**
-   - **Uses**: `docker-self-hosted.yml` workflow.
-   - **Parameters**:
-     - `TZ_ARG`, `AUTHOR`, `VERSION`, `GIT_COMMIT`, `BUILD_TIME`, `RUN_NUMBER`, `RELEASE_TAG`, `DOCKER_TAG`, `DOCKER_VENDOR_TAG`.
-   - **Purpose**: Builds a Docker image directly on the server.
-
-2. **Deployment**
-   - **Uses**: `deploy-ansible.yml` workflow.
-   - **Parameters**:
-     - `DOCKER_TAG`, `ANSIBLE_PLAYBOOK`, `ANSIBLE_INVENTORY_HOSTS`.
-   - **Secrets**: `SSH_KEY` to be used by Ansible, ANS
-   - **Purpose**: Deploys the Docker container to a remote server.
-
-This workflow streamlines the process of building and deploying code changes to a development environment.
-
-## Containerization (Docker) on Self-Hosted Runner
-
-The "Docker (self-hosted)" GitHub Actions workflow automates the process of building the Docker image directly on the server, which at the same time working as the Self-Hosted Runner. The workflow is manifest file is `.github/workflows/docker-self-hosted.yml`.
-
-### Input Parameters
-
-To re-use the workflow, these are parameters needs to be defined:
-
-- `TZ_ARG`: Timezone setting (default is Asia/Jakarta). This parameter is used to set the timezone for the container and passed into the Docker build process as `--build-arg`.
-- `AUTHOR`: Name of the commit author. This parameter is used to set the author for the container and passed into the Docker build process as `--build-arg`.
-- `VERSION`: Version of the build. This parameter is used to set the version for the container and passed into the Docker build process as `--build-arg`.
-- `GIT_COMMIT`: The Git commit hash. This parameter is used to set the commit hash for the container and passed into the Docker build process as `--build-arg`.
-- `BUILD_TIME`: The time the build was created. This parameter is used to set the build time for the container and passed into the Docker build process as `--build-arg`.
-- `RUN_NUMBER`: The workflow run number. This parameter is used to set the run number for the container and passed into the Docker build process as `--build-arg`.
-- `RELEASE_TAG`: The release tag. The release tag is used to set the release tag for the container and passed into the Docker build process as `--build-arg`.
-- `DOCKER_TAG`: The Docker tag. This is the Docker image tag that will be used to tag built image inside the server. This will respectively build the `Dockerfile` file.
-- `DOCKER_VENDOR_TAG`: The Docker vendor tag. This is the Docker image tag that will be used to tag built image of Vendor, or we can say, the vendor image that be the base image for the application image. This will respectively build the `Dockerfile-vendor` file.
-
-### Workflow Steps
-
-1. **Prepare:** The workflow will clone the repository to the server.
-2. **Build Vendor Image:** The workflow will build the vendor image using the `Dockerfile-vendor` file. It will take the input from DOCKER_VENDOR_TAG and build the image with the tag. The Vendor build image step enabling `DOCKER_BUILDKIT=1` to enhance cahcing and reduce the build time.
-3. **Update Dockerfile Base Image Tag:** The workflow will update the `Dockerfile` file with the built result from **Build Vendor Image** step. It will respectively update the base image with the built of Vendor image that tagged with the input from DOCKER_VENDOR_TAG.
-4. **Build Main Image:** The workflow will build the main application image using the `Dockerfile` file. It will take the input from DOCKER_TAG and build the image with the tag.
-
-## Deployment (Ansible)
-
-The "Deploy (Ansible)" GitHub Actions workflow automates the deployment of a service to a remote server using Ansible. The workflow is manifest file is `.github/workflows/deploy-ansible.yml`.
-
-### Input Parameters
-
-To re-use the workflow, these are parameters needs to be defined:
-
-- `DOCKER_TAG`: The Docker tag. This is the Docker image tag that will be used to tag built image inside the server.
-- `ANSIBLE_PLAYBOOK`: The Ansible playbook file.
-- `ANSIBLE_INVENTORY_HOSTS`: The Ansible inventory hosts.
-- `SSH_KEY`: The SSH key to be used by Ansible.
-
-### Workflow Steps
-
-1. **Prepare:** The workflow will prepare the environment by cloning the repository to the server.
-2. **Run playbook:** The workflow will run the Ansible playbook using the input from `ANSIBLE_PLAYBOOK` and `ANSIBLE_INVENTORY_HOSTS` to deploy the service.  On the playbook we define a variable with name `image_tag` with null value. The Ansible will replace the null value with the input from `DOCKER_TAG`. See Ansible official documentation for more details [Using Variables](https://docs.ansible.com/ansible/latest/user_guide/playbooks_variables.html#using-variables).
-
-### Managing Ansible Variables
-
-Refer to this [Deployment Scripts Documentation](https://github.com/konsulin-care/be-konsulin/blob/develop/deployments/README.md) file for more information on how to manage Ansible variables.
-
-## Deprecated
-
-<details>
-   <summary>Containerization (Docker) (Nexus Image Registry)</summary>
-
-The "Docker" GitHub Actions workflow automates the process of building and pushing Docker images for a project.
-
-### Inputs
-
-- **TZ_ARG**: Timezone setting (default is Asia/Jakarta).
-- **AUTHOR**: Name of the commit author.
-- **VERSION**: Version of the build.
-- **TAG**: Git tag associated with the build.
-- **GIT_COMMIT**: The Git commit hash.
-- **BUILD_TIME**: The time the build was created.
-- **RUN_NUMBER**: The workflow run number.
-
-### Secrets
-
-- **DOCKER_USERNAME** and **DOCKER_PASSWORD**: Credentials for logging into the Docker registry.
-
-### Jobs
-
-#### Docker Job
-
-- **Runs on**: `ubuntu-latest`
-
-- **Steps**:
-
-  1. **Prepare**:
-     - Uses `actions/checkout@v2` to check out the code from the repository.
-
-  2. **Login to Registry**:
-     - Uses `docker/login-action@v1` to log into the Docker registry using provided credentials.
-
-  3. **Get SHA Short**:
-     - Extracts the first 8 characters of the Git commit SHA to create a short SHA, stored in the environment variable `SHORT_SHA`.
-
-  4. **Get Branch**:
-     - Extracts the branch name from the Git reference and stores it in the environment variable `BRANCH`.
-
-  5. **Change Vendor Tags**:
-     - Updates the `Dockerfile` to use a specific vendor image tag based on the branch and short SHA.
-
-  6. **Build Vendor Image**:
-     - Builds a vendor Docker image with a unique tag and pushes it to the Docker registry.
-
-  7. **Push Vendor Image**:
-     - Pushes the vendor Docker image to the specified registry with the tag `sha-${{ env.BRANCH }}-${{ env.SHORT_SHA }}-vendor`.
-
-  8. **Build App Image**:
-     - Builds the application Docker image, passing in various build arguments, and tags it with a unique identifier based on the branch and short SHA.
-
-  9. **Push App Image**:
-     - Pushes the application Docker image to the Docker registry with the tag `sha-${{ env.BRANCH }}-${{ env.SHORT_SHA }}`.
-
-This workflow streamlines the Docker image creation and deployment process by automating the build, tagging, and pushing steps for both vendor and application images.
-</details>
-
-<details>
-   <summary>Deployment (Docker Compose of Related Service on IaC Repository)</summary>
-## Deployment
-
-The "Deploy" GitHub Actions workflow automates the deployment of a service to a remote server using SSH and Docker.
-
-### Inputs
-
-- **ENVIRONMENT**: Specifies the deployment environment (e.g., development, production).
-- **SERVICE_NAME**: The name of the service to be deployed.
-
-### Secrets
-
-- **SSH_HOST**, **SSH_USERNAME**, **SSH_KEY**, **SSH_PORT**: Credentials and details required to connect to the remote server via SSH.
-- **DOCKER_USERNAME**, **DOCKER_PASSWORD**: Credentials for logging into the Docker registry.
-
-### Jobs
-
-#### Deployment Job
-
-- **Runs on**: `ubuntu-latest`
-
-- **Steps**:
-
-  1. **Get SHA Short**:
-     - Extracts the first 8 characters of the Git commit SHA to create a short SHA, which is stored in the environment variable `SHORT_SHA`.
-
-  2. **Get Branch**:
-     - Extracts the branch name from the Git reference and stores it in the environment variable `BRANCH`.
-
-  3. **Executing Remote SSH Commands**:
-     - Uses the `appleboy/ssh-action` to connect to the remote server using SSH.
-     - Navigates to the appropriate directory for the specified environment.
-     - Logs into the Docker registry using the provided credentials.
-     - Pulls the latest Docker image for the specified service using a unique commit hash (`COMMIT_HASH`).
-     - Deploys the service using Docker Compose to ensure it is updated with the latest version.
-
-This workflow facilitates seamless deployment by automating the steps necessary to securely connect to a remote server, pull the latest Docker images, and deploy services, ensuring that the application is up-to-date with the latest code changes.
-</details>
+# CI/CD Pipelines
+
+Deployment and PR gating are fully automated via GitHub Actions.
+
+## Flow
+
+```
+push to develop/main
+      │
+      ▼
+main.yml ──► docker-build.yml ──► trigger-coolify.yml ──► deploy.yml
+ (orchestrator)  (build & push image)   (Coolify webhook)   (SSH status check)
+
+pull request to develop/main
+      │
+      ▼
+pr.yml ──► quality / static-security / codeql / integration / build
+ (authoritative PR gate; all jobs are required checks)
+
+weekly (cron Mon 03:00 UTC)
+      │
+      ▼
+security-weekly.yml ──► zap-and-regression + fuzz jobs
+```
+
+## Workflows
+
+### PR gate — `pr.yml` (authoritative, cannot be bypassed with `--no-verify`)
+
+Every pull request to `develop`/`main` runs five independent jobs. **All five
+are configured as required status checks** in branch protection for
+`develop`/`main`, so a PR cannot merge unless every gate is green.
+
+### Fork pull requests
+
+The `integration` job references the `Pull Request Screening` environment to
+receive its CI credentials, and GitHub does **not** expose any secrets
+(repository or environment) to workflows triggered by `pull_request` events
+from forks. The job therefore **skips itself on fork PRs**
+(`github.event.pull_request.head.repo.full_name == github.repository`):
+
+- Same-repo PRs (feature branches pushed to `konsulin-care/konsulin-api`): the
+  full suite runs with the environment secrets resolved.
+- Fork PRs (external contributors): the job shows as skipped instead of
+  failing on missing secrets. The suite still runs for those commits after
+  merge, on `develop`, where the environment is available.
+
+Keep secret-using jobs behind this guard; never switch them to
+`pull_request_target` to "fix" fork coverage — that runs base-branch workflow
+code with fork-influenced inputs and is a known secret-leak vector.
+
+| Job | Checks |
+|---|---|
+| `quality` | gofumpt (changed files), `go mod tidy`, golangci-lint (new issues), `go vet`, `go test`, `go test -race` |
+| `static-security` | govulncheck (blocking), Trivy vuln scan (blocking, HIGH/CRITICAL), Trivy secrets/config (SARIF, non-blocking) |
+| `codeql` | CodeQL Go analysis (SARIF into Code Scanning) |
+| `integration` | disposable Docker env (`ci-env` action) + full Bruno suite (auth, RBAC, ownership-violation). An expected-4xx ownership test that starts returning 2xx fails the PR. **Skipped on fork PRs** (see above). |
+| `build` | vendor + app image build, then a blocking Trivy **image** scan (OS-level CVEs) with SARIF |
+
+### Weekly security — `security-weekly.yml` (scheduled, non-blocking for PRs)
+
+Runs Mondays 03:00 UTC on the default branch (also `workflow_dispatch`):
+
+- **`zap-and-regression` job**: disposable env → full Bruno regression suite →
+  OWASP ZAP active API scan (informational, SARIF) → govulncheck + Trivy
+  freshness scans (SARIF). ZAP *complements* the Bruno authorization tests; it
+  never replaces them.
+- **`fuzz` job**: coverage-guided Go fuzzing over the service-layer parse
+  entry points (FHIR bundle/invoice responses, Xendit callbacks, webhook
+  bodies), 2m budget per package. A crasher fails the run — triage the saved
+  `testdata/fuzz` corpus and fix the bug.
+
+Active DAST and fuzzing stay off the blocking PR path: the PR gate must remain
+fast and deterministic.
+
+### Deployment — `main.yml`, `docker-build.yml`, `trigger-coolify.yml`, `deploy.yml`
+
+- `main.yml` — orchestrator on push to `develop`/`main`: builds, deploys to
+  dev (`develop`) or prod (`main`), then verifies the container is running.
+- `docker-build.yml` — reusable build: vendor image, then app image (dev:
+  `nightly`/`dev-$SHA`; prod: `latest`/git tag), pushes to Docker Hub.
+- `trigger-coolify.yml` — reusable deploy trigger (Coolify restart webhook).
+- `deploy.yml` — reusable SSH container status check.
+
+## Required repository secrets
+
+| Secret | Used by | Scope |
+|---|---|---|
+| `DOCKER_USERNAME`, `DOCKER_PASSWORD` | `docker-build.yml` | repo |
+| `COOLIFY_URL`, `COOLIFY_SERVICE_DEV`, `COOLIFY_SERVICE_PROD`, `COOLIFY_TOKEN` | `main.yml` → `trigger-coolify.yml` | repo |
+| `SSH_HOST`, `SSH_USERNAME`, `SSH_KEY` | `main.yml` → `deploy.yml` | repo |
+| `XENDIT_SANDBOX_API_KEY` | `pr.yml` / `security-weekly.yml` (integration env) | repo |
+| `CI_POSTGRES_PASSWORD` | `ci-env` action → `.env.ci` (postgres + SuperTokens URI) | env `Pull Request Screening` |
+| `CI_REDIS_PASSWORD` | `ci-env` action → `.env.ci` (redis + gateway sessions) | env `Pull Request Screening` |
+| `CI_RABBITMQ_PASSWORD` | `ci-env` action → `.env.ci` (rabbitmq) | env `Pull Request Screening` |
+| `CI_SUPERTOKEN_API_KEY` | `ci-env` action → `.env.ci` (SuperTokens core + SDK) | env `Pull Request Screening` |
+| `CI_SUPERADMIN_API_KEY` | `ci-env` action → `.env.ci` + `docs/api/.env` (Bruno admin) | env `Pull Request Screening` |
+| `CI_XENDIT_CALLBACK_TOKEN` | `ci-env` action → `.env.ci` + `docs/api/.env` (Bruno callbacks) | env `Pull Request Screening` |
+| `CI_JWT_HOOK_KEY` | `ci-env` action → job env (webhook JWT signing) | env `Pull Request Screening` |
+
+Environment secrets live under **Settings → Environments → "Pull Request
+Screening"**; only jobs that declare `environment: "Pull Request Screening"`
+(`integration`, `zap-and-regression`) can read them.
+
+## Tooling decisions and boundaries
+
+- **Semgrep runs via the GitHub App, not CI.** The Semgrep GitHub App posts
+  findings on every open PR through its own check run, so a CI step would be
+  redundant. Configured app behavior lives in the Semgrep dashboard.
+- **DeepSource is retained deliberately.** It previously found issues that
+  DeepScan, Codacy, and SonarCloud all missed; this demonstrated value is the
+  topic-level exception to tool consolidation (config: `.deepsource.toml`).
+  Revisit only if it starts producing duplicate/low-value findings.
+- **CodeRabbit** remains the PR review assistant (`.coderabbit.yaml`), not a
+  blocking gate.
+
+### Pinning policy
+
+Security-relevant tool versions are pinned, not floating:
+
+| Tool | Pin | Kept fresh by |
+|---|---|---|
+| `gofumpt` | `v0.11.0` | dependabot (`go.mod` via `tools/tools.go`) |
+| `govulncheck` | `v1.7.0` | dependabot (`go.mod` via `tools/tools.go`) |
+| `trivy-action` | commit SHA `ed142fd…` `# v0.36.0` | dependabot (github-actions) |
+| `mise-action` | commit SHA `c37c932…` `# v2` | dependabot (github-actions) |
+| `ssh-action` | commit SHA `0ff4204d…` `# v1.2.5` | dependabot (github-actions) |
+| Trivy binary version | `v0.74.0` (action input) | manual |
+| `actionlint` (pre-commit) | `v1.7.12` | dependabot updates the rev via pre-commit autoupdate manually — treat as manual |
+| ZAP image | `ghcr.io/zaproxy/zaproxy:v2.17.0` | manual |
+
+**SHA + tag comment pattern.** `trivy-action` is pinned to a full commit SHA
+with a `# v0.36.0` comment because the March 2026 supply-chain incident
+published a malicious Trivy `v0.69.4` release and re-tagged action refs. The
+SHA makes the pin immutable; the tag comment lets Dependabot (github-actions
+ecosystem) bump it to the next release. Follow this pattern for any action
+that pulls a binary or image.
+
+**Dependabot boundaries.** Dependabot updates: GitHub Actions refs (including
+SHA-pinned-with-comment), Docker images inside `Dockerfile`s, and `go.mod`
+modules. CI tools (`gofumpt`, `govulncheck`) are pinned in `go.mod`
+(`tools/tools.go` + `tool` directives) and invoked via `go tool`, so dependabot
+keeps them fresh as regular modules. Image tags inside `docker run` inputs
+(e.g. the ZAP image) are bumped manually.
+
+## Validation strategy
+
+- `actionlint` (pre-commit hook) validates every workflow on each commit.
+- `act` is a manual smoke test for workflow edits — **not** wired into hooks,
+  because it cannot fully emulate GitHub and would gate pushes on false
+  negatives.
+- The authoritative check is the PR itself: for `pull_request` events GitHub
+  executes the head-branch version of the workflow.

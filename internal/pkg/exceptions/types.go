@@ -36,9 +36,6 @@ var (
 	ErrServerDeadlineExceeded = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusGatewayTimeout, constvars.ErrClientServerLongRespond, constvars.ErrDevServerDeadlineExceeded)
 	}
-	ErrMissingSessionData = func(err error) *CustomError {
-		return BuildNewCustomError(err, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, constvars.ErrDevAuthSessionDataIsMissing)
-	}
 	ErrMissingRequestID = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusForbidden, constvars.ErrClientNotAuthorized, constvars.ErrDevAuthRequestIDIsMissing)
 	}
@@ -77,9 +74,6 @@ var (
 	}
 	ErrTokenGenerate = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevAuthGenerateToken)
-	}
-	ErrTokenInvalidOrExpired = func(err error) *CustomError {
-		return BuildNewCustomError(err, constvars.StatusUnauthorized, constvars.ErrClientNotLoggedIn, constvars.ErrDevAuthTokenInvalidOrExpired)
 	}
 	ErrTokenResetPasswordExpired = func(err error) *CustomError {
 		return BuildNewCustomError(err, constvars.StatusGone, constvars.ErrClientResetPasswordTokenExpired, constvars.ErrDevAuthTokenExpired)
@@ -187,7 +181,7 @@ var (
 
 	// RabbitMQ
 	ErrRabbitMQPublishMessage = func(err error, queueName string) *CustomError {
-		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, constvars.ErrDevRedisSMembers)
+		return BuildNewCustomError(err, constvars.StatusInternalServerError, constvars.ErrClientSomethingWrongWithApplication, fmt.Sprintf(constvars.ErrDevRabbitMQPublishMessage, queueName))
 	}
 
 	// HTTP

@@ -1,15 +1,15 @@
 package logger
 
 import (
+	"fmt"
 	"konsulin-service/internal/app/config"
-	"log"
 	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
-func NewZapLogger(driverConfig *config.DriverConfig, internalConfig *config.InternalConfig) *zap.Logger {
+func NewZapLogger(driverConfig *config.DriverConfig, internalConfig *config.InternalConfig) (*zap.Logger, error) {
 	var logLevel zapcore.Level
 	switch driverConfig.Logger.Level {
 	case "debug":
@@ -54,9 +54,9 @@ func NewZapLogger(driverConfig *config.DriverConfig, internalConfig *config.Inte
 
 	zapLogger, err := cfg.Build()
 	if err != nil {
-		log.Fatalf("Error while initializing zap logger: %v", err)
+		return nil, fmt.Errorf("error while initializing zap logger: %w", err)
 	}
-	return zapLogger
+	return zapLogger, nil
 }
 
 func customTimeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {

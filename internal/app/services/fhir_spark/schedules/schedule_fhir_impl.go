@@ -3,13 +3,12 @@ package schedules
 import (
 	"context"
 	"fmt"
-	"sync"
-
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/services/fhir_spark/base"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/fhir_http_client"
+	"sync"
 
 	"go.uber.org/zap"
 )
@@ -38,13 +37,17 @@ func (c *scheduleFhirClient) CreateSchedule(ctx context.Context, request *fhir_d
 }
 
 func (c *scheduleFhirClient) FindScheduleByPractitionerID(ctx context.Context, practitionerID string) ([]fhir_dto.Schedule, error) {
-	url := fmt.Sprintf("%s?actor=Practitioner/%s", c.BaseUrl, practitionerID)
-	return fhir_http_client.SearchResources[fhir_dto.Schedule](ctx, c.Log, c.Client, url,
-		constvars.ResourceSchedule)
+	return c.searchByQuery(ctx, fmt.Sprintf("?actor=Practitioner/%s", practitionerID))
 }
 
 func (c *scheduleFhirClient) FindScheduleByPractitionerRoleID(ctx context.Context, practitionerRoleID string) ([]fhir_dto.Schedule, error) {
-	url := fmt.Sprintf("%s?actor=PractitionerRole/%s", c.BaseUrl, practitionerRoleID)
+	return c.searchByQuery(ctx, fmt.Sprintf("?actor=PractitionerRole/%s", practitionerRoleID))
+}
+
+// searchByQuery executes a Schedule search against c.BaseUrl plus the query
+// suffix.
+func (c *scheduleFhirClient) searchByQuery(ctx context.Context, query string) ([]fhir_dto.Schedule, error) {
+	url := fmt.Sprintf("%s%s", c.BaseUrl, query)
 	return fhir_http_client.SearchResources[fhir_dto.Schedule](ctx, c.Log, c.Client, url,
 		constvars.ResourceSchedule)
 }

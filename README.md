@@ -22,7 +22,7 @@ The backend aims for a **Clean Architecture** pattern with **API Gateway** desig
 - **FHIR Integration**: Blaze FHIR server for healthcare data storage (FHIR R4 compliant)
 - **Authentication**: SuperTokens with magic link authentication
 - **Authorization**: Role-based access control (RBAC) using Casbin
-- **Payment Processing**: OY! Indonesia payment gateway integration
+- **Payment Processing**: Xendit payment gateway integration
 - **Session Management**: Redis-based session storage
 
 ## Features
@@ -54,7 +54,7 @@ The backend aims for a **Clean Architecture** pattern with **API Gateway** desig
 - **API Keys**: Custom implementation for superadmin access
 
 ### External Integrations
-- **Payment Gateway**: OY! Indonesia
+- **Payment Gateway**: Xendit
 - **Messaging**: RabbitMQ (email, WhatsApp notifications)
 
 ## Prerequisites
@@ -101,12 +101,23 @@ Create a `.env` file in the root directory using `.env.example` as a template:
 cp .env.example .env
 ```
 
+`.env` is the **single source of truth**: it feeds both the API Gateway (loaded at startup via `godotenv`) and `docker compose` (via variable interpolation with sane fallbacks).
+
+`.env.example` documents every variable in four sections:
+
+1. **MINIMUM — copy & run** — the only values needed for local development. The Redis/RabbitMQ credentials are pre-filled to match `docker-compose.yml`; generate your own `APP_JWT_SECRET` and `SUPERADMIN_API_KEY`.
+2. **REQUIRED IN NON-LOCAL** — enforced at boot by `validateNonDevConfig`/`validateNonDevDriverConfig`. Missing any of these outside `local`/`dev`/`test` environments stops the server.
+3. **FUNCTIONALLY REQUIRED** — not boot-validated, but payment callbacks, the webhook service, and dashboard provisioning break without them.
+4. **OPTIONAL** — commented out, each with its baked-in default; uncomment to override.
+
+`APP_ENV` in the MINIMUM section selects the environment. Set it to something other than `local`/`dev`/`development`/`test` and the Section 2 variables (plus the REDIS/RabbitMQ credentials) become mandatory at startup.
+
 **Ask fellow Engineers for .env credentials**
 
 ### 6. Start Development Services
 Start the required services (PostgreSQL for SuperTokens, Redis, Blaze FHIR server, SuperTokens):
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 This will start:
@@ -132,7 +143,7 @@ Client Request → API Gateway → Authentication → Authorization → Service 
 ### Route Patterns
 - `/auth/*` - Authentication and user management (SuperTokens)
 - `/fhir/*` - FHIR resources (proxied to Blaze server with RBAC filtering)
-- `/pay/*` - Payment processing (OY! Indonesia integration)
+- `/pay/*` - Payment processing (Xendit integration)
 - `/hook/*` - Webhook handling (internal and external)
 
 ### Authentication & Authorization
@@ -149,7 +160,7 @@ For detailed role permissions, see [`resources/rbac_policy.csv`](resources/rbac_
 
 ## Payment Services
 
-The platform supports service-based pricing through OY! Indonesia payment gateway:
+The platform supports service-based pricing through the Xendit payment gateway:
 
 ### Available Services
 - `analyze`: Patient data analysis (min quantity: 10)
@@ -169,7 +180,7 @@ The platform supports service-based pricing through OY! Indonesia payment gatewa
 {
   "total_item": 3,
   "service": "analyze",
-  "body": { 
+  "body": {
     "email": "user@email.com",
     "additional_data": "..."
   }

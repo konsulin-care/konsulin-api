@@ -1,0 +1,28 @@
+info:
+  name: Send Magic Link
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{process.env.APP_BASE_URL}}/api/v1/auth/magiclink"
+  headers:
+    - name: content-type
+      value: application/json
+    - name: X-API-Key
+      value: "{{process.env.SUPERADMIN_API_KEY}}"
+  body:
+    type: json
+    data: "{}"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: bru.runner.setNextRequest("Check Email Exists");
+  assertions: []
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

@@ -12,6 +12,17 @@ import (
 
 const HeaderAPIKey = "x-api-key"
 
+// rejectAPIKey logs a warning with request metadata and writes an error
+// response for a bad API key.
+func (m *Middlewares) rejectAPIKey(r *http.Request, w http.ResponseWriter, message string, err error) {
+	m.Log.Warn(message,
+		zap.String("ip", r.RemoteAddr),
+		zap.String("endpoint", r.URL.Path),
+		zap.String("method", r.Method),
+		zap.String("user_agent", r.UserAgent()))
+	utils.BuildErrorResponse(m.Log, w, err)
+}
+
 // ContextAPIKeyAuth is the context key for API key auth status.
 const ContextAPIKeyAuth = constvars.CONTEXT_API_KEY_AUTH
 
@@ -51,22 +62,12 @@ func (m *Middlewares) RequireSuperadminAPIKey(next http.Handler) http.Handler {
 		apiKey := r.Header.Get(HeaderAPIKey)
 
 		if apiKey == "" {
-			m.Log.Warn("Superadmin API key required but not provided",
-				zap.String("ip", r.RemoteAddr),
-				zap.String("endpoint", r.URL.Path),
-				zap.String("method", r.Method),
-				zap.String("user_agent", r.UserAgent()))
-			utils.BuildErrorResponse(m.Log, w, exceptions.ErrAPIKeyRequired(nil))
+			m.rejectAPIKey(r, w, "Superadmin API key required but not provided", exceptions.ErrAPIKeyRequired(nil))
 			return
 		}
 
 		if apiKey != m.InternalConfig.App.SuperadminAPIKey {
-			m.Log.Warn("Invalid superadmin API key provided",
-				zap.String("ip", r.RemoteAddr),
-				zap.String("endpoint", r.URL.Path),
-				zap.String("method", r.Method),
-				zap.String("user_agent", r.UserAgent()))
-			utils.BuildErrorResponse(m.Log, w, exceptions.ErrInvalidAPIKey(nil))
+			m.rejectAPIKey(r, w, "Invalid superadmin API key provided", exceptions.ErrInvalidAPIKey(nil))
 			return
 		}
 

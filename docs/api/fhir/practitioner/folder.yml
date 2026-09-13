@@ -1,0 +1,12 @@
+info:
+  name: practitioner
+  type: folder
+  seq: 3
+
+request: {}
+
+docs: |
+  Practitioner journey: same session as the patient journey but with
+  `activeRole=Practitioner` (pre-request role switch). Covers the practitioner
+  profile, roles, schedule, slots (busy views), sessions, availability updates
+  and SOAP note creation for the patient booked in the patient journey.

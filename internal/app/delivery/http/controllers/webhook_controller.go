@@ -3,19 +3,19 @@ package controllers
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
+	"net/http"
+	"regexp"
+	"strings"
+	"sync"
+	"time"
+
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/services/core/webhook"
 	"konsulin-service/internal/app/services/shared/ratelimiter"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
-	"net/http"
-	"regexp"
-	"strings"
-	"sync"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
@@ -107,19 +107,12 @@ func (ctrl *WebhookController) HandleSynchronousWebHook(w http.ResponseWriter, r
 			WindowDurationSec: limiterCfg.SynchronousServiceWindowSeconds,
 			MaxQuota:          limiterCfg.SynchronousServiceRateLimit,
 		})
-
 		if err != nil {
 			utils.BuildErrorResponse(ctrl.Log, w, err)
 			return
 		}
 
-		if err == nil && eval != nil && !eval.Allowed {
-			retryAfter := eval.RetryAfterSecs
-			if retryAfter < 0 {
-				retryAfter = 0
-			}
-			w.Header().Set(constvars.HeaderRetryAfter, fmt.Sprintf("%d", retryAfter))
-			utils.BuildErrorResponse(ctrl.Log, w, exceptions.BuildNewCustomError(nil, constvars.StatusTooManyRequests, "Too many requests", "WEBHOOK_SYNC_RATE_LIMITED"))
+		if eval != nil && rejectRateLimited(ctrl.Log, w, eval.Allowed, eval.RetryAfterSecs, "WEBHOOK_SYNC_RATE_LIMITED") {
 			return
 		}
 	}
@@ -178,13 +171,7 @@ func (ctrl *WebhookController) HandleEnqueueWebHook(w http.ResponseWriter, r *ht
 		utils.BuildErrorResponse(ctrl.Log, w, evalErr)
 		return
 	}
-	if !eval.Allowed {
-		retryAfter := eval.RetryAfterSecs
-		if retryAfter < 0 {
-			retryAfter = 0
-		}
-		w.Header().Set(constvars.HeaderRetryAfter, fmt.Sprintf("%d", retryAfter))
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.BuildNewCustomError(nil, constvars.StatusTooManyRequests, "Too many requests", "WEBHOOK_RATE_LIMITED"))
+	if rejectRateLimited(ctrl.Log, w, eval.Allowed, eval.RetryAfterSecs, "WEBHOOK_RATE_LIMITED") {
 		return
 	}
 
@@ -225,6 +212,11 @@ func extractServiceName(path string) (string, error) {
 func validateJSONBody(raw []byte) error {
 	var tmp map[string]interface{}
 	if err := json.Unmarshal(raw, &tmp); err != nil {
+		// Valid JSON that isn't an object (number, string, bool, array)
+		// is accepted and forwarded as-is, consistent with parseJSONBodyFields.
+		if json.Valid(raw) {
+			return nil
+		}
 		return exceptions.ErrCannotParseJSON(err)
 	}
 	return nil

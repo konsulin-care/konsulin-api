@@ -1,0 +1,73 @@
+opencollection: 1.0.0
+
+info:
+  name: Konsulin API
+config:
+  proxy:
+    inherit: true
+    config:
+      protocol: http
+      hostname: ""
+      port: ""
+      auth:
+        username: ""
+        password: ""
+      bypassProxy: ""
+
+request:
+  headers:
+    - name: Content-Type
+      value: application/json
+  variables:
+    - name: preAuthSessionId
+      value: ""
+    - name: linkCode
+      value: ""
+    - name: messageId
+      value: ""
+    - name: sessionToken
+      value: ""
+    - name: activeRole
+      value: "Patient"
+    - name: userId
+      value: ""
+    - name: patientId
+      value: ""
+    - name: practitionerId
+      value: ""
+    - name: organizationId
+      value: ""
+    - name: locationId
+      value: ""
+    - name: healthcareServiceId
+      value: ""
+    - name: practitionerRoleId
+      value: ""
+    - name: scheduleId
+      value: ""
+    - name: slotId
+      value: ""
+    - name: appointmentId
+      value: ""
+    - name: questionnaireId
+      value: ""
+    - name: questionnaireResponseId
+      value: ""
+    - name: journalId
+      value: ""
+    - name: planDefinitionId
+      value: ""
+    - name: researchStudyId
+      value: ""
+    - name: draftQuestionnaireId
+      value: ""
+    - name: consentId
+      value: ""
+    - name: researchSubjectId
+      value: ""
+    - name: soapQuestionnaireResponseId
+      value: ""
+    - name: blazeBaseUrl
+      value: "http://localhost:8080"
+bundled: false
+extensions: {}

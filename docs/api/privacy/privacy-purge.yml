@@ -1,0 +1,72 @@
+info:
+  name: "Purge Data"
+  type: http
+  seq: 1
+  tags: []
+
+http:
+  method: DELETE
+  url: "{{process.env.APP_BASE_URL}}/api/v1/privacy/purge"
+  headers:
+    - name: content-type
+      value: application/json
+  body:
+    type: json
+    data: "{}"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: bru.runner.setNextRequest(null);
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+examples: []
+
+docs: |
+  ## Purge Data (erasure)
+
+  Erases the session patient's actively-owned FHIR data and, on success, deletes
+  the associated SuperTokens account (sessions revoked). Passively owned and
+  shared resources are kept and reference the retained Patient shell. Only the
+  caller's own identity is ever purged; a second call is a no-op success.
+
+  **Auth:** requires a Patient SuperTokens session (guest/practitioner → 403).
+
+  ### Flow
+  1. Resolve the session's FHIR Patient id (same resolution as the Auth middleware).
+  2. Registry enumeration: for each rule in `constvars.PurgeRules`
+     (QuestionnaireResponse author, Communication sender, Consent patient,
+     ResearchSubject patient, Observation subject, Condition subject,
+     Appointment actor) search `GET /fhir/{Type}?{param}=Patient/{id}`
+     (paginated), keeping each candidate's full body.
+  3. Safety partition: a candidate is deleted only if its body carries no
+     `Patient/{x}` (x ≠ patient) or `Practitioner/{x}` reference — shared
+     resources (referral recipients, practitioner-authored observations) are
+     kept.
+  4. Delete the deletable set via chunked `type: batch` DELETE bundles.
+  5. Strip the Patient resource to a shell carrying only `resourceType`, `id`,
+     `meta`, and `active:false` (a missing patient is a no-op).
+  6. Symmetric verification: re-run the registry enumeration; any remaining
+     actively-owned resource aborts the purge (fail-closed).
+  7. Delete the SuperTokens account — only after all of the above succeeded.
+
+  ResearchStudy, PlanDefinition, Questionnaire, and other shared types are never
+  touched (absent from the registry, no `$everything`).
+
+  ### Success (200)
+  ```json
+  { "code": 200, "message": "data purged successfully" }
+  ```
+
+  ### Errors
+  - 401/403 — no valid Patient session or identity unresolvable.
+  - 500 — FHIR purge or account deletion failed.

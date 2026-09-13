@@ -6,24 +6,22 @@ ARG TAG
 ARG BUILD_TIME
 ARG RUN_NUMBER
 
-FROM uzie17/debian:stable-Jakarta AS base
+FROM alpine:3.23 AS base
 LABEL maintainer="Muhammad Febrian Ardiansyah <mfardiansyah.id@gmail.com>"
 WORKDIR /app
 
 ARG TZ_ARG
 
-# CERT PACKAGES
-RUN apt-get update
-RUN apt-get install -y ca-certificates
-
-RUN apt-get update && \
-    apt-get install -yq tzdata && \
+RUN apk add --no-cache ca-certificates tzdata && \
+    apk upgrade --no-cache && \
     ln -fs /usr/share/zoneinfo/Asia/Jakarta /etc/localtime && \
-    dpkg-reconfigure -f noninteractive tzdata
+    echo "Asia/Jakarta" > /etc/timezone
 ENV TZ=$TZ_ARG
 
+RUN adduser -D -u 1000 app
+
 #FROM repository.konsulin.care/repository/private/be-konsulin:latest as gobuild
-FROM konsulin/rest-backend-vendor:develop AS gobuild
+FROM konsulin/konsulin-api-vendor:pr-ci AS gobuild
 LABEL stage=gobuild
 
 # captures argument
@@ -34,6 +32,7 @@ ARG BUILD_TIME
 ARG TAG
 ARG TZ_ARG
 ARG AUTHOR
+ARG RUN_NUMBER
 
 ENV CGO_ENABLED=0
 ENV GOOS=linux
@@ -49,27 +48,34 @@ RUN echo "Set ARG value of [TAG] as $TAG"
 ARG RELEASE_NOTE="author=$AUTHOR \nversion=$VERSION \ncommit=${GIT_COMMIT} \ntag=$TAG \nbuild time=$BUILD_TIME \nrun number=$RUN_NUMBER"
 RUN echo "${RELEASE_NOTE}" > /go/src/github.com/konsulin-id/be-konsulin/RELEASE
 
-ADD . ./
-ADD go.mod go.sum ./
-ADD cmd ./cmd
-ADD cmd/http ./cmd/http
-#ADD cmd/example ./cmd/example
-ADD internal ./internal
-ADD pkg ./pkg
+COPY . ./
+COPY go.mod go.sum ./
+COPY cmd ./cmd
+COPY cmd/http ./cmd/http
+#COPY cmd/example ./cmd/example
+COPY internal ./internal
+COPY pkg ./pkg
 
 # updates vendor
 RUN go mod tidy && go mod vendor
 
 # builds
 RUN go build -o api-service \
-    -ldflags "-X main.Version=$VERSION -X main.Tag=$TAG" \
+    -ldflags "-X konsulin-service/internal/pkg/buildinfo.Version=$VERSION \
+        -X konsulin-service/internal/pkg/buildinfo.Tag=$TAG \
+        -X konsulin-service/internal/pkg/buildinfo.CommitHash=$GIT_COMMIT" \
     /go/src/github.com/konsulin-id/be-konsulin/cmd/http
 #    /go/src/github.com/konsulin-id/be-konsulin/cmd/example
+
+# Remove secrets that leaked via earlier COPY steps
+RUN rm -f .env
 
 FROM base AS release
 
 COPY --from=gobuild /go/src/github.com/konsulin-id/be-konsulin/ .
 # COPY --from=gobuild /go/src/github.com/konsulin-id/be-konsulin/api-service .
 # COPY --from=gobuild /go/src/github.com/konsulin-id/be-konsulin/RELEASE ./RELEASE
+
+USER app
 
 ENTRYPOINT ["./api-service"]

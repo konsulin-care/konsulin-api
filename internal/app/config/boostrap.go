@@ -2,11 +2,12 @@ package config
 
 import (
 	"context"
+	"log"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/rabbitmq/amqp091-go"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
-	"log"
 )
 
 type Bootstrap struct {
@@ -17,19 +18,13 @@ type Bootstrap struct {
 	InternalConfig *InternalConfig
 	DriverConfig   *DriverConfig
 	// WorkerStop if set will be called during Shutdown to gracefully stop background workers
-	WorkerStop     func()
-	SlotWorkerStop func()
+	WorkerStop func()
 }
 
-func (b *Bootstrap) Shutdown(ctx context.Context) error {
+func (b *Bootstrap) Shutdown(_ context.Context) error {
 	if b.WorkerStop != nil {
 		b.WorkerStop()
 		log.Println("Successfully stopped background workers")
-	}
-
-	if b.SlotWorkerStop != nil {
-		b.SlotWorkerStop()
-		log.Println("Successfully stopped slot worker")
 	}
 
 	err := b.Redis.Close()

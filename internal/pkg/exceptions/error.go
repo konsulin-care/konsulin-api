@@ -83,7 +83,8 @@ func getLocations(skip int) []Location {
 		locations = append(locations, Location{
 			File:         constvars.ResponseUnknown,
 			Line:         0,
-			FunctionName: constvars.ResponseUnknown},
+			FunctionName: constvars.ResponseUnknown,
+		},
 		)
 		return locations
 	}

@@ -29,7 +29,8 @@ services:
       - "6379:6379"
     environment:
       ALLOW_EMPTY_PASSWORD: "no"
-      REDIS_PASSWORD: redispass
+      # Sourced from .env (single source of truth); falls back to redispass
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redispass}
     command: ["/opt/bitnami/scripts/redis/run.sh"]
     volumes:
       - redis_data:/bitnami/redis/data
@@ -42,8 +43,9 @@ services:
       - "5672:5672"
       - "15672:15672"
     environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: password
+      # Sourced from .env (single source of truth); fall back to guest/password
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-password}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
 

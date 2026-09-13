@@ -1,0 +1,45 @@
+info:
+  name: View Healthcare Service Provided by a Practitioner in a Clinic
+  type: http
+  seq: 4
+  tags: [clinic]
+
+http:
+  method: GET
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  url: "{{process.env.APP_BASE_URL}}/fhir/PractitionerRole?active=true&_id={{practitionerRoleId}}&_include=PractitionerRole:organization&_include=PractitionerRole:location&_include=PractitionerRole:practitioner&_include=PractitionerRole:service&_revinclude=Schedule:actor"
+  params:
+    - name: active
+      value: "true"
+      type: query
+    - name: _id
+      value: "{{practitionerRoleId}}"
+      type: query
+    - name: _include
+      value: PractitionerRole:organization
+      type: query
+    - name: _include
+      value: PractitionerRole:location
+      type: query
+    - name: _include
+      value: PractitionerRole:practitioner
+      type: query
+    - name: _include
+      value: PractitionerRole:service
+      type: query
+    - name: _revinclude
+      value: Schedule:actor
+      type: query
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Full practitioner detail: the PractitionerRole selected in the previous step
+  with organization, location, practitioner and service includes plus the
+  reverse-included Schedule. Terminal request of the reference chain.

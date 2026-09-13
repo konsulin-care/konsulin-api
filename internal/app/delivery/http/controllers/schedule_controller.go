@@ -3,14 +3,13 @@ package controllers
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"time"
-
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/utils"
+	"net/http"
+	"time"
 
 	"go.uber.org/zap"
 )

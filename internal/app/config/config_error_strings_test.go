@@ -36,33 +36,12 @@ func TestValidateNonDevConfig_errorStringsAreLowercase(t *testing.T) {
 			},
 		},
 		{
-			name: "production missing payment gateway creds",
+			name: "production missing APP_XENDIT_API_KEY",
 			cfg: &InternalConfig{
 				App:     App{Env: "production"},
 				JWT:     AppJWT{Secret: "set"},
 				Webhook: AppWebhook{JWTHookKey: "set"},
-				// PaymentGateway.Username and ApiKey are zero value -> triggers error
-			},
-		},
-		{
-			name: "production missing APP_XENDIT_API_KEY",
-			cfg: &InternalConfig{
-				App:            App{Env: "production"},
-				JWT:            AppJWT{Secret: "set"},
-				Webhook:        AppWebhook{JWTHookKey: "set"},
-				PaymentGateway: AppPaymentGateway{Username: "u", ApiKey: "k"},
 				// Xendit.APIKey is zero value -> triggers error
-			},
-		},
-		{
-			name: "production missing APP_PAYMENT_GATEWAY_BASE_URL",
-			cfg: &InternalConfig{
-				App:            App{Env: "production"},
-				JWT:            AppJWT{Secret: "set"},
-				Webhook:        AppWebhook{JWTHookKey: "set"},
-				PaymentGateway: AppPaymentGateway{Username: "u", ApiKey: "k"},
-				Xendit:         AppXendit{APIKey: "set"},
-				// PaymentGateway.BaseUrl is zero value -> triggers error
 			},
 		},
 	}

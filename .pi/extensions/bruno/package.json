@@ -1,0 +1,17 @@
+{
+  "name": "bruno-api-guardrail",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "test:watch": "node --experimental-strip-types --test --watch test/*.test.ts"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "yaml": "^2.7.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.1"
+  }
+}

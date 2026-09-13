@@ -2,13 +2,12 @@ package observations
 
 import (
 	"context"
-	"sync"
-
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/services/fhir_spark/base"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/fhir_http_client"
+	"sync"
 
 	"go.uber.org/zap"
 )
@@ -47,16 +46,18 @@ func (c *observationFhirClient) DeleteObservationByID(ctx context.Context, obser
 }
 
 func (c *observationFhirClient) UpdateObservation(ctx context.Context, request *fhir_dto.Observation) (*fhir_dto.Observation, error) {
-	return fhir_http_client.WriteResource(fhir_http_client.WriteResourceInput[fhir_dto.Observation]{
-		Ctx: ctx, Log: c.Log, Client: c.Client, Method: constvars.MethodPut,
-		BaseUrl: c.BaseUrl, ID: request.ID, Resource: request,
-		ResourceName: constvars.ResourceObservation, IDLogKey: constvars.LoggingObservationIDKey,
-	})
+	return c.writeObservation(ctx, constvars.MethodPut, request)
 }
 
 func (c *observationFhirClient) PatchObservation(ctx context.Context, request *fhir_dto.Observation) (*fhir_dto.Observation, error) {
+	return c.writeObservation(ctx, constvars.MethodPatch, request)
+}
+
+// writeObservation writes the observation resource via WriteResource with the
+// given HTTP method.
+func (c *observationFhirClient) writeObservation(ctx context.Context, method string, request *fhir_dto.Observation) (*fhir_dto.Observation, error) {
 	return fhir_http_client.WriteResource(fhir_http_client.WriteResourceInput[fhir_dto.Observation]{
-		Ctx: ctx, Log: c.Log, Client: c.Client, Method: constvars.MethodPatch,
+		Ctx: ctx, Log: c.Log, Client: c.Client, Method: method,
 		BaseUrl: c.BaseUrl, ID: request.ID, Resource: request,
 		ResourceName: constvars.ResourceObservation, IDLogKey: constvars.LoggingObservationIDKey,
 	})

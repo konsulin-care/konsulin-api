@@ -25,6 +25,8 @@ const (
 	ResourceQuestionnaire            = "Questionnaire"
 	ResourceQuestionnaireResponse    = "QuestionnaireResponse"
 	ResourceResearchStudy            = "ResearchStudy"
+	ResourceResearchSubject          = "ResearchSubject"
+	ResourceConsent                  = "Consent"
 	ResourceDevice                   = "Device"
 	ResourceLocation                 = "Location"
 	ResourceHealthcareService        = "HealthcareService"
@@ -34,6 +36,8 @@ const (
 	ResourcePaymentNotice            = "PaymentNotice"
 	ResourceMedicationRequest        = "MedicationRequest"
 	ResourceMedicationAdministration = "MedicationAdministration"
+	ResourceCommunication            = "Communication"
+	ResourcePlanDefinition           = "PlanDefinition"
 )
 
 const (
@@ -113,4 +117,17 @@ const (
 const (
 	FhirSupertokenSystemIdentifier      = "https://login.konsulin.care/userid"
 	KonsulinOmnichannelSystemIdentifier = "https://login.konsulin.care/chatwoot-id"
+)
+
+// PractitionerRole coding constants from the FHIR R4 practitioner-role value set:
+// https://hl7.org/fhir/R4/valueset-practitioner-role.html
+const (
+	FhirPractitionerRoleCodeResearcher          = "researcher"
+	FhirPractitionerRoleCodeAdministrativeStaff = "224608005"
+
+	FhirPractitionerRoleSystemHL7    = "http://terminology.hl7.org/CodeSystem/practitioner-role"
+	FhirPractitionerRoleSystemSnomed = "http://snomed.info/sct"
+
+	FhirPractitionerRoleDisplayResearcher          = "Researcher"
+	FhirPractitionerRoleDisplayAdministrativeStaff = "Administrative healthcare staff"
 )

@@ -56,9 +56,7 @@ func (c *practitionerRoleFhirClient) DeletePractitionerRoleByID(ctx context.Cont
 }
 
 func (c *practitionerRoleFhirClient) FindPractitionerRoleByOrganizationID(ctx context.Context, organizationID string) ([]fhir_dto.PractitionerRole, error) {
-	url := fmt.Sprintf("%s/?organization=Organization/%s", c.BaseUrl, organizationID)
-	return fhir_http_client.SearchResources[fhir_dto.PractitionerRole](ctx, c.Log, c.Client, url,
-		constvars.ResourcePractitionerRole)
+	return c.searchBySuffix(ctx, fmt.Sprintf("/?organization=Organization/%s", organizationID))
 }
 
 func (c *practitionerRoleFhirClient) FindPractitionerRoleByCustomRequest(ctx context.Context, request *requests.FindAllCliniciansByClinicID) ([]fhir_dto.PractitionerRole, error) {
@@ -76,7 +74,13 @@ func (c *practitionerRoleFhirClient) FindPractitionerRoleByCustomRequest(ctx con
 }
 
 func (c *practitionerRoleFhirClient) FindPractitionerRoleByPractitionerID(ctx context.Context, practitionerID string) ([]fhir_dto.PractitionerRole, error) {
-	url := fmt.Sprintf("%s?practitioner=Practitioner/%s", c.BaseUrl, practitionerID)
+	return c.searchBySuffix(ctx, fmt.Sprintf("?practitioner=Practitioner/%s", practitionerID))
+}
+
+// searchBySuffix executes a PractitionerRole search against c.BaseUrl plus the
+// given URL suffix.
+func (c *practitionerRoleFhirClient) searchBySuffix(ctx context.Context, suffix string) ([]fhir_dto.PractitionerRole, error) {
+	url := fmt.Sprintf("%s%s", c.BaseUrl, suffix)
 	return fhir_http_client.SearchResources[fhir_dto.PractitionerRole](ctx, c.Log, c.Client, url,
 		constvars.ResourcePractitionerRole)
 }

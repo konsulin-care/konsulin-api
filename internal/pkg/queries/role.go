@@ -8,7 +8,7 @@ const (
 	`
 
 	GetAllRolesWithPermissions = `
-		SELECT 
+		SELECT
 			r.id AS role_id,
 			r.name AS role_name,
 			COALESCE(json_agg(
@@ -25,7 +25,7 @@ const (
 	`
 
 	GetRoleWithPermissionsByID = `
-		SELECT 
+		SELECT
 			r.id AS role_id,
 			r.name AS role_name,
 			json_agg(
@@ -41,7 +41,7 @@ const (
 	`
 
 	GetRoleWithPermissionsByName = `
-		SELECT 
+		SELECT
 			r.id AS role_id,
 			r.name AS role_name,
 			json_agg(

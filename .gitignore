@@ -1,5 +1,12 @@
 supertokens_db_cleaning.sh
 .env
+.env.ci
+
+# Bruno CLI run artifacts (scripts/bru-run.sh writes these on every run)
+docs/api/.env
+docs/api/bru-report.json
+docs/api/bru-report.xml
+docs/api/report.json
 
 *.log
 
@@ -27,3 +34,7 @@ deployments/.vault
 dbconfig.yml
 
 .pre-commit-config.yaml.bak
+
+__pycache__/
+*.pyc
+.pytest_cache/

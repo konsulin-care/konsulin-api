@@ -7,6 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
+	"mime/multipart"
+	"net/http"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/services/shared/jwtmanager"
@@ -14,18 +22,10 @@ import (
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
-	"mime"
-	"mime/multipart"
-	"net/http"
-	"strconv"
-	"strings"
-	"time"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
-
-	"slices"
 
 	"go.uber.org/zap"
 )
@@ -40,6 +40,10 @@ type Usecase interface {
 	GetAsyncServiceResult(ctx context.Context, id string) (*GetAsyncServiceResultOutput, error)
 	// HandleSynchronousWebhookService forwards synchronous webhook services with RBAC and validation.
 	HandleSynchronousWebhookService(ctx context.Context, in *HandleSynchronousWebhookServiceInput) (*HandleSynchronousWebhookServiceOutput, error)
+	// ForwardSynchronousInternal forwards a synchronous webhook request to the external service,
+	// skipping authentication, authorization, and rate limiting.
+	// Intended for in-process callers that are already trusted.
+	ForwardSynchronousInternal(ctx context.Context, service, method string, body []byte, contentType string) (*HandleSynchronousWebhookServiceOutput, error)
 }
 
 type usecase struct {
@@ -49,7 +53,6 @@ type usecase struct {
 	jwtManager         *jwtmanager.JWTManager
 	patientFhir        contracts.PatientFhirClient
 	practitionerFhir   contracts.PractitionerFhirClient
-	personFhir         contracts.PersonFhirClient
 	serviceRequestFhir contracts.ServiceRequestFhirClient
 	enforcer           *casbin.Enforcer
 	syncServiceSet     map[string]struct{}
@@ -57,23 +60,35 @@ type usecase struct {
 	failurePolicy      SyncFailurePolicy
 }
 
+// Options configures the webhook usecase dependencies.
+type Options struct {
+	Log                *zap.Logger
+	Config             *config.InternalConfig
+	Queue              *webhookqueue.Service
+	JWTManager         *jwtmanager.JWTManager
+	PatientFhir        contracts.PatientFhirClient
+	PractitionerFhir   contracts.PractitionerFhirClient
+	ServiceRequestFhir contracts.ServiceRequestFhirClient
+	Enforcer           *casbin.Enforcer
+}
+
 // NewUsecase creates a new webhook usecase instance.
-func NewUsecase(log *zap.Logger, cfg *config.InternalConfig, queue *webhookqueue.Service, jwtMgr *jwtmanager.JWTManager, patient contracts.PatientFhirClient, practitioner contracts.PractitionerFhirClient, person contracts.PersonFhirClient, sr contracts.ServiceRequestFhirClient, enforcer *casbin.Enforcer) Usecase {
+func NewUsecase(opts Options) Usecase {
 	syncSet := make(map[string]struct{})
-	for _, s := range cfg.Webhook.SynchronousServiceNames {
+	for _, s := range opts.Config.Webhook.SynchronousServiceNames {
 		name := strings.ToLower(strings.TrimSpace(s))
 		if name != "" {
 			syncSet[name] = struct{}{}
 		}
 	}
 
-	timeout := time.Duration(cfg.Webhook.HTTPTimeoutInSeconds) * time.Second
+	timeout := time.Duration(opts.Config.Webhook.HTTPTimeoutInSeconds) * time.Second
 	if timeout <= 0 {
 		timeout = 10 * time.Second
 	}
 
 	policy := SyncFailurePolicyReturnError
-	switch strings.ToLower(strings.TrimSpace(cfg.Webhook.SynchronousServiceFailurePolicy)) {
+	switch strings.ToLower(strings.TrimSpace(opts.Config.Webhook.SynchronousServiceFailurePolicy)) {
 	case string(SyncFailurePolicyEnqueueRequest):
 		policy = SyncFailurePolicyEnqueueRequest
 	default:
@@ -81,15 +96,14 @@ func NewUsecase(log *zap.Logger, cfg *config.InternalConfig, queue *webhookqueue
 	}
 
 	return &usecase{
-		log:                log,
-		cfg:                cfg,
-		queue:              queue,
-		jwtManager:         jwtMgr,
-		patientFhir:        patient,
-		practitionerFhir:   practitioner,
-		personFhir:         person,
-		serviceRequestFhir: sr,
-		enforcer:           enforcer,
+		log:                opts.Log,
+		cfg:                opts.Config,
+		queue:              opts.Queue,
+		jwtManager:         opts.JWTManager,
+		patientFhir:        opts.PatientFhir,
+		practitionerFhir:   opts.PractitionerFhir,
+		serviceRequestFhir: opts.ServiceRequestFhir,
+		enforcer:           opts.Enforcer,
 		syncServiceSet:     syncSet,
 		httpClient:         &http.Client{Timeout: timeout},
 		failurePolicy:      policy,
@@ -566,7 +580,7 @@ func (u *usecase) GetAsyncServiceResult(ctx context.Context, id string) (*GetAsy
 	return output, nil
 }
 
-func (u *usecase) authorizeSynchronous(ctx context.Context, roles []string, method, service string) error {
+func (u *usecase) authorizeSynchronous(_ context.Context, roles []string, method, service string) error {
 	if u.enforcer == nil {
 		return exceptions.BuildNewCustomError(nil, constvars.StatusForbidden, "Not authorized", "WEBHOOK_SYNC_RBAC_DISABLED")
 	}
@@ -613,6 +627,40 @@ func (u *usecase) validateSynchronousBody(ctx context.Context, roles []string, u
 	return u.validateContactByRole(ctx, role, userIdentifierId, email, phone, chatwoot)
 }
 
+// ForwardSynchronousInternal is the in-process, transport-only forwarder for
+// trusted internal callers — send-magiclink (passwordless login, invoked on
+// context.Background from the SuperTokens email override) and modify-profile
+// (omnichannel profile sync). It is wired explicitly at bootstrap and is never
+// reachable from an HTTP client, so the HTTP route's caller-identity checks
+// (evaluateWebhookAuth, authorizeSynchronous, validateSynchronousBody) and its
+// HOOK_SYNC_SERVICE_NAMES allowlist are intentionally skipped: there is no
+// external identity to evaluate, and imposing the operator-facing allowlist on
+// an internal relay would break e.g. magic-link delivery when the config list
+// does not mention send-magiclink. The HTTP route /hook/synchronous/{service}
+// keeps its own allowlist independently. This path still applies the same input
+// validation sanity as the HTTP handler and routes forward failures through the
+// shared failure policy (WEBHOOK_SYNC_FAILURE_POLICY_RETURN_ERROR / enqueue
+// fallback), so an upstream relay outage behaves identically to the loopback.
+func (u *usecase) ForwardSynchronousInternal(ctx context.Context, service, method string, body []byte, contentType string) (*HandleSynchronousWebhookServiceOutput, error) {
+	service = strings.ToLower(strings.TrimSpace(service))
+
+	in := &HandleSynchronousWebhookServiceInput{
+		ServiceName: service,
+		Method:      method,
+		Body:        body,
+		ContentType: contentType,
+	}
+	if err := validator.New().Struct(in); err != nil {
+		return nil, exceptions.ErrInputValidation(err)
+	}
+
+	out, err := u.forwardSynchronous(ctx, service, method, body, contentType)
+	if err != nil {
+		return u.applySynchronousFailurePolicy(ctx, service, in)
+	}
+	return out, nil
+}
+
 func (u *usecase) forwardSynchronous(ctx context.Context, service, method string, body []byte, contentType string) (*HandleSynchronousWebhookServiceOutput, error) {
 	url := fmt.Sprintf("%s/%s", strings.TrimRight(u.cfg.Webhook.URL, "/"), service)
 	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
@@ -631,7 +679,7 @@ func (u *usecase) forwardSynchronous(ctx context.Context, service, method string
 	if err != nil {
 		return nil, exceptions.ErrSendHTTPRequest(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respContentType := resp.Header.Get(constvars.HeaderContentType)
 
@@ -680,6 +728,11 @@ func parseBodyFields(body []byte, contentType string) (email, phone, chatwoot st
 func parseJSONBodyFields(body []byte) (email, phone, chatwoot string, err error) {
 	var tmp map[string]interface{}
 	if err := json.Unmarshal(body, &tmp); err != nil {
+		// Valid JSON that isn't an object (number, string, bool, array)
+		// carries no contact fields — accept it as empty rather than 400.
+		if json.Valid(body) {
+			return "", "", "", nil
+		}
 		return "", "", "", exceptions.ErrCannotParseJSON(err)
 	}
 	return rootString(tmp, "email"), rootString(tmp, "phone_number"), rootString(tmp, "chatwoot_id"), nil
@@ -712,10 +765,8 @@ func parseMultipartBodyFields(body []byte, boundary string) (email, phone, chatw
 // validateContactByRole dispatches contact validation to the correct FHIR resource lookup.
 func (u *usecase) validateContactByRole(ctx context.Context, role, userIdentifierId, email, phone, chatwoot string) error {
 	switch role {
-	case constvars.KonsulinRolePractitioner, constvars.KonsulinRoleClinician:
+	case constvars.KonsulinRolePractitioner, constvars.KonsulinRoleClinician, constvars.KonsulinRoleClinicAdmin:
 		return u.validatePractitionerContact(ctx, userIdentifierId, email, phone, chatwoot)
-	case constvars.KonsulinRoleClinicAdmin:
-		return u.validateClinicAdminContact(ctx, userIdentifierId, email, phone, chatwoot)
 	case constvars.KonsulinRolePatient:
 		return u.validatePatientContact(ctx, userIdentifierId, email, phone, chatwoot)
 	default:
@@ -732,19 +783,6 @@ func (u *usecase) validatePractitionerContact(ctx context.Context, userIdentifie
 		return exceptions.BuildNewCustomError(nil, constvars.StatusNotFound, "practitioner not found", "WEBHOOK_SYNC_USER_NOT_FOUND")
 	}
 	return validateContactFields(email, phone, chatwoot, pracs[0].GetEmailAddresses(), pracs[0].GetPhoneNumbers(), pracs[0].Identifier, constvars.ResourcePractitioner)
-}
-
-func (u *usecase) validateClinicAdminContact(ctx context.Context, userIdentifierId, email, phone, chatwoot string) error {
-	persons, err := u.personFhir.Search(ctx, contracts.PersonSearchInput{
-		Identifier: fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, userIdentifierId),
-	})
-	if err != nil {
-		return err
-	}
-	if len(persons) == 0 {
-		return exceptions.BuildNewCustomError(nil, constvars.StatusNotFound, "person not found", "WEBHOOK_SYNC_USER_NOT_FOUND")
-	}
-	return validateContactFields(email, phone, chatwoot, persons[0].GetEmailAddresses(), persons[0].GetPhoneNumbers(), persons[0].Identifier, constvars.ResourcePerson)
 }
 
 func (u *usecase) validatePatientContact(ctx context.Context, userIdentifierId, email, phone, chatwoot string) error {

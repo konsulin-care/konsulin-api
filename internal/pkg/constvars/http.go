@@ -233,7 +233,6 @@ const (
 	HeaderXRequestedWith          = "X-Requested-With"
 	HeaderXRobotsTag              = "X-Robots-Tag"
 	HeaderXUACompatible           = "X-UA-Compatible"
-	HeaderXOyUsername             = "x-oy-username"
 	HeaderXApiKey                 = "x-api-key"
 )
 

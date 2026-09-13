@@ -1,12 +1,12 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
-	"net/http"
-
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/utils"
+	"net/http"
 
 	"go.uber.org/zap"
 )
@@ -36,25 +36,22 @@ type permissionRequest struct {
 }
 
 func (h *RoleHandler) AddPermission(w http.ResponseWriter, r *http.Request) {
-	var req permissionRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		utils.BuildErrorResponse(h.Log, w, err)
-		return
-	}
-	if err := h.RoleUsecase.AddPermission(r.Context(), req.Role, req.Method, req.Path); err != nil {
-		utils.BuildErrorResponse(h.Log, w, err)
-		return
-	}
-	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.ResponseSuccess, nil)
+	h.updatePermission(w, r, h.RoleUsecase.AddPermission)
 }
 
 func (h *RoleHandler) RemovePermission(w http.ResponseWriter, r *http.Request) {
+	h.updatePermission(w, r, h.RoleUsecase.RemovePermission)
+}
+
+// updatePermission decodes a permission request, applies the policy mutation,
+// and writes the standard success response.
+func (h *RoleHandler) updatePermission(w http.ResponseWriter, r *http.Request, apply func(context.Context, string, string, string) error) {
 	var req permissionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		utils.BuildErrorResponse(h.Log, w, err)
 		return
 	}
-	if err := h.RoleUsecase.RemovePermission(r.Context(), req.Role, req.Method, req.Path); err != nil {
+	if err := apply(r.Context(), req.Role, req.Method, req.Path); err != nil {
 		utils.BuildErrorResponse(h.Log, w, err)
 		return
 	}

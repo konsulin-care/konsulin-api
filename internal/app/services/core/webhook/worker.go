@@ -128,7 +128,7 @@ func (w *Worker) processItem(ctx context.Context, item webhookqueue.QueuedItem) 
 			zap.String("service_name", msg.ServiceName),
 			zap.String("method", msg.Method),
 			zap.Error(err))
-		w.requeueOnError(ctx, item, msg, err, true)
+		w.requeueOnError(ctx, item, msg)
 		return
 	}
 	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationJSON)
@@ -138,7 +138,7 @@ func (w *Worker) processItem(ctx context.Context, item webhookqueue.QueuedItem) 
 		w.log.Info("jwt create token failed",
 			zap.String("service_name", msg.ServiceName),
 			zap.Error(err))
-		w.requeueOnError(ctx, item, msg, err, true)
+		w.requeueOnError(ctx, item, msg)
 		return
 	}
 	req.Header.Set(constvars.HeaderAuthorization, "Bearer "+tokenOut.Token)
@@ -155,10 +155,10 @@ func (w *Worker) processItem(ctx context.Context, item webhookqueue.QueuedItem) 
 		w.log.Info("http request failed",
 			zap.String("service_name", msg.ServiceName),
 			zap.Error(err))
-		w.requeueOnError(ctx, item, msg, err, true)
+		w.requeueOnError(ctx, item, msg)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.ReadAll(resp.Body) // drain for connection reuse
 
 	w.log.Info("webhook response received",
@@ -196,65 +196,49 @@ func (w *Worker) processItem(ctx context.Context, item webhookqueue.QueuedItem) 
 	default:
 		// increment and requeue or DLQ
 		msg.FailedCount++
-		if msg.FailedCount >= w.cfg.Webhook.ThrottleRetry {
-			if _, err := w.queue.EnqueueToDeadQueue(ctx, &webhookqueue.EnqueueToDLQInput{Message: msg}); err != nil {
-				w.log.Info("enqueue to DLQ failed",
-					zap.String("service_name", msg.ServiceName),
-					zap.String("message_id", msg.ID),
-					zap.Error(err))
-				return
-			}
-			_, _ = w.queue.AckMessage(ctx, &webhookqueue.AckMessageInput{DeliveryTag: item.DeliveryTag})
-			w.log.Info("moved message to DLQ",
-				zap.String("service_name", msg.ServiceName),
-				zap.String("message_id", msg.ID),
-				zap.Int("failed_count", msg.FailedCount))
-			return
-		}
-		if _, err := w.queue.Reenqueue(ctx, &webhookqueue.ReenqueueInput{Message: msg}); err != nil {
-			w.log.Info("reenqueue failed (error status)",
-				zap.String("service_name", msg.ServiceName),
-				zap.String("message_id", msg.ID),
-				zap.Error(err))
-			return
-		}
-		_, _ = w.queue.AckMessage(ctx, &webhookqueue.AckMessageInput{DeliveryTag: item.DeliveryTag})
-		w.log.Info("retryable failure; incremented failedCount and requeued",
-			zap.String("service_name", msg.ServiceName),
-			zap.String("message_id", msg.ID),
-			zap.Int("failed_count", msg.FailedCount))
+		w.moveToDeadOrRequeue(ctx, item, msg, "error status")
 	}
 }
 
-func (w *Worker) requeueOnError(ctx context.Context, item webhookqueue.QueuedItem, msg webhookqueue.WebhookQueueMessage, err error, increment bool) {
-	if increment {
-		msg.FailedCount++
-	}
+// moveToDeadOrRequeue routes a failed message to the DLQ when its failed count
+// reached the throttle-retry limit, otherwise back to the tail of the queue.
+// reason is embedded in the log messages to distinguish network errors from
+// HTTP error-status failures.
+func (w *Worker) moveToDeadOrRequeue(ctx context.Context, item webhookqueue.QueuedItem, msg webhookqueue.WebhookQueueMessage, reason string) {
 	if msg.FailedCount >= w.cfg.Webhook.ThrottleRetry {
-		if _, e := w.queue.EnqueueToDeadQueue(ctx, &webhookqueue.EnqueueToDLQInput{Message: msg}); e != nil {
-			w.log.Info("enqueue to DLQ failed (network)",
-				zap.String("service_name", msg.ServiceName),
-				zap.String("message_id", msg.ID),
-				zap.Error(e))
+		if _, err := w.queue.EnqueueToDeadQueue(ctx, &webhookqueue.EnqueueToDLQInput{Message: msg}); err != nil {
+			w.logQueueFailure(msg, "enqueue to DLQ failed ("+reason+")", err)
 			return
 		}
 		_, _ = w.queue.AckMessage(ctx, &webhookqueue.AckMessageInput{DeliveryTag: item.DeliveryTag})
-		w.log.Info("network/error; moved message to DLQ",
+		w.log.Info("moved message to DLQ ("+reason+")",
 			zap.String("service_name", msg.ServiceName),
 			zap.String("message_id", msg.ID),
 			zap.Int("failed_count", msg.FailedCount))
 		return
 	}
-	if _, e := w.queue.Reenqueue(ctx, &webhookqueue.ReenqueueInput{Message: msg}); e != nil {
-		w.log.Info("reenqueue failed (network)",
-			zap.String("service_name", msg.ServiceName),
-			zap.String("message_id", msg.ID),
-			zap.Error(e))
+	if _, err := w.queue.Reenqueue(ctx, &webhookqueue.ReenqueueInput{Message: msg}); err != nil {
+		w.logQueueFailure(msg, "reenqueue failed ("+reason+")", err)
 		return
 	}
 	_, _ = w.queue.AckMessage(ctx, &webhookqueue.AckMessageInput{DeliveryTag: item.DeliveryTag})
-	w.log.Info("network/error; requeued message to tail",
+	w.log.Info("requeued message to tail ("+reason+")",
 		zap.String("service_name", msg.ServiceName),
 		zap.String("message_id", msg.ID),
 		zap.Int("failed_count", msg.FailedCount))
+}
+
+// logQueueFailure logs a failed queue operation with the message context.
+func (w *Worker) logQueueFailure(msg webhookqueue.WebhookQueueMessage, message string, err error) {
+	w.log.Info(message,
+		zap.String("service_name", msg.ServiceName),
+		zap.String("message_id", msg.ID),
+		zap.Error(err))
+}
+
+// requeueOnError increments the failed count and routes the message back to
+// the queue (or DLQ) after a network-level delivery error.
+func (w *Worker) requeueOnError(ctx context.Context, item webhookqueue.QueuedItem, msg webhookqueue.WebhookQueueMessage) {
+	msg.FailedCount++
+	w.moveToDeadOrRequeue(ctx, item, msg, "network")
 }

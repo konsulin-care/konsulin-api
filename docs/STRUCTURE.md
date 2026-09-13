@@ -22,8 +22,7 @@ konsulin-service/
 │   │   │   ├── controllers/   # 9 HTTP controllers
 │   │   │   ├── middlewares/   # 9 middleware components
 │   │   │   ├── routers/       # Route setup & registration
-│   │   │   ├── handlers/      # HTTP handler utilities
-│   │   │   └── postfhir/      # Post-FHIR-proxy hooks
+│   │   │   └── handlers/      # HTTP handler utilities
 │   │   ├── drivers/           # Infrastructure wrappers
 │   │   │   ├── database/      # DB connection drivers
 │   │   │   ├── logger/        # Zap logger wrapper
@@ -49,11 +48,6 @@ konsulin-service/
 ├── build/                     # Docker build files
 │   └── Dockerfile             # Multi-stage Docker build
 │
-├── deployments/               # Ansible deployment
-│   ├── playbook-dev.yml       # Dev deployment
-│   ├── playbook-prod.yml      # Production deployment
-│   └── templates/             # Jinja2 config templates
-│
 ├── scripts/                   # Utility scripts
 ├── _data/                     # Data directory (placeholder)
 │
@@ -66,7 +60,6 @@ konsulin-service/
 │   ├── KNOWN-PITFALLS.md      # Common pitfalls
 │   └── STRUCTURE.md           # This file
 │
-├── config.example.yaml        # Example YAML config
 ├── docker-compose.yml         # Local dev services
 ├── .env.example               # Environment variable template
 ├── build.sh                   # Build script

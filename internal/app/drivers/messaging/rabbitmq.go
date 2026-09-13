@@ -8,7 +8,7 @@ import (
 	"github.com/rabbitmq/amqp091-go"
 )
 
-func NewRabbitMQ(driverConfig *config.DriverConfig) *amqp091.Connection {
+func NewRabbitMQ(driverConfig *config.DriverConfig) (*amqp091.Connection, error) {
 	connectionString := fmt.Sprintf(
 		"amqp://%s:%s@%s:%s/",
 		driverConfig.RabbitMQ.Username,
@@ -18,8 +18,8 @@ func NewRabbitMQ(driverConfig *config.DriverConfig) *amqp091.Connection {
 	)
 	conn, err := amqp091.Dial(connectionString)
 	if err != nil {
-		log.Fatalf("Failed to connect to rabbitMQ: %s", err.Error())
+		return nil, fmt.Errorf("failed to connect to rabbitMQ: %w", err)
 	}
 	log.Println("Successfully connected to rabbitMQ")
-	return conn
+	return conn, nil
 }

@@ -1,7 +1,5 @@
 package fhir_dto
 
-import "strings"
-
 type Person struct {
 	ResourceType         string         `json:"resourceType"`
 	ID                   string         `json:"id,omitempty"`
@@ -18,64 +16,15 @@ type Person struct {
 // FullName returns a best-effort display name for the person.
 // Preference: official > usual > first; prefer Text, else Prefix+Given+Family.
 func (p Person) FullName() string {
-	if len(p.Name) == 0 {
-		return ""
-	}
-	chosen := p.Name[0]
-	for _, n := range p.Name {
-		if strings.EqualFold(n.Use, "official") {
-			chosen = n
-			break
-		}
-	}
-	if !strings.EqualFold(chosen.Use, "official") {
-		for _, n := range p.Name {
-			if strings.EqualFold(n.Use, "usual") {
-				chosen = n
-				break
-			}
-		}
-	}
-	if s := strings.TrimSpace(chosen.Text); s != "" {
-		return s
-	}
-	parts := []string{}
-	if len(chosen.Prefix) > 0 {
-		parts = append(parts, strings.Join(chosen.Prefix, " "))
-	}
-	if len(chosen.Given) > 0 {
-		parts = append(parts, strings.Join(chosen.Given, " "))
-	}
-	if s := strings.TrimSpace(chosen.Family); s != "" {
-		parts = append(parts, s)
-	}
-	return strings.TrimSpace(strings.Join(parts, " "))
+	return fullName(p.Name)
 }
 
 // GetEmailAddresses returns all email values from Telecom where system == email.
 func (p Person) GetEmailAddresses() []string {
-	if len(p.Telecom) == 0 {
-		return nil
-	}
-	emails := make([]string, 0, len(p.Telecom))
-	for _, tp := range p.Telecom {
-		if tp.System == ContactPointSystemEmail && tp.Value != "" {
-			emails = append(emails, tp.Value)
-		}
-	}
-	return emails
+	return emailsFromTelecom(p.Telecom)
 }
 
 // GetPhoneNumbers returns all phone values from Telecom where system == phone.
 func (p Person) GetPhoneNumbers() []string {
-	if len(p.Telecom) == 0 {
-		return nil
-	}
-	phones := make([]string, 0, len(p.Telecom))
-	for _, tp := range p.Telecom {
-		if tp.System == ContactPointSystemPhone && tp.Value != "" {
-			phones = append(phones, tp.Value)
-		}
-	}
-	return phones
+	return phonesFromTelecom(p.Telecom)
 }

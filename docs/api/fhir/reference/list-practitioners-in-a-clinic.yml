@@ -1,0 +1,51 @@
+info:
+  name: List Practitioners in a Clinic
+  type: http
+  seq: 3
+  tags: [clinic]
+
+http:
+  method: GET
+  headers:
+    - name: Authorization
+      value: Bearer {{sessionToken}}
+  url: "{{process.env.APP_BASE_URL}}/fhir/PractitionerRole?location={{locationId}}&status=active&_include=PractitionerRole:practitioner&_include=PractitionerRole:service&_include=PractitionerRole:organization&_include=PractitionerRole:location"
+  params:
+    - name: location
+      value: "{{locationId}}"
+      type: query
+    - name: status
+      value: active
+      type: query
+    - name: _include
+      value: PractitionerRole:practitioner
+      type: query
+    - name: _include
+      value: PractitionerRole:service
+      type: query
+    - name: _include
+      value: PractitionerRole:organization
+      type: query
+    - name: _include
+      value: PractitionerRole:location
+      type: query
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |
+        bru.runner.setNextRequest("View Healthcare Service Provided by a Practitioner in a Clinic");
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |
+  Lists PractitionerRoles working at the seeded Location (`{{locationId}}` from
+  the seed phase, active, with practitioner/service/organization/location
+  includes). Because the seeded PractitionerRole references that Location, this
+  deterministically returns the seeded role. Does not overwrite
+  `practitionerRoleId`. Chains to "View Healthcare Service Provided by a
+  Practitioner in a Clinic".

@@ -94,14 +94,7 @@ func (s *lockService) Unlock(ctx context.Context, key, lockValue string) error {
 	}
 
 	expectedValue := fmt.Sprintf("\"%s\"", lockValue)
-	if storedVal != expectedValue {
-		err := exceptions.ErrRedisUnlock(fmt.Errorf("lock not owned by this client"))
-		s.Log.Error("lockService.Unlock lock ownership mismatch",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingLockStoredValueKey, storedVal),
-			zap.String(constvars.LoggingLockExpectedValueKey, expectedValue),
-			zap.Error(err),
-		)
+	if err := s.verifyOwnership(requestID, storedVal, expectedValue, "Unlock"); err != nil {
 		return err
 	}
 
@@ -118,6 +111,22 @@ func (s *lockService) Unlock(ctx context.Context, key, lockValue string) error {
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 		zap.String(constvars.LoggingRedisKey, key),
 	)
+	return nil
+}
+
+// verifyOwnership returns nil when storedVal matches expectedValue, otherwise
+// logs the ownership mismatch and returns an unlock ownership error.
+func (s *lockService) verifyOwnership(requestID, storedVal, expectedValue, opName string) error {
+	if storedVal != expectedValue {
+		err := exceptions.ErrRedisUnlock(fmt.Errorf("lock not owned by this client"))
+		s.Log.Error("lockService."+opName+" lock ownership mismatch",
+			zap.String(constvars.LoggingRequestIDKey, requestID),
+			zap.String(constvars.LoggingLockStoredValueKey, storedVal),
+			zap.String(constvars.LoggingLockExpectedValueKey, expectedValue),
+			zap.Error(err),
+		)
+		return err
+	}
 	return nil
 }
 
@@ -148,14 +157,7 @@ func (s *lockService) Refresh(ctx context.Context, key, lockValue string, expira
 	}
 
 	expectedValue := fmt.Sprintf("\"%s\"", lockValue)
-	if storedVal != expectedValue {
-		err := exceptions.ErrRedisUnlock(fmt.Errorf("lock not owned by this client"))
-		s.Log.Error("lockService.Refresh lock ownership mismatch",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingLockStoredValueKey, storedVal),
-			zap.String(constvars.LoggingLockExpectedValueKey, expectedValue),
-			zap.Error(err),
-		)
+	if err := s.verifyOwnership(requestID, storedVal, expectedValue, "Refresh"); err != nil {
 		return err
 	}
 

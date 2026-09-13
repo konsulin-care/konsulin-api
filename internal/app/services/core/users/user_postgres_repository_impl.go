@@ -36,14 +36,12 @@ func NewUserPostgresRepository(db *sql.DB, logger *zap.Logger) contracts.UserRep
 	return userPostgresRepositoryInstance
 }
 
-func (repo *userPostgresRepository) GetClient(ctx context.Context) interface{} {
+func (repo *userPostgresRepository) GetClient(_ context.Context) interface{} {
 	return repo.DB.Ping()
 }
+
 func (r *userPostgresRepository) CreateUser(ctx context.Context, user *models.User) (string, error) {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	r.Log.Info("userPostgresRepository.CreateUser called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-	)
+	requestID := r.logCalled(ctx, "CreateUser")
 
 	var id string
 	err := r.DB.QueryRowContext(ctx, queries.CreateUserQuery,
@@ -69,60 +67,37 @@ func (r *userPostgresRepository) CreateUser(ctx context.Context, user *models.Us
 }
 
 func (r *userPostgresRepository) FindByEmail(ctx context.Context, email string) (*models.User, error) {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	r.Log.Info("userPostgresRepository.FindByEmail called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-	)
+	r.logCalled(ctx, "FindByEmail")
 	return r.findOne(ctx, "email", email)
 }
 
 func (r *userPostgresRepository) FindByWhatsAppNumber(ctx context.Context, whatsappNumber string) (*models.User, error) {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	r.Log.Info("userPostgresRepository.FindByWhatsAppNumber called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-	)
+	r.logCalled(ctx, "FindByWhatsAppNumber")
 	return r.findOne(ctx, "whatsapp_number", whatsappNumber)
 }
 
 func (r *userPostgresRepository) FindByUsername(ctx context.Context, username string) (*models.User, error) {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	r.Log.Info("userPostgresRepository.FindByUsername called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-	)
+	r.logCalled(ctx, "FindByUsername")
 	return r.findOne(ctx, "username", username)
 }
 
 func (r *userPostgresRepository) FindByEmailOrUsername(ctx context.Context, email, username string) (*models.User, error) {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	r.Log.Info("userPostgresRepository.FindByEmailOrUsername called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-	)
+	r.logCalled(ctx, "FindByEmailOrUsername")
 	return r.findUser(ctx, queries.FindByEmailOrUsernameQuery, email, username)
 }
 
 func (r *userPostgresRepository) FindByID(ctx context.Context, userID string) (*models.User, error) {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	r.Log.Info("userPostgresRepository.FindByID called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingUserIDKey, userID),
-	)
+	r.logCalled(ctx, "FindByID", zap.String(constvars.LoggingUserIDKey, userID))
 	return r.findOne(ctx, "id", userID)
 }
 
 func (r *userPostgresRepository) FindByResetToken(ctx context.Context, resetToken string) (*models.User, error) {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	r.Log.Info("userPostgresRepository.FindByResetToken called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-	)
+	r.logCalled(ctx, "FindByResetToken")
 	return r.findOne(ctx, "reset_token", resetToken)
 }
 
 func (r *userPostgresRepository) UpdateUser(ctx context.Context, user *models.User) error {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	r.Log.Info("userPostgresRepository.UpdateUser called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingUserIDKey, user.ID),
-	)
+	requestID := r.logCalled(ctx, "UpdateUser", zap.String(constvars.LoggingUserIDKey, user.ID))
 	_, err := r.DB.ExecContext(ctx, queries.UpdateUserQuery,
 		user.Email, user.Gender, user.RoleID, user.Address, user.Fullname,
 		user.Username, user.Password, user.BirthDate, user.PatientID,
@@ -146,11 +121,7 @@ func (r *userPostgresRepository) UpdateUser(ctx context.Context, user *models.Us
 }
 
 func (r *userPostgresRepository) DeleteByID(ctx context.Context, userID string) error {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	r.Log.Info("userPostgresRepository.DeleteByID called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingUserIDKey, userID),
-	)
+	requestID := r.logCalled(ctx, "DeleteByID", zap.String(constvars.LoggingUserIDKey, userID))
 	_, err := r.DB.ExecContext(ctx, queries.DeleteByIDQuery, userID)
 	if err != nil {
 		r.Log.Error("userPostgresRepository.DeleteByID error deleting user",
@@ -165,6 +136,15 @@ func (r *userPostgresRepository) DeleteByID(ctx context.Context, userID string) 
 		zap.String(constvars.LoggingUserIDKey, userID),
 	)
 	return nil
+}
+
+// logCalled logs the start of a postgres repository operation with the request
+// ID and any extra fields, returning the request ID for later log entries.
+func (r *userPostgresRepository) logCalled(ctx context.Context, opName string, extra ...zap.Field) string {
+	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	fields := append([]zap.Field{zap.String(constvars.LoggingRequestIDKey, requestID)}, extra...)
+	r.Log.Info("userPostgresRepository."+opName+" called", fields...)
+	return requestID
 }
 
 func (r *userPostgresRepository) findOne(ctx context.Context, field string, value interface{}) (*models.User, error) {

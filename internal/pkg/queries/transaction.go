@@ -2,67 +2,67 @@ package queries
 
 const (
 	GetAllTransactions = `
-		SELECT 
-			id, 
-			patient_id, 
-			practitioner_id, 
-			payment_link, 
-			status_payment, 
-			amount, 
-			currency, 
-			created_at, 
-			updated_at, 
-			session_total, 
-			length_minutes_per_session, 
-			session_type, 
-			notes, 
-			refund_status, 
-			refund_amount, 
-			audit_log 
+		SELECT
+			id,
+			patient_id,
+			practitioner_id,
+			payment_link,
+			status_payment,
+			amount,
+			currency,
+			created_at,
+			updated_at,
+			session_total,
+			length_minutes_per_session,
+			session_type,
+			notes,
+			refund_status,
+			refund_amount,
+			audit_log
 		FROM transactions
 	`
 
 	GetTransactionByID = `
-		SELECT 
-			id, 
-			patient_id, 
-			practitioner_id, 
-			payment_link, 
-			status_payment, 
-			amount, 
-			currency, 
-			created_at, 
-			updated_at, 
-			session_total, 
-			length_minutes_per_session, 
-			session_type, 
-			notes, 
-			refund_status, 
-			refund_amount, 
-			audit_log 
-		FROM transactions 
+		SELECT
+			id,
+			patient_id,
+			practitioner_id,
+			payment_link,
+			status_payment,
+			amount,
+			currency,
+			created_at,
+			updated_at,
+			session_total,
+			length_minutes_per_session,
+			session_type,
+			notes,
+			refund_status,
+			refund_amount,
+			audit_log
+		FROM transactions
 		WHERE id = $1
 	`
 
 	GetTransactionByPatientID = `
-		SELECT 
-			id, 
-			patient_id, 
-			practitioner_id, 
-			payment_link, 
-			status_payment, 
-			amount, 
-			currency, 
-			created_at, 
-			updated_at, 
-			session_total, 
-			length_minutes_per_session, 
-			session_type, 
-			notes, 
-			refund_status, 
-			refund_amount, 
-			audit_log 
-		FROM transactions 
+		SELECT
+			id,
+			patient_id,
+			practitioner_id,
+			payment_link,
+			status_payment,
+			amount,
+			currency,
+			created_at,
+			updated_at,
+			session_total,
+			length_minutes_per_session,
+			session_type,
+			notes,
+			refund_status,
+			refund_amount,
+			audit_log
+		FROM transactions
 		WHERE patient_id = $1
 	`
 
@@ -85,7 +85,7 @@ const (
 			created_at,
 			updated_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())
-		RETURNING 
+		RETURNING
 			id,
 			patient_id,
 			practitioner_id,
@@ -106,7 +106,7 @@ const (
 
 	UpdateTransaction = `
 		UPDATE transactions
-		SET 
+		SET
 			patient_id = $1,
 			practitioner_id = $2,
 			payment_link = $3,
@@ -122,7 +122,7 @@ const (
 			audit_log = $13,
 			updated_at = NOW()
 		WHERE id = $14
-		RETURNING 
+		RETURNING
 			id,
 			patient_id,
 			practitioner_id,
@@ -142,7 +142,7 @@ const (
 	`
 
 	DeleteTransaction = `
-		DELETE FROM transactions 
+		DELETE FROM transactions
 		WHERE id = $1
 	`
 )

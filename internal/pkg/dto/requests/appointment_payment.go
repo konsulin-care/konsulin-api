@@ -10,9 +10,9 @@ import (
 type AppointmentPaymentRequest struct {
 	PatientID           string `json:"patientId"`
 	InvoiceID           string `json:"invoiceId"`
-	UseOnlinePayment    bool   `json:"useOnlinePayment"`
 	PractitionerRoleID  string `json:"practitionerRoleId"`
 	SlotID              string `json:"slotId"`
+	AppointmentID       string `json:"appointmentId"`
 	HealthcareServiceID string `json:"healthcareServiceId"`
 	Condition           string `json:"condition"`
 }
@@ -31,6 +31,9 @@ func (r *AppointmentPaymentRequest) Validate() error {
 	if strings.TrimSpace(r.SlotID) == "" {
 		return errors.New("slotId is required")
 	}
+	if strings.TrimSpace(r.AppointmentID) == "" {
+		return errors.New("appointmentId is required")
+	}
 
 	if !isValidReference(r.PatientID, constvars.ResourcePatient) {
 		return fmt.Errorf("patientId must follow format: %s/ID", constvars.ResourcePatient)
@@ -43,6 +46,9 @@ func (r *AppointmentPaymentRequest) Validate() error {
 	}
 	if !isValidReference(r.SlotID, constvars.ResourceSlot) {
 		return fmt.Errorf("slotId must follow format: %s/ID", constvars.ResourceSlot)
+	}
+	if !isValidReference(r.AppointmentID, constvars.ResourceAppointment) {
+		return fmt.Errorf("appointmentId must follow format: %s/ID", constvars.ResourceAppointment)
 	}
 
 	if strings.TrimSpace(r.HealthcareServiceID) != "" && !isValidReference(r.HealthcareServiceID, constvars.ResourceHealthcareService) {

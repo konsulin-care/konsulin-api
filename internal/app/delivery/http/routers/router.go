@@ -1,10 +1,12 @@
 package routers
 
 import (
+	"encoding/json"
 	"fmt"
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/delivery/http/controllers"
 	"konsulin-service/internal/app/delivery/http/middlewares"
+	"konsulin-service/internal/pkg/buildinfo"
 	"net/http"
 	"net/url"
 	"strings"
@@ -25,9 +27,14 @@ func SetupRoutes(
 	webhookController *controllers.WebhookController,
 	scheduleController *controllers.ScheduleController,
 	organizationController *controllers.OrganizationController,
+	purgeController *controllers.PurgeController,
 ) {
+	// Liveness endpoint. Registered AFTER the middleware chain: chi requires
+	// all Use() calls to precede any route registration on the same mux, so a
+	// route cannot bypass the mux's own middleware stack. The chain is benign
+	// for a keyless GET /health (API key and session middlewares pass through).
 	corsOptions := cors.Options{
-		AllowOriginFunc: func(r *http.Request, origin string) bool {
+		AllowOriginFunc: func(_ *http.Request, origin string) bool {
 			if strings.HasPrefix(origin, "http://localhost:") || strings.HasPrefix(origin, "http://127.0.0.1:") {
 				return true
 			}
@@ -61,6 +68,10 @@ func SetupRoutes(
 
 	router.Use(middlewares.ErrorHandler)
 
+	// Registered last: all middlewares are already attached to the mux, so the
+	// ordering invariant "middlewares before routes" holds.
+	attachHealthRoute(router)
+
 	endpointPrefix := fmt.Sprintf("/%s", internalConfig.App.EndpointPrefix)
 	versionPrefix := fmt.Sprintf("/%s", internalConfig.App.Version)
 
@@ -74,6 +85,7 @@ func SetupRoutes(
 			attachScheduleRouter(r, middlewares, scheduleController)
 			attachWebhookRouter(r, middlewares, webhookController)
 			attachOrganizationRoutes(r, middlewares, organizationController)
+			attachPrivacyRouter(r, purgeController)
 
 			r.Mount("/tx", middlewares.TxProxy(internalConfig.FHIR.TerminologyServerBaseUrl))
 		})
@@ -81,6 +93,27 @@ func SetupRoutes(
 
 	router.With(middlewares.Auth).
 		Mount("/fhir", middlewares.Bridge(internalConfig.FHIR.BaseUrl))
+}
+
+// attachHealthRoute registers the /health liveness endpoint on the router.
+// It must be called after every router.Use(...) on the same mux: chi requires
+// all middlewares to be defined before routes, and a route cannot bypass the
+// mux's own middleware stack.
+func attachHealthRoute(router chi.Router) {
+	router.Get("/health", handleHealth)
+}
+
+// handleHealth responds with the build metadata (version, git tag, commit
+// hash) so production can verify the backend has been properly updated.
+func handleHealth(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"status":  "OK",
+		"version": buildinfo.Version,
+		"tag":     buildinfo.Tag,
+		"hash":    buildinfo.CommitHash,
+	})
 }
 
 func isAllowedOrigin(allowedDomain, origin string) bool {
@@ -105,5 +138,4 @@ func isAllowedOrigin(allowedDomain, origin string) bool {
 		return true
 	}
 	return false
-
 }

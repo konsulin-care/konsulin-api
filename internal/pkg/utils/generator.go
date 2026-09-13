@@ -11,7 +11,7 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 )
 
-// GenerateResponseID creates a unique transaction ID.
+// GenerateRequestID creates a unique transaction ID.
 //
 // The ID is generated using the current time in nanoseconds
 // since the Unix epoch, ensuring high precision and uniqueness
@@ -22,32 +22,28 @@ func GenerateRequestID() string {
 	return fmt.Sprintf("%s%d", constvars.REQUEST_ID_PREFIX, transID)
 }
 
-func GenerateSessionJWT(sessionID, secret string, jwtExpiryTime int) (string, error) {
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"session_id": sessionID,
-		"exp":        time.Now().Add(time.Duration(jwtExpiryTime) * time.Hour).Unix(),
-	})
-
+// signJWT signs the given claims with HS256 using the provided secret.
+func signJWT(claims jwt.MapClaims, secret string) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := token.SignedString([]byte(secret))
 	if err != nil {
 		return "", err
 	}
-
 	return tokenString, nil
 }
 
+func GenerateSessionJWT(sessionID, secret string, jwtExpiryTime int) (string, error) {
+	return signJWT(jwt.MapClaims{
+		"session_id": sessionID,
+		"exp":        time.Now().Add(time.Duration(jwtExpiryTime) * time.Hour).Unix(),
+	}, secret)
+}
+
 func GenerateResetPasswordJWT(uuid, secret string, jwtExpiryTime int) (string, error) {
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+	return signJWT(jwt.MapClaims{
 		"uuid": uuid,
 		"exp":  time.Now().Add(time.Duration(jwtExpiryTime) * time.Minute).Unix(),
-	})
-
-	tokenString, err := token.SignedString([]byte(secret))
-	if err != nil {
-		return "", err
-	}
-
-	return tokenString, nil
+	}, secret)
 }
 
 func GenerateOTP(otpLength int) (string, error) {

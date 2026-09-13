@@ -7,346 +7,83 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"konsulin-service/internal/app/config"
-	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/app/models"
-	"konsulin-service/internal/app/services/shared/jwtmanager"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/dto/requests"
-	"konsulin-service/internal/pkg/dto/responses"
-	"konsulin-service/internal/pkg/exceptions"
-	"konsulin-service/internal/pkg/fhir_dto"
-	"konsulin-service/internal/pkg/utils"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"konsulin-service/internal/app/config"
+	"konsulin-service/internal/app/contracts"
+	"konsulin-service/internal/app/services/shared/jwtmanager"
+	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/fhir_dto"
+	"konsulin-service/internal/pkg/utils"
+
 	"go.uber.org/zap"
 )
 
+// logPrefix namespaces every log entry emitted by this use case.
+const logPrefix = "userUsecase."
+
 type userUsecase struct {
-	UserRepository             contracts.UserRepository
 	PatientFhirClient          contracts.PatientFhirClient
 	PractitionerFhirClient     contracts.PractitionerFhirClient
-	PersonFhirClient           contracts.PersonFhirClient
 	PractitionerRoleFhirClient contracts.PractitionerRoleFhirClient
 	OrganizationFhirClient     contracts.OrganizationFhirClient
 	RedisRepository            contracts.RedisRepository
-	SessionService             contracts.SessionService
 	InternalConfig             *config.InternalConfig
 	Log                        *zap.Logger
 	LockerService              contracts.LockerService
 	JWTTokenManager            *jwtmanager.JWTManager
+
+	// webhookForwardFn, when set, bypasses the HTTP loopback for synchronous webhook forwarding.
+	// Intended for in-process callers that are already trusted.
+	webhookForwardFn func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error)
+}
+
+// SetWebhookForwarder sets the in-process forwarder for synchronous webhook calls.
+// When set, callWebhookSvcKonsulinOmnichannel calls this function directly instead
+// of making an HTTP loopback to the backend's own webhook endpoint.
+func (uc *userUsecase) SetWebhookForwarder(fn func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error)) {
+	uc.webhookForwardFn = fn
 }
 
 var (
-	userUsecaseInstance contracts.UserUsecase
-	onceUserUsecase     sync.Once
+	userUsecaseInstance     contracts.UserFHIRInitializer
+	onceUserFHIRInitializer sync.Once
 )
 
-func NewUserUsecase(
-	userMongoRepository contracts.UserRepository,
-	patientFhirClient contracts.PatientFhirClient,
-	practitionerFhirClient contracts.PractitionerFhirClient,
-	personFhirClient contracts.PersonFhirClient,
-	practitionerRoleFhirClient contracts.PractitionerRoleFhirClient,
-	organizationFhirClient contracts.OrganizationFhirClient,
-	redisRepository contracts.RedisRepository,
-	sessionService contracts.SessionService,
-	internalConfig *config.InternalConfig,
-	logger *zap.Logger,
-	lockerService contracts.LockerService,
-	jwtManager *jwtmanager.JWTManager,
-) contracts.UserUsecase {
-	onceUserUsecase.Do(func() {
+// UserFHIRInitializerDeps bundles the dependencies for NewUserFHIRInitializer.
+type UserFHIRInitializerDeps struct {
+	PatientFhirClient          contracts.PatientFhirClient
+	PractitionerFhirClient     contracts.PractitionerFhirClient
+	PractitionerRoleFhirClient contracts.PractitionerRoleFhirClient
+	OrganizationFhirClient     contracts.OrganizationFhirClient
+	RedisRepository            contracts.RedisRepository
+	InternalConfig             *config.InternalConfig
+	Logger                     *zap.Logger
+	LockerService              contracts.LockerService
+	JWTTokenManager            *jwtmanager.JWTManager
+}
+
+func NewUserFHIRInitializer(deps UserFHIRInitializerDeps) contracts.UserFHIRInitializer {
+	onceUserFHIRInitializer.Do(func() {
 		instance := &userUsecase{
-			UserRepository:             userMongoRepository,
-			PatientFhirClient:          patientFhirClient,
-			PractitionerFhirClient:     practitionerFhirClient,
-			PersonFhirClient:           personFhirClient,
-			PractitionerRoleFhirClient: practitionerRoleFhirClient,
-			OrganizationFhirClient:     organizationFhirClient,
-			RedisRepository:            redisRepository,
-			SessionService:             sessionService,
-			InternalConfig:             internalConfig,
-			Log:                        logger,
-			LockerService:              lockerService,
-			JWTTokenManager:            jwtManager,
+			PatientFhirClient:          deps.PatientFhirClient,
+			PractitionerFhirClient:     deps.PractitionerFhirClient,
+			PractitionerRoleFhirClient: deps.PractitionerRoleFhirClient,
+			OrganizationFhirClient:     deps.OrganizationFhirClient,
+			RedisRepository:            deps.RedisRepository,
+			InternalConfig:             deps.InternalConfig,
+			Log:                        deps.Logger,
+			LockerService:              deps.LockerService,
+			JWTTokenManager:            deps.JWTTokenManager,
 		}
 		userUsecaseInstance = instance
 	})
 	return userUsecaseInstance
-}
-
-func (uc *userUsecase) GetUserProfileBySession(ctx context.Context, sessionData string) (*responses.UserProfile, error) {
-	start := time.Now()
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	uc.Log.Debug("User profile retrieval started",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingOperationKey, "get_user_profile"),
-	)
-
-	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
-	if err != nil {
-		uc.Log.Error("Failed to parse session data",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingErrorTypeKey, "session parsing"),
-			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
-			zap.Error(err),
-		)
-		return nil, err
-	}
-
-	existingUser, err := uc.UserRepository.FindByID(ctx, session.UserID)
-	if err != nil {
-		uc.Log.Error("Failed to fetch user by ID",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingUserIDKey, session.UserID),
-			zap.String(constvars.LoggingErrorTypeKey, "database query"),
-			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
-			zap.Error(err),
-		)
-		return nil, err
-	}
-
-	if existingUser == nil {
-		uc.Log.Error("User not found",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingUserIDKey, session.UserID),
-			zap.String(constvars.LoggingErrorTypeKey, "user not found"),
-		)
-		return nil, exceptions.ErrUserNotExist(nil)
-	}
-
-	switch session.RoleName {
-	case constvars.RoleTypePractitioner:
-		uc.Log.Debug("Processing practitioner profile",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingUserIDKey, session.UserID),
-		)
-		return uc.getPractitionerProfile(ctx, session, nil)
-	case constvars.RoleTypePatient:
-		uc.Log.Debug("Processing patient profile",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingUserIDKey, session.UserID),
-		)
-		return uc.getPatientProfile(ctx, session, nil)
-	default:
-		uc.Log.Error("Invalid role type",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("role_name", session.RoleName),
-			zap.String(constvars.LoggingErrorTypeKey, "invalid role"),
-		)
-		return nil, exceptions.ErrInvalidRoleType(nil)
-	}
-}
-
-func (uc *userUsecase) UpdateUserProfileBySession(ctx context.Context, sessionData string, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error) {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	uc.Log.Info("userUsecase.UpdateUserProfileBySession called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-	)
-
-	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
-	if err != nil {
-		uc.Log.Error("userUsecase.UpdateUserProfileBySession error parsing session data",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, err
-	}
-
-	if session.Email != request.Email {
-		uc.Log.Info("userUsecase.UpdateUserProfileBySession email change detected; checking for existence",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-		)
-		existingUser, err := uc.UserRepository.FindByEmail(ctx, request.Email)
-		if err != nil {
-			uc.Log.Error("userUsecase.UpdateUserProfileBySession error checking email existence",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.Error(err),
-			)
-			return nil, err
-		}
-		if existingUser != nil {
-			uc.Log.Error("userUsecase.UpdateUserProfileBySession email already exists",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-			)
-			return nil, exceptions.ErrEmailAlreadyExist(nil)
-		}
-	}
-
-	existingUser, err := uc.UserRepository.FindByID(ctx, session.UserID)
-	if err != nil {
-		uc.Log.Error("userUsecase.UpdateUserProfileBySession error fetching user by ID",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingUserIDKey, session.UserID),
-			zap.Error(err),
-		)
-		return nil, err
-	}
-
-	if existingUser == nil {
-		uc.Log.Error("userUsecase.UpdateUserProfileBySession user does not exist",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingUserIDKey, session.UserID),
-		)
-		return nil, exceptions.ErrUserNotExist(nil)
-	}
-
-	existingUser.SetDataForUpdateProfile(request)
-	err = uc.UserRepository.UpdateUser(ctx, existingUser)
-	if err != nil {
-		uc.Log.Error("userUsecase.UpdateUserProfileBySession error updating user",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, err
-	}
-
-	uc.Log.Info("userUsecase.UpdateUserProfileBySession user updated successfully",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingUserIDKey, existingUser.ID),
-	)
-
-	switch session.RoleName {
-	case constvars.RoleTypePractitioner:
-		uc.Log.Info("userUsecase.UpdateUserProfileBySession updating practitioner profile",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-		)
-		return uc.updatePractitionerFhirProfile(ctx, existingUser, session, request)
-	case constvars.RoleTypePatient:
-		uc.Log.Info("userUsecase.UpdateUserProfileBySession updating patient profile",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-		)
-		return uc.updatePatientFhirProfile(ctx, existingUser, session, request)
-	default:
-		uc.Log.Error("userUsecase.UpdateUserProfileBySession invalid role type",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-		)
-		return nil, exceptions.ErrInvalidRoleType(nil)
-	}
-}
-
-func (uc *userUsecase) DeleteUserBySession(ctx context.Context, sessionData string) error {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	uc.Log.Info("userUsecase.DeleteUserBySession called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingSessionDataKey, sessionData),
-	)
-
-	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
-	if err != nil {
-		uc.Log.Error("userUsecase.DeleteUserBySession error parsing session data",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return err
-	}
-
-	err = uc.UserRepository.DeleteByID(ctx, session.UserID)
-	if err != nil {
-		uc.Log.Error("userUsecase.DeleteUserBySession error deleting user",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingUserIDKey, session.UserID),
-			zap.Error(err),
-		)
-		return err
-	}
-	uc.Log.Info("userUsecase.DeleteUserBySession user deleted",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingUserIDKey, session.UserID),
-	)
-
-	err = uc.RedisRepository.Delete(ctx, session.SessionID)
-	if err != nil {
-		uc.Log.Error("userUsecase.DeleteUserBySession error deleting session from Redis",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingSessionIDKey, session.SessionID),
-			zap.Error(err),
-		)
-		return err
-	}
-	uc.Log.Info("userUsecase.DeleteUserBySession session deleted from Redis",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingSessionIDKey, session.SessionID),
-	)
-	return nil
-}
-
-func (uc *userUsecase) DeactivateUserBySession(ctx context.Context, sessionData string) error {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	uc.Log.Info("userUsecase.DeactivateUserBySession called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingSessionDataKey, sessionData),
-	)
-
-	session, err := uc.SessionService.ParseSessionData(ctx, sessionData)
-	if err != nil {
-		uc.Log.Error("userUsecase.DeactivateUserBySession error parsing session data",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return err
-	}
-
-	existingUser, err := uc.UserRepository.FindByID(ctx, session.UserID)
-	if err != nil {
-		uc.Log.Error("userUsecase.DeactivateUserBySession error fetching user",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingUserIDKey, session.UserID),
-			zap.Error(err),
-		)
-		return err
-	}
-
-	existingUser.SetDeletedAt()
-	err = uc.UserRepository.UpdateUser(ctx, existingUser)
-	if err != nil {
-		uc.Log.Error("userUsecase.DeactivateUserBySession error updating user for deactivation",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return err
-	}
-	uc.Log.Info("userUsecase.DeactivateUserBySession user deactivated",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingUserIDKey, existingUser.ID),
-	)
-
-	err = uc.RedisRepository.Delete(ctx, session.SessionID)
-	if err != nil {
-		uc.Log.Error("userUsecase.DeactivateUserBySession error deleting session from Redis",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String(constvars.LoggingSessionIDKey, session.SessionID),
-			zap.Error(err),
-		)
-		return err
-	}
-	uc.Log.Info("userUsecase.DeactivateUserBySession session deleted from Redis",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingSessionIDKey, session.SessionID),
-	)
-
-	switch session.RoleName {
-	case constvars.RoleTypePractitioner:
-		uc.Log.Info("userUsecase.DeactivateUserBySession deactivating practitioner FHIR data",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-		)
-		return uc.deactivatePractitionerFhirData(ctx, existingUser)
-	case constvars.RoleTypePatient:
-		uc.Log.Info("userUsecase.DeactivateUserBySession deactivating patient FHIR data",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-		)
-		return uc.deactivatePatientFhirData(ctx, existingUser)
-	default:
-		uc.Log.Error("userUsecase.DeactivateUserBySession invalid role type",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-		)
-		return exceptions.ErrInvalidRoleType(nil)
-	}
 }
 
 func (uc *userUsecase) InitializeNewUserFHIRResources(ctx context.Context, input *contracts.InitializeNewUserFHIRResourcesInput) (*contracts.InitializeNewUserFHIRResourcesOutput, error) {
@@ -355,76 +92,137 @@ func (uc *userUsecase) InitializeNewUserFHIRResources(ctx context.Context, input
 	}
 
 	output := &contracts.InitializeNewUserFHIRResourcesOutput{}
+	practitionerID := ""
 
-	for _, resource := range input.Resources() {
-		switch resource {
-		case constvars.ResourcePractitioner:
-			practitioner, err := uc.createPractitionerIfNotExists(ctx, input.Email, input.Phone, input.SuperTokenUserID)
-			if err != nil {
-				return nil, err
-			}
-			output.PractitionerID = practitioner.ID
-		case constvars.ResourcePatient:
-			patient, err := uc.createPatientIfNotExists(ctx, input.Email, input.Phone, input.SuperTokenUserID)
-			if err != nil {
-				return nil, err
-			}
-			output.PatientID = patient.ID
-		case constvars.ResourcePerson:
-			person, err := uc.createPersonIfNotExists(ctx, input.Email, input.Phone, input.SuperTokenUserID)
-			if err != nil {
-				return nil, err
-			}
-			output.PersonID = person.ID
+	for _, plan := range input.Resources() {
+		id, err := uc.applyResourcePlan(ctx, input, plan, practitionerID, output)
+		if err != nil {
+			return nil, err
 		}
+		practitionerID = id
 	}
 	return output, nil
 }
 
-func (uc *userUsecase) deactivatePractitionerFhirData(ctx context.Context, user *models.User) error {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	uc.Log.Info("userUsecase.deactivatePractitionerFhirData called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingUserIDKey, user.ID),
-	)
-
-	practitionerFhirRequest := user.ConvertToPractitionerFhirDeactivationRequest()
-
-	_, err := uc.PractitionerFhirClient.UpdatePractitioner(ctx, practitionerFhirRequest)
-	if err != nil {
-		uc.Log.Error("userUsecase.deactivatePractitionerFhirData error updating practitioner FHIR resource",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return err
+// applyResourcePlan creates the FHIR resource described by a single plan entry,
+// enforcing the Practitioner dedup guard and the PractitionerRole ordering
+// constraint. It returns the practitioner FHIR ID to carry forward: the newly
+// created ID when this entry created a Practitioner, or the input value otherwise.
+func (uc *userUsecase) applyResourcePlan(ctx context.Context, input *contracts.InitializeNewUserFHIRResourcesInput, plan contracts.FHIRResourcePlan, practitionerID string, output *contracts.InitializeNewUserFHIRResourcesOutput) (string, error) {
+	switch plan.ResourceType {
+	case constvars.ResourcePractitioner:
+		if practitionerID != "" {
+			// The plan carries at most one Practitioner entry; guard anyway.
+			return practitionerID, nil
+		}
+		id, err := uc.createPractitionerResource(ctx, input.Email, input.Phone, input.SuperTokenUserID)
+		if err != nil {
+			return practitionerID, err
+		}
+		output.PractitionerID = id
+		return id, nil
+	case constvars.ResourcePatient:
+		id, err := uc.createPatientResource(ctx, input.Email, input.Phone, input.SuperTokenUserID)
+		if err != nil {
+			return practitionerID, err
+		}
+		output.PatientID = id
+		return practitionerID, nil
+	case constvars.ResourcePractitionerRole:
+		if practitionerID == "" {
+			return practitionerID, errors.New("practitioner must be created before PractitionerRole")
+		}
+		id, err := uc.createPractitionerRoleResource(ctx, practitionerID, input.OrganizationID,
+			plan.CodingSystem, plan.CodingCode, plan.CodingDisplay)
+		if err != nil {
+			return practitionerID, err
+		}
+		output.PractitionerRoleIDs = append(output.PractitionerRoleIDs, id)
+		return practitionerID, nil
 	}
-	uc.Log.Info("userUsecase.deactivatePractitionerFhirData succeeded",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-	)
-	return nil
+	return practitionerID, nil
 }
 
-func (uc *userUsecase) deactivatePatientFhirData(ctx context.Context, user *models.User) error {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	uc.Log.Info("userUsecase.deactivatePatientFhirData called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingUserIDKey, user.ID),
-	)
-
-	patientFhirRequest := user.ConvertToPatientFhirDeactivationRequest()
-
-	_, err := uc.PatientFhirClient.UpdatePatient(ctx, patientFhirRequest)
+// createPractitionerResource creates the user's Practitioner resource
+// (create-if-not-exists) and returns its FHIR ID.
+func (uc *userUsecase) createPractitionerResource(ctx context.Context, email, phone, superTokenUserID string) (string, error) {
+	practitioner, err := uc.createPractitionerIfNotExists(ctx, email, phone, superTokenUserID)
 	if err != nil {
-		uc.Log.Error("userUsecase.deactivatePatientFhirData error updating patient FHIR resource",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return err
+		return "", err
 	}
-	uc.Log.Info("userUsecase.deactivatePatientFhirData succeeded",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-	)
-	return nil
+	return practitioner.ID, nil
+}
+
+// createPatientResource creates the user's Patient resource (create-if-not-exists)
+// and returns its FHIR ID.
+func (uc *userUsecase) createPatientResource(ctx context.Context, email, phone, superTokenUserID string) (string, error) {
+	patient, err := uc.createPatientIfNotExists(ctx, email, phone, superTokenUserID)
+	if err != nil {
+		return "", err
+	}
+	return patient.ID, nil
+}
+
+// createPractitionerRoleResource creates the PractitionerRole for the given
+// practitioner and coding (create-if-not-exists) and returns its FHIR ID.
+func (uc *userUsecase) createPractitionerRoleResource(ctx context.Context, practitionerID, organizationID, system, code, display string) (string, error) {
+	role, err := uc.createPractitionerRoleIfNotExists(ctx, practitionerID, organizationID, system, code, display)
+	if err != nil {
+		return "", err
+	}
+	return role.ID, nil
+}
+
+// createPractitionerRoleIfNotExists looks up an existing PractitionerRole for the
+// practitioner carrying the given system|code coding and returns it; otherwise it
+// creates a new active role, optionally linked to an organization.
+func (uc *userUsecase) createPractitionerRoleIfNotExists(ctx context.Context, practitionerID, organizationID, system, code, display string) (*fhir_dto.PractitionerRole, error) {
+	existing, err := uc.PractitionerRoleFhirClient.Search(ctx, contracts.PractitionerRoleSearchParams{
+		PractitionerID: practitionerID,
+		Code:           fmt.Sprintf("%s|%s", system, code),
+	})
+	if err != nil {
+		return nil, err
+	}
+	// Some servers (e.g. Blaze) do not index the code search parameter and return
+	// every role for the practitioner; filter client-side for the exact system|code
+	// match to keep create-if-not-exists idempotent.
+	for i := range existing {
+		if roleHasCoding(existing[i], system, code) {
+			return &existing[i], nil
+		}
+	}
+
+	role := &fhir_dto.PractitionerRole{
+		ResourceType: constvars.ResourcePractitionerRole,
+		Active:       true,
+		Practitioner: fhir_dto.Reference{Reference: "Practitioner/" + practitionerID},
+		Code: []fhir_dto.CodeableConcept{{
+			Coding: []fhir_dto.Coding{{
+				System:  system,
+				Code:    code,
+				Display: display,
+			}},
+		}},
+	}
+	if organizationID != "" {
+		role.Organization = fhir_dto.Reference{Reference: "Organization/" + organizationID}
+	}
+
+	return uc.PractitionerRoleFhirClient.CreatePractitionerRole(ctx, role)
+}
+
+// roleHasCoding reports whether the role's code element carries the given
+// system|code coding.
+func roleHasCoding(role fhir_dto.PractitionerRole, system, code string) bool {
+	for _, cc := range role.Code {
+		for _, c := range cc.Coding {
+			if c.System == system && c.Code == code {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // identifierScanResult holds the result of scanning identifiers for supertoken and Chatwoot IDs.
@@ -473,7 +271,7 @@ func (uc *userUsecase) callChatwootWithFallback(ctx context.Context, email, phon
 		Phone:    phone,
 	})
 	if err != nil {
-		uc.Log.Error("userUsecase.callChatwootWithFallback error calling webhook svc konsulin omnichannel",
+		uc.Log.Error(logPrefix+"callChatwootWithFallback error calling webhook svc konsulin omnichannel",
 			zap.Error(err),
 		)
 		return callWebhookSvcKonsulinOmnichannelOutput{}, err
@@ -535,47 +333,53 @@ func (uc *userUsecase) ensurePractitionerIdentifiers(ctx context.Context, practi
 
 // lookupPractitioner searches for an existing Practitioner by email, phone, or supertoken identifier.
 func (uc *userUsecase) lookupPractitioner(ctx context.Context, email, phone, superTokenUserID string) ([]fhir_dto.Practitioner, error) {
+	// The supertoken uid identifier is the stable per-user key; match it first
+	// so createPractitionerIfNotExists stays idempotent per user (email-first
+	// lookup accumulates duplicate Practitioners when the email search
+	// parameter is not reliably indexed). Email/phone remain as fallbacks for
+	// legacy resources created before the identifier scheme.
+	if strings.TrimSpace(superTokenUserID) != "" {
+		pracs, err := uc.PractitionerFhirClient.FindPractitionerByIdentifier(ctx, constvars.FhirSupertokenSystemIdentifier, superTokenUserID)
+		if err != nil {
+			return nil, err
+		}
+		if len(pracs) > 0 {
+			return pracs, nil
+		}
+	}
 	if strings.TrimSpace(email) != "" {
 		return uc.PractitionerFhirClient.FindPractitionerByEmail(ctx, email)
 	}
 	if strings.TrimSpace(phone) != "" {
 		return uc.PractitionerFhirClient.FindPractitionerByPhone(ctx, phone)
 	}
-	if strings.TrimSpace(superTokenUserID) != "" {
-		return uc.PractitionerFhirClient.FindPractitionerByIdentifier(ctx, constvars.FhirSupertokenSystemIdentifier, superTokenUserID)
-	}
 	return nil, nil
 }
 
-// lookupPatient searches for an existing Patient by email, phone, or supertoken identifier.
+// lookupPatient searches for an existing Patient by supertoken uid identifier
+// first (the stable per-user key), then falls back to email and phone for
+// legacy resources created before the identifier scheme. The uid-first order
+// keeps createPatientIfNotExists idempotent per user: repeated magic-link
+// create/consume calls converge on one Patient instead of accumulating
+// duplicates when the email search parameter is not reliably indexed.
 func (uc *userUsecase) lookupPatient(ctx context.Context, email, phone, superTokenUserID string) ([]fhir_dto.Patient, error) {
+	if strings.TrimSpace(superTokenUserID) != "" {
+		pats, err := uc.PatientFhirClient.FindPatientByIdentifier(
+			ctx,
+			fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, superTokenUserID),
+		)
+		if err != nil {
+			return nil, err
+		}
+		if len(pats) > 0 {
+			return pats, nil
+		}
+	}
 	if strings.TrimSpace(email) != "" {
 		return uc.PatientFhirClient.FindPatientByEmail(ctx, email)
 	}
 	if strings.TrimSpace(phone) != "" {
 		return uc.PatientFhirClient.FindPatientByPhone(ctx, phone)
-	}
-	if strings.TrimSpace(superTokenUserID) != "" {
-		return uc.PatientFhirClient.FindPatientByIdentifier(
-			ctx,
-			fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, superTokenUserID),
-		)
-	}
-	return nil, nil
-}
-
-// lookupPerson searches for an existing Person by email, phone, or supertoken identifier.
-func (uc *userUsecase) lookupPerson(ctx context.Context, email, phone, superTokenUserID string) ([]fhir_dto.Person, error) {
-	if strings.TrimSpace(email) != "" {
-		return uc.PersonFhirClient.FindPersonByEmail(ctx, email)
-	}
-	if strings.TrimSpace(phone) != "" {
-		return uc.PersonFhirClient.FindPersonByPhone(ctx, phone)
-	}
-	if strings.TrimSpace(superTokenUserID) != "" {
-		return uc.PersonFhirClient.Search(ctx, contracts.PersonSearchInput{
-			Identifier: fmt.Sprintf("%s|%s", constvars.FhirSupertokenSystemIdentifier, superTokenUserID),
-		})
 	}
 	return nil, nil
 }
@@ -629,57 +433,6 @@ func (uc *userUsecase) ensurePatientIdentifiers(ctx context.Context, patient *fh
 		return uc.PatientFhirClient.UpdatePatient(ctx, patient)
 	}
 	return patient, nil
-}
-
-// ensurePersonIdentifiers updates the person's identifiers with the
-// supertoken user ID and Chatwoot contact ID if they differ from what's stored.
-//
-//nolint:dupl
-func (uc *userUsecase) ensurePersonIdentifiers(ctx context.Context, person *fhir_dto.Person, email, phone, superTokenUserID string) (*fhir_dto.Person, error) {
-	userChatwootContact, chatwootCallErr := uc.callChatwootWithFallback(ctx, email, phone, person.FullName())
-	chatwootID := strconv.Itoa(userChatwootContact.ChatwootID)
-
-	scanResult := scanIdentifiers(person.Identifier, superTokenUserID, chatwootID)
-	mustUpdate := false
-
-	if superTokenUserID != "" {
-		if scanResult.foundSupertoken && !scanResult.supertokenExactMatch {
-			mustUpdate = true
-			person.Identifier[scanResult.foundSupertokenIdx] = fhir_dto.Identifier{
-				System: constvars.FhirSupertokenSystemIdentifier,
-				Value:  superTokenUserID,
-			}
-		}
-		if !scanResult.foundSupertoken {
-			mustUpdate = true
-			person.Identifier = append(person.Identifier, fhir_dto.Identifier{
-				System: constvars.FhirSupertokenSystemIdentifier,
-				Value:  superTokenUserID,
-			})
-		}
-	}
-
-	if chatwootCallErr == nil && userChatwootContact.ChatwootID != 0 {
-		if !scanResult.foundChatwoot {
-			mustUpdate = true
-			person.Identifier = append(person.Identifier, fhir_dto.Identifier{
-				System: constvars.KonsulinOmnichannelSystemIdentifier,
-				Value:  chatwootID,
-			})
-		}
-		if scanResult.foundChatwoot && !scanResult.chatwootExactMatch {
-			mustUpdate = true
-			person.Identifier[scanResult.foundChatwootIdx] = fhir_dto.Identifier{
-				System: constvars.KonsulinOmnichannelSystemIdentifier,
-				Value:  chatwootID,
-			}
-		}
-	}
-
-	if mustUpdate {
-		return uc.PersonFhirClient.Update(ctx, person)
-	}
-	return person, nil
 }
 
 // createNewPractitioner creates a new Practitioner FHIR resource.
@@ -745,38 +498,6 @@ func (uc *userUsecase) createNewPatient(ctx context.Context, email, phone, super
 	return uc.PatientFhirClient.CreatePatient(ctx, newPatientInput)
 }
 
-// createNewPerson creates a new Person FHIR resource.
-//
-//nolint:dupl
-func (uc *userUsecase) createNewPerson(ctx context.Context, email, phone, superTokenUserID string) (*fhir_dto.Person, error) {
-	userChatwootContact, chatwootErr := uc.callChatwootWithFallback(ctx, email, phone, "")
-	chatwootID := strconv.Itoa(userChatwootContact.ChatwootID)
-	telecom := buildContactPoints(email, phone)
-
-	newPersonInput := &fhir_dto.Person{
-		ResourceType: constvars.ResourcePerson,
-		Active:       true,
-		Identifier:   []fhir_dto.Identifier{},
-		Telecom:      telecom,
-	}
-
-	if superTokenUserID != "" {
-		newPersonInput.Identifier = append(newPersonInput.Identifier, fhir_dto.Identifier{
-			System: constvars.FhirSupertokenSystemIdentifier,
-			Value:  superTokenUserID,
-		})
-	}
-
-	if chatwootErr == nil && userChatwootContact.ChatwootID != 0 {
-		newPersonInput.Identifier = append(newPersonInput.Identifier, fhir_dto.Identifier{
-			System: constvars.KonsulinOmnichannelSystemIdentifier,
-			Value:  chatwootID,
-		})
-	}
-
-	return uc.PersonFhirClient.Create(ctx, newPersonInput)
-}
-
 //nolint:dupl
 func (uc *userUsecase) createPractitionerIfNotExists(ctx context.Context, email string, phone string, superTokenUserID string) (*fhir_dto.Practitioner, error) {
 	practitioners, err := uc.lookupPractitioner(ctx, email, phone, superTokenUserID)
@@ -799,204 +520,6 @@ func (uc *userUsecase) createPatientIfNotExists(ctx context.Context, email strin
 		return uc.ensurePatientIdentifiers(ctx, &patients[0], email, phone, superTokenUserID)
 	}
 	return uc.createNewPatient(ctx, email, phone, superTokenUserID)
-}
-
-//nolint:dupl
-func (uc *userUsecase) createPersonIfNotExists(ctx context.Context, email string, phone string, superTokenUserID string) (*fhir_dto.Person, error) {
-	persons, err := uc.lookupPerson(ctx, email, phone, superTokenUserID)
-	if err != nil {
-		return nil, err
-	}
-	if len(persons) > 0 {
-		return uc.ensurePersonIdentifiers(ctx, &persons[0], email, phone, superTokenUserID)
-	}
-	return uc.createNewPerson(ctx, email, phone, superTokenUserID)
-}
-
-func (uc *userUsecase) updatePatientFhirProfile(ctx context.Context, user *models.User, session *models.Session, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error) {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	uc.Log.Info("userUsecase.updatePatientFhirProfile called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingPatientIDKey, session.PatientID),
-	)
-
-	sessionModel := models.Session{
-		UserID:    user.ID,
-		PatientID: user.PatientID,
-		Email:     user.Email,
-		Username:  user.Username,
-		RoleID:    session.RoleID,
-		RoleName:  session.RoleName,
-		SessionID: session.SessionID,
-	}
-
-	err := uc.RedisRepository.Set(ctx, session.SessionID, sessionModel, time.Hour)
-	if err != nil {
-		uc.Log.Error("userUsecase.updatePatientFhirProfile error storing updated session in Redis",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, err
-	}
-
-	patientFhirRequest := utils.BuildFhirPatientUpdateProfileRequest(request, session.PatientID)
-	fhirPatient, err := uc.PatientFhirClient.UpdatePatient(ctx, patientFhirRequest)
-	if err != nil {
-		uc.Log.Error("userUsecase.updatePatientFhirProfile error updating patient FHIR resource",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, err
-	}
-
-	uc.Log.Info("userUsecase.updatePatientFhirProfile succeeded",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingPatientIDKey, fhirPatient.ID),
-	)
-
-	response := &responses.UpdateUserProfile{
-		PatientID: fhirPatient.ID,
-	}
-	return response, nil
-}
-
-func (uc *userUsecase) updatePractitionerFhirProfile(ctx context.Context, user *models.User, session *models.Session, request *requests.UpdateProfile) (*responses.UpdateUserProfile, error) {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	uc.Log.Info("userUsecase.updatePractitionerFhirProfile called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingPractitionerIDKey, session.PractitionerID),
-	)
-
-	sessionModel := models.Session{
-		UserID:         user.ID,
-		PractitionerID: user.PractitionerID,
-		Email:          user.Email,
-		Username:       user.Username,
-		RoleID:         session.RoleID,
-		RoleName:       session.RoleName,
-		SessionID:      session.SessionID,
-	}
-
-	err := uc.RedisRepository.Set(ctx, session.SessionID, sessionModel, time.Hour)
-	if err != nil {
-		uc.Log.Error("userUsecase.updatePractitionerFhirProfile error storing updated session in Redis",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, err
-	}
-
-	practitionerFhirRequest := utils.BuildFhirPractitionerUpdateProfileRequest(request, session.PractitionerID)
-	fhirPractitioner, err := uc.PractitionerFhirClient.UpdatePractitioner(ctx, practitionerFhirRequest)
-	if err != nil {
-		uc.Log.Error("userUsecase.updatePractitionerFhirProfile error updating practitioner FHIR resource",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, err
-	}
-
-	uc.Log.Info("userUsecase.updatePractitionerFhirProfile succeeded",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingPractitionerIDKey, fhirPractitioner.ID),
-	)
-
-	response := &responses.UpdateUserProfile{
-		PractitionerID: fhirPractitioner.ID,
-	}
-	return response, nil
-}
-
-func (uc *userUsecase) getPatientProfile(ctx context.Context, session *models.Session, preSignedUrl *string) (*responses.UserProfile, error) {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	uc.Log.Info("userUsecase.getPatientProfile called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingPatientIDKey, session.PatientID),
-	)
-
-	patientFhir, err := uc.PatientFhirClient.FindPatientByID(ctx, session.PatientID)
-	if err != nil {
-		uc.Log.Error("userUsecase.getPatientProfile error fetching patient FHIR resource",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, err
-	}
-
-	response := utils.BuildPatientProfileResponse(patientFhir)
-	response.ProfilePicture = preSignedUrl
-
-	uc.Log.Info("userUsecase.getPatientProfile succeeded",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-	)
-	return response, nil
-}
-
-func (uc *userUsecase) getPractitionerProfile(ctx context.Context, session *models.Session, preSignedUrl *string) (*responses.UserProfile, error) {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	uc.Log.Info("userUsecase.getPractitionerProfile called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingPractitionerIDKey, session.PractitionerID),
-	)
-
-	practitionerFhir, err := uc.PractitionerFhirClient.FindPractitionerByID(ctx, session.PractitionerID)
-	if err != nil {
-		uc.Log.Error("userUsecase.getPractitionerProfile error fetching practitioner FHIR resource",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, err
-	}
-
-	response := utils.BuildPractitionerProfileResponse(practitionerFhir)
-	response.ProfilePicture = preSignedUrl
-
-	practitionerRoles, err := uc.PractitionerRoleFhirClient.FindPractitionerRoleByPractitionerID(ctx, session.PractitionerID)
-	if err != nil {
-		uc.Log.Error("userUsecase.getPractitionerProfile error fetching practitioner roles",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil, err
-	}
-
-	practiceInformations := make([]responses.PracticeInformation, 0, len(practitionerRoles))
-	practiceAvailabilities := make([]responses.PracticeAvailability, 0, len(practitionerRoles))
-	for _, practitionerRole := range practitionerRoles {
-		organizationID := strings.Split(practitionerRole.Organization.Reference, "/")[1]
-		organization, err := uc.OrganizationFhirClient.FindOrganizationByID(ctx, organizationID)
-		if err != nil {
-			uc.Log.Error("userUsecase.getPractitionerProfile error fetching organization",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.String(constvars.LoggingOrganizationIDKey, organizationID),
-				zap.Error(err),
-			)
-			return nil, err
-		}
-		practiceInformations = append(practiceInformations, responses.PracticeInformation{
-			ClinicID:    organization.ID,
-			ClinicName:  organization.Name,
-			Affiliation: organization.Name,
-			Specialties: utils.ExtractSpecialties(practitionerRole.Specialty),
-			PricePerSession: responses.PricePerSession{
-				Value:    practitionerRole.Extension[0].ValueMoney.Value,
-				Currency: practitionerRole.Extension[0].ValueMoney.Currency,
-			},
-		})
-		if len(practitionerRole.AvailableTime) > 0 {
-			practiceAvailabilities = append(practiceAvailabilities, responses.PracticeAvailability{
-				ClinicID:       organization.ID,
-				AvailableTimes: utils.ConvertToAvailableTimesResponse(practitionerRole.AvailableTime),
-			})
-		}
-	}
-	response.PracticeInformations = practiceInformations
-	response.PracticeAvailabilities = practiceAvailabilities
-
-	uc.Log.Info("userUsecase.getPractitionerProfile succeeded",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-	)
-	return response, nil
 }
 
 type callWebhookSvcKonsulinOmnichannelOutput struct {
@@ -1029,6 +552,34 @@ func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, in
 	// Keep this detail internal so callers don't have to know about it.
 	phoneE164 := utils.FormatE164WithPlus(input.Phone)
 
+	body := struct {
+		Email string `json:"email,omitempty"`
+		Name  string `json:"name"`
+		Phone string `json:"phoneNumber,omitempty"`
+	}{
+		Email: input.Email,
+		Name:  lastUsername,
+		Phone: phoneE164,
+	}
+
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		return callWebhookSvcKonsulinOmnichannelOutput{}, err
+	}
+
+	// Use in-process forwarder when available (skips HTTP loopback, JWT creation, auth).
+	if uc.webhookForwardFn != nil {
+		outStatusCode, respBody, err := uc.webhookForwardFn(ctx, "modify-profile", http.MethodPost, bodyBytes, "application/json")
+		if err != nil {
+			return callWebhookSvcKonsulinOmnichannelOutput{}, err
+		}
+		if outStatusCode != http.StatusOK {
+			return callWebhookSvcKonsulinOmnichannelOutput{}, errors.New("failed to call webhook svc konsulin omnichannel")
+		}
+
+		return parseOmnichannelResponse(respBody)
+	}
+
 	tokenOut, err := uc.JWTTokenManager.CreateToken(
 		ctx,
 		&jwtmanager.CreateTokenInput{
@@ -1044,21 +595,6 @@ func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, in
 		strings.TrimRight(uc.InternalConfig.App.BaseUrl, "/"),
 		strings.Trim(uc.InternalConfig.App.WebhookInstantiateBasePath, "/"),
 	)
-
-	body := struct {
-		Email string `json:"email,omitempty"`
-		Name  string `json:"name"`
-		Phone string `json:"phoneNumber,omitempty"`
-	}{
-		Email: input.Email,
-		Name:  lastUsername,
-		Phone: phoneE164,
-	}
-
-	bodyBytes, err := json.Marshal(body)
-	if err != nil {
-		return callWebhookSvcKonsulinOmnichannelOutput{}, err
-	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(bodyBytes))
 	if err != nil {
@@ -1076,7 +612,7 @@ func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, in
 	if err != nil {
 		return callWebhookSvcKonsulinOmnichannelOutput{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return callWebhookSvcKonsulinOmnichannelOutput{}, errors.New("failed to call webhook svc konsulin omnichannel")
@@ -1087,8 +623,14 @@ func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, in
 		return callWebhookSvcKonsulinOmnichannelOutput{}, err
 	}
 
+	return parseOmnichannelResponse(bodyBytesResp)
+}
+
+// parseOmnichannelResponse parses the raw response body from the omnichannel webhook
+// into a structured output. It handles nil phone number fields safely.
+func parseOmnichannelResponse(body []byte) (callWebhookSvcKonsulinOmnichannelOutput, error) {
 	var rawOutputs []callWebhookSvcKonsulinOmnichannelRawOutput
-	if err = json.Unmarshal(bodyBytesResp, &rawOutputs); err != nil {
+	if err := json.Unmarshal(body, &rawOutputs); err != nil {
 		return callWebhookSvcKonsulinOmnichannelOutput{}, err
 	}
 	if len(rawOutputs) == 0 {
@@ -1108,7 +650,6 @@ func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, in
 	if raw.PhoneNumber != nil {
 		output.PhoneNumber = *raw.PhoneNumber
 	}
-
 	return output, nil
 }
 

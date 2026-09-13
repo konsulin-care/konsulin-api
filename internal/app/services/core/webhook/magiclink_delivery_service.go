@@ -5,16 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"strconv"
-	"strings"
-	"time"
-
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/services/shared/jwtmanager"
 	"konsulin-service/internal/pkg/constvars"
+	"net/http"
+	"strings"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -34,11 +31,18 @@ type magicLinkDeliveryService struct {
 	cfg        *config.InternalConfig
 	jwtManager *jwtmanager.JWTManager
 	httpClient *http.Client
+	forwardFn  func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error)
 }
 
-// NewMagicLinkDeliveryService constructs an internal-only delivery service for passwordless magic links.
+// SetWebhookForwarder sets the in-process forwarder for synchronous webhook calls.
+// When set, SendMagicLink calls this function directly instead of making an HTTP loopback.
+func (s *magicLinkDeliveryService) SetWebhookForwarder(fn func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error)) {
+	s.forwardFn = fn
+}
+
+// NewMagicLinkSender constructs an internal-only delivery service for passwordless magic links.
 // It is NOT exposed as an HTTP endpoint; intended usage is via internal components like SuperTokens overrides.
-func NewMagicLinkDeliveryService(cfg *config.InternalConfig, jwtManager *jwtmanager.JWTManager, logger *zap.Logger) contracts.MagicLinkDeliveryService {
+func NewMagicLinkSender(cfg *config.InternalConfig, jwtManager *jwtmanager.JWTManager, logger *zap.Logger) contracts.MagicLinkSender {
 	timeoutSeconds := 15
 	if cfg != nil && cfg.Webhook.HTTPTimeoutInSeconds > 0 {
 		timeoutSeconds = cfg.Webhook.HTTPTimeoutInSeconds
@@ -53,30 +57,8 @@ func NewMagicLinkDeliveryService(cfg *config.InternalConfig, jwtManager *jwtmana
 }
 
 func (s *magicLinkDeliveryService) SendMagicLink(ctx context.Context, in contracts.SendMagicLinkInput) error {
-	if s.cfg == nil {
-		return fmt.Errorf("internal config is required")
-	}
-	if strings.TrimSpace(s.cfg.Webhook.URL) == "" {
-		return fmt.Errorf("webhook base url (InternalConfig.Webhook.URL) is required")
-	}
-	if s.jwtManager == nil {
-		return fmt.Errorf("jwt manager is required")
-	}
-
-	magiclinkUrl := strings.TrimSpace(in.URL)
-	email := strings.TrimSpace(in.Email)
-	phone := strings.TrimSpace(in.Phone)
-
-	if magiclinkUrl == "" {
-		return fmt.Errorf("url is required")
-	}
-	hasEmail := email != ""
-	hasPhone := phone != ""
-	if hasEmail && hasPhone {
-		return fmt.Errorf("email and phone are mutually exclusive")
-	}
-	if !hasEmail && !hasPhone {
-		return fmt.Errorf("either email or phone is required")
+	if err := s.validate(in); err != nil {
+		return err
 	}
 
 	// targetURL will point to the synchronous hook service for magiclink delivery provided by the backend
@@ -93,10 +75,10 @@ func (s *magicLinkDeliveryService) SendMagicLink(ctx context.Context, in contrac
 		Email string `json:"email,omitempty"`
 		Phone string `json:"phoneNumber,omitempty"`
 	}{
-		URL:   magiclinkUrl,
+		URL:   strings.TrimSpace(in.URL),
 		Exp:   magicLinkExpMinutes,
-		Email: email,
-		Phone: phone,
+		Email: strings.TrimSpace(in.Email),
+		Phone: strings.TrimSpace(in.Phone),
 	}
 
 	bodyBytes, err := json.Marshal(payload)
@@ -104,6 +86,53 @@ func (s *magicLinkDeliveryService) SendMagicLink(ctx context.Context, in contrac
 		return fmt.Errorf("marshal payload: %w", err)
 	}
 
+	// Use in-process forwarder when available (skips HTTP loopback).
+	if s.forwardFn != nil {
+		return s.sendViaForwarder(ctx, bodyBytes)
+	}
+	return s.sendViaHTTP(ctx, bodyBytes, targetURL)
+}
+
+// validate checks the service configuration and SendMagicLinkInput invariants
+// before any dispatch happens.
+func (s *magicLinkDeliveryService) validate(in contracts.SendMagicLinkInput) error {
+	if s.cfg == nil {
+		return fmt.Errorf("internal config is required")
+	}
+	if strings.TrimSpace(s.cfg.Webhook.URL) == "" {
+		return fmt.Errorf("webhook base url (InternalConfig.Webhook.URL) is required")
+	}
+	if s.jwtManager == nil {
+		return fmt.Errorf("jwt manager is required")
+	}
+
+	if strings.TrimSpace(in.URL) == "" {
+		return fmt.Errorf("url is required")
+	}
+	hasEmail := strings.TrimSpace(in.Email) != ""
+	hasPhone := strings.TrimSpace(in.Phone) != ""
+	if hasEmail && hasPhone {
+		return fmt.Errorf("email and phone are mutually exclusive")
+	}
+	if !hasEmail && !hasPhone {
+		return fmt.Errorf("either email or phone is required")
+	}
+	return nil
+}
+
+// sendViaForwarder dispatches the magic link through the in-process webhook
+// forwarder, applying the shared post-dispatch status classification.
+func (s *magicLinkDeliveryService) sendViaForwarder(ctx context.Context, bodyBytes []byte) error {
+	outStatusCode, _, err := s.forwardFn(ctx, magicLinkServiceName, http.MethodPost, bodyBytes, constvars.MIMEApplicationJSON)
+	if err != nil {
+		return fmt.Errorf("forward magiclink: %w", err)
+	}
+	return s.classifyWebhookStatus(outStatusCode)
+}
+
+// sendViaHTTP dispatches the magic link via a loopback HTTP call to the
+// synchronous webhook service, JWT-signed and classified like the forwarder.
+func (s *magicLinkDeliveryService) sendViaHTTP(ctx context.Context, bodyBytes []byte, targetURL string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewBuffer(bodyBytes))
 	if err != nil {
 		return fmt.Errorf("build request: %w", err)
@@ -121,7 +150,7 @@ func (s *magicLinkDeliveryService) SendMagicLink(ctx context.Context, in contrac
 	if err != nil {
 		return fmt.Errorf("call magiclink webhook: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
 		requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
@@ -131,14 +160,22 @@ func (s *magicLinkDeliveryService) SendMagicLink(ctx context.Context, in contrac
 		return nil
 	}
 
-	// Best-effort error body capture (bounded).
-	const maxBody = 4096
-	b, _ := io.ReadAll(io.LimitReader(resp.Body, maxBody))
-	if len(b) == 0 {
-		s.log.Error("magiclink webhook returned status", zap.String("status_code", strconv.Itoa(resp.StatusCode)))
-		return fmt.Errorf("magiclink webhook returned status %d", resp.StatusCode)
-	}
+	return s.classifyWebhookStatus(resp.StatusCode)
+}
 
-	s.log.Error("magiclink webhook returned status", zap.String("status_code", strconv.Itoa(resp.StatusCode)), zap.String("body", string(b)))
-	return fmt.Errorf("magiclink webhook returned status %d: %s", resp.StatusCode, string(b))
+// classifyWebhookStatus decides whether a webhook response means the magic
+// link was dispatched. 2xx and 5xx return nil: a 5xx means the webhook
+// received the request and dispatched the message before failing downstream,
+// which must not fail the login flow — but it is logged for observability.
+// 4xx returns an error: a definitive non-dispatch (misconfig/payload bug)
+// that must stay loud.
+func (s *magicLinkDeliveryService) classifyWebhookStatus(statusCode int) error {
+	if statusCode == http.StatusOK || statusCode == http.StatusNoContent {
+		return nil
+	}
+	if statusCode >= http.StatusBadRequest && statusCode < http.StatusInternalServerError {
+		return fmt.Errorf("magiclink webhook returned status %d", statusCode)
+	}
+	s.log.Error("magiclink webhook returned status", zap.Int("status_code", statusCode))
+	return nil
 }

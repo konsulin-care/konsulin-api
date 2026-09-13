@@ -1,6 +1,8 @@
 package middlewares
 
 import (
+	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +10,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/fhir_dto"
 
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
@@ -381,4 +386,263 @@ type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
+}
+
+// strictBundleClient helpers: a practitioner session owning prac-1 with own
+// patient pat-own (seeded via the SuperTokens identifier lookup).
+func strictBundleMiddlewares() *Middlewares {
+	return &Middlewares{
+		PatientFhirClient:          &mockPatientClient{patients: []fhir_dto.Patient{{ID: "pat-own"}}},
+		PractitionerFhirClient:     &mockPractitionerClient{practitioners: []fhir_dto.Practitioner{{ID: "prac-1"}}},
+		PractitionerRoleFhirClient: &stubPractitionerRoleClient{},
+		Log:                        zap.NewNop(),
+	}
+}
+
+func bundleEntryIDs(t *testing.T, bundle *Bundle) map[string]bool {
+	t.Helper()
+	ids := map[string]bool{}
+	for _, e := range bundle.Entry {
+		var env struct {
+			ResourceType string `json:"resourceType"`
+			ID           string `json:"id"`
+		}
+		if err := json.Unmarshal(e.Resource, &env); err != nil {
+			continue
+		}
+		ids[env.ResourceType+"/"+env.ID] = true
+	}
+	return ids
+}
+
+func TestApplyOwnershipFilterToBundle_ReferencedStrangerDroppedStrict(t *testing.T) {
+	// Strict referenced-bundle-keep: an owned Appointment may reference
+	// Patient/pat-stranger, but the stranger's Patient entry is dropped unless
+	// the caller provably owns it. The caller's own Patient entry survives.
+	mw := strictBundleMiddlewares()
+	ctx := context.WithValue(context.Background(), keyUID, "user-123")
+	bundle := &Bundle{
+		ResourceType: "Bundle",
+		Type:         "searchset",
+		Entry: []BundleEntry{
+			{
+				Resource: json.RawMessage(`{"resourceType":"Appointment","id":"appt-1","participant":[{"actor":{"reference":"Practitioner/prac-1"}},{"actor":{"reference":"Patient/pat-own"}},{"actor":{"reference":"Patient/pat-stranger"}}]}`),
+			},
+			{
+				Resource: json.RawMessage(`{"resourceType":"Patient","id":"pat-own"}`),
+			},
+			{
+				Resource: json.RawMessage(`{"resourceType":"Patient","id":"pat-stranger"}`),
+			},
+		},
+	}
+
+	removed := mw.applyOwnershipFilterToBundle(ctx, bundle, []string{constvars.KonsulinRolePractitioner}, constvars.KonsulinRolePractitioner, "prac-1")
+
+	assert.Equal(t, 1, removed)
+	ids := bundleEntryIDs(t, bundle)
+	assert.True(t, ids["Appointment/appt-1"], "owned appointment must be kept")
+	assert.True(t, ids["Patient/pat-own"], "own patient entry must be kept")
+	assert.False(t, ids["Patient/pat-stranger"], "referenced-but-unowned patient entry must be dropped")
+}
+
+func TestApplyOwnershipFilterToBundle_PublicReferencedKept(t *testing.T) {
+	// Public-scope resources referenced by owned entries survive the strict
+	// check (they are already owned): a PractitionerRole include stays.
+	mw := strictBundleMiddlewares()
+	ctx := context.WithValue(context.Background(), keyUID, "user-123")
+	bundle := &Bundle{
+		ResourceType: "Bundle",
+		Type:         "searchset",
+		Entry: []BundleEntry{
+			{
+				Resource: json.RawMessage(`{"resourceType":"Appointment","id":"appt-1","participant":[{"actor":{"reference":"PractitionerRole/role-1"}},{"actor":{"reference":"Practitioner/prac-1"}}]}`),
+			},
+			{
+				Resource: json.RawMessage(`{"resourceType":"PractitionerRole","id":"role-1","practitioner":{"reference":"Practitioner/prac-2"}}`),
+			},
+		},
+	}
+
+	removed := mw.applyOwnershipFilterToBundle(ctx, bundle, []string{constvars.KonsulinRolePractitioner}, constvars.KonsulinRolePractitioner, "prac-1")
+
+	assert.Equal(t, 0, removed)
+	ids := bundleEntryIDs(t, bundle)
+	assert.True(t, ids["Appointment/appt-1"])
+	assert.True(t, ids["PractitionerRole/role-1"], "public PractitionerRole include must survive")
+}
+
+func TestApplyOwnershipFilterToBundle_ResearcherCollectsNoReferencedKeep(t *testing.T) {
+	// Researcher sessions are not relationship-based practitioners: they never
+	// collect referenced-keep, so a stranger's referenced patient entry is
+	// dropped even when a genuinely owned resource would have kept it.
+	mw := strictBundleMiddlewares()
+	ctx := context.WithValue(context.Background(), keyUID, "user-123")
+	bundle := &Bundle{
+		ResourceType: "Bundle",
+		Type:         "searchset",
+		Entry: []BundleEntry{
+			{
+				Resource: json.RawMessage(`{"resourceType":"Appointment","id":"appt-1","participant":[{"actor":{"reference":"Practitioner/prac-1"}},{"actor":{"reference":"Patient/pat-stranger"}}]}`),
+			},
+			{
+				Resource: json.RawMessage(`{"resourceType":"Patient","id":"pat-stranger"}`),
+			},
+		},
+	}
+
+	removed := mw.applyOwnershipFilterToBundle(ctx, bundle, []string{constvars.KonsulinRoleResearcher}, constvars.KonsulinRolePractitioner, "prac-1")
+
+	assert.Equal(t, 1, removed)
+	ids := bundleEntryIDs(t, bundle)
+	assert.False(t, ids["Patient/pat-stranger"], "researcher must not inherit referenced-bundle-keep")
+}
+
+func TestStripCommunicationFields_SingleResource(t *testing.T) {
+	body := `{"resourceType":"Communication","id":"comm-1","meta":{"versionId":"1","lastUpdated":"2025-01-01T00:00:00Z"},"status":"completed","topic":{"coding":[{"system":"http://konsulin.care/fhir/CodeSystem/research-referral","code":"research-referral"}]},"subject":{"reference":"Patient/pat-1"},"sender":{"reference":"Patient/pat-1"},"recipient":[{"reference":"Patient/pat-2"}],"sent":"2025-01-01T00:00:00Z","received":"2025-01-02T00:00:00Z","payload":[{"contentString":"sensitive"}]}`
+
+	out, mutated := stripCommunicationFields([]byte(body))
+	assert.True(t, mutated, "a Communication must be marked mutated")
+
+	var m map[string]any
+	if !assert.NoError(t, json.Unmarshal(out, &m)) {
+		return
+	}
+	assert.Equal(t, "Communication", m["resourceType"])
+	assert.Equal(t, "comm-1", m["id"])
+	assert.NotNil(t, m["meta"])
+	assert.NotNil(t, m["sender"])
+	assert.NotNil(t, m["recipient"])
+	assert.NotNil(t, m["sent"])
+	assert.NotNil(t, m["received"])
+	assert.NotContains(t, m, "status")
+	assert.NotContains(t, m, "topic")
+	assert.NotContains(t, m, "subject")
+	assert.NotContains(t, m, "payload")
+}
+
+func TestStripCommunicationFields_BundleMixedEntries(t *testing.T) {
+	body := `{"resourceType":"Bundle","type":"searchset","total":2,"entry":[
+		{"resource":{"resourceType":"Communication","id":"comm-1","status":"completed","sender":{"reference":"Patient/pat-1"},"recipient":[{"reference":"Patient/pat-2"}],"payload":[{"contentString":"secret"}]}},
+		{"resource":{"resourceType":"Patient","id":"pat-1","name":[{"family":"Doe"}]}}
+	]}`
+
+	out, mutated := stripCommunicationFields([]byte(body))
+	assert.True(t, mutated, "bundle with a Communication entry must be marked mutated")
+
+	var b struct {
+		Entry []struct {
+			Resource map[string]any `json:"resource"`
+		} `json:"entry"`
+	}
+	if !assert.NoError(t, json.Unmarshal(out, &b)) {
+		return
+	}
+	assert.Len(t, b.Entry, 2)
+
+	comm := b.Entry[0].Resource
+	assert.Equal(t, "Communication", comm["resourceType"])
+	assert.NotContains(t, comm, "status")
+	assert.NotContains(t, comm, "payload")
+	assert.NotNil(t, comm["sender"])
+
+	pat := b.Entry[1].Resource
+	assert.Equal(t, "Patient", pat["resourceType"])
+	assert.NotNil(t, pat["name"], "non-Communication entries must be untouched")
+}
+
+func TestStripCommunicationFields_NonCommunicationUntouched(t *testing.T) {
+	body := `{"resourceType":"Observation","id":"obs-1","status":"final"}`
+	out, mutated := stripCommunicationFields([]byte(body))
+	assert.False(t, mutated)
+	assert.Equal(t, body, string(out))
+}
+
+func TestStripCommunicationBundle_StripsCommunicationEntries(t *testing.T) {
+	body := `{"resourceType":"Bundle","type":"searchset","total":2,"entry":[
+		{"resource":{"resourceType":"Communication","id":"comm-1","status":"completed","sender":{"reference":"Patient/pat-1"},"recipient":[{"reference":"Patient/pat-2"}],"payload":[{"contentString":"secret"}]}},
+		{"resource":{"resourceType":"Patient","id":"pat-1","name":[{"family":"Doe"}]}}
+	]}`
+
+	out, mutated := stripCommunicationBundle([]byte(body))
+	assert.True(t, mutated, "bundle with a Communication entry must be marked mutated")
+
+	var b struct {
+		Entry []struct {
+			Resource map[string]any `json:"resource"`
+		} `json:"entry"`
+	}
+	if !assert.NoError(t, json.Unmarshal(out, &b)) {
+		return
+	}
+	assert.Len(t, b.Entry, 2)
+
+	comm := b.Entry[0].Resource
+	assert.Equal(t, "Communication", comm["resourceType"])
+	assert.NotContains(t, comm, "status")
+	assert.NotContains(t, comm, "payload")
+	assert.NotNil(t, comm["sender"])
+
+	pat := b.Entry[1].Resource
+	assert.Equal(t, "Patient", pat["resourceType"])
+	assert.NotNil(t, pat["name"], "non-Communication entries must be untouched")
+}
+
+func TestStripCommunicationBundle_NoCommunicationUnmutated(t *testing.T) {
+	body := `{"resourceType":"Bundle","type":"searchset","total":1,"entry":[
+		{"resource":{"resourceType":"Patient","id":"pat-1","name":[{"family":"Doe"}]}}
+	]}`
+
+	out, mutated := stripCommunicationBundle([]byte(body))
+	assert.False(t, mutated, "bundle without Communication entries must be unmutated")
+	assert.Equal(t, body, string(out))
+}
+
+func TestStripCommunicationBundle_InvalidJSONUnmutated(t *testing.T) {
+	body := []byte(`{not json`)
+
+	out, mutated := stripCommunicationBundle(body)
+	assert.False(t, mutated)
+	assert.Equal(t, body, out)
+}
+
+func TestShouldStripCommunicationFields(t *testing.T) {
+	ownSender, _ := url.Parse("/fhir/Communication?sender=Patient/pat-1&topic=research-referral")
+	ownRecipient, _ := url.Parse("/fhir/Communication?recipient=Patient/pat-1&topic=research-referral")
+	crossPatient, _ := url.Parse("/fhir/Communication?sender=Patient/pat-2&topic=research-referral")
+	bare, _ := url.Parse("/fhir/Communication")
+
+	t.Run("patient scoped to own sender keeps full fields", func(t *testing.T) {
+		assert.False(t, shouldStripCommunicationFields([]string{constvars.KonsulinRolePatient}, "pat-1", ownSender))
+	})
+
+	t.Run("patient scoped to own recipient keeps full fields", func(t *testing.T) {
+		assert.False(t, shouldStripCommunicationFields([]string{constvars.KonsulinRolePatient}, "pat-1", ownRecipient))
+	})
+
+	t.Run("researcher strips fields", func(t *testing.T) {
+		assert.True(t, shouldStripCommunicationFields([]string{constvars.KonsulinRoleResearcher}, "", crossPatient))
+	})
+
+	t.Run("superadmin strips fields", func(t *testing.T) {
+		assert.True(t, shouldStripCommunicationFields([]string{constvars.KonsulinRoleSuperadmin}, "", bare))
+	})
+
+	t.Run("patient+researcher on own data keeps full fields", func(t *testing.T) {
+		assert.False(t, shouldStripCommunicationFields(
+			[]string{constvars.KonsulinRolePatient, constvars.KonsulinRoleResearcher}, "pat-1", ownSender))
+	})
+
+	t.Run("patient+researcher on cross-patient query strips fields", func(t *testing.T) {
+		assert.True(t, shouldStripCommunicationFields(
+			[]string{constvars.KonsulinRolePatient, constvars.KonsulinRoleResearcher}, "pat-1", crossPatient))
+	})
+
+	t.Run("guest never strips", func(t *testing.T) {
+		assert.False(t, shouldStripCommunicationFields([]string{constvars.KonsulinRoleGuest}, "", bare))
+	})
+
+	t.Run("practitioner never strips", func(t *testing.T) {
+		assert.False(t, shouldStripCommunicationFields([]string{constvars.KonsulinRolePractitioner}, "prac-1", bare))
+	})
 }

@@ -54,11 +54,6 @@ func (m *MockAuthUsecase) CreateAnonymousSession(ctx context.Context, existingTo
 	return out, args.Error(1)
 }
 
-func (m *MockAuthUsecase) LogoutUser(ctx context.Context, sessionData string) error {
-	args := m.Called(ctx, sessionData)
-	return args.Error(0)
-}
-
 func (m *MockAuthUsecase) CheckUserExists(ctx context.Context, email string) (*contracts.CheckUserExistsOutput, error) {
 	args := m.Called(ctx, email)
 	var out *contracts.CheckUserExistsOutput
@@ -465,8 +460,9 @@ func TestAuthRouter_ErrorHandling(t *testing.T) {
 		mockAuthUsecase.On("CreateMagicLink", mock.Anything, mock.AnythingOfType("*requests.SupertokenPasswordlessCreateMagicLink")).Return(nil)
 
 		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
-			Email: "test@example.com",
-			Roles: []string{"Practitioner", "Researcher"},
+			Email:          "test@example.com",
+			Roles:          []string{"Practitioner", "Researcher"},
+			OrganizationID: "org-1",
 		}
 		jsonBody, _ := json.Marshal(requestBody)
 
@@ -490,8 +486,9 @@ func TestAuthRouter_ErrorHandling(t *testing.T) {
 		mockAuthUsecase.On("CreateMagicLink", mock.Anything, mock.AnythingOfType("*requests.SupertokenPasswordlessCreateMagicLink")).Return(nil)
 
 		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
-			Email: "test@example.com",
-			Roles: []string{"Patient", "Practitioner", "Clinic Admin", "Researcher"},
+			Email:          "test@example.com",
+			Roles:          []string{"Patient", "Practitioner", "Clinic Admin", "Researcher"},
+			OrganizationID: "org-1",
 		}
 		jsonBody, _ := json.Marshal(requestBody)
 
@@ -529,8 +526,9 @@ func TestAuthRouter_ErrorHandling(t *testing.T) {
 
 		// Send request with unsanitized data
 		requestBody := map[string]interface{}{
-			"email": "  TEST@EXAMPLE.COM  ",
-			"roles": []string{"  Practitioner  ", "  Researcher  "},
+			"email":          "  TEST@EXAMPLE.COM  ",
+			"roles":          []string{"  Practitioner  ", "  Researcher  "},
+			"organizationId": "org-1",
 		}
 		jsonBody, _ := json.Marshal(requestBody)
 
@@ -627,8 +625,9 @@ func TestAuthRouter_ErrorHandling(t *testing.T) {
 		mockAuthUsecase.On("CreateMagicLink", mock.Anything, mock.AnythingOfType("*requests.SupertokenPasswordlessCreateMagicLink")).Return(nil)
 
 		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
-			Email: "existing@example.com",
-			Roles: []string{"Practitioner", "Researcher"}, // Roles provided for existing user
+			Email:          "existing@example.com",
+			Roles:          []string{"Practitioner", "Researcher"}, // Roles provided for existing user
+			OrganizationID: "org-1",
 		}
 		jsonBody, _ := json.Marshal(requestBody)
 
