@@ -3,11 +3,12 @@ package contracts
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strings"
+
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/utils"
-	"regexp"
-	"strings"
 )
 
 type InitializeNewUserFHIRResourcesInput struct {

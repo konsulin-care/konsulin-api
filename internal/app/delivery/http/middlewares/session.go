@@ -2,8 +2,9 @@ package middlewares
 
 import (
 	"context"
-	"konsulin-service/internal/pkg/constvars"
 	"net/http"
+
+	"konsulin-service/internal/pkg/constvars"
 
 	"github.com/supertokens/supertokens-golang/recipe/session"
 	"github.com/supertokens/supertokens-golang/recipe/session/sessmodels"

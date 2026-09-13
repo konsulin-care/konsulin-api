@@ -5,14 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/utils"
 	"log"
 	"net/http"
 	"regexp"
 	"strings"
 	"time"
+
+	"konsulin-service/internal/app/contracts"
+	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/utils"
 
 	"github.com/supertokens/supertokens-golang/ingredients/emaildelivery"
 	"github.com/supertokens/supertokens-golang/ingredients/smsdelivery"
