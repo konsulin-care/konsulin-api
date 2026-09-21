@@ -6,7 +6,7 @@ ARG TAG
 ARG BUILD_TIME
 ARG RUN_NUMBER
 
-FROM alpine:3.23 AS base
+FROM alpine:3.24 AS base
 LABEL maintainer="Muhammad Febrian Ardiansyah <mfardiansyah.id@gmail.com>"
 WORKDIR /app
 
