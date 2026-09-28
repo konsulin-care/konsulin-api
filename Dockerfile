@@ -54,7 +54,6 @@ COPY cmd ./cmd
 COPY cmd/http ./cmd/http
 #COPY cmd/example ./cmd/example
 COPY internal ./internal
-COPY pkg ./pkg
 
 # updates vendor
 RUN go mod tidy && go mod vendor
@@ -77,5 +76,8 @@ COPY --from=gobuild /go/src/github.com/konsulin-id/be-konsulin/ .
 # COPY --from=gobuild /go/src/github.com/konsulin-id/be-konsulin/RELEASE ./RELEASE
 
 USER app
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=10s \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3200/health || exit 1
 
 ENTRYPOINT ["./api-service"]

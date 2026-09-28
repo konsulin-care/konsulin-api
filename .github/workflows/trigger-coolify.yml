@@ -2,6 +2,11 @@ name: Triggering Coolify deployment
 
 on:
   workflow_call:
+    inputs:
+      environment:
+        description: 'Target deployment environment'
+        required: true
+        type: string
     secrets:
       COOLIFY_URL:
         required: true
@@ -13,6 +18,7 @@ on:
 jobs:
   trigger-coolify:
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
     steps:
       - name: Trigger Coolify Deploy
         env:

@@ -1,4 +1,4 @@
-FROM golang:1.26 as gobuild
+FROM golang:1.26 AS gobuild
 LABEL maintainer="Muhammad Febrian Ardiansyah <mfardiansyah.id@gmail.com>"
 LABEL stage=gobuild
 
@@ -17,5 +17,4 @@ ADD cmd ./cmd
 ADD cmd/http ./cmd/http
 ADD internal ./internal
 ADD resources ./resources
-ADD pkg ./pkg
 RUN go mod download
