@@ -21,7 +21,7 @@ vendor/
 .idea/
 
 resources/http-client.env.json
-.vscode/settings.json
+.vscode/*
 
 *.local.yaml
 *.development.yaml

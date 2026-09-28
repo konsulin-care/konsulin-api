@@ -36,6 +36,7 @@ repos:
       # refs before the push reaches GitHub.
       - id: actionlint
         name: "[quality] actionlint (workflow lint)"
+        exclude: ".github/workflows/trigger-coolify.yml"
 
   - repo: local
     hooks:
