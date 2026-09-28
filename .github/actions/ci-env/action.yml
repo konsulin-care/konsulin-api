@@ -1,12 +1,11 @@
 # Starts the disposable Docker-based integration environment used for API
 # security testing:
 #   1. installs the pinned Bruno CLI;
-#   2. builds the vendor + app Docker images (with the CI FROM-rewrite);
-#   3. writes the collection env (docs/api/.env) and compose interpolation env
+#   2. writes the collection env (docs/api/.env) and compose interpolation env
 #      (.env.ci) using synthetic per-run credentials;
-#   4. starts the infrastructure group (postgres/redis/rabbitmq/blaze/
-#      supertokens/ci-stub), probes readiness from the runner;
-#   5. starts the app and waits for /health.
+#   3. builds the vendor + app Docker images (with the CI FROM-rewrite) in
+#      parallel with infrastructure startup + readiness probes;
+#   4. starts the app and waits for /health.
 #
 # Never starts/uses production credentials or real patient data. The caller is
 # responsible for tearing the environment down (`docker compose ... down -v`)
@@ -61,13 +60,8 @@ runs:
       with:
         install: true
 
-    - name: Build vendor and app images
-      shell: bash
-      run: |
-        docker build -t konsulin/konsulin-api-vendor:pr-ci -f Dockerfile-vendor .
-        sed -i -E "s|^[[:space:]]*FROM[[:space:]]+.*[[:space:]]+[Aa][Ss][[:space:]]+gobuild|FROM konsulin/konsulin-api-vendor:pr-ci as gobuild|" Dockerfile
-        docker build -t konsulin/konsulin-api:pr-ci -f Dockerfile .
-
+    # Write env files first — they must exist before docker compose reads them,
+    # but the step itself is fast (no Docker dependency).
     - name: Write CI env files
       shell: bash
       env:
@@ -104,29 +98,57 @@ runs:
         } >> "$GITHUB_ENV"
         echo "wrote .env.ci and docs/api/.env"
 
-    - name: Start infrastructure group
-      shell: bash
-      run: docker compose --env-file .env.ci -f docker-compose.ci.yml up -d postgres redis rabbitmq blaze supertokens ci-stub
-
-    - name: Wait for infrastructure readiness
+    # Docker image build runs in parallel with infrastructure startup to
+    # reduce total CI wall time. The background subshell handles compose
+    # up + health probes while the foreground runs the two-stage build.
+    - name: Build images & start infrastructure (parallel)
       shell: bash
       env:
         CI_REDIS_PASSWORD: ${{ inputs.ci-redis-password }}
       run: |
-        ok=0
-        for _ in $(seq 1 120); do
-          curl -fsS http://localhost:8080/fhir/metadata >/dev/null 2>&1 || { sleep 5; continue; }
-          curl -fsS http://localhost:3567/hello >/dev/null 2>&1 || { sleep 5; continue; }
-          docker compose --env-file .env.ci -f docker-compose.ci.yml exec -T redis redis-cli -a "$CI_REDIS_PASSWORD" ping >/dev/null 2>&1 || { sleep 5; continue; }
-          docker compose --env-file .env.ci -f docker-compose.ci.yml exec -T rabbitmq rabbitmq-diagnostics -q ping >/dev/null 2>&1 || { sleep 5; continue; }
-          ok=1
-          break
-        done
-        if [ "$ok" != 1 ]; then
-          docker compose --env-file .env.ci -f docker-compose.ci.yml logs --tail=200 postgres redis rabbitmq blaze supertokens 2>/dev/null || true
-          echo "::error::Infrastructure did not become ready in time" >&2
+        set -euo pipefail
+
+        # --- Background: start infra + wait for readiness ---
+        (
+          docker compose --env-file .env.ci -f docker-compose.ci.yml \
+            up -d postgres redis rabbitmq blaze supertokens ci-stub
+
+          ok=0
+          for _ in $(seq 1 120); do
+            curl -fsS http://localhost:8080/fhir/metadata >/dev/null 2>&1 || { sleep 5; continue; }
+            curl -fsS http://localhost:3567/hello >/dev/null 2>&1          || { sleep 5; continue; }
+            docker compose --env-file .env.ci -f docker-compose.ci.yml \
+              exec -T redis redis-cli -a "$CI_REDIS_PASSWORD" ping >/dev/null 2>&1 || { sleep 5; continue; }
+            docker compose --env-file .env.ci -f docker-compose.ci.yml \
+              exec -T rabbitmq rabbitmq-diagnostics -q ping >/dev/null 2>&1 || { sleep 5; continue; }
+            ok=1
+            break
+          done
+          if [ "$ok" != 1 ]; then
+            docker compose --env-file .env.ci -f docker-compose.ci.yml \
+              logs --tail=200 postgres redis rabbitmq blaze supertokens 2>/dev/null || true
+            echo "::error::Infrastructure did not become ready in time" >&2
+            exit 1
+          fi
+        ) &
+        INFRA_PID=$!
+
+        # --- Foreground: build Docker images (parallel with infra above) ---
+        docker build -t konsulin/konsulin-api-vendor:pr-ci -f Dockerfile-vendor .
+
+        sed -i -E \
+          "s|^[[:space:]]*FROM[[:space:]]+.*[[:space:]]+[Aa][Ss][[:space:]]+gobuild|FROM konsulin/konsulin-api-vendor:pr-ci as gobuild|" \
+          Dockerfile
+
+        docker build -t konsulin/konsulin-api:pr-ci -f Dockerfile .
+
+        # --- Wait for background infra to finish ---
+        wait "$INFRA_PID" || {
+          echo "::error::Infrastructure failed during parallel startup" >&2
           exit 1
-        fi
+        }
+
+        echo "Build and infrastructure startup completed in parallel"
 
     - name: Start API gateway
       shell: bash

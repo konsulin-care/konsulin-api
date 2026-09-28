@@ -78,6 +78,6 @@ COPY --from=gobuild /go/src/github.com/konsulin-id/be-konsulin/ .
 USER app
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=10s \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3200/health || exit 1
+  CMD wget --no-verbose --tries=1 --spider "http://localhost:${APP_PORT:-3200}/health" || exit 1
 
 ENTRYPOINT ["./api-service"]
