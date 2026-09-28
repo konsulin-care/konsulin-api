@@ -1,11 +1,16 @@
+# NOTE: actionlint is excluded for this file because COOLIFY_SERVICE is resolved
+# from the GitHub Environment (Staging/Production), not from workflow_call secrets.
+# actionlint cannot verify environment-scoped secrets.
 name: Triggering Coolify deployment
 
 on:
   workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
     secrets:
       COOLIFY_URL:
-        required: true
-      COOLIFY_SERVICE:
         required: true
       COOLIFY_TOKEN:
         required: true
@@ -13,6 +18,7 @@ on:
 jobs:
   trigger-coolify:
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
     steps:
       - name: Trigger Coolify Deploy
         env:
@@ -20,6 +26,6 @@ jobs:
           COOLIFY_SERVICE: ${{ secrets.COOLIFY_SERVICE }}
           COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
         run: |
-          echo "Triggering Coolify deployment..."
+          echo "Triggering Coolify deployment to ${{ inputs.environment }}..."
           curl -X POST "$COOLIFY_URL/services/$COOLIFY_SERVICE/restart?latest=true" \
             --header "Authorization: Bearer $COOLIFY_TOKEN"

@@ -5,6 +5,7 @@ on:
     branches:
       - develop
       - main
+      - ci/deployment-env
 
 jobs:
   # Debug: Display all vars variables
@@ -53,29 +54,19 @@ jobs:
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
 
   # Deploy to appropriate environment
-  deploy-dev:
-    name: Deploy to Dev (Coolify)
+  deploy:
+    name: Deploy to ${{ github.ref_name == 'main' && 'Production' || 'Staging' }}
     needs: docker
-    if: github.ref_name == 'develop'
     uses: ./.github/workflows/trigger-coolify.yml
+    with:
+      environment: ${{ github.ref_name == 'main' && 'Production' || 'Staging' }}
     secrets:
       COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
-      COOLIFY_SERVICE: ${{ secrets.COOLIFY_SERVICE_DEV }}
-      COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
-
-  deploy-prod:
-    name: Deploy to Prod (Coolify)
-    needs: docker
-    if: github.ref_name == 'main'
-    uses: ./.github/workflows/trigger-coolify.yml
-    secrets:
-      COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
-      COOLIFY_SERVICE: ${{ secrets.COOLIFY_SERVICE_PROD }}
       COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
 
   deploy-check:
     name: Check Konsulin API Container Status
-    needs: [deploy-dev, deploy-prod]
+    needs: deploy
     if: ${{ always() }}
     uses: ./.github/workflows/deploy.yml
     secrets:
