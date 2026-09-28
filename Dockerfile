@@ -54,7 +54,6 @@ COPY cmd ./cmd
 COPY cmd/http ./cmd/http
 #COPY cmd/example ./cmd/example
 COPY internal ./internal
-COPY pkg ./pkg
 
 # updates vendor
 RUN go mod tidy && go mod vendor
