@@ -10,7 +10,7 @@ tool (
 )
 
 require (
-	github.com/andybalholm/brotli v1.2.4
+	github.com/andybalholm/brotli v1.2.5
 	github.com/casbin/casbin/v2 v2.135.0
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-chi/chi/v5 v5.3.2
@@ -75,11 +75,11 @@ require (
 
 require (
 	github.com/go-chi/httprate v0.16.0
-	github.com/go-playground/validator/v10 v10.30.4
+	github.com/go-playground/validator/v10 v10.30.5
 	github.com/goccy/go-json v0.10.6
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/google/uuid v1.6.0
-	github.com/klauspost/compress v1.20.0
+	github.com/klauspost/compress v1.20.1
 	github.com/redis/go-redis/v9 v9.22.0
 	go.mongodb.org/mongo-driver v1.17.10
 	golang.org/x/sys v0.48.0 // indirect
