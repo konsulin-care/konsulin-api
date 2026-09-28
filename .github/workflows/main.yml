@@ -60,9 +60,7 @@ jobs:
     uses: ./.github/workflows/trigger-coolify.yml
     with:
       environment: ${{ github.ref_name == 'main' && 'Production' || 'Staging' }}
-    secrets:
-      COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
-      COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+    secrets: inherit
 
   deploy-check:
     name: Check Konsulin API Container Status
