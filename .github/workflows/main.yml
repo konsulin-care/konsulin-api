@@ -17,7 +17,7 @@ jobs:
         env:
           HEAD_COMMIT_TIMESTAMP: ${{ github.event.head_commit.timestamp }}
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          IS_DEV: ${{ github.ref_name == 'develop' }}
+          IS_DEV: ${{ github.ref_name != 'main' }}
           IS_PROD: ${{ github.ref_name == 'main' }}
         run: |
           echo "=== GITHUB CONTEXT VARIABLES ==="
