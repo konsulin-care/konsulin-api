@@ -13,6 +13,39 @@ http:
 
 runtime:
   scripts:
+    - type: before-request
+      code: |-
+        // Authentication creates additional roles for this journey's user.
+        // The fixed-resource transaction cannot know their generated IDs.
+        const orgId = bru.getVar("organizationId");
+        const practitionerId = bru.getVar("practitionerId");
+        if (orgId !== "seed-clinic" || !practitionerId) {
+          throw new Error("Refusing role cleanup without the journey's seed organization and practitioner");
+        }
+        const blaze = bru.getVar("blazeBaseUrl") || "http://localhost:8080";
+        const response = await bru.sendRequest({
+          method: "GET",
+          url: blaze + "/fhir/PractitionerRole?organization=" + encodeURIComponent("Organization/" + orgId)
+            + "&practitioner=" + encodeURIComponent("Practitioner/" + practitionerId) + "&_count=1000",
+          headers: { Accept: "application/fhir+json" }
+        });
+        const bundle = response.data;
+        if (!bundle || bundle.resourceType !== "Bundle"
+            || (bundle.link || []).some(link => link.relation === "next")) {
+          throw new Error("Expected a complete PractitionerRole search bundle");
+        }
+        for (const entry of bundle.entry || []) {
+          const role = entry.resource;
+          if (!role || role.resourceType !== "PractitionerRole" || !role.id
+              || !role.organization || role.organization.reference !== "Organization/" + orgId
+              || !role.practitioner || role.practitioner.reference !== "Practitioner/" + practitionerId) {
+            throw new Error("Refusing to delete a PractitionerRole outside this journey");
+          }
+          await bru.sendRequest({
+            method: "DELETE",
+            url: blaze + "/fhir/PractitionerRole/" + encodeURIComponent(role.id)
+          });
+        }
     - type: after-response
       code: 'bru.runner.setNextRequest("Cleanup: Delete Practitioner Profile");'
   assertions:
@@ -30,4 +63,7 @@ docs: |
   Deletes the seeded Organization as superadmin — the only DELETE the RBAC
   policy grants on Organization. "Cleanup: Purge Journey Resources" runs
   first, so no child resources reference the Organization anymore and the
-  DELETE succeeds with 200. Chains to the Practitioner profile deletion.
+  The pre-request script also removes authentication-created roles belonging
+  to this journey's practitioner and seed organization. Failed deletes stop
+  the run. The Organization DELETE must return 204. Chains to the Practitioner
+  profile deletion.

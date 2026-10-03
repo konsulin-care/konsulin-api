@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
+	"time"
+
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
-	"strings"
-	"time"
 
 	"go.uber.org/zap"
 )
@@ -61,6 +62,9 @@ type EvaluateOutput struct {
 // Evaluate returns allowance; if not allowed, it returns the Retry-After seconds.
 // Keys are based on service name only per requirement.
 func (l *HookRateLimiter) Evaluate(ctx context.Context, in *EvaluateInput) (*EvaluateOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("nil input")
+	}
 	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
 	l.log.Info("HookRateLimiter.Evaluate called",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -104,7 +108,9 @@ func (l *HookRateLimiter) Evaluate(ctx context.Context, in *EvaluateInput) (*Eva
 		CurrentMonthly: currentMonthly, CurrentMonthlyUser: currentMonthlyUser,
 		TTLMinute: ttlMinute, TTLMonthly: ttlMonthly,
 	}
-	incrementCounters(ctx, l.redis, cs)
+	if err := incrementCounters(ctx, l.redis, cs); err != nil {
+		return nil, err
+	}
 
 	return &EvaluateOutput{Allowed: true}, nil
 }
@@ -116,7 +122,7 @@ func buildMonthlyQuotaKeys(service, actorID string, nowUTC time.Time) (monthKey,
 		monthKeyUser = fmt.Sprintf("HOOK:QUOTA_USER:%s:%s:%s", nowUTC.Format("200601"), service, actorID)
 	}
 	firstOfNextMonth := time.Date(nowUTC.Year(), nowUTC.Month()+1, 1, 0, 0, 0, 0, time.UTC)
-	ttl = time.Until(firstOfNextMonth)
+	ttl = firstOfNextMonth.Sub(nowUTC)
 	return
 }
 
@@ -127,7 +133,7 @@ func buildMinuteWindowKeys(service, actorID string, nowUTC time.Time) (minuteKey
 		minuteKeyUser = fmt.Sprintf("HOOK:LIMIT_USER:%s:%s:%s", nowUTC.Format("200601021504"), service, actorID)
 	}
 	nextMinute := nowUTC.Truncate(time.Minute).Add(time.Minute)
-	ttl = time.Until(nextMinute)
+	ttl = nextMinute.Sub(nowUTC)
 	return
 }
 
@@ -156,7 +162,10 @@ func checkCounter(ctx context.Context, redis contracts.RedisRepository, key, key
 
 // readIntCounter reads a JSON-stored integer counter from Redis.
 func readIntCounter(ctx context.Context, redis contracts.RedisRepository, key string) (int, error) {
-	str, _ := redis.Get(ctx, key)
+	str, err := redis.Get(ctx, key)
+	if err != nil {
+		return 0, err
+	}
 	if str == "" {
 		return 0, nil
 	}
@@ -175,32 +184,31 @@ type counterState struct {
 }
 
 // incrementCounters increments service-level and user-level counters with TTL.
-func incrementCounters(ctx context.Context, redis contracts.RedisRepository, cs counterState) {
-	if cs.CurrentMinute == 0 {
-		_ = redis.Set(ctx, cs.MinuteKey, 1, cs.TTLMinute+time.Second)
-	} else {
-		_ = redis.Increment(ctx, cs.MinuteKey)
+func incrementCounters(ctx context.Context, redis contracts.RedisRepository, cs counterState) error {
+	counters := []struct {
+		key      string
+		current  int
+		ttl      time.Duration
+		optional bool
+	}{
+		{cs.MinuteKey, cs.CurrentMinute, cs.TTLMinute + time.Second, false},
+		{cs.MonthKey, cs.CurrentMonthly, cs.TTLMonthly + time.Minute, false},
+		{cs.MinuteKeyUser, cs.CurrentMinuteUser, cs.TTLMinute + time.Second, true},
+		{cs.MonthKeyUser, cs.CurrentMonthlyUser, cs.TTLMonthly + time.Minute, true},
 	}
-
-	if cs.CurrentMonthly == 0 {
-		_ = redis.Set(ctx, cs.MonthKey, 1, cs.TTLMonthly+time.Minute)
-	} else {
-		_ = redis.Increment(ctx, cs.MonthKey)
-	}
-
-	if cs.MinuteKeyUser != "" {
-		if cs.CurrentMinuteUser == 0 {
-			_ = redis.Set(ctx, cs.MinuteKeyUser, 1, cs.TTLMinute+time.Second)
+	for _, counter := range counters {
+		if counter.optional && counter.key == "" {
+			continue
+		}
+		var err error
+		if counter.current == 0 {
+			err = redis.Set(ctx, counter.key, 1, counter.ttl)
 		} else {
-			_ = redis.Increment(ctx, cs.MinuteKeyUser)
+			err = redis.Increment(ctx, counter.key)
+		}
+		if err != nil {
+			return err
 		}
 	}
-
-	if cs.MonthKeyUser != "" {
-		if cs.CurrentMonthlyUser == 0 {
-			_ = redis.Set(ctx, cs.MonthKeyUser, 1, cs.TTLMonthly+time.Minute)
-		} else {
-			_ = redis.Increment(ctx, cs.MonthKeyUser)
-		}
-	}
+	return nil
 }

@@ -8,10 +8,11 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"konsulin-service/internal/app/config"
-	"konsulin-service/internal/pkg/constvars"
 	"strings"
 	"time"
+
+	"konsulin-service/internal/app/config"
+	"konsulin-service/internal/pkg/constvars"
 
 	"github.com/golang-jwt/jwt/v4"
 	"go.uber.org/zap"
@@ -158,11 +159,7 @@ func (j *JWTManager) VerifyToken(ctx context.Context, in *VerifyTokenInput) (*Ve
 	header := extractHeader(parsed)
 	claims := extractClaims(parsed)
 
-	if !parsed.Valid {
-		return &VerifyTokenOutput{Valid: false, Header: header, Claims: claims}, nil
-	}
-
-	return &VerifyTokenOutput{Valid: true, Header: header, Claims: claims}, nil
+	return &VerifyTokenOutput{Valid: parsed.Valid, Header: header, Claims: claims}, nil
 }
 
 // keyFunc returns the public key for JWT verification based on configured algorithm.

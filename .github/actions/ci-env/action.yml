@@ -88,7 +88,7 @@ runs:
         } > .env.ci
 
         # Bruno collection env (same synthetic values, sourced from the same inputs).
-        printf 'APP_BASE_URL=http://localhost:3200\nBLAZE_BASE_URL=http://localhost:8080\nSUPERADMIN_API_KEY=%s\nORGANIZATION=%s\nMAILINATOR_BASE_URL=http://localhost:8081/api/v2\nXENDIT_CALLBACK_TOKEN=%s\n' \
+        printf 'APP_BASE_URL=http://localhost:3200\nBLAZE_BASE_URL=http://localhost:8080\nSUPERADMIN_API_KEY=%s\nORGANIZATION=%s\nMAILINATOR_BASE_URL=http://localhost:8081/magiclink/api/v2\nXENDIT_CALLBACK_TOKEN=%s\n' \
           "$CI_SUPERADMIN_API_KEY" "$ORGANIZATION" "$CI_XENDIT_CALLBACK_TOKEN" > docs/api/.env
 
         # The multiline PEM cannot live in a .env file; export it to the job

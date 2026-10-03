@@ -4,7 +4,8 @@ name: PR Quality and Security
 # Git hooks (git commit/push --no-verify cannot bypass these checks).
 #
 # Jobs:
-#   quality          — gofumpt, golangci-lint, go vet, go test, go test -race
+#   quality          — gofumpt, golangci-lint, go vet, go test, go test -race,
+#                      CI script tests, 100% changed-line coverage gate
 #   static-security  — govulncheck (blocking), Trivy vuln (blocking),
 #                      Trivy secrets/config (SARIF, non-blocking). Semgrep
 #                      runs via the GitHub App, not in CI.
@@ -85,7 +86,62 @@ jobs:
         run: go test ./...
 
       - name: go test -race
-        run: go test -race ./...
+        run: go test -count=1 -race -coverpkg=./... -covermode=atomic -coverprofile=coverage.out ./...
+
+      - name: Publish coverage report
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: go-coverage
+          path: coverage.out
+          if-no-files-found: error
+
+      - name: CI script tests
+        run: python3 -m unittest discover -s scripts/ci -p 'test_*.py'
+
+      # Pull requests must cover every production Go statement they add or
+      # change. Pushes to develop/main only publish the summary.
+      - name: Coverage summary and changed-line gate
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -o pipefail
+          if [ -z "$BASE_REF" ]; then
+            python3 scripts/ci/verify_go_coverage.py < coverage.out | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          base=$(git merge-base HEAD "origin/$BASE_REF")
+          { cat coverage.out; git diff --unified=0 "$base" HEAD -- '*.go'; } |
+            python3 scripts/ci/verify_go_coverage.py --module "$(go list -m)" --changed-minimum 100 |
+            tee -a "$GITHUB_STEP_SUMMARY"
+
+      # Fork PRs do not receive the target repository's Sonar credential.
+      # Configure the fork's own project and run coverage.yml there instead.
+      - name: Check Sonar configuration
+        id: sonar
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY }}
+          SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
+        run: |
+          if [ -n "$SONAR_TOKEN" ] && [ -n "$SONAR_PROJECT_KEY" ] && [ -n "$SONAR_ORGANIZATION" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Sonar upload requires SONAR_TOKEN, SONAR_PROJECT_KEY and SONAR_ORGANIZATION in this repository." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Sonar coverage analysis
+        if: steps.sonar.outputs.enabled == 'true'
+        # The pinned value is the action's public commit SHA, not a SonarQube token.
+        # nosemgrep
+        uses: SonarSource/sonarqube-scan-action@c7ee0f9df90b7aa20e8dcf9695dcfe2e7da5b4f2 # v7.2.1
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >-
+            -Dsonar.host.url=https://sonarcloud.io
+            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
+            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
 
   static-security:
     name: Static security (govulncheck, Trivy)
