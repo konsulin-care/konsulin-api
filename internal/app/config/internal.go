@@ -87,5 +87,6 @@ type AppWebhook struct {
 // AppXendit holds Xendit SDK configuration
 type AppXendit struct {
 	APIKey       string `mapstructure:"api_key"`
+	BaseURL      string `mapstructure:"base_url"`
 	WebhookToken string `mapstructure:"webhook_token"`
 }

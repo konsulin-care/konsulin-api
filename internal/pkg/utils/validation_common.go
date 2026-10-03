@@ -46,7 +46,12 @@ func DecodeBase64Image(encodedImage string) ([]byte, string, error) {
 		return nil, "", err
 	}
 
-	contentType := parts[0][5:strings.Index(parts[0], ";")]
+	metadata := parts[0]
+	separator := strings.LastIndex(metadata, ";")
+	if !strings.HasPrefix(metadata, "data:") || separator <= len("data:") || metadata[separator:] != ";base64" {
+		return nil, "", errors.New("invalid base64 image metadata")
+	}
+	contentType := metadata[len("data:"):separator]
 	ext, err := mime.ExtensionsByType(contentType)
 	if err != nil || len(ext) == 0 {
 		return nil, "", errors.New("invalid image type")

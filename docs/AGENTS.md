@@ -11,6 +11,9 @@ This directory contains reference documents for AI agents working on this projec
 | [DEEPSOURCE-FIX-PATTERNS.md](DEEPSOURCE-FIX-PATTERNS.md) | Resolve common DeepSource static analysis issues: unused params/receivers, log.Fatalf, complexity, dead code, test helpers |
 | [api/AGENTS.md](api/AGENTS.md) | Learn the Bruno collection conventions: direct-Blaze seeding, gateway auth modes, env vars, run/cleanup flow |
 
+See [TEST-COVERAGE.md](TEST-COVERAGE.md) for complete coverage reporting and
+Sonar analysis setup for upstream and fork repositories.
+
 ## How to Use
 
 1. **Start** at root [AGENTS.md](../AGENTS.md) for project orientation

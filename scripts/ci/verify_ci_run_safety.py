@@ -137,7 +137,7 @@ def check_task1():
 
 
 ENV_MAP = {
-    "XENDIT_SANDBOX_API_KEY": OPEN + " inputs.xendit-sandbox-api-key }}",
+    "XENDIT_SANDBOX_API_KEY": OPEN + " inputs.ci-xendit-sandbox-api-key }}",
     "CI_POSTGRES_PASSWORD": OPEN + " inputs.ci-postgres-password }}",
     "CI_REDIS_PASSWORD": OPEN + " inputs.ci-redis-password }}",
     "CI_RABBITMQ_PASSWORD": OPEN + " inputs.ci-rabbitmq-password }}",
@@ -181,7 +181,7 @@ def check_task2():
 
 def check_task3():
     rel = CI_ENV_ACTION_REL
-    step = get_step(rel, "Wait for infrastructure readiness")
+    step = get_step(rel, "Build images & start infrastructure (parallel)")
     check("T-3 readiness step found", step is not None)
     if step is None:
         return
@@ -234,7 +234,7 @@ EXPECTED_DOCS_ENV = (
     + "\nBLAZE_BASE_URL=http://localhost:8080"
     + "\nSUPERADMIN_API_KEY=" + HOSTILE["XINJECT_SUPERADMIN"]
     + "\nORGANIZATION=" + HOSTILE["XINJECT_ORGANIZATION"]
-    + "\nMAILINATOR_BASE_URL=http://localhost:8081/api/v2"
+    + "\nMAILINATOR_BASE_URL=http://localhost:8081/magiclink/api/v2"
     + "\nXENDIT_CALLBACK_TOKEN=" + HOSTILE["XINJECT_XENDIT_TOKEN"]
     + "\n"
 )
@@ -313,9 +313,20 @@ def check_task6():
 
 
 def check_task7():
-    """Task 7: Dockerfile-vendor Go version must be 1.26 to match go.mod."""
+    """Task 7: the vendor compiler must meet go.mod's minimum Go version."""
     line1 = (ROOT / "Dockerfile-vendor").read_text(encoding="utf-8").splitlines()[0]
-    check("T-7 Dockerfile-vendor uses golang:1.26", "golang:1.26" in line1, line1)
+    image_version = re.search(r"FROM\s+golang:(\d+)\.(\d+)", line1, re.IGNORECASE)
+    module_version = re.search(
+        r"^go\s+(\d+)\.(\d+)",
+        (ROOT / "go.mod").read_text(encoding="utf-8"),
+        re.MULTILINE,
+    )
+    compatible = (
+        image_version is not None
+        and module_version is not None
+        and tuple(map(int, image_version.groups())) >= tuple(map(int, module_version.groups()))
+    )
+    check("T-7 Dockerfile-vendor compiler meets go.mod minimum", compatible, line1)
 
 
 def main():

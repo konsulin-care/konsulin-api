@@ -42,3 +42,10 @@ Casbin evaluates policies in file order. If a deny rule exists but appears after
 ## Slot Generation (removed)
 
 Backend free-slot generation (cron worker, on-demand regeneration hook, and the `SLOT_WINDOW_DAYS` / `SLOT_WORKER_CRON_SPEC` config) was removed. Free slots are now transient resources created by the BFF service right before a booking, and the frontend infers availability from `PractitionerRole.availableTime` minus non-free slots (`busy`, `busy-unavailable`, `busy-tentative`). The backend only stores non-free slots; a booking's free slot is flipped to `busy-tentative`/`busy-unavailable` on payment.
+
+## Disposable CI Stub Routing
+
+- CI must set `APP_XENDIT_BASE_URL=http://ci-stub:8081`; a synthetic API key alone still sends SDK requests to Xendit's public API. An unset endpoint keeps the SDK default.
+- Bruno's local inbox base is `http://localhost:8081/magiclink/api/v2`, matching the stub's route prefix.
+- The inbox name is the email's local part (`org@mailinator.com` → `org`), not its domain.
+- Xendit SDK v7 creates invoices at `POST /v2/invoices/` and expires them at `POST /invoices/{id}/expire!`. Stub routes must accept these exact paths.
