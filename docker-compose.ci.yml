@@ -156,6 +156,7 @@ services:
       # Xendit API key — only used for SDK initialization; the stub ignores
       # the Authorization header. Set via repository variable.
       APP_XENDIT_API_KEY: "${XENDIT_SANDBOX_API_KEY:?set XENDIT_SANDBOX_API_KEY in .env.ci}"
+      APP_XENDIT_BASE_URL: "http://ci-stub:8081"
       APP_XENDIT_WEBHOOK_TOKEN: ${XENDIT_CALLBACK_TOKEN:?set XENDIT_CALLBACK_TOKEN in .env.ci}
     networks: [ci-net]
 

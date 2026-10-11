@@ -2,6 +2,7 @@ version: "3.9"
 
 name: core-konsulin-stacks
 
+# Credentials come from .env; the `:?` suffix stops compose when one is unset.
 services:
   postgres-core-konsulin:
     image: postgres:16.5-alpine
@@ -11,7 +12,7 @@ services:
       - "7500:5432"
     environment:
       POSTGRES_USER: supertokens
-      POSTGRES_PASSWORD: supertokens
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
       POSTGRES_DB: supertokens
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
@@ -29,8 +30,7 @@ services:
       - "6379:6379"
     environment:
       ALLOW_EMPTY_PASSWORD: "no"
-      # Sourced from .env (single source of truth); falls back to redispass
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-redispass}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
     command: ["/opt/bitnami/scripts/redis/run.sh"]
     volumes:
       - redis_data:/bitnami/redis/data
@@ -43,9 +43,8 @@ services:
       - "5672:5672"
       - "15672:15672"
     environment:
-      # Sourced from .env (single source of truth); fall back to guest/password
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-guest}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-password}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
 
@@ -71,8 +70,12 @@ services:
     ports:
       - "3567:3567"
     environment:
-      POSTGRESQL_CONNECTION_URI: "postgresql://supertokens:supertokens@postgres-core-konsulin:5432/supertokens"
-      API_KEYS: "password-with-a-minimum-of-20-characters"
+      POSTGRESQL_USER: supertokens
+      POSTGRESQL_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRESQL_HOST: postgres-core-konsulin
+      POSTGRESQL_PORT: "5432"
+      POSTGRESQL_DATABASE_NAME: supertokens
+      API_KEYS: ${SUPERTOKEN_API_KEY:?}
     # volumes:
     #   - supertokens_data:/usr/lib/supertokens
 

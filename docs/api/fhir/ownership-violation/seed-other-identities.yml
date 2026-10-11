@@ -6,7 +6,7 @@ info:
 
 http:
   method: POST
-  url: "{{blazeBaseUrl}}/fhir"
+  url: "{{process.env.BLAZE_BASE_URL}}/fhir"
   headers:
     - name: content-type
       value: application/fhir+json
@@ -175,7 +175,7 @@ settings:
   maxRedirects: 5
 
 docs: |
-  Seeds the foreign identity set directly against Blaze (`{{blazeBaseUrl}}`,
+  Seeds the foreign identity set directly against Blaze (`{{process.env.BLAZE_BASE_URL}}`,
   no gateway auth) as one transaction bundle of PUT entries with
   deterministic ids — idempotent across repeated pre-push runs (PUT
   overwrites residue in place, never duplicates). Entry order satisfies Blaze

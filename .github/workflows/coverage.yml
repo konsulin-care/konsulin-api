@@ -1,0 +1,51 @@
+name: Repository coverage
+
+# Run in a fork with its own Sonar project and credentials. This never uses
+# pull_request_target or grants fork code access to upstream secrets.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+      - name: Run all tests with race detection and coverage
+        run: go test -count=1 -race -coverpkg=./... -covermode=atomic -coverprofile=coverage.out ./...
+      - name: Publish coverage report
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: go-coverage
+          path: coverage.out
+          if-no-files-found: error
+      - name: Coverage summary
+        run: python3 scripts/ci/verify_go_coverage.py < coverage.out >> "$GITHUB_STEP_SUMMARY"
+      - name: Check Sonar configuration
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY }}
+          SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
+        run: |
+          test -n "$SONAR_TOKEN" || { echo "Configure SONAR_TOKEN in repository secrets"; exit 1; }
+          test -n "$SONAR_PROJECT_KEY" || { echo "Configure SONAR_PROJECT_KEY in repository variables"; exit 1; }
+          test -n "$SONAR_ORGANIZATION" || { echo "Configure SONAR_ORGANIZATION in repository variables"; exit 1; }
+      - name: Sonar coverage analysis
+        # The pinned value is the action's public commit SHA, not a SonarQube token.
+        # nosemgrep
+        uses: SonarSource/sonarqube-scan-action@c7ee0f9df90b7aa20e8dcf9695dcfe2e7da5b4f2 # v7.2.1
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >-
+            -Dsonar.host.url=https://sonarcloud.io
+            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
+            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}

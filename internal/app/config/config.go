@@ -2,11 +2,12 @@ package config
 
 import (
 	"fmt"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/utils"
 	"log"
 	"os"
 	"strings"
+
+	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/utils"
 
 	"github.com/joho/godotenv"
 )
@@ -100,6 +101,7 @@ func loadInternalConfigWithEnv() (*InternalConfig, error) {
 		},
 		Xendit: AppXendit{
 			APIKey:       utils.GetEnvString("APP_XENDIT_API_KEY", ""), // Sensitive
+			BaseURL:      utils.GetEnvString("APP_XENDIT_BASE_URL", ""),
 			WebhookToken: utils.GetEnvString("APP_XENDIT_WEBHOOK_TOKEN", ""),
 		},
 	}

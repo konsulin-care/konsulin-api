@@ -146,7 +146,7 @@ docs: |
   resource types, so the gateway cannot remove them; Blaze-direct access is
   the documented teardown path. Children are deleted before parents so Blaze
   referential integrity never blocks a DELETE. This makes the subsequent API
-  deletions (Organization, Practitioner, Patient) succeed with 200. Chains to
+  deletions (Organization, Practitioner, Patient) succeed with 204. Chains to
   "Cleanup: Delete Organization".
 
   Seeds carry fixed ids (Organization/seed-clinic, Questionnaire/seed-soap,

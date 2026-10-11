@@ -75,7 +75,7 @@ func TestInboxListingReturnsMsgs(t *testing.T) {
 	body, _ := json.Marshal(map[string]any{
 		"url":   "https://app.example.com/verify?token=test123",
 		"exp":   60,
-		"email": "inbox-test@myorg.example.com",
+		"email": "myorg@mailinator.com",
 	})
 	sendReq := httptest.NewRequest(http.MethodPost, "/magiclink/send-magiclink", bytes.NewReader(body))
 	sendReq.Header.Set("Content-Type", "application/json")
@@ -143,7 +143,7 @@ func TestMessageLinksReturnsURLs(t *testing.T) {
 	body, _ := json.Marshal(map[string]any{
 		"url":   "https://app.example.com/verify?token=linktest",
 		"exp":   60,
-		"email": "links-test@linkorg.example.com",
+		"email": "linkorg@mailinator.com",
 	})
 	sendReq := httptest.NewRequest(http.MethodPost, "/magiclink/send-magiclink", bytes.NewReader(body))
 	sendReq.Header.Set("Content-Type", "application/json")
@@ -207,6 +207,33 @@ func TestMessageLinksNotFound(t *testing.T) {
 }
 
 // ── Xendit: create invoice ───────────────────────────────────────────────
+
+func TestXenditSDKInvoiceRoutes(t *testing.T) {
+	mux := setupTestServer()
+	create := httptest.NewRequest(http.MethodPost, "/v2/invoices/", bytes.NewBufferString(`{"external_id":"sdk-route","amount":50000}`))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, create)
+	if w.Code != http.StatusOK {
+		t.Fatalf("SDK create route returned %d: %s", w.Code, w.Body.String())
+	}
+	var created xenditInvoice
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	expire := httptest.NewRequest(http.MethodPost, "/invoices/"+created.ID+"/expire!", http.NoBody)
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, expire)
+	if w.Code != http.StatusOK {
+		t.Fatalf("SDK expire route returned %d: %s", w.Code, w.Body.String())
+	}
+	var expired xenditInvoice
+	if err := json.Unmarshal(w.Body.Bytes(), &expired); err != nil {
+		t.Fatal(err)
+	}
+	if expired.Status != statusExpired {
+		t.Fatalf("expired invoice status = %s", expired.Status)
+	}
+}
 
 func TestCreateInvoiceReturnsPending(t *testing.T) {
 	mux := setupTestServer()

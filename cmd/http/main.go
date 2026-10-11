@@ -3,6 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/delivery/http/controllers"
 	"konsulin-service/internal/app/delivery/http/middlewares"
@@ -24,12 +31,6 @@ import (
 	"konsulin-service/internal/app/services/shared/ratelimiter"
 	"konsulin-service/internal/app/services/shared/webhookqueue"
 	"konsulin-service/internal/pkg/buildinfo"
-	"log"
-	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
 	privacy "konsulin-service/internal/app/services/core/privacy"
 
@@ -51,7 +52,6 @@ import (
 	storageKonsulin "konsulin-service/internal/app/services/shared/storage"
 
 	"github.com/go-chi/chi/v5"
-	xendit "github.com/xendit/xendit-go/v7"
 )
 
 func main() {
@@ -168,7 +168,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	redisRepository := redisKonsulin.NewRedisRepository(bootstrap.Redis, bootstrap.Logger)
 
 	// Initialize Xendit client (reusable)
-	xenditClient := xendit.NewClient(bootstrap.InternalConfig.Xendit.APIKey)
+	xenditClient := newXenditClient(bootstrap.InternalConfig.Xendit)
 
 	lockService := locker.NewLockService(redisRepository, bootstrap.Logger)
 

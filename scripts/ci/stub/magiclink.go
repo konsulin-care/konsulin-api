@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 )
 
@@ -101,27 +102,11 @@ func handleMessageLinks(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"links": links})
 }
 
-// extractOrg derives the org identifier from an email address by extracting
-// the domain prefix — the substring between '@' and the first '.'.
-// e.g. "user@myorg.example.com" → "myorg"
+// extractOrg matches Mailinator's inbox name: the email's local part.
+// e.g. "myorg@mailinator.com" → "myorg"
 func extractOrg(email string) string {
-	atIdx := -1
-	for i, c := range email {
-		if c == '@' {
-			atIdx = i
-			break
-		}
-	}
-	if atIdx < 0 {
-		return email
-	}
-	domain := email[atIdx+1:]
-	for i, c := range domain {
-		if c == '.' {
-			return domain[:i]
-		}
-	}
-	return domain
+	mailbox, _, _ := strings.Cut(email, "@")
+	return mailbox
 }
 
 // writeJSON encodes payload as JSON and writes it to w.

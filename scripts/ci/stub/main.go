@@ -102,8 +102,10 @@ func newRouter() *http.ServeMux {
 
 	// Xendit routes
 	mux.HandleFunc("POST /v2/invoices", handleCreateInvoice)
+	mux.HandleFunc("POST /v2/invoices/{$}", handleCreateInvoice)
 	mux.HandleFunc("GET /v2/invoices/{id}", handleGetInvoice)
 	mux.HandleFunc("POST /v2/invoices/{id}/expire", handleExpireInvoice)
+	mux.HandleFunc("POST /invoices/{id}/expire!", handleExpireInvoice)
 
 	return mux
 }

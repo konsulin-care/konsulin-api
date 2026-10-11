@@ -55,6 +55,15 @@ func envKeysFromConfig(t *testing.T) []string {
 func TestEnvExampleSyncedWithConfig(t *testing.T) {
 	exampleKeys := envKeysFromExample(t)
 	configKeys := envKeysFromConfig(t)
+	// Compose also reads infrastructure-only settings such as the PostgreSQL
+	// password. Those belong in the same local setup template.
+	compose, err := os.ReadFile("../../../docker-compose.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, match := range regexp.MustCompile(`\$\{([A-Z_][A-Z0-9_]*)`).FindAllStringSubmatch(string(compose), -1) {
+		configKeys = append(configKeys, match[1])
+	}
 
 	exampleSet := toSet(exampleKeys)
 	configSet := toSet(configKeys)

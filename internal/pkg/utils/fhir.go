@@ -3,13 +3,14 @@ package utils
 import (
 	"errors"
 	"fmt"
+	"strings"
+	"time"
+
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
-	"strings"
-	"time"
 )
 
 func ParseIDFromReference(subject fhir_dto.Reference) (string, error) {
@@ -134,6 +135,10 @@ func MapPractitionerToClinicClinician(practitioner *fhir_dto.Practitioner, speci
 }
 
 func CalculateAge(birthDate string) int {
+	return calculateAgeAt(birthDate, time.Now())
+}
+
+func calculateAgeAt(birthDate string, today time.Time) int {
 	if birthDate == "" {
 		return 0
 	}
@@ -144,9 +149,8 @@ func CalculateAge(birthDate string) int {
 		return 0
 	}
 
-	today := time.Now()
 	age := today.Year() - dob.Year()
-	if today.YearDay() < dob.YearDay() {
+	if today.Month() < dob.Month() || (today.Month() == dob.Month() && today.Day() < dob.Day()) {
 		age--
 	}
 
