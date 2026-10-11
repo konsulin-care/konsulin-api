@@ -553,6 +553,7 @@ func (uc *authUsecase) buildSessionConfig(cookieSameSite *string, cookieSecure *
 		Override: &sessmodels.OverrideStruct{
 			Functions: func(originalImplementation sessmodels.RecipeInterface) sessmodels.RecipeInterface {
 				originalCreateNewSession := *originalImplementation.CreateNewSession
+				originalRefreshSession := *originalImplementation.RefreshSession
 
 				(*originalImplementation.CreateNewSession) = func(userID string, accessTokenPayload, sessionDataInDatabase map[string]interface{}, disableAntiCsrf *bool, tenantId string, userContext supertokens.UserContext) (sessmodels.SessionContainer, error) {
 					if accessTokenPayload == nil {
@@ -560,6 +561,22 @@ func (uc *authUsecase) buildSessionConfig(cookieSameSite *string, cookieSecure *
 					}
 					uc.buildAccessTokenPayload(userID, tenantId, accessTokenPayload)
 					return originalCreateNewSession(userID, accessTokenPayload, sessionDataInDatabase, disableAntiCsrf, tenantId, userContext)
+				}
+
+				*originalImplementation.RefreshSession = func(refreshToken string, antiCSRFToken *string, disableAntiCSRF bool, userContext supertokens.UserContext) (sessmodels.SessionContainer, error) {
+					sess, err := originalRefreshSession(refreshToken, antiCSRFToken, disableAntiCSRF, userContext)
+					if err != nil || sess == nil {
+						return sess, err
+					}
+					// Refresh from current roles and resources, including clearing a stale
+					// FHIR claim when lookup fails. Merge only our claims so SDK and
+					// application payload fields survive token regeneration.
+					payload := make(map[string]interface{})
+					uc.buildAccessTokenPayload(sess.GetUserIDWithContext(userContext), sess.GetTenantIdWithContext(userContext), payload)
+					if err := sess.MergeIntoAccessTokenPayloadWithContext(payload, userContext); err != nil {
+						return nil, err
+					}
+					return sess, nil
 				}
 
 				return originalImplementation

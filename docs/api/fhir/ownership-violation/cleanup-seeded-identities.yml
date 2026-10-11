@@ -6,7 +6,7 @@ info:
 
 http:
   method: POST
-  url: "{{blazeBaseUrl}}/fhir"
+  url: "{{process.env.BLAZE_BASE_URL}}/fhir"
   headers:
     - name: content-type
       value: application/fhir+json
@@ -66,7 +66,7 @@ settings:
 
 docs: |
   Purges the seeded foreign identities directly against Blaze
-  (`{{blazeBaseUrl}}`, no gateway auth) as one transaction bundle of DELETE
+  (`{{process.env.BLAZE_BASE_URL}}`, no gateway auth) as one transaction bundle of DELETE
   entries — children before parents so Blaze referential integrity never
   blocks a DELETE. The RBAC policies grant the gateway no DELETE on
   Condition/Appointment/Invoice/Person (and only self-DELETE on Patient), so

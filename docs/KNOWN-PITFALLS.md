@@ -45,6 +45,7 @@ Backend free-slot generation (cron worker, on-demand regeneration hook, and the 
 
 ## Disposable CI Stub Routing
 
+- Every direct-Blaze Bruno request, including ownership seed and cleanup bundles, must use `process.env.BLAZE_BASE_URL`. The collection's legacy `blazeBaseUrl` default ignores the configured server and can send these requests to a different environment.
 - CI must set `APP_XENDIT_BASE_URL=http://ci-stub:8081`; a synthetic API key alone still sends SDK requests to Xendit's public API. An unset endpoint keeps the SDK default.
 - Bruno's local inbox base is `http://localhost:8081/magiclink/api/v2`, matching the stub's route prefix.
 - The inbox name is the email's local part (`org@mailinator.com` → `org`), not its domain.
