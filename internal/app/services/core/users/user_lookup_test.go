@@ -21,12 +21,15 @@ func TestLookupUserFHIRResourceIDs(t *testing.T) {
 		practitioners               []fhir_dto.Practitioner
 		patients                    []fhir_dto.Patient
 		practitionerErr, patientErr error
+		wantErr                     string
 		want                        contracts.InitializeNewUserFHIRResourcesOutput
 	}{
 		{name: "no resources"},
 		{name: "practitioner only", practitioners: []fhir_dto.Practitioner{{ID: "p1"}}, want: contracts.InitializeNewUserFHIRResourcesOutput{PractitionerID: "p1"}},
 		{name: "patient only", patients: []fhir_dto.Patient{{ID: "u1"}}, want: contracts.InitializeNewUserFHIRResourcesOutput{PatientID: "u1"}},
-		{name: "first matches for both", practitioners: []fhir_dto.Practitioner{{ID: "p1"}, {ID: "p2"}}, patients: []fhir_dto.Patient{{ID: "u1"}, {ID: "u2"}}, want: contracts.InitializeNewUserFHIRResourcesOutput{PractitionerID: "p1", PatientID: "u1"}},
+		{name: "unique matches for both", practitioners: []fhir_dto.Practitioner{{ID: "p1"}}, patients: []fhir_dto.Patient{{ID: "u1"}}, want: contracts.InitializeNewUserFHIRResourcesOutput{PractitionerID: "p1", PatientID: "u1"}},
+		{name: "duplicate practitioners discard patient", practitioners: []fhir_dto.Practitioner{{ID: "p1"}, {ID: "p2"}}, patients: []fhir_dto.Patient{{ID: "u1"}}, wantErr: "multiple Practitioner resources"},
+		{name: "duplicate patients discard practitioner", practitioners: []fhir_dto.Practitioner{{ID: "p1"}}, patients: []fhir_dto.Patient{{ID: "u1"}, {ID: "u2"}}, wantErr: "multiple Patient resources"},
 		{name: "practitioner error discards partial patient", practitionerErr: practitionerErr, patients: []fhir_dto.Patient{{ID: "u1"}}},
 		{name: "patient error discards partial practitioner", patientErr: patientErr, practitioners: []fhir_dto.Practitioner{{ID: "p1"}}},
 		{name: "both errors preserved", practitionerErr: practitionerErr, patientErr: patientErr},
@@ -40,8 +43,11 @@ func TestLookupUserFHIRResourceIDs(t *testing.T) {
 			patient.On("FindPatientByIdentifier", ctx, constvars.FhirSupertokenSystemIdentifier+"|user-1").Return(tc.patients, tc.patientErr).Once()
 			uc := &userUsecase{PractitionerFhirClient: practitioner, PatientFhirClient: patient, Log: zap.NewNop()}
 			got, err := uc.LookupUserFHIRResourceIDs(ctx, &contracts.LookupUserFHIRResourceIDsInput{SuperTokenUserID: "user-1"})
-			if tc.practitionerErr != nil || tc.patientErr != nil {
+			if tc.practitionerErr != nil || tc.patientErr != nil || tc.wantErr != "" {
 				require.Nil(t, got)
+				if tc.wantErr != "" {
+					require.ErrorContains(t, err, tc.wantErr)
+				}
 				if tc.practitionerErr != nil {
 					require.ErrorIs(t, err, tc.practitionerErr)
 				}

@@ -448,7 +448,7 @@ func setGuestAccessTokenPayload(payload map[string]interface{}) {
 
 // buildAccessTokenPayload builds the roles and FHIR resource ID payload for the
 // SuperTokens access token.
-func (uc *authUsecase) buildAccessTokenPayload(userID, tenantId string, payload map[string]interface{}) {
+func (uc *authUsecase) buildAccessTokenPayload(ctx context.Context, userID, tenantId string, payload map[string]interface{}) {
 	if userID == "" {
 		setGuestAccessTokenPayload(payload)
 		return
@@ -482,7 +482,7 @@ func (uc *authUsecase) buildAccessTokenPayload(userID, tenantId string, payload 
 	// The FHIR resource ID is best-effort: a lookup failure must not block the
 	// session, so the claim is left empty and the caller can re-resolve later.
 	// getFhirResourceIdForUser never returns an empty ID without an error.
-	fhirResourceId, fhirErr := uc.getFhirResourceIdForUser(context.Background(), userID, userRoles)
+	fhirResourceId, fhirErr := uc.getFhirResourceIdForUser(ctx, userID, userRoles)
 	if fhirErr != nil {
 		uc.Log.Error("authUsecase.CreateNewSession error getting FHIR resource ID",
 			zap.String("user_id", userID),
@@ -492,10 +492,6 @@ func (uc *authUsecase) buildAccessTokenPayload(userID, tenantId string, payload 
 		return
 	}
 	payload[supertokenAccessTokenPayloadFhirResourceId] = fhirResourceId
-	uc.Log.Info("authUsecase.CreateNewSession added FHIR resource ID to access token",
-		zap.String("user_id", userID),
-		zap.String("fhir_resource_id", fhirResourceId),
-	)
 }
 
 // getFhirResourceIdForUser determines the FHIR resource ID based on the user's roles
@@ -510,7 +506,7 @@ func (uc *authUsecase) getFhirResourceIdForUser(ctx context.Context, userID stri
 		SuperTokenUserID: userID,
 	}
 
-	lookupCtx, lookupCtxCancel := context.WithTimeout(ctx, 10*time.Second)
+	lookupCtx, lookupCtxCancel := context.WithTimeout(ctx, 2*time.Second)
 	defer lookupCtxCancel()
 
 	lookedUpResources, err := uc.UserFHIRInitializer.LookupUserFHIRResourceIDs(lookupCtx, lookupInput)
@@ -559,7 +555,7 @@ func (uc *authUsecase) buildSessionConfig(cookieSameSite *string, cookieSecure *
 					if accessTokenPayload == nil {
 						accessTokenPayload = make(map[string]interface{})
 					}
-					uc.buildAccessTokenPayload(userID, tenantId, accessTokenPayload)
+					uc.buildAccessTokenPayload(sessionRequestContext(userContext), userID, tenantId, accessTokenPayload)
 					return originalCreateNewSession(userID, accessTokenPayload, sessionDataInDatabase, disableAntiCsrf, tenantId, userContext)
 				}
 
@@ -572,7 +568,7 @@ func (uc *authUsecase) buildSessionConfig(cookieSameSite *string, cookieSecure *
 					// FHIR claim when lookup fails. Merge only our claims so SDK and
 					// application payload fields survive token regeneration.
 					payload := make(map[string]interface{})
-					uc.buildAccessTokenPayload(sess.GetUserIDWithContext(userContext), sess.GetTenantIdWithContext(userContext), payload)
+					uc.buildAccessTokenPayload(sessionRequestContext(userContext), sess.GetUserIDWithContext(userContext), sess.GetTenantIdWithContext(userContext), payload)
 					if err := sess.MergeIntoAccessTokenPayloadWithContext(payload, userContext); err != nil {
 						return nil, err
 					}
@@ -585,6 +581,15 @@ func (uc *authUsecase) buildSessionConfig(cookieSameSite *string, cookieSecure *
 		CookieSameSite: cookieSameSite,
 		CookieSecure:   cookieSecure,
 	}
+}
+
+// sessionRequestContext preserves cancellation and deadlines for HTTP sessions.
+// Programmatically created sessions may have no request in the SDK user context.
+func sessionRequestContext(userContext supertokens.UserContext) context.Context {
+	if request := supertokens.GetRequestFromUserContext(userContext); request != nil {
+		return request.Context()
+	}
+	return context.Background()
 }
 
 // buildDashboardConfig constructs the dashboard recipe config.

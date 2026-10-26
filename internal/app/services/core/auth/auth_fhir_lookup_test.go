@@ -3,6 +3,8 @@ package auth
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -44,7 +46,7 @@ func TestGetFhirResourceIDForUser(t *testing.T) {
 			initializer := new(MockUserFHIRInitializer)
 			initializer.On("LookupUserFHIRResourceIDs", mock.MatchedBy(func(ctx context.Context) bool {
 				deadline, ok := ctx.Deadline()
-				return ok && time.Until(deadline) > 0 && time.Until(deadline) <= 10*time.Second
+				return ok && time.Until(deadline) > 0 && time.Until(deadline) <= 2*time.Second
 			}), &contracts.LookupUserFHIRResourceIDsInput{SuperTokenUserID: "user"}).Return(&tc.resources, tc.lookupErr).Once()
 			uc := &authUsecase{UserFHIRInitializer: initializer, Log: zap.NewNop()}
 			got, err := uc.getFhirResourceIdForUser(context.Background(), "user", tc.roles)
@@ -128,7 +130,7 @@ func runAccessTokenCase(t *testing.T, stub *rolesStub, tc accessTokenCase) {
 	}
 	uc := &authUsecase{UserFHIRInitializer: initializer, Log: zap.NewNop()}
 	payload := map[string]interface{}{"custom": true, supertokenAccessTokenPayloadFhirResourceId: "Patient/stale"}
-	uc.buildAccessTokenPayload("user", "tenant", payload)
+	uc.buildAccessTokenPayload(context.Background(), "user", "tenant", payload)
 	require.Equal(t, "user", stub.userID)
 	require.Equal(t, "tenant", stub.tenant)
 	require.Equal(t, true, payload["custom"])
@@ -178,7 +180,7 @@ func TestSessionConfigEnrichesPayloadAndForwardsArguments(t *testing.T) {
 func TestGuestAccessTokenPayloadPreservesOtherClaims(t *testing.T) {
 	payload := map[string]interface{}{"custom": "value", supertokenAccessTokenPayloadFhirResourceId: "Patient/stale"}
 	uc := &authUsecase{Log: zap.NewNop()}
-	uc.buildAccessTokenPayload("", "public", payload)
+	uc.buildAccessTokenPayload(context.Background(), "", "public", payload)
 	require.Equal(t, "value", payload["custom"])
 	require.Equal(t, "", payload[supertokenAccessTokenPayloadFhirResourceId])
 	require.Equal(t, map[string]interface{}{supertokenAccessTokenPayloadRolesValueKey: []interface{}{constvars.KonsulinRoleGuest}}, payload[supertokenAccessTokenPayloadRolesKey])
@@ -213,7 +215,8 @@ func TestSessionRefreshUpdatesAuthClaims(t *testing.T) {
 			antiCSRF := "csrf"
 			merged := false
 			payload := map[string]interface{}{
-				"custom": "preserved",
+				"custom":                                   "preserved",
+				constvars.SupertokenPayloadActiveRoleKey:   constvars.KonsulinRolePatient,
 				supertokenAccessTokenPayloadFhirResourceId: "Patient/stale",
 				supertokenAccessTokenPayloadRolesKey:       map[string]interface{}{supertokenAccessTokenPayloadRolesValueKey: []interface{}{constvars.KonsulinRolePatient}},
 			}
@@ -268,6 +271,54 @@ func TestSessionRefreshUpdatesAuthClaims(t *testing.T) {
 			}
 			require.Equal(t, tc.refreshErr == nil && !tc.nilSession, merged)
 			require.Equal(t, "preserved", payload["custom"])
+			require.Equal(t, constvars.KonsulinRolePatient, payload[constvars.SupertokenPayloadActiveRoleKey])
+			initializer.AssertExpectations(t)
+		})
+	}
+}
+
+func TestSessionLookupsInheritRequestCancellation(t *testing.T) {
+	stub := initRolesStub(t)
+	stub.response = userrolesmodels.GetRolesForUserResponse{OK: rolesOK(constvars.KonsulinRolePatient)}
+	for _, mode := range []string{"create", "refresh"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			deadline, _ := ctx.Deadline()
+			request := httptest.NewRequest(http.MethodPost, "/auth", http.NoBody).WithContext(ctx)
+			userContext := supertokens.SetRequestInUserContextIfNotDefined(nil, request)
+			cancel()
+			initializer := new(MockUserFHIRInitializer)
+			initializer.On("LookupUserFHIRResourceIDs", mock.MatchedBy(func(got context.Context) bool {
+				gotDeadline, ok := got.Deadline()
+				return ok && gotDeadline.Equal(deadline) && got.Err() == context.Canceled
+			}), &contracts.LookupUserFHIRResourceIDsInput{SuperTokenUserID: "user"}).Return(nil, context.Canceled).Once()
+			uc := &authUsecase{UserFHIRInitializer: initializer, Log: zap.NewNop()}
+			var claims map[string]interface{}
+			sess := &sessmodels.TypeSessionContainer{
+				GetUserIDWithContext:   func(_ supertokens.UserContext) string { return "user" },
+				GetTenantIdWithContext: func(_ supertokens.UserContext) string { return "tenant" },
+				MergeIntoAccessTokenPayloadWithContext: func(update map[string]interface{}, _ supertokens.UserContext) error {
+					claims = update
+					return nil
+				},
+			}
+			create := func(_ string, payload, _ map[string]interface{}, _ *bool, _ string, _ supertokens.UserContext) (sessmodels.SessionContainer, error) {
+				claims = payload
+				return sess, nil
+			}
+			refresh := func(_ string, _ *string, _ bool, _ supertokens.UserContext) (sessmodels.SessionContainer, error) {
+				return sess, nil
+			}
+			override := uc.buildSessionConfig(nil, nil).Override.Functions(sessmodels.RecipeInterface{CreateNewSession: &create, RefreshSession: &refresh})
+			if mode == "create" {
+				_, err := (*override.CreateNewSession)("user", nil, nil, nil, "tenant", userContext)
+				require.NoError(t, err)
+			} else {
+				_, err := (*override.RefreshSession)("refresh-token", nil, true, userContext)
+				require.NoError(t, err)
+			}
+			require.Equal(t, "", claims[supertokenAccessTokenPayloadFhirResourceId])
 			initializer.AssertExpectations(t)
 		})
 	}

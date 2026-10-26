@@ -108,7 +108,8 @@ func (uc *userUsecase) InitializeNewUserFHIRResources(ctx context.Context, input
 // Unlike InitializeNewUserFHIRResources, this is a read-only operation that will not create any resources.
 // It looks up the Practitioner and Patient resources carrying the SuperTokenUserID identifier.
 //
-// Error contract: returns an error when the input is empty or when any lookup fails.
+// Error contract: returns an error when input is empty, a lookup fails, or multiple
+// resources of one type match the identifier.
 // It never returns a partial result alongside an error, so callers can treat a nil
 // error as "every lookup completed". Finding no matching resources is not an error:
 // that returns an output with empty IDs and a nil error.
@@ -130,7 +131,9 @@ func (uc *userUsecase) LookupUserFHIRResourceIDs(ctx context.Context, input *con
 		)
 		errs = append(errs, err)
 	}
-	if len(practitioners) > 0 {
+	if len(practitioners) > 1 {
+		errs = append(errs, errors.New("multiple Practitioner resources for user"))
+	} else if len(practitioners) == 1 {
 		output.PractitionerID = practitioners[0].ID
 	}
 
@@ -144,7 +147,9 @@ func (uc *userUsecase) LookupUserFHIRResourceIDs(ctx context.Context, input *con
 		)
 		errs = append(errs, err)
 	}
-	if len(patients) > 0 {
+	if len(patients) > 1 {
+		errs = append(errs, errors.New("multiple Patient resources for user"))
+	} else if len(patients) == 1 {
 		output.PatientID = patients[0].ID
 	}
 
