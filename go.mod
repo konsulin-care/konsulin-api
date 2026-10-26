@@ -10,17 +10,17 @@ tool (
 )
 
 require (
-	github.com/andybalholm/brotli v1.2.6
+	github.com/andybalholm/brotli v1.2.7
 	github.com/casbin/casbin/v2 v2.135.0
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/go-chi/cors v1.2.2
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.12.3
-	github.com/rabbitmq/amqp091-go v1.15.0
+	github.com/rabbitmq/amqp091-go v1.16.0
 	github.com/rubenv/sql-migrate v1.8.1
 	github.com/stretchr/testify v1.12.1
-	github.com/supertokens/supertokens-golang v0.26.0
+	github.com/supertokens/supertokens-golang v0.26.1
 	github.com/tidwall/gjson v1.20.0
 	github.com/xendit/xendit-go/v7 v7.0.0
 	go.uber.org/zap v1.28.0
