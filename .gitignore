@@ -9,9 +9,6 @@ docs/api/bru-report.xml
 docs/api/report.json
 
 *.log
-coverage.out
-coverage.html
-.scannerwork/
 
 .air.toml
 
