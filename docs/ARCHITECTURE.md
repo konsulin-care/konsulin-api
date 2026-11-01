@@ -44,6 +44,32 @@ Routes:
 /auth/* → SuperTokens Middleware → Session Validation → RBAC Check → Response
 ```
 
+### Session claims (informational)
+
+`st-role.v` contains the user's assigned roles. `st-active-role` retains the
+selected role. Login and refresh perform a read-only FHIR lookup by SuperTokens
+user ID to populate the provisional `fhirResourceId` string. The current format
+selects a single Practitioner or Patient reference using `resolveFHIRIdentity`'s
+selection rules: prefer Patient when selected, otherwise prefer Practitioner.
+If the selected Patient is absent, an existing Practitioner is used, matching
+the resolver's fallback. The string cannot represent every
+identity or a Clinic Admin/Researcher's PractitionerRole and organization.
+Its final per-role format is pending the central gateway SDK contract.
+
+`SessionOptional` exposes this value as `CONTEXT_FHIR_RESOURCE_ID`. Anonymous
+requests receive an empty value. Failed or ambiguous lookups leave the claim
+empty without blocking the session. HTTP lookups inherit request cancellation
+and use a maximum two-second timeout. Refresh merges only the auth claims,
+preserving `st-active-role` and other token fields.
+Changing the selected role clears the old identity claim until refresh resolves
+the new identity. Re-selecting the same role retains its existing claim.
+
+The claim is **informational, not authoritative for authorization**. Ownership
+checks must continue using `resolveFHIRIdentity` and the existing role scope
+checks, which validate active role and reject duplicate identities. Do not use
+`CONTEXT_FHIR_RESOURCE_ID` as a substitute for those checks. Claim redesign and
+deployment remain pending the federated-services transition and SDK contract.
+
 ## Authorization (RBAC)
 
 6 roles: Guest, Patient, Practitioner, Clinic Admin, Researcher, Superadmin

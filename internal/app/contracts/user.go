@@ -3,11 +3,12 @@ package contracts
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strings"
+
 	"konsulin-service/internal/app/models"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/utils"
-	"regexp"
-	"strings"
 )
 
 type InitializeNewUserFHIRResourcesInput struct {
@@ -133,8 +134,22 @@ type InitializeNewUserFHIRResourcesOutput struct {
 	PractitionerRoleIDs []string
 }
 
+// LookupUserFHIRResourceIDsInput defines the input for looking up existing FHIR resource IDs.
+// This is a read-only operation that only queries existing resources, unlike InitializeNewUserFHIRResources
+// which creates resources if they don't exist.
+type LookupUserFHIRResourceIDsInput struct {
+	SuperTokenUserID string
+}
+
+// UserFHIRInitializer creates and looks up the FHIR resources (Patient, Practitioner,
+// PractitionerRole) that back a SuperTokens user.
 type UserFHIRInitializer interface {
 	InitializeNewUserFHIRResources(ctx context.Context, input *InitializeNewUserFHIRResourcesInput) (*InitializeNewUserFHIRResourcesOutput, error)
+	// LookupUserFHIRResourceIDs queries existing FHIR resources by SuperTokenUserID.
+	// Unlike InitializeNewUserFHIRResources, this is read-only and will not create any resources.
+	// It returns an error, not a partial result, if a lookup fails or finds multiple
+	// identities of one resource type. No matches yields empty IDs and a nil error.
+	LookupUserFHIRResourceIDs(ctx context.Context, input *LookupUserFHIRResourceIDsInput) (*InitializeNewUserFHIRResourcesOutput, error)
 }
 
 type UserRepository interface {

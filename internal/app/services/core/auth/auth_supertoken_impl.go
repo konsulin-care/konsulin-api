@@ -5,14 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/utils"
 	"log"
 	"net/http"
 	"regexp"
 	"strings"
 	"time"
+
+	"konsulin-service/internal/app/contracts"
+	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/utils"
 
 	"github.com/supertokens/supertokens-golang/ingredients/emaildelivery"
 	"github.com/supertokens/supertokens-golang/ingredients/smsdelivery"
@@ -28,10 +29,14 @@ import (
 )
 
 const (
-	supertokenAccessTokenPayloadRolesKey      = "st-role"
-	supertokenAccessTokenPayloadRolesValueKey = "v"
+	supertokenAccessTokenPayloadRolesKey       = "st-role"
+	supertokenAccessTokenPayloadRolesValueKey  = "v"
+	supertokenAccessTokenPayloadFhirResourceId = "fhirResourceId"
 )
 
+// InitializeSupertoken configures the SuperTokens recipes (passwordless, user roles,
+// session, dashboard) and ensures every Konsulin role exists. It returns an error if the
+// SDK fails to initialize or any role cannot be created.
 func (uc *authUsecase) InitializeSupertoken() error {
 	apiBasePath := fmt.Sprintf("%s/%s%s", uc.InternalConfig.App.EndpointPrefix, uc.InternalConfig.App.Version, uc.DriverConfig.Supertoken.ApiBasePath)
 	websiteBasePath := uc.DriverConfig.Supertoken.WebsiteBasePath
@@ -59,7 +64,7 @@ func (uc *authUsecase) InitializeSupertoken() error {
 	supertokenRecipeList := []supertokens.Recipe{
 		passwordless.Init(uc.buildPasswordlessConfig()),
 		userroles.Init(nil),
-		session.Init(buildSessionConfig(&cookieSameSite, &cookieSecure)),
+		session.Init(uc.buildSessionConfig(&cookieSameSite, &cookieSecure)),
 		dashboard.Init(uc.buildDashboardConfig()),
 	}
 
@@ -73,7 +78,9 @@ func (uc *authUsecase) InitializeSupertoken() error {
 		return err
 	}
 
-	initializeRoles()
+	if err := initializeRoles(); err != nil {
+		return err
+	}
 
 	log.Println("Successfully initialized supertokens SDK")
 	return nil
@@ -153,7 +160,9 @@ func (uc *authUsecase) buildPasswordlessConfig() plessmodels.TypeInput {
 }
 
 // initializeRoles creates SuperTokens roles if they do not already exist.
-func initializeRoles() {
+// A creation failure aborts startup: running without the expected roles would
+// silently strip authorization from every session created afterwards.
+func initializeRoles() error {
 	roleNames := []string{
 		constvars.KonsulinRolePatient,
 		constvars.KonsulinRoleGuest,
@@ -163,15 +172,36 @@ func initializeRoles() {
 		constvars.KonsulinRoleSuperadmin,
 	}
 	for _, name := range roleNames {
-		resp, err := userroles.CreateNewRoleOrAddPermissions(name, []string{}, nil)
-		if err != nil {
-			log.Println("Error creating", name, "role", zap.Error(err))
-			continue
-		}
-		if !resp.OK.CreatedNewRole {
-			log.Println("'" + name + "' role already exists")
+		if err := ensureRoleExists(name); err != nil {
+			return fmt.Errorf("ensure supertokens role %q exists: %w", name, err)
 		}
 	}
+	return nil
+}
+
+// ensureRoleExists creates a SuperTokens role when missing and returns creation failures.
+func ensureRoleExists(role string) error {
+	resp, err := userroles.CreateNewRoleOrAddPermissions(role, []string{}, nil)
+	if err != nil {
+		log.Printf("Error creating '%s' role: %v\n", role, err)
+		return err
+	}
+	if resp.OK != nil && !resp.OK.CreatedNewRole {
+		log.Printf("'%s' role already exists\n", role)
+	}
+	return nil
+}
+
+// rolesForCreateCode returns the roles that decide which FHIR resources the create-code
+// flow initializes. A user's existing SuperTokens roles replace the default Patient role;
+// Patient is only assumed for a first-time user with no roles yet, matching
+// resolveRolesForConsumeCode. Appending instead would give every Practitioner, Clinic
+// Admin or Superadmin a Patient resource on each magic-link request.
+func rolesForCreateCode(fetched []string) []string {
+	if len(fetched) > 0 {
+		return fetched
+	}
+	return []string{constvars.KonsulinRolePatient}
 }
 
 // lookupUserForCreateCode resolves user details and roles during the create-code flow.
@@ -205,7 +235,7 @@ func (uc *authUsecase) lookupUserForCreateCode(email *string, phoneNumber *strin
 		return
 	}
 
-	userRoles = []string{constvars.KonsulinRolePatient}
+	userRoles = rolesForCreateCode(nil)
 	userID = ""
 
 	if userRecord != nil {
@@ -221,7 +251,7 @@ func (uc *authUsecase) lookupUserForCreateCode(email *string, phoneNumber *strin
 		}
 
 		if userRolesResp.OK != nil {
-			userRoles = append(userRoles, userRolesResp.OK.Roles...)
+			userRoles = rolesForCreateCode(userRolesResp.OK.Roles)
 		}
 	}
 
@@ -407,43 +437,133 @@ func (uc *authUsecase) buildEmailDeliveryConfig() *emaildelivery.TypeInput {
 	}
 }
 
-// buildAccessTokenPayload builds the roles payload for the SuperTokens access token.
-func buildAccessTokenPayload(userID, tenantId string, payload map[string]interface{}) {
+// setGuestAccessTokenPayload stamps the guest role and an empty FHIR resource ID,
+// the fallback payload used whenever the user's roles cannot be resolved.
+func setGuestAccessTokenPayload(payload map[string]interface{}) {
+	payload[supertokenAccessTokenPayloadRolesKey] = map[string]interface{}{
+		supertokenAccessTokenPayloadRolesValueKey: []interface{}{constvars.KonsulinRoleGuest},
+	}
+	payload[supertokenAccessTokenPayloadFhirResourceId] = ""
+}
+
+// buildAccessTokenPayload builds the roles and FHIR resource ID payload for the
+// SuperTokens access token.
+func (uc *authUsecase) buildAccessTokenPayload(ctx context.Context, userID, tenantId string, payload map[string]interface{}) {
 	if userID == "" {
-		payload[supertokenAccessTokenPayloadRolesKey] = map[string]interface{}{
-			supertokenAccessTokenPayloadRolesValueKey: []interface{}{constvars.KonsulinRoleGuest},
-		}
+		setGuestAccessTokenPayload(payload)
 		return
 	}
+
 	rolesResp, err := userroles.GetRolesForUser(tenantId, userID)
-	if err == nil && rolesResp.OK != nil {
-		roles := make([]interface{}, len(rolesResp.OK.Roles))
-		for i, role := range rolesResp.OK.Roles {
-			roles[i] = role
+	if err != nil || rolesResp.OK == nil {
+		if err != nil {
+			uc.Log.Error("authUsecase.CreateNewSession error getting roles for user",
+				zap.String("user_id", userID),
+				zap.Error(err),
+			)
+		} else {
+			uc.Log.Error("authUsecase.CreateNewSession supertokens get roles response is nil",
+				zap.String("user_id", userID),
+			)
 		}
-		payload[supertokenAccessTokenPayloadRolesKey] = map[string]interface{}{
-			supertokenAccessTokenPayloadRolesValueKey: roles,
-		}
-	} else {
-		payload[supertokenAccessTokenPayloadRolesKey] = map[string]interface{}{
-			supertokenAccessTokenPayloadRolesValueKey: []interface{}{constvars.KonsulinRoleGuest},
-		}
+		setGuestAccessTokenPayload(payload)
+		return
 	}
+
+	userRoles := rolesResp.OK.Roles
+	roles := make([]interface{}, len(userRoles))
+	for i, role := range userRoles {
+		roles[i] = role
+	}
+	payload[supertokenAccessTokenPayloadRolesKey] = map[string]interface{}{
+		supertokenAccessTokenPayloadRolesValueKey: roles,
+	}
+
+	// The FHIR resource ID is best-effort: a lookup failure must not block the
+	// session, so the claim is left empty and the caller can re-resolve later.
+	// getFhirResourceIdForUser never returns an empty ID without an error.
+	activeRole, _ := payload[constvars.SupertokenPayloadActiveRoleKey].(string)
+	fhirResourceId, fhirErr := uc.getFhirResourceIdForUser(ctx, userID, activeRole)
+	if fhirErr != nil {
+		uc.Log.Error("authUsecase.CreateNewSession error getting FHIR resource ID",
+			zap.String("user_id", userID),
+			zap.Error(fhirErr),
+		)
+		payload[supertokenAccessTokenPayloadFhirResourceId] = ""
+		return
+	}
+	payload[supertokenAccessTokenPayloadFhirResourceId] = fhirResourceId
+}
+
+// getFhirResourceIdForUser performs a read-only lookup by SuperTokenUserID.
+//
+// Match resolveFHIRIdentity: a selected Patient identity is preferred, otherwise
+// Practitioner is preferred. A missing selected Patient falls back to Practitioner.
+// Superadmin has no FHIR resource by design. The claim remains informational.
+func (uc *authUsecase) getFhirResourceIdForUser(ctx context.Context, userID, activeRole string) (string, error) {
+	lookupInput := &contracts.LookupUserFHIRResourceIDsInput{
+		SuperTokenUserID: userID,
+	}
+
+	lookupCtx, lookupCtxCancel := context.WithTimeout(ctx, 2*time.Second)
+	defer lookupCtxCancel()
+
+	lookedUpResources, err := uc.UserFHIRInitializer.LookupUserFHIRResourceIDs(lookupCtx, lookupInput)
+	if err != nil {
+		uc.Log.Error("authUsecase.getFhirResourceIdForUser error looking up FHIR resources",
+			zap.String("user_id", userID),
+			zap.Error(err),
+		)
+		return "", err
+	}
+
+	if activeRole == constvars.KonsulinRolePatient && lookedUpResources.PatientID != "" {
+		return fmt.Sprintf("Patient/%s", lookedUpResources.PatientID), nil
+	}
+
+	if lookedUpResources.PractitionerID != "" {
+		return fmt.Sprintf("Practitioner/%s", lookedUpResources.PractitionerID), nil
+	}
+	if activeRole != constvars.KonsulinRolePatient && lookedUpResources.PatientID != "" {
+		return fmt.Sprintf("Patient/%s", lookedUpResources.PatientID), nil
+	}
+
+	return "", errors.New("no FHIR resource ID found for user")
 }
 
 // buildSessionConfig constructs the session recipe configuration.
-func buildSessionConfig(cookieSameSite *string, cookieSecure *bool) *sessmodels.TypeInput {
+func (uc *authUsecase) buildSessionConfig(cookieSameSite *string, cookieSecure *bool) *sessmodels.TypeInput {
 	return &sessmodels.TypeInput{
 		Override: &sessmodels.OverrideStruct{
 			Functions: func(originalImplementation sessmodels.RecipeInterface) sessmodels.RecipeInterface {
 				originalCreateNewSession := *originalImplementation.CreateNewSession
+				originalRefreshSession := *originalImplementation.RefreshSession
 
 				(*originalImplementation.CreateNewSession) = func(userID string, accessTokenPayload, sessionDataInDatabase map[string]interface{}, disableAntiCsrf *bool, tenantId string, userContext supertokens.UserContext) (sessmodels.SessionContainer, error) {
 					if accessTokenPayload == nil {
 						accessTokenPayload = make(map[string]interface{})
 					}
-					buildAccessTokenPayload(userID, tenantId, accessTokenPayload)
+					uc.buildAccessTokenPayload(sessionRequestContext(userContext), userID, tenantId, accessTokenPayload)
 					return originalCreateNewSession(userID, accessTokenPayload, sessionDataInDatabase, disableAntiCsrf, tenantId, userContext)
+				}
+
+				*originalImplementation.RefreshSession = func(refreshToken string, antiCSRFToken *string, disableAntiCSRF bool, userContext supertokens.UserContext) (sessmodels.SessionContainer, error) {
+					sess, err := originalRefreshSession(refreshToken, antiCSRFToken, disableAntiCSRF, userContext)
+					if err != nil || sess == nil {
+						return sess, err
+					}
+					// Refresh from current roles and resources, including clearing a stale
+					// FHIR claim when lookup fails. Merge only our claims so SDK and
+					// application payload fields survive token regeneration.
+					payload := map[string]interface{}{
+						constvars.SupertokenPayloadActiveRoleKey: sess.GetAccessTokenPayload()[constvars.SupertokenPayloadActiveRoleKey],
+					}
+					uc.buildAccessTokenPayload(sessionRequestContext(userContext), sess.GetUserIDWithContext(userContext), sess.GetTenantIdWithContext(userContext), payload)
+					delete(payload, constvars.SupertokenPayloadActiveRoleKey)
+					if err := sess.MergeIntoAccessTokenPayloadWithContext(payload, userContext); err != nil {
+						return nil, err
+					}
+					return sess, nil
 				}
 
 				return originalImplementation
@@ -452,6 +572,15 @@ func buildSessionConfig(cookieSameSite *string, cookieSecure *bool) *sessmodels.
 		CookieSameSite: cookieSameSite,
 		CookieSecure:   cookieSecure,
 	}
+}
+
+// sessionRequestContext preserves cancellation and deadlines for HTTP sessions.
+// Programmatically created sessions may have no request in the SDK user context.
+func sessionRequestContext(userContext supertokens.UserContext) context.Context {
+	if request := supertokens.GetRequestFromUserContext(userContext); request != nil {
+		return request.Context()
+	}
+	return context.Background()
 }
 
 // buildDashboardConfig constructs the dashboard recipe config.

@@ -468,9 +468,16 @@ func (ctrl *AuthController) SetActiveRole(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if err := sess.MergeIntoAccessTokenPayload(map[string]interface{}{
+	payload := map[string]interface{}{
 		constvars.SupertokenPayloadActiveRoleKey: role,
-	}); err != nil {
+	}
+	currentRole, _ := sess.GetAccessTokenPayload()[constvars.SupertokenPayloadActiveRoleKey].(string)
+	if currentRole != role {
+		// The previous identity may belong to the role being left. Refresh will
+		// resolve the new identity; never carry a stale claim across the switch.
+		payload[constvars.SupertokenPayloadFhirResourceIDKey] = ""
+	}
+	if err := sess.MergeIntoAccessTokenPayload(payload); err != nil {
 		ctrl.Log.Error("AuthController.SetActiveRole merge payload failed",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
 			zap.Error(err),
