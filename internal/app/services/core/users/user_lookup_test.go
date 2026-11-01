@@ -13,17 +13,19 @@ import (
 	"go.uber.org/zap"
 )
 
+type lookupUserCase struct {
+	name                        string
+	practitioners               []fhir_dto.Practitioner
+	patients                    []fhir_dto.Patient
+	practitionerErr, patientErr error
+	wantErr                     string
+	want                        contracts.InitializeNewUserFHIRResourcesOutput
+}
+
 func TestLookupUserFHIRResourceIDs(t *testing.T) {
 	practitionerErr := errors.New("practitioner unavailable")
 	patientErr := errors.New("patient unavailable")
-	for _, tc := range []struct {
-		name                        string
-		practitioners               []fhir_dto.Practitioner
-		patients                    []fhir_dto.Patient
-		practitionerErr, patientErr error
-		wantErr                     string
-		want                        contracts.InitializeNewUserFHIRResourcesOutput
-	}{
+	for _, tc := range []lookupUserCase{
 		{name: "no resources"},
 		{name: "practitioner only", practitioners: []fhir_dto.Practitioner{{ID: "p1"}}, want: contracts.InitializeNewUserFHIRResourcesOutput{PractitionerID: "p1"}},
 		{name: "patient only", patients: []fhir_dto.Patient{{ID: "u1"}}, want: contracts.InitializeNewUserFHIRResourcesOutput{PatientID: "u1"}},
@@ -34,33 +36,7 @@ func TestLookupUserFHIRResourceIDs(t *testing.T) {
 		{name: "patient error discards partial practitioner", patientErr: patientErr, practitioners: []fhir_dto.Practitioner{{ID: "p1"}}},
 		{name: "both errors preserved", practitionerErr: practitionerErr, patientErr: patientErr},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			practitioner := new(MockPractitionerFhirClient)
-			patient := new(MockPatientFhirClient)
-			practitioner.On("FindPractitionerByIdentifier", ctx, constvars.FhirSupertokenSystemIdentifier, "user-1").Return(tc.practitioners, tc.practitionerErr).Once()
-			patient.On("FindPatientByIdentifier", ctx, constvars.FhirSupertokenSystemIdentifier+"|user-1").Return(tc.patients, tc.patientErr).Once()
-			uc := &userUsecase{PractitionerFhirClient: practitioner, PatientFhirClient: patient, Log: zap.NewNop()}
-			got, err := uc.LookupUserFHIRResourceIDs(ctx, &contracts.LookupUserFHIRResourceIDsInput{SuperTokenUserID: "user-1"})
-			if tc.practitionerErr != nil || tc.patientErr != nil || tc.wantErr != "" {
-				require.Nil(t, got)
-				if tc.wantErr != "" {
-					require.ErrorContains(t, err, tc.wantErr)
-				}
-				if tc.practitionerErr != nil {
-					require.ErrorIs(t, err, tc.practitionerErr)
-				}
-				if tc.patientErr != nil {
-					require.ErrorIs(t, err, tc.patientErr)
-				}
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, &tc.want, got)
-			}
-			practitioner.AssertExpectations(t)
-			patient.AssertExpectations(t)
-		})
+		t.Run(tc.name, func(t *testing.T) { runLookupUserCase(t, tc) })
 	}
 	t.Run("missing identifier performs no lookup", func(t *testing.T) {
 		uc := &userUsecase{Log: zap.NewNop()}
@@ -71,4 +47,33 @@ func TestLookupUserFHIRResourceIDs(t *testing.T) {
 		require.Error(t, err)
 		require.Nil(t, got)
 	})
+}
+
+func runLookupUserCase(t *testing.T, tc lookupUserCase) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	practitioner := new(MockPractitionerFhirClient)
+	patient := new(MockPatientFhirClient)
+	practitioner.On("FindPractitionerByIdentifier", ctx, constvars.FhirSupertokenSystemIdentifier, "user-1").Return(tc.practitioners, tc.practitionerErr).Once()
+	patient.On("FindPatientByIdentifier", ctx, constvars.FhirSupertokenSystemIdentifier+"|user-1").Return(tc.patients, tc.patientErr).Once()
+	uc := &userUsecase{PractitionerFhirClient: practitioner, PatientFhirClient: patient, Log: zap.NewNop()}
+	got, err := uc.LookupUserFHIRResourceIDs(ctx, &contracts.LookupUserFHIRResourceIDsInput{SuperTokenUserID: "user-1"})
+	if tc.practitionerErr != nil || tc.patientErr != nil || tc.wantErr != "" {
+		require.Nil(t, got)
+		if tc.wantErr != "" {
+			require.ErrorContains(t, err, tc.wantErr)
+		}
+		if tc.practitionerErr != nil {
+			require.ErrorIs(t, err, tc.practitionerErr)
+		}
+		if tc.patientErr != nil {
+			require.ErrorIs(t, err, tc.patientErr)
+		}
+	} else {
+		require.NoError(t, err)
+		require.Equal(t, &tc.want, got)
+	}
+	practitioner.AssertExpectations(t)
+	patient.AssertExpectations(t)
 }

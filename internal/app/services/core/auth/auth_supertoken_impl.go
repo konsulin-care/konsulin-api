@@ -482,7 +482,8 @@ func (uc *authUsecase) buildAccessTokenPayload(ctx context.Context, userID, tena
 	// The FHIR resource ID is best-effort: a lookup failure must not block the
 	// session, so the claim is left empty and the caller can re-resolve later.
 	// getFhirResourceIdForUser never returns an empty ID without an error.
-	fhirResourceId, fhirErr := uc.getFhirResourceIdForUser(ctx, userID, userRoles)
+	activeRole, _ := payload[constvars.SupertokenPayloadActiveRoleKey].(string)
+	fhirResourceId, fhirErr := uc.getFhirResourceIdForUser(ctx, userID, activeRole)
 	if fhirErr != nil {
 		uc.Log.Error("authUsecase.CreateNewSession error getting FHIR resource ID",
 			zap.String("user_id", userID),
@@ -494,14 +495,12 @@ func (uc *authUsecase) buildAccessTokenPayload(ctx context.Context, userID, tena
 	payload[supertokenAccessTokenPayloadFhirResourceId] = fhirResourceId
 }
 
-// getFhirResourceIdForUser determines the FHIR resource ID based on the user's roles
-// and existing FHIR resources. It performs a read-only lookup by SuperTokenUserID and
-// never creates anything.
+// getFhirResourceIdForUser performs a read-only lookup by SuperTokenUserID.
 //
-// Priority: a practitioner-backed role (Practitioner, Clinic Admin, Researcher) resolves
-// to Practitioner/{ID}, then the Patient role to Patient/{ID}, then whichever resource
-// the lookup happened to find. Superadmin has no FHIR resource by design.
-func (uc *authUsecase) getFhirResourceIdForUser(ctx context.Context, userID string, roles []string) (string, error) {
+// Match resolveFHIRIdentity: a selected Patient identity is preferred, otherwise
+// Practitioner is preferred. A missing selected Patient falls back to Practitioner.
+// Superadmin has no FHIR resource by design. The claim remains informational.
+func (uc *authUsecase) getFhirResourceIdForUser(ctx context.Context, userID, activeRole string) (string, error) {
 	lookupInput := &contracts.LookupUserFHIRResourceIDsInput{
 		SuperTokenUserID: userID,
 	}
@@ -518,25 +517,14 @@ func (uc *authUsecase) getFhirResourceIdForUser(ctx context.Context, userID stri
 		return "", err
 	}
 
-	for _, role := range roles {
-		switch role {
-		case constvars.KonsulinRolePractitioner, constvars.KonsulinRoleClinicAdmin, constvars.KonsulinRoleResearcher:
-			if lookedUpResources.PractitionerID != "" {
-				return fmt.Sprintf("Practitioner/%s", lookedUpResources.PractitionerID), nil
-			}
-		}
-	}
-
-	for _, role := range roles {
-		if role == constvars.KonsulinRolePatient && lookedUpResources.PatientID != "" {
-			return fmt.Sprintf("Patient/%s", lookedUpResources.PatientID), nil
-		}
+	if activeRole == constvars.KonsulinRolePatient && lookedUpResources.PatientID != "" {
+		return fmt.Sprintf("Patient/%s", lookedUpResources.PatientID), nil
 	}
 
 	if lookedUpResources.PractitionerID != "" {
 		return fmt.Sprintf("Practitioner/%s", lookedUpResources.PractitionerID), nil
 	}
-	if lookedUpResources.PatientID != "" {
+	if activeRole != constvars.KonsulinRolePatient && lookedUpResources.PatientID != "" {
 		return fmt.Sprintf("Patient/%s", lookedUpResources.PatientID), nil
 	}
 
@@ -567,8 +555,11 @@ func (uc *authUsecase) buildSessionConfig(cookieSameSite *string, cookieSecure *
 					// Refresh from current roles and resources, including clearing a stale
 					// FHIR claim when lookup fails. Merge only our claims so SDK and
 					// application payload fields survive token regeneration.
-					payload := make(map[string]interface{})
+					payload := map[string]interface{}{
+						constvars.SupertokenPayloadActiveRoleKey: sess.GetAccessTokenPayload()[constvars.SupertokenPayloadActiveRoleKey],
+					}
 					uc.buildAccessTokenPayload(sessionRequestContext(userContext), sess.GetUserIDWithContext(userContext), sess.GetTenantIdWithContext(userContext), payload)
+					delete(payload, constvars.SupertokenPayloadActiveRoleKey)
 					if err := sess.MergeIntoAccessTokenPayloadWithContext(payload, userContext); err != nil {
 						return nil, err
 					}

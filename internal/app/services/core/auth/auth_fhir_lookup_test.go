@@ -24,22 +24,21 @@ import (
 func TestGetFhirResourceIDForUser(t *testing.T) {
 	lookupErr := errors.New("FHIR unavailable")
 	for _, tc := range []struct {
-		name      string
-		roles     []string
-		resources contracts.InitializeNewUserFHIRResourcesOutput
-		lookupErr error
-		want      string
-		wantErr   bool
+		name       string
+		activeRole string
+		resources  contracts.InitializeNewUserFHIRResourcesOutput
+		lookupErr  error
+		want       string
+		wantErr    bool
 	}{
-		{name: "practitioner", roles: []string{constvars.KonsulinRolePractitioner}, resources: contracts.InitializeNewUserFHIRResourcesOutput{PractitionerID: "p", PatientID: "u"}, want: "Practitioner/p"},
-		{name: "clinic admin", roles: []string{constvars.KonsulinRoleClinicAdmin}, resources: contracts.InitializeNewUserFHIRResourcesOutput{PractitionerID: "p"}, want: "Practitioner/p"},
-		{name: "researcher", roles: []string{constvars.KonsulinRoleResearcher}, resources: contracts.InitializeNewUserFHIRResourcesOutput{PractitionerID: "p"}, want: "Practitioner/p"},
-		{name: "practitioner wins over patient regardless of order", roles: []string{constvars.KonsulinRolePatient, constvars.KonsulinRolePractitioner}, resources: contracts.InitializeNewUserFHIRResourcesOutput{PractitionerID: "p", PatientID: "u"}, want: "Practitioner/p"},
-		{name: "patient role wins over fallback practitioner", roles: []string{constvars.KonsulinRolePatient}, resources: contracts.InitializeNewUserFHIRResourcesOutput{PractitionerID: "p", PatientID: "u"}, want: "Patient/u"},
-		{name: "missing practitioner falls back to patient", roles: []string{constvars.KonsulinRolePractitioner, constvars.KonsulinRolePatient}, resources: contracts.InitializeNewUserFHIRResourcesOutput{PatientID: "u"}, want: "Patient/u"},
-		{name: "unrecognized role practitioner fallback", roles: []string{"unknown"}, resources: contracts.InitializeNewUserFHIRResourcesOutput{PractitionerID: "p"}, want: "Practitioner/p"},
-		{name: "no roles patient fallback", resources: contracts.InitializeNewUserFHIRResourcesOutput{PatientID: "u"}, want: "Patient/u"},
-		{name: "no matching resources", roles: []string{constvars.KonsulinRoleSuperadmin}, wantErr: true},
+		{name: "practitioner default", resources: contracts.InitializeNewUserFHIRResourcesOutput{PractitionerID: "p", PatientID: "u"}, want: "Practitioner/p"},
+		{name: "selected practitioner", activeRole: constvars.KonsulinRolePractitioner, resources: contracts.InitializeNewUserFHIRResourcesOutput{PractitionerID: "p", PatientID: "u"}, want: "Practitioner/p"},
+		{name: "selected patient", activeRole: constvars.KonsulinRolePatient, resources: contracts.InitializeNewUserFHIRResourcesOutput{PractitionerID: "p", PatientID: "u"}, want: "Patient/u"},
+		{name: "clinic admin", activeRole: constvars.KonsulinRoleClinicAdmin, resources: contracts.InitializeNewUserFHIRResourcesOutput{PractitionerID: "p"}, want: "Practitioner/p"},
+		{name: "researcher", activeRole: constvars.KonsulinRoleResearcher, resources: contracts.InitializeNewUserFHIRResourcesOutput{PractitionerID: "p"}, want: "Practitioner/p"},
+		{name: "missing selected patient falls back to practitioner like resolver", activeRole: constvars.KonsulinRolePatient, resources: contracts.InitializeNewUserFHIRResourcesOutput{PractitionerID: "p"}, want: "Practitioner/p"},
+		{name: "missing practitioner falls back to patient like resolver", activeRole: constvars.KonsulinRolePractitioner, resources: contracts.InitializeNewUserFHIRResourcesOutput{PatientID: "u"}, want: "Patient/u"},
+		{name: "no matching resources", activeRole: constvars.KonsulinRoleSuperadmin, wantErr: true},
 		{name: "lookup error", lookupErr: lookupErr, wantErr: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -49,7 +48,7 @@ func TestGetFhirResourceIDForUser(t *testing.T) {
 				return ok && time.Until(deadline) > 0 && time.Until(deadline) <= 2*time.Second
 			}), &contracts.LookupUserFHIRResourceIDsInput{SuperTokenUserID: "user"}).Return(&tc.resources, tc.lookupErr).Once()
 			uc := &authUsecase{UserFHIRInitializer: initializer, Log: zap.NewNop()}
-			got, err := uc.getFhirResourceIdForUser(context.Background(), "user", tc.roles)
+			got, err := uc.getFhirResourceIdForUser(context.Background(), "user", tc.activeRole)
 			require.Equal(t, tc.want, got)
 			if tc.wantErr {
 				require.Error(t, err)
@@ -186,94 +185,29 @@ func TestGuestAccessTokenPayloadPreservesOtherClaims(t *testing.T) {
 	require.Equal(t, map[string]interface{}{supertokenAccessTokenPayloadRolesValueKey: []interface{}{constvars.KonsulinRoleGuest}}, payload[supertokenAccessTokenPayloadRolesKey])
 }
 
+type refreshSessionCase struct {
+	name       string
+	refreshErr error
+	mergeErr   error
+	nilSession bool
+	lookupErr  error
+	wantID     string
+	activeRole string
+}
+
 func TestSessionRefreshUpdatesAuthClaims(t *testing.T) {
 	stub := initRolesStub(t)
 	refreshErr := errors.New("refresh failed")
 	mergeErr := errors.New("token regeneration failed")
-	for _, tc := range []struct {
-		name       string
-		refreshErr error
-		mergeErr   error
-		nilSession bool
-		lookupErr  error
-		wantID     string
-	}{
-		{name: "current resource replaces stale claim", wantID: "Practitioner/new"},
+	for _, tc := range []refreshSessionCase{
+		{name: "current resource replaces stale claim", wantID: "Practitioner/new", activeRole: constvars.KonsulinRolePractitioner},
+		{name: "patient selection survives refresh", wantID: "Patient/new-patient", activeRole: constvars.KonsulinRolePatient},
 		{name: "lookup failure clears stale claim", lookupErr: errors.New("FHIR unavailable")},
 		{name: "refresh failure", refreshErr: refreshErr},
 		{name: "nil session", nilSession: true},
 		{name: "merge failure", mergeErr: mergeErr, wantID: "Practitioner/new"},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			stub.response, stub.err = userrolesmodels.GetRolesForUserResponse{OK: rolesOK(constvars.KonsulinRolePractitioner)}, nil
-			initializer := new(MockUserFHIRInitializer)
-			if tc.refreshErr == nil && !tc.nilSession {
-				initializer.On("LookupUserFHIRResourceIDs", mock.Anything, &contracts.LookupUserFHIRResourceIDsInput{SuperTokenUserID: "user"}).Return(&contracts.InitializeNewUserFHIRResourcesOutput{PractitionerID: "new"}, tc.lookupErr).Once()
-			}
-			uc := &authUsecase{UserFHIRInitializer: initializer, Log: zap.NewNop()}
-			userContext := &map[string]interface{}{"request": true}
-			antiCSRF := "csrf"
-			merged := false
-			payload := map[string]interface{}{
-				"custom":                                   "preserved",
-				constvars.SupertokenPayloadActiveRoleKey:   constvars.KonsulinRolePatient,
-				supertokenAccessTokenPayloadFhirResourceId: "Patient/stale",
-				supertokenAccessTokenPayloadRolesKey:       map[string]interface{}{supertokenAccessTokenPayloadRolesValueKey: []interface{}{constvars.KonsulinRolePatient}},
-			}
-			sess := &sessmodels.TypeSessionContainer{
-				GetUserIDWithContext: func(ctx supertokens.UserContext) string {
-					require.Same(t, userContext, ctx)
-					return "user"
-				},
-				GetTenantIdWithContext: func(ctx supertokens.UserContext) string {
-					require.Same(t, userContext, ctx)
-					return "tenant"
-				},
-				MergeIntoAccessTokenPayloadWithContext: func(update map[string]interface{}, ctx supertokens.UserContext) error {
-					merged = true
-					require.Same(t, userContext, ctx)
-					require.Equal(t, tc.wantID, update[supertokenAccessTokenPayloadFhirResourceId])
-					require.Equal(t, map[string]interface{}{supertokenAccessTokenPayloadRolesValueKey: []interface{}{constvars.KonsulinRolePractitioner}}, update[supertokenAccessTokenPayloadRolesKey])
-					for key, value := range update {
-						payload[key] = value
-					}
-					return tc.mergeErr
-				},
-			}
-			refresh := func(token string, csrf *string, disable bool, ctx supertokens.UserContext) (sessmodels.SessionContainer, error) {
-				require.Equal(t, "refresh-token", token)
-				require.Same(t, &antiCSRF, csrf)
-				require.True(t, disable)
-				require.Same(t, userContext, ctx)
-				if tc.nilSession || tc.refreshErr != nil {
-					return nil, tc.refreshErr
-				}
-				return sess, nil
-			}
-			create := func(_ string, _, _ map[string]interface{}, _ *bool, _ string, _ supertokens.UserContext) (sessmodels.SessionContainer, error) {
-				return nil, nil
-			}
-			override := uc.buildSessionConfig(nil, nil).Override.Functions(sessmodels.RecipeInterface{CreateNewSession: &create, RefreshSession: &refresh})
-			got, err := (*override.RefreshSession)("refresh-token", &antiCSRF, true, userContext)
-			switch {
-			case tc.refreshErr != nil:
-				require.ErrorIs(t, err, refreshErr)
-				require.Nil(t, got)
-			case tc.mergeErr != nil:
-				require.ErrorIs(t, err, mergeErr)
-				require.Nil(t, got)
-			case tc.nilSession:
-				require.NoError(t, err)
-				require.Nil(t, got)
-			default:
-				require.NoError(t, err)
-				require.Same(t, sess, got)
-			}
-			require.Equal(t, tc.refreshErr == nil && !tc.nilSession, merged)
-			require.Equal(t, "preserved", payload["custom"])
-			require.Equal(t, constvars.KonsulinRolePatient, payload[constvars.SupertokenPayloadActiveRoleKey])
-			initializer.AssertExpectations(t)
-		})
+		t.Run(tc.name, func(t *testing.T) { runRefreshSessionCase(t, stub, tc) })
 	}
 }
 
@@ -296,6 +230,7 @@ func TestSessionLookupsInheritRequestCancellation(t *testing.T) {
 			uc := &authUsecase{UserFHIRInitializer: initializer, Log: zap.NewNop()}
 			var claims map[string]interface{}
 			sess := &sessmodels.TypeSessionContainer{
+				GetAccessTokenPayload:  func() map[string]interface{} { return nil },
 				GetUserIDWithContext:   func(_ supertokens.UserContext) string { return "user" },
 				GetTenantIdWithContext: func(_ supertokens.UserContext) string { return "tenant" },
 				MergeIntoAccessTokenPayloadWithContext: func(update map[string]interface{}, _ supertokens.UserContext) error {
@@ -322,4 +257,77 @@ func TestSessionLookupsInheritRequestCancellation(t *testing.T) {
 			initializer.AssertExpectations(t)
 		})
 	}
+}
+
+func runRefreshSessionCase(t *testing.T, stub *rolesStub, tc refreshSessionCase) {
+	t.Helper()
+	stub.response, stub.err = userrolesmodels.GetRolesForUserResponse{OK: rolesOK(constvars.KonsulinRolePractitioner, constvars.KonsulinRolePatient)}, nil
+	initializer := new(MockUserFHIRInitializer)
+	if tc.refreshErr == nil && !tc.nilSession {
+		initializer.On("LookupUserFHIRResourceIDs", mock.Anything, &contracts.LookupUserFHIRResourceIDsInput{SuperTokenUserID: "user"}).Return(&contracts.InitializeNewUserFHIRResourcesOutput{PractitionerID: "new", PatientID: "new-patient"}, tc.lookupErr).Once()
+	}
+	uc := &authUsecase{UserFHIRInitializer: initializer, Log: zap.NewNop()}
+	userContext := &map[string]interface{}{"request": true}
+	antiCSRF := "csrf"
+	merged := false
+	payload := map[string]interface{}{
+		"custom":                                   "preserved",
+		constvars.SupertokenPayloadActiveRoleKey:   tc.activeRole,
+		supertokenAccessTokenPayloadFhirResourceId: "Patient/stale",
+		supertokenAccessTokenPayloadRolesKey:       map[string]interface{}{supertokenAccessTokenPayloadRolesValueKey: []interface{}{constvars.KonsulinRolePatient}},
+	}
+	sess := &sessmodels.TypeSessionContainer{
+		GetAccessTokenPayload: func() map[string]interface{} { return payload },
+		GetUserIDWithContext: func(ctx supertokens.UserContext) string {
+			require.Same(t, userContext, ctx)
+			return "user"
+		},
+		GetTenantIdWithContext: func(ctx supertokens.UserContext) string {
+			require.Same(t, userContext, ctx)
+			return "tenant"
+		},
+		MergeIntoAccessTokenPayloadWithContext: func(update map[string]interface{}, ctx supertokens.UserContext) error {
+			merged = true
+			require.Same(t, userContext, ctx)
+			require.Equal(t, tc.wantID, update[supertokenAccessTokenPayloadFhirResourceId])
+			require.Equal(t, map[string]interface{}{supertokenAccessTokenPayloadRolesValueKey: []interface{}{constvars.KonsulinRolePractitioner, constvars.KonsulinRolePatient}}, update[supertokenAccessTokenPayloadRolesKey])
+			for key, value := range update {
+				payload[key] = value
+			}
+			return tc.mergeErr
+		},
+	}
+	refresh := func(token string, csrf *string, disable bool, ctx supertokens.UserContext) (sessmodels.SessionContainer, error) {
+		require.Equal(t, "refresh-token", token)
+		require.Same(t, &antiCSRF, csrf)
+		require.True(t, disable)
+		require.Same(t, userContext, ctx)
+		if tc.nilSession || tc.refreshErr != nil {
+			return nil, tc.refreshErr
+		}
+		return sess, nil
+	}
+	create := func(_ string, _, _ map[string]interface{}, _ *bool, _ string, _ supertokens.UserContext) (sessmodels.SessionContainer, error) {
+		return nil, nil
+	}
+	override := uc.buildSessionConfig(nil, nil).Override.Functions(sessmodels.RecipeInterface{CreateNewSession: &create, RefreshSession: &refresh})
+	got, err := (*override.RefreshSession)("refresh-token", &antiCSRF, true, userContext)
+	switch {
+	case tc.refreshErr != nil:
+		require.ErrorIs(t, err, tc.refreshErr)
+		require.Nil(t, got)
+	case tc.mergeErr != nil:
+		require.ErrorIs(t, err, tc.mergeErr)
+		require.Nil(t, got)
+	case tc.nilSession:
+		require.NoError(t, err)
+		require.Nil(t, got)
+	default:
+		require.NoError(t, err)
+		require.Same(t, sess, got)
+	}
+	require.Equal(t, tc.refreshErr == nil && !tc.nilSession, merged)
+	require.Equal(t, "preserved", payload["custom"])
+	require.Equal(t, tc.activeRole, payload[constvars.SupertokenPayloadActiveRoleKey])
+	initializer.AssertExpectations(t)
 }
