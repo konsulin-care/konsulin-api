@@ -1,6 +1,6 @@
 [tools]
-go = "1.26.7"
-golangci-lint = "2.12.2"
+go = "1.27.3"
+golangci-lint = "2.15.0"
 gofumpt = "0.11.0"
 node = "26"
 "npm:@usebruno/cli" = "4.0.0"
