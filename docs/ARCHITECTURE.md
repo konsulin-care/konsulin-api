@@ -171,7 +171,8 @@ Each rule declares:
 
 | Category | Technology |
 |---|---|
-| Language | Go 1.25 |
+| Language | Go 1.27.3 |
+| Gateway SDK | `github.com/konsulin-care/gateway-sdk-go` (pinned) — sole importer: `internal/app/drivers/gateway` |
 | HTTP Router | Chi v5 |
 | Auth | SuperTokens (passwordless magic link) |
 | Authorization | Casbin v2 |
@@ -193,6 +194,7 @@ Each rule declares:
 - `github.com/xendit/xendit-go/v7` — Payments
 - `go.uber.org/zap` — Logging
 - `github.com/joho/godotenv` — Config (.env loading)
+- `github.com/konsulin-care/gateway-sdk-go` — gateway client, imported only by the SDK adapter `internal/app/drivers/gateway`
 
 ## Deployment
 
