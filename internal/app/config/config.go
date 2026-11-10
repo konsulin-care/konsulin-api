@@ -125,7 +125,7 @@ func loadInternalConfigWithEnv() (*InternalConfig, error) {
 	if err := validateNonDevConfig(cfg); err != nil {
 		return nil, err
 	}
-	if err := validateGatewayConfig(cfg); err != nil {
+	if err := validateGatewaySettings(cfg); err != nil {
 		return nil, err
 	}
 	if err := validateBasePrices(cfg); err != nil {
