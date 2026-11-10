@@ -20,6 +20,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
 	github.com/klauspost/compress v1.19.2
+	github.com/konsulin-care/gateway-sdk-go v0.1.1
 	github.com/lib/pq v1.12.3
 	github.com/rabbitmq/amqp091-go v1.14.0
 	github.com/redis/go-redis/v9 v9.22.0
