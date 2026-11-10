@@ -49,7 +49,7 @@ go run ./cmd/migration
 
 | Layer | Technology |
 |---|---|
-| Language | Go 1.25 |
+| Language | Go 1.27.3 |
 | HTTP Router | Chi v5 |
 | Auth | SuperTokens (magic link) + JWT |
 | Authorization | Casbin RBAC |

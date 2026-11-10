@@ -35,7 +35,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION: "1.26"
+  GO_VERSION: "1.27.3"
 
 jobs:
   quality:
@@ -60,7 +60,7 @@ jobs:
           base=$(git merge-base HEAD "origin/$BASE_REF" 2>/dev/null || echo HEAD)
           files=$(git diff --name-only "$base" HEAD -- '*.go' || true)
           if [ -n "$files" ]; then
-            violations=$(go tool gofumpt -l $files)
+            violations=$(printf '%s\n' "$files" | xargs -d '\n' go tool gofumpt -l)
             test -z "$violations" || { echo "gofumpt violations:"; echo "$violations"; exit 1; }
           else
             echo "no Go files changed vs $base"
@@ -242,7 +242,7 @@ jobs:
       - name: Build Vendor Image
         run: |
           docker build \
-            -t konsulin/konsulin-api-vendor:pr-${SHORT_SHA} \
+            -t "konsulin/konsulin-api-vendor:pr-${SHORT_SHA}" \
             -f Dockerfile-vendor .
 
       - name: Replace FROM to use local vendor pr-tag
@@ -257,7 +257,7 @@ jobs:
       - name: Build Main Docker Image
         run: |
           docker build \
-            -t konsulin/konsulin-api:pr-${SHORT_SHA} \
+            -t "konsulin/konsulin-api:pr-${SHORT_SHA}" \
             -f Dockerfile .
 
       - name: Verify Built Images
