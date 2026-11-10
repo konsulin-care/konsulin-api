@@ -1,5 +1,12 @@
 package config
 
+import (
+	"fmt"
+	"strings"
+
+	"konsulin-service/internal/pkg/constvars"
+)
+
 type InternalConfig struct {
 	App            App               `mapstructure:"app"`
 	FHIR           AppFHIR           `mapstructure:"fhir"`
@@ -8,6 +15,7 @@ type InternalConfig struct {
 	ServicePricing AppServicePricing `mapstructure:"service_pricing"`
 	Webhook        AppWebhook        `mapstructure:"webhook"`
 	Xendit         AppXendit         `mapstructure:"xendit"`
+	Gateway        AppGateway        `mapstructure:"gateway"`
 }
 
 type App struct {
@@ -26,6 +34,10 @@ type App struct {
 	SuperadminAPIKey                      string `mapstructure:"superadmin_api_key"`
 	SuperadminAPIKeyRateLimit             int    `mapstructure:"superadmin_api_key_rate_limit"`
 	WebhookInstantiateBasePath            string `mapstructure:"webhook_instantiate_base_path"`
+	RBACPolicyPath                        string `mapstructure:"rbac_policy_path"`
+	OrganizationName                      string `mapstructure:"organization_name"`
+	DataDir                               string `mapstructure:"data_dir"`
+	Pepper                                string `mapstructure:"pepper"` // Sensitive — never logged
 }
 
 type AppFHIR struct {
@@ -88,4 +100,56 @@ type AppWebhook struct {
 type AppXendit struct {
 	APIKey       string `mapstructure:"api_key"`
 	WebhookToken string `mapstructure:"webhook_token"`
+}
+
+// AppGateway holds gateway/party configuration for federation mode.
+// An empty URL means standalone mode: no gateway and no APP_PARTY_* required.
+type AppGateway struct {
+	// Enabled is true when APP_GATEWAY_URL is non-empty
+	Enabled bool `mapstructure:"enabled"`
+	// URL is the gateway base URL; https:// required outside dev-like environments
+	URL string `mapstructure:"url"`
+	// PartyID is the party ID issued out of band by the gateway admin
+	PartyID string `mapstructure:"party_id"`
+	// PrivateKey is the signing key PEM; sensitive, never logged
+	PrivateKey string `mapstructure:"private_key"`
+	// EncPrivateKey is the X25519 key PEM opening JWE envelopes; sensitive, never logged
+	EncPrivateKey string `mapstructure:"enc_private_key"`
+	// EnrollmentToken is the single-use enrollment token; sensitive, never logged
+	EnrollmentToken string `mapstructure:"enrollment_token"`
+	// NextPrivateKey is the next signing key for self-service rotation; sensitive, never logged
+	NextPrivateKey string `mapstructure:"next_private_key"`
+	// NextEncPrivateKey is the next enc key for self-service rotation; sensitive, never logged
+	NextEncPrivateKey string `mapstructure:"next_enc_private_key"`
+	// AutomationPartyID is the automation provider party ID
+	AutomationPartyID string `mapstructure:"automation_party_id"`
+	// ServiceProviderAliases is a comma-separated alias=partyId list
+	ServiceProviderAliases string `mapstructure:"service_provider_aliases"`
+}
+
+// validateGatewayConfig validates gateway/party configuration in
+// loadInternalConfigWithEnv. Errors name the offending variable only and
+// never include key material.
+func validateGatewayConfig(cfg *InternalConfig) error {
+	gw := &cfg.Gateway
+	gw.URL = strings.TrimSpace(gw.URL)
+	gw.Enabled = gw.URL != ""
+	if !gw.Enabled {
+		return nil // standalone mode: no APP_PARTY_* required
+	}
+	if strings.HasPrefix(strings.ToLower(gw.URL), "http://") &&
+		cfg.App.Env != constvars.EnvLocal && cfg.App.Env != constvars.EnvDev &&
+		cfg.App.Env != constvars.EnvDevelopment && cfg.App.Env != constvars.EnvTest {
+		return fmt.Errorf("env var APP_GATEWAY_URL must use https:// in %s environment", cfg.App.Env)
+	}
+	for _, required := range []struct{ value, name string }{
+		{gw.PartyID, "APP_PARTY_ID"},
+		{gw.PrivateKey, "APP_PARTY_PRIVATE_KEY"},
+		{gw.EncPrivateKey, "APP_PARTY_ENC_PRIVATE_KEY"},
+	} {
+		if required.value == "" {
+			return fmt.Errorf("env var %s is required when APP_GATEWAY_URL is set", required.name)
+		}
+	}
+	return nil
 }

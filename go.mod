@@ -13,17 +13,26 @@ require (
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/go-chi/cors v1.2.2
+	github.com/go-chi/httprate v0.16.0
+	github.com/go-playground/validator/v10 v10.30.3
+	github.com/goccy/go-json v0.10.6
+	github.com/golang-jwt/jwt/v4 v4.5.2
+	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
+	github.com/klauspost/compress v1.19.2
 	github.com/lib/pq v1.12.3
 	github.com/rabbitmq/amqp091-go v1.14.0
+	github.com/redis/go-redis/v9 v9.22.0
 	github.com/rubenv/sql-migrate v1.8.1
 	github.com/stretchr/testify v1.12.1
 	github.com/supertokens/supertokens-golang v0.26.0
 	github.com/tidwall/gjson v1.19.0
 	github.com/xendit/xendit-go/v7 v7.0.0
+	go.mongodb.org/mongo-driver v1.17.9
 	go.uber.org/zap v1.28.0
 	golang.org/x/crypto v0.56.0
 	golang.org/x/sync v0.22.0
+	golang.org/x/time v0.15.0
 	golang.org/x/vuln v1.7.0 // tool: govulncheck
 	mvdan.cc/gofumpt v0.11.0 // tool: gofumpt
 )
@@ -62,6 +71,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/mod v0.40.0 // indirect
 	golang.org/x/net v0.58.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/telemetry v0.0.0-20260811182544-a038080d80e5 // indirect
 	golang.org/x/text v0.41.0 // indirect
 	golang.org/x/tools v0.49.0 // indirect
@@ -69,17 +79,4 @@ require (
 	gopkg.in/alexcesaro/quotedprintable.v3 v3.0.0-20150716171945-2caba252f4dc // indirect
 	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df // indirect
 	gopkg.in/h2non/gock.v1 v1.1.2 // indirect
-)
-
-require (
-	github.com/go-chi/httprate v0.16.0
-	github.com/go-playground/validator/v10 v10.30.3
-	github.com/goccy/go-json v0.10.6
-	github.com/golang-jwt/jwt/v4 v4.5.2
-	github.com/google/uuid v1.6.0
-	github.com/klauspost/compress v1.19.2
-	github.com/redis/go-redis/v9 v9.22.0
-	go.mongodb.org/mongo-driver v1.17.9
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/time v0.15.0
 )

@@ -2,11 +2,12 @@ package config
 
 import (
 	"fmt"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/utils"
 	"log"
 	"os"
 	"strings"
+
+	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/utils"
 
 	"github.com/joho/godotenv"
 )
@@ -40,6 +41,7 @@ func init() {
 }
 
 func loadInternalConfigWithEnv() (*InternalConfig, error) {
+	gatewayURL := strings.TrimSpace(utils.GetEnvString("APP_GATEWAY_URL", ""))
 	cfg := &InternalConfig{
 		App: App{
 			// General App Settings with Defaults
@@ -62,6 +64,10 @@ func loadInternalConfigWithEnv() (*InternalConfig, error) {
 			SuperadminAPIKey:           utils.GetEnvString("SUPERADMIN_API_KEY", ""), // Sensitive
 			SuperadminAPIKeyRateLimit:  utils.GetEnvInt("SUPERADMIN_API_KEY_RATE_LIMIT", 10),
 			WebhookInstantiateBasePath: fmt.Sprintf("/api/%s/%s", utils.GetEnvString("APP_VERSION", "v1"), utils.GetEnvString("APP_WEBHOOK_INSTANTIATE_BASE_PATH", "hook")), // expected format: /api/<app-version>/<hook-base-path>
+			RBACPolicyPath:             utils.GetEnvString("APP_RBAC_POLICY_PATH", "resources/rbac_policy.csv"),
+			OrganizationName:           utils.GetEnvString("APP_ORGANIZATION_NAME", "Konsulin"),
+			DataDir:                    utils.GetEnvString("APP_DATA_DIR", "./data"),
+			Pepper:                     utils.GetEnvString("APP_PEPPER", ""), // Sensitive
 		},
 		FHIR: AppFHIR{
 			BaseUrl:                  utils.GetEnvString("APP_FHIR_BASE_URL", "http://localhost:8080/fhir/"),
@@ -102,9 +108,24 @@ func loadInternalConfigWithEnv() (*InternalConfig, error) {
 			APIKey:       utils.GetEnvString("APP_XENDIT_API_KEY", ""), // Sensitive
 			WebhookToken: utils.GetEnvString("APP_XENDIT_WEBHOOK_TOKEN", ""),
 		},
+		Gateway: AppGateway{
+			Enabled:                gatewayURL != "",
+			URL:                    gatewayURL,
+			PartyID:                utils.GetEnvString("APP_PARTY_ID", ""),
+			PrivateKey:             utils.GetEnvString("APP_PARTY_PRIVATE_KEY", ""),          // Sensitive — never logged
+			EncPrivateKey:          utils.GetEnvString("APP_PARTY_ENC_PRIVATE_KEY", ""),      // Sensitive — never logged
+			EnrollmentToken:        utils.GetEnvString("APP_PARTY_ENROLLMENT_TOKEN", ""),     // Sensitive — never logged
+			NextPrivateKey:         utils.GetEnvString("APP_PARTY_NEXT_PRIVATE_KEY", ""),     // Sensitive — never logged
+			NextEncPrivateKey:      utils.GetEnvString("APP_PARTY_NEXT_ENC_PRIVATE_KEY", ""), // Sensitive — never logged
+			AutomationPartyID:      utils.GetEnvString("APP_AUTOMATION_PARTY_ID", ""),
+			ServiceProviderAliases: utils.GetEnvString("APP_SERVICE_PROVIDER_ALIASES", ""),
+		},
 	}
 
 	if err := validateNonDevConfig(cfg); err != nil {
+		return nil, err
+	}
+	if err := validateGatewayConfig(cfg); err != nil {
 		return nil, err
 	}
 	if err := validateBasePrices(cfg); err != nil {
