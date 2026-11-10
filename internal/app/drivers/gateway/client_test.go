@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"konsulin-service/internal/app/contracts"
 
 	"github.com/konsulin-care/gateway-sdk-go/auth"
+	"github.com/konsulin-care/gateway-sdk-go/gatewaytest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -102,4 +104,64 @@ func TestKidIsRFC7638Thumbprint(t *testing.T) {
 	assert.Equal(t, want, hdr.Kid, "SDK kid must be the RFC 7638 thumbprint")
 
 	assert.Equal(t, want, c.Kid(), "adapter Kid() must equal the SDK RFC 7638 thumbprint")
+}
+
+// TestSignedRequestAcceptedByGatewaytestFake covers T05B.2 assertion: a
+// signed request issued through the adapter against an SDK gatewaytest fake
+// gateway is accepted — the fake answers 2xx and recorded exactly one call
+// carrying a ks-party+jwt whose kid matches the adapter's Kid() and whose
+// Ed25519 signature verifies against the party's public key. The fake's
+// loopback http:// URL exercises the dev-env WithInsecureTransport path.
+// Parameters: t is the test harness.
+// Returns: nothing; fails on any deviation.
+func TestSignedRequestAcceptedByGatewaytestFake(t *testing.T) {
+	gw := gatewaytest.NewGateway()
+	t.Cleanup(gw.Close)
+
+	seed := make([]byte, ed25519.SeedSize)
+	for i := range seed {
+		seed[i] = byte(i)
+	}
+	priv := ed25519.NewKeyFromSeed(seed)
+	partyID := "party-test-001"
+	cfg := config.AppGateway{
+		URL:        gw.URL(), // loopback http:// — WithInsecureTransport applies under env "test"
+		PartyID:    partyID,
+		PrivateKey: base64.StdEncoding.EncodeToString(seed),
+	}
+
+	c, err := New(cfg, "test", nil)
+	require.NoError(t, err)
+	require.True(t, c.Enabled())
+
+	resp, err := c.Do(context.Background(), Request{
+		Method: http.MethodGet,
+		Path:   "/v1/parties/" + partyID + "/health",
+	})
+	require.NoError(t, err, "signed request through the adapter must succeed")
+	require.NotNil(t, resp)
+	assert.Equal(t, http.StatusOK, resp.Status, "gatewaytest fake must accept the signed request")
+
+	// The fake recorded exactly the one call we issued, carrying a
+	// party-signed bearer token.
+	recs := gw.Recorded()
+	require.Len(t, recs, 1, "fake must record exactly the one request we issued")
+	require.Equal(t, http.MethodGet, recs[0].Method)
+	require.Equal(t, "/v1/parties/"+partyID+"/health", recs[0].Path)
+	authz := recs[0].Authorization
+	require.True(t, strings.HasPrefix(authz, "Bearer "), "request must carry a bearer ks-party+jwt")
+	token := strings.TrimSpace(strings.TrimPrefix(authz, "Bearer "))
+
+	hdr, err := decodeHeader(token)
+	require.NoError(t, err)
+	assert.Equal(t, c.Kid(), hdr.Kid, "kid header must be the adapter kid")
+
+	// Verify the token's signature offline against the party's public key.
+	jwks, err := gatewaytest.Ed25519JWKS(priv.Public().(ed25519.PublicKey))
+	require.NoError(t, err)
+	jwksSrv, err := gatewaytest.NewJWKSServer(jwks)
+	require.NoError(t, err)
+	t.Cleanup(jwksSrv.Close)
+	_, err = jwksSrv.Verify(token)
+	require.NoError(t, err, "ks-party+jwt must verify against the party key")
 }
