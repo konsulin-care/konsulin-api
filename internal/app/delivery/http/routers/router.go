@@ -31,6 +31,7 @@ type Controllers struct {
 	Schedule     *controllers.ScheduleController
 	Organization *controllers.OrganizationController
 	Purge        *controllers.PurgeController
+	Federation   *controllers.FederationController
 	Gateway      contracts.GatewayStatus
 }
 
@@ -101,6 +102,7 @@ func SetupRoutes(
 			attachWebhookRouter(r, middlewares, ctrls.Webhook)
 			attachOrganizationRoutes(r, middlewares, ctrls.Organization)
 			attachPrivacyRouter(r, ctrls.Purge)
+			attachFederationRouter(r, ctrls.Federation, ctrls.Gateway, logger)
 
 			r.Mount("/tx", middlewares.TxProxy(internalConfig.FHIR.TerminologyServerBaseUrl))
 		})

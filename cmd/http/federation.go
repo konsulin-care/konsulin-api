@@ -5,6 +5,7 @@ import (
 
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
+	"konsulin-service/internal/app/delivery/http/controllers"
 	"konsulin-service/internal/app/delivery/http/routers"
 	"konsulin-service/internal/app/drivers/gateway"
 	"konsulin-service/internal/app/services/core/federation"
@@ -50,10 +51,12 @@ func newGateway(bootstrap *config.Bootstrap) (*gatewayWiring, error) {
 }
 
 // registerFederation publishes the gateway status on ctrls.Gateway for the
-// routers to consult per request, and — when the gateway is enabled — starts
-// party enrollment in the background (first pass immediately, bounded
-// backoff retries until enrolled). With an empty APP_GATEWAY_URL the status
-// stays disabled and no enrollment, and therefore no network call, happens.
+// routers to consult per request, constructs the FederationController the
+// federation router dispatches inbound events through (handlers register
+// on it by purpose), and — when the gateway is enabled — starts party
+// enrollment in the background (first pass immediately, bounded backoff
+// retries until enrolled). With an empty APP_GATEWAY_URL the status stays
+// disabled and no enrollment, and therefore no network call, happens.
 // gatewayEnv and paymentUsecase are parameters from day one so later tasks
 // register inbound gateway handlers inside this function without editing
 // main.go.
@@ -62,11 +65,15 @@ func newGateway(bootstrap *config.Bootstrap) (*gatewayWiring, error) {
 // (APP_GATEWAY_URL plus APP_PARTY_*); paymentUsecase is the payment usecase
 // inbound handlers will need. Returns nothing; never panics.
 func registerFederation(bootstrap *config.Bootstrap, ctrls *routers.Controllers, gatewayEnv config.AppGateway, paymentUsecase contracts.PaymentUsecase) {
-	// Reserved for later tasks: inbound gateway handlers register here and
-	// use paymentUsecase; neither is touched by the enrollment wiring yet.
+	// Reserved for later tasks: inbound gateway handlers register on
+	// ctrls.Federation and use paymentUsecase; neither is touched by the
+	// enrollment wiring yet.
 	_ = paymentUsecase
 
 	logger := bootstrap.Logger
+	// Constructed unconditionally: the federation router mounts even in
+	// standalone mode (RequireGateway answers 503 before the handler runs).
+	ctrls.Federation = controllers.NewFederationController(logger)
 	if wiredGateway == nil || wiredGateway.client == nil {
 		if logger != nil {
 			logger.Warn("federation: gateway wiring missing (newGateway not called), gateway stays disabled")
