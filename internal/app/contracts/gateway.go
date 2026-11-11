@@ -1,6 +1,9 @@
 package contracts
 
-import "errors"
+import (
+	"context"
+	"errors"
+)
 
 // ErrGatewayNotConfigured indicates a gateway client or dependency is missing
 // from the deployment configuration. Callers should surface it as a
@@ -17,4 +20,19 @@ type GatewayStatus interface {
 	Enabled() bool
 	// Enrolled reports whether the current subject is enrolled with the gateway.
 	Enrolled() bool
+}
+
+// PartyRegistry exposes the gateway party's enrollment lifecycle as the
+// gateway itself reports it (BK-PARTYID-002): the gateway is the only
+// enrollment source of truth, never a local flag.
+type PartyRegistry interface {
+	// IsEnrolled fetches GET /v1/parties/{id}/jwks for the adapter's own
+	// party and reports whether the served JWKS contains the adapter's own
+	// kid (RFC 7638 thumbprint). It fails closed: a missing configuration
+	// reports ErrGatewayNotConfigured; transport or decode failures return
+	// false with the error; a JWKS without the kid returns (false, nil).
+	// Parameters: ctx bounds the JWKS fetch.
+	// Returns: whether the party JWKS serves the adapter's own kid, plus the
+	// error explaining a failed probe.
+	IsEnrolled(ctx context.Context) (bool, error)
 }
