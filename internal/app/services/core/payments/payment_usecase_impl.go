@@ -1,7 +1,6 @@
 package payments
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -19,7 +18,6 @@ import (
 
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/app/services/core/webhook"
 	"konsulin-service/internal/app/services/shared/jwtmanager"
 	"konsulin-service/internal/app/services/shared/storage"
 	"konsulin-service/internal/pkg/constvars"
@@ -104,383 +102,6 @@ func NewPaymentUsecase(
 	return paymentUsecaseInstance
 }
 
-func (uc *paymentUsecase) XenditInvoiceCallback(ctx context.Context, header *requests.XenditInvoiceCallbackHeader, body *requests.XenditInvoiceCallbackBody) error {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	uc.Log.Info("paymentUsecase.XenditInvoiceCallback called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String("invoice_id", body.ID),
-		zap.String("external_id", body.ExternalID),
-		zap.String("status", string(body.Status)),
-	)
-
-	// 1) Validate callback token
-	if header.CallbackToken != uc.InternalConfig.Xendit.WebhookToken {
-		uc.Log.Error("paymentUsecase.XenditInvoiceCallback invalid callback token",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-		)
-		return exceptions.BuildNewCustomError(
-			fmt.Errorf("invalid callback token"),
-			constvars.StatusUnauthorized,
-			"Invalid callback token",
-			"x-callback-token mismatch",
-		)
-	}
-
-	// 2) Early exit for PENDING status
-	if body.Status == requests.XenditInvoiceStatusPending {
-		uc.Log.Info("paymentUsecase.XenditInvoiceCallback pending status; ignoring",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("invoice_id", body.ID),
-		)
-		return nil
-	}
-
-	// 3) Verify payment status with Xendit (only for PAID status)
-	if body.Status == requests.XenditInvoiceStatusPaid {
-		if err := uc.verifyPaymentStatus(ctx, body.ID, body.Status); err != nil {
-			uc.Log.Error("paymentUsecase.XenditInvoiceCallback verification failed",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.String("invoice_id", body.ID),
-				zap.Error(err),
-			)
-			// Return 500 to trigger Xendit retry
-			return exceptions.BuildNewCustomError(
-				err,
-				constvars.StatusInternalServerError,
-				"Payment verification failed",
-				"failed to verify payment status with Xendit",
-			)
-		}
-	}
-
-	// 4) Parse external_id prefix and route to appropriate handler
-	parts := strings.Split(body.ExternalID, ":")
-	if len(parts) < 2 {
-		uc.Log.Error("paymentUsecase.XenditInvoiceCallback invalid external_id format: missing prefix",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("external_id", body.ExternalID),
-		)
-		return nil
-	}
-	prefix := parts[0]
-
-	switch prefix {
-	case string(constvars.AppointmentPaymentService):
-		return uc.handleAppointmentPaymentNotification(ctx, body.ExternalID, body.Status)
-	case string(constvars.WebhookPaymentService):
-		return uc.handleWebhookPaymentNotification(ctx, body.ExternalID, body.Status)
-	default:
-		uc.Log.Error("paymentUsecase.XenditInvoiceCallback unknown payment service type",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("prefix", prefix),
-			zap.String("external_id", body.ExternalID),
-		)
-		return nil
-	}
-}
-
-// handleWebhookPaymentNotification processes webhook service payment notifications
-func (uc *paymentUsecase) handleWebhookPaymentNotification(ctx context.Context, externalID string, status requests.XenditInvoiceStatus) error {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-
-	if status == requests.XenditInvoiceStatusExpired {
-		uc.Log.Info("paymentUsecase.handleWebhookPaymentNotification expired status; ignoring",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("external_id", externalID),
-		)
-		return nil
-	}
-
-	parts := strings.Split(externalID, ":")
-	if len(parts) < 2 {
-		uc.Log.Error("paymentUsecase.handleWebhookPaymentNotification invalid external_id format",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("external_id", externalID),
-		)
-		return nil
-	}
-	partnerTrxID := parts[1]
-
-	id, version, parseErr := parsePartnerTrxID(partnerTrxID)
-	if parseErr != nil {
-		uc.Log.Error("paymentUsecase.handleWebhookPaymentNotification invalid partner_trx_id format",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("partner_trx_id", partnerTrxID),
-			zap.Error(parseErr),
-		)
-		return nil
-	}
-
-	sr, err := uc.Storage.FhirClient.GetServiceRequestByIDAndVersion(ctx, id, version)
-	if err != nil {
-		uc.Log.Error("paymentUsecase.handleWebhookPaymentNotification failed fetching ServiceRequest",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil
-	}
-
-	note, err := extractNoteStorage(sr)
-	if err != nil {
-		uc.Log.Error("paymentUsecase.handleWebhookPaymentNotification failed parsing stored note",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil
-	}
-
-	uri, err := resolveInstantiatesURI(sr, note)
-	if err != nil {
-		uc.Log.Error("paymentUsecase.handleWebhookPaymentNotification failed resolving instantiatesUri",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil
-	}
-	if err := uc.callInstantiateURI(ctx, uri, note.RawBody); err != nil {
-		uc.Log.Error("paymentUsecase.handleWebhookPaymentNotification failed calling instantiate URI",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return nil
-	}
-
-	uc.Log.Info("paymentUsecase.handleWebhookPaymentNotification completed successfully",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-	)
-	return nil
-}
-
-// handleAppointmentPaymentNotification processes appointment payment notifications (Phase 2).
-// PAID/SETTLED: update slot to busy-unavailable, create Appointment/PaymentNotice/PaymentReconciliation via FHIR bundle.
-// EXPIRED: delete the slot from FHIR.
-func (uc *paymentUsecase) handleAppointmentPaymentNotification(ctx context.Context, externalID string, status requests.XenditInvoiceStatus) error {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-
-	fields, err := parseAppointmentExternalID(externalID)
-	if err != nil {
-		uc.Log.Error("paymentUsecase.handleAppointmentPaymentNotification failed parsing external_id",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("external_id", externalID),
-			zap.Error(err),
-		)
-		return exceptions.BuildNewCustomError(
-			err,
-			constvars.StatusBadRequest,
-			"Invalid external_id format",
-			"failed to parse appointment external_id",
-		)
-	}
-
-	slot, err := uc.SlotFhirClient.FindSlotByID(ctx, fields.SlotID)
-	if err != nil {
-		// EXPIRED callbacks for already-deleted slots are idempotent.
-		// Treat a missing slot as already-processed instead of returning an error.
-		if status == requests.XenditInvoiceStatusExpired {
-			uc.Log.Info("paymentUsecase.handleAppointmentPaymentNotification slot not found for EXPIRED; treating as already processed",
-				zap.String(constvars.LoggingRequestIDKey, requestID),
-				zap.String("slotId", fields.SlotID),
-			)
-			return nil
-		}
-		uc.Log.Error("paymentUsecase.handleAppointmentPaymentNotification failed fetching slot",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("slotId", fields.SlotID),
-			zap.Error(err),
-		)
-		return exceptions.BuildNewCustomError(
-			err,
-			constvars.StatusNotFound,
-			"Slot not found",
-			fmt.Sprintf("failed to fetch slot %s", fields.SlotID),
-		)
-	}
-
-	// Acquire locks before mutation to prevent race conditions and TOCTOU
-	release, lockErr := uc.acquireNotificationLocks(ctx, fields, slot, 30*time.Second)
-	if lockErr != nil {
-		uc.Log.Error("paymentUsecase.handleAppointmentPaymentNotification failed to acquire locks",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("slotId", fields.SlotID),
-			zap.Error(lockErr),
-		)
-		return exceptions.BuildNewCustomError(
-			lockErr,
-			constvars.StatusConflict,
-			"Unable to acquire necessary locks for slot update. Please try again.",
-			"lock acquisition failed",
-		)
-	}
-	defer func() { release(context.Background()) }()
-
-	// Re-fetch slot after acquiring locks to protect against TOCTOU
-	revalidatedSlot, err := uc.SlotFhirClient.FindSlotByID(ctx, fields.SlotID)
-	if err != nil {
-		uc.Log.Error("paymentUsecase.handleAppointmentPaymentNotification failed re-fetching slot",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("slotId", fields.SlotID),
-			zap.Error(err),
-		)
-		return exceptions.BuildNewCustomError(
-			err,
-			constvars.StatusInternalServerError,
-			"Failed to re-fetch slot",
-			"failed to re-fetch slot",
-		)
-	}
-
-	switch status {
-	case requests.XenditInvoiceStatusPaid, requests.XenditInvoiceStatusSettled:
-		return uc.handleAppointmentPaymentPaid(ctx, fields, revalidatedSlot)
-	case requests.XenditInvoiceStatusExpired:
-		return uc.handleAppointmentPaymentExpired(ctx, fields, revalidatedSlot)
-	default:
-		uc.Log.Info("paymentUsecase.handleAppointmentPaymentNotification unsupported status",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("status", string(status)),
-		)
-		return exceptions.BuildNewCustomError(
-			fmt.Errorf("unsupported status"),
-			constvars.StatusBadRequest,
-			"Unsupported status",
-			fmt.Sprintf("unsupported status: %s", string(status)),
-		)
-	}
-}
-
-// handleAppointmentPaymentPaid handles a PAID/SETTLED callback for appointment payments.
-// It updates the slot to busy-unavailable and creates Appointment/PaymentNotice/PaymentReconciliation.
-func (uc *paymentUsecase) handleAppointmentPaymentPaid(
-	ctx context.Context,
-	fields appointmentExternalIDFields,
-	slot *fhir_dto.Slot,
-) error {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-
-	// Idempotency check: if already busy-unavailable, skip
-	if slot.Status == fhir_dto.SlotStatusBusyUnavailable {
-		uc.Log.Info("paymentUsecase.handleAppointmentPaymentPaid slot already busy-unavailable",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("slotId", fields.SlotID),
-		)
-		return nil
-	}
-
-	// Reconstruct the request from external_id fields for precondition data fetching
-	req := &requests.AppointmentPaymentRequest{
-		PatientID:           constvars.FHIRRefPrefixPatient + fields.PatientID,
-		InvoiceID:           constvars.FHIRRefPrefixInvoice + fields.InvoiceID,
-		PractitionerRoleID:  constvars.FHIRRefPrefixPractitionerRole + fields.PractitionerRoleID,
-		SlotID:              "Slot/" + fields.SlotID,
-		HealthcareServiceID: constvars.FHIRRefPrefixHealthcareService + fields.HealthcareServiceID,
-	}
-
-	precond, err := uc.fetchPreconditionData(ctx, req)
-	if err != nil {
-		uc.Log.Error("paymentUsecase.handleAppointmentPaymentPaid failed to fetch precondition data",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-		return err
-	}
-
-	// Fetch all practitioner roles for bundle building
-	practitionerID := strings.TrimPrefix(precond.PractitionerRole.Practitioner.Reference, constvars.FHIRRefPrefixPractitioner)
-	allPractitionerRoles, err := uc.PractitionerRoleFhirClient.Search(ctx, contracts.PractitionerRoleSearchParams{
-		PractitionerID: practitionerID,
-	})
-	if err != nil {
-		uc.Log.Error("paymentUsecase.handleAppointmentPaymentPaid failed to fetch practitioner roles",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("practitionerId", practitionerID),
-			zap.Error(err),
-		)
-		return exceptions.BuildNewCustomError(
-			err,
-			constvars.StatusInternalServerError,
-			constvars.ErrDevFailedToFetchPractitionerRoles,
-			constvars.ErrDevFailedToFetchPractitionerRoles,
-		)
-	}
-
-	// Fetch the pending appointment and transition it to booked
-	appointment, apptErr := uc.fetchAppointment(ctx, fields.AppointmentID)
-	if apptErr != nil {
-		uc.Log.Error("paymentUsecase.handleAppointmentPaymentPaid failed to fetch appointment",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("appointmentId", fields.AppointmentID),
-			zap.Error(apptErr),
-		)
-		return exceptions.BuildNewCustomError(
-			apptErr,
-			constvars.StatusNotFound,
-			"Appointment not found",
-			fmt.Sprintf("failed to fetch appointment %s", fields.AppointmentID),
-		)
-	}
-	appointment.Status = constvars.FhirAppointmentStatusBooked
-
-	// Update slot status to busy-unavailable
-	slot.Status = fhir_dto.SlotStatusBusyUnavailable
-
-	// Build and execute FHIR bundle (Appointment, PaymentNotice, PaymentReconciliation, and Slot update)
-	bundleEntries, appointmentID, _, buildErr := uc.buildAppointmentPaymentBundle(ctx, req, precond, allPractitionerRoles, appointment)
-	if buildErr != nil {
-		uc.Log.Error("paymentUsecase.handleAppointmentPaymentPaid failed to build bundle",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(buildErr),
-		)
-		return buildErr
-	}
-
-	// Include the slot status update in the same transaction bundle for atomicity
-	slotUpdateEntry := map[string]any{
-		constvars.FhirFieldRequest: map[string]any{
-			constvars.FhirFieldMethod: constvars.FhirBundleMethodPut,
-			constvars.FhirFieldURL:    constvars.ResourceSlot + "/" + fields.SlotID,
-		},
-		constvars.FhirFieldResource: slot,
-	}
-	bundleEntries = append(bundleEntries, slotUpdateEntry)
-
-	bundle := map[string]any{
-		constvars.FhirFieldResourceType: "Bundle",
-		"type":                          "transaction",
-		"entry":                         bundleEntries,
-	}
-	if _, bundleErr := uc.BundleFhirClient.PostTransactionBundle(ctx, bundle); bundleErr != nil {
-		uc.Log.Error("paymentUsecase.handleAppointmentPaymentPaid bundle execution failed",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(bundleErr),
-		)
-		return exceptions.BuildNewCustomError(
-			bundleErr,
-			constvars.StatusInternalServerError,
-			"Failed to create appointment from payment. Please try again.",
-			"FHIR bundle transaction failed",
-		)
-	}
-
-	uc.Log.Info("paymentUsecase.handleAppointmentPaymentPaid appointment created",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String("slotId", fields.SlotID),
-		zap.String("appointmentId", appointmentID),
-	)
-
-	// best effort webhook notification
-	asyncCtx := context.WithoutCancel(ctx)
-	go uc.notifyProviderAsync(asyncCtx, notifyProviderAsyncInput{
-		patient:       precond.Patient,
-		paymentDate:   time.Now().Format(time.RFC3339),
-		timeSlotStart: precond.Slot.Start.Format(time.RFC3339),
-		timeSlotEnd:   precond.Slot.End.Format(time.RFC3339),
-		amount:        formatMoney(precond.Invoice.TotalNet),
-		amountPaid:    formatMoney(precond.Invoice.TotalNet),
-	})
-
-	return nil
-}
-
 // handleAppointmentPaymentExpired handles an EXPIRED callback for appointment payments.
 // It deletes the slot, invoice, and appointment resources atomically to free the
 // time slot and clean up the unconfirmed booking.
@@ -537,40 +158,6 @@ func (uc *paymentUsecase) handleAppointmentPaymentExpired(
 		zap.String("appointmentId", fields.AppointmentID),
 	)
 	return nil
-}
-
-// verifyPaymentStatus fetches the invoice from Xendit and verifies the status matches the webhook status
-func (uc *paymentUsecase) verifyPaymentStatus(ctx context.Context, invoiceID string, expectedStatus requests.XenditInvoiceStatus) error {
-	ctxTimeout, cancel := context.WithTimeout(ctx, time.Duration(uc.InternalConfig.App.PaymentGatewayRequestTimeoutInSeconds)*time.Second)
-	defer cancel()
-
-	if uc.XenditClient == nil {
-		return fmt.Errorf("xendit client not initialized")
-	}
-
-	apiReq := uc.XenditClient.InvoiceApi.GetInvoiceById(ctxTimeout, invoiceID)
-	inv, httpResp, xenditErr := apiReq.Execute()
-	if xenditErr != nil {
-		return uc.mapXenditError(ctx, xenditErr, httpResp)
-	}
-
-	if expectedStatus == requests.XenditInvoiceStatus(inv.GetStatus()) {
-		return nil
-	}
-
-	invoiceStatus := requests.XenditInvoiceStatus(inv.GetStatus())
-
-	if expectedStatus == requests.XenditInvoiceStatusPaid {
-		// when expecting status PAID, the fetched invoice on xendit
-		// can be either PAID or SETTLED and both should be valid
-		// in this case behave as if the payment has been paid
-		if invoiceStatus == requests.XenditInvoiceStatusPaid ||
-			invoiceStatus == requests.XenditInvoiceStatusSettled {
-			return nil
-		}
-	}
-
-	return fmt.Errorf("invalid expected status")
 }
 
 func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePayRequest) (*responses.CreatePayResponse, error) {
@@ -888,19 +475,6 @@ func (uc *paymentUsecase) createXenditInvoiceForAppointment(
 	return inv.GetInvoiceUrl(), nil
 }
 
-func parsePartnerTrxID(partnerTrxID string) (string, string, error) {
-	parts := strings.Split(partnerTrxID, "-")
-	if len(parts) < 2 {
-		return "", "", fmt.Errorf("invalid partner_trx_id format")
-	}
-	version := parts[len(parts)-1]
-	id := strings.Join(parts[:len(parts)-1], "-")
-	if strings.TrimSpace(id) == "" || strings.TrimSpace(version) == "" {
-		return "", "", fmt.Errorf("invalid partner_trx_id components")
-	}
-	return id, version, nil
-}
-
 // appointmentExternalIDFields holds all identifiers parsed from the Xendit external_id.
 type appointmentExternalIDFields struct {
 	SlotID              string
@@ -939,33 +513,6 @@ func parseAppointmentExternalID(externalID string) (appointmentExternalIDFields,
 		return appointmentExternalIDFields{}, fmt.Errorf("invalid appointment external_id format: one or more fields are empty")
 	}
 	return fields, nil
-}
-
-func extractNoteStorage(sr *fhir_dto.GetServiceRequestOutput) (*requests.NoteStorage, error) {
-	if sr == nil || len(sr.Note) == 0 || strings.TrimSpace(sr.Note[0].Text) == "" {
-		return nil, fmt.Errorf("missing note storage payload")
-	}
-	var note requests.NoteStorage
-	if err := json.Unmarshal([]byte(sr.Note[0].Text), &note); err != nil {
-		return nil, err
-	}
-	return &note, nil
-}
-
-// resolveInstantiatesURI returns the best-effort instantiates URI to be called.
-// Preference order:
-// 1) FHIR ServiceRequest.instantiatesUri (first element if present)
-// 2) Legacy NoteStorage.InstantiateURI (deprecated)
-// This function serves as a backward compatibility enabler during migration to the
-// FHIR-native field. To remove backward compatibility, simply return sr.InstantiatesUri without checking note.InstantiateURI.
-func resolveInstantiatesURI(sr *fhir_dto.GetServiceRequestOutput, note *requests.NoteStorage) (string, error) {
-	if sr != nil && len(sr.InstantiatesUri) > 0 && strings.TrimSpace(sr.InstantiatesUri[0]) != "" {
-		return sr.InstantiatesUri[0], nil
-	}
-	if note != nil && strings.TrimSpace(note.InstantiateURI) != "" {
-		return note.InstantiateURI, nil
-	}
-	return "", fmt.Errorf("instantiatesUri not found in FHIR resource or legacy note")
 }
 
 func isServicePurchaseAllowed(service string, requesterRoles []string) bool {
@@ -1052,39 +599,6 @@ func (uc *paymentUsecase) calculateAmount(service string, totalItem int) (int, i
 
 	amount := basePrice * totalItem
 	return amount, basePrice, nil
-}
-
-func (uc *paymentUsecase) callInstantiateURI(ctx context.Context, url string, body json.RawMessage) error {
-	uc.Log.Info("paymentUsecase.callInstantiateURI request",
-		zap.String("instantiate_uri", url),
-		zap.String("body", string(body)),
-	)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationJSON)
-	// Attach internal forwarded JWT so webhook endpoint can bypass external auth
-	if uc.JWTManager != nil {
-		if out, err := uc.JWTManager.CreateToken(ctx, &jwtmanager.CreateTokenInput{Subject: webhook.PAYMENT_SERVICE_SUB}); err == nil {
-			req.Header.Set(webhook.JWTForwardedFromPaymentServiceHeader, out.Token)
-		}
-	}
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusAccepted {
-		b, _ := io.ReadAll(resp.Body)
-		uc.Log.Error("instantiate URI returned non-202",
-			zap.Int("status_code", resp.StatusCode),
-			zap.String("body", string(b)),
-		)
-		return fmt.Errorf("non-202 from instantiate uri: %d", resp.StatusCode)
-	}
-	return nil
 }
 
 // determineServiceRequestSubject returns the FHIR subject reference string based on service.
@@ -1633,6 +1147,89 @@ func (uc *paymentUsecase) fetchHealthcareService(ctx context.Context, hsID strin
 	)
 }
 
-// buildAppointmentPaymentBundle constructs the full transaction bundle entries and
-// returns the entries alongside deterministically generated IDs for Appointment and PaymentNotice.
-// duplicate helper definitions removed (see appointment_payment_helpers.go)
+// The three shared test doubles below were relocated from
+// appointment_payment_notification_test.go (deleted in T25B). They live here
+// because appointment_booking_test.go, appointment_cross_role_test.go,
+// appointment_payment_test.go and settlement_test.go still depend on them.
+
+// mockSlotFhirClient mocks contracts.SlotFhirClient for payment tests.
+type mockSlotFhirClient struct {
+	slot            *fhir_dto.Slot
+	err             error
+	slotsBySchedule func(scheduleID string, params contracts.SlotSearchParams) ([]fhir_dto.Slot, error)
+}
+
+func (m *mockSlotFhirClient) FindSlotByID(_ context.Context, _ string) (*fhir_dto.Slot, error) {
+	return m.slot, m.err
+}
+
+func (*mockSlotFhirClient) FindSlotByScheduleID(_ context.Context, _ string) ([]fhir_dto.Slot, error) {
+	return nil, nil
+}
+
+func (*mockSlotFhirClient) FindSlotByScheduleAndTimeRange(_ context.Context, _ string, _, _ time.Time) ([]fhir_dto.Slot, error) {
+	return nil, nil
+}
+
+func (*mockSlotFhirClient) FindSlotByScheduleIDAndStatus(_ context.Context, _, _ string) ([]fhir_dto.Slot, error) {
+	return nil, nil
+}
+
+func (*mockSlotFhirClient) CreateSlot(_ context.Context, _ *fhir_dto.Slot) (*fhir_dto.Slot, error) {
+	return nil, nil
+}
+
+func (*mockSlotFhirClient) UpdateSlot(_ context.Context, _ string, _ *fhir_dto.Slot) (*fhir_dto.Slot, error) {
+	return nil, nil
+}
+
+func (m *mockSlotFhirClient) FindSlotsByScheduleWithQuery(_ context.Context, scheduleID string, params contracts.SlotSearchParams) ([]fhir_dto.Slot, error) {
+	if m.slotsBySchedule != nil {
+		return m.slotsBySchedule(scheduleID, params)
+	}
+	return nil, nil
+}
+
+func (*mockSlotFhirClient) PostTransactionBundle(_ context.Context, _ map[string]interface{}) (*fhir_dto.FHIRBundle, error) {
+	return nil, nil
+}
+
+// mockSlotUsecase mocks contracts.SlotUsecaseIface for payment tests.
+type mockSlotUsecase struct {
+	lockErr          error
+	lockPractitioner string
+	lockStart        time.Time
+	lockEnd          time.Time
+}
+
+func (*mockSlotUsecase) HandleSetUnavailabilityForMultiplePractitionerRoles(_ context.Context, _ contracts.SetUnavailabilityForMultiplePractitionerRolesInput) (*contracts.SetUnavailableOutcome, error) {
+	return nil, nil
+}
+
+func (m *mockSlotUsecase) AcquireLocksForPractitionerDay(_ context.Context, practitionerID string, start, end time.Time, _ time.Duration) (func(context.Context), error) {
+	m.lockPractitioner = practitionerID
+	m.lockStart = start
+	m.lockEnd = end
+	if m.lockErr != nil {
+		return func(_ context.Context) {}, m.lockErr
+	}
+	return func(_ context.Context) {}, nil
+}
+
+// mockAppointmentResourceClient stubs the raw FHIR HTTP operations used to
+// fetch Appointment and HealthcareService resources during payment flows.
+type mockAppointmentResourceClient struct {
+	getResponses map[string][]byte
+	gets         []string
+}
+
+func (m *mockAppointmentResourceClient) Do(_ context.Context, method, url string, _ io.Reader) ([]byte, error) {
+	if method == http.MethodGet {
+		m.gets = append(m.gets, url)
+		if body := m.getResponses[url]; body != nil {
+			return body, nil
+		}
+		return nil, &fhir_http_client.FHIRHTTPError{StatusCode: http.StatusNotFound, Err: errors.New("resource not found")}
+	}
+	return nil, fmt.Errorf("unexpected method %s for %s", method, url)
+}
