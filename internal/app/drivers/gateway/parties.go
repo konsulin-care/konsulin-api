@@ -2,12 +2,20 @@ package gateway
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"konsulin-service/internal/app/contracts"
+	"konsulin-service/internal/pkg/utils"
+
+	"github.com/konsulin-care/gateway-sdk-go/auth"
+	"github.com/konsulin-care/gateway-sdk-go/envelope"
+	"github.com/konsulin-care/gateway-sdk-go/parties"
 )
 
 // partyRegistryGuard proves at compile time that the adapter satisfies
@@ -53,4 +61,71 @@ func (c *Client) IsEnrolled(ctx context.Context) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// deriveEncPublicKey derives enc_public_key (base64.StdEncoding, raw 32
+// bytes — the SDK's registration encoding) from APP_PARTY_ENC_PRIVATE_KEY,
+// the X25519 key the party opens JWE envelopes with. The key value never
+// appears in the return value beyond its public half or in any error.
+// Parameters: none; reads APP_PARTY_ENC_PRIVATE_KEY from the environment.
+// Returns: the derived enc_public_key and nil, or an error naming only the
+// variable — never its value. Never panics.
+func deriveEncPublicKey() (string, error) {
+	raw := strings.TrimSpace(utils.GetEnvString("APP_PARTY_ENC_PRIVATE_KEY", ""))
+	if raw == "" {
+		return "", errors.New("APP_PARTY_ENC_PRIVATE_KEY is empty")
+	}
+	priv, err := envelope.ParseX25519PrivateKey(raw)
+	if err != nil {
+		return "", errors.New("APP_PARTY_ENC_PRIVATE_KEY is unparseable")
+	}
+	return base64.StdEncoding.EncodeToString(priv.PublicKey().Bytes()), nil
+}
+
+// Enroll completes first-startup enrollment (BK-PARTYID-002): it submits
+// the single-use enrollment token, the adapter's signing public key and
+// the enc_public_key derived from APP_PARTY_ENC_PRIVATE_KEY through the
+// SDK parties.Enroll route (POST /v1/parties/{id}/enroll), signed by the
+// party key that derives the adapter's own kid. It fails closed: a disabled
+// adapter reports contracts.ErrGatewayNotConfigured before any I/O, an
+// empty token and missing or unparseable key material are rejected before
+// any I/O. Implements contracts.PartyRegistry. The key values are never
+// logged; errors name variables, never values.
+// Parameters: ctx bounds the enrollment call, token is the single-use
+// enrollment token delivered out of band by the gateway admin.
+// Returns: nil once the gateway accepts the enrollment, or the error
+// explaining the failure. Never panics.
+func (c *Client) Enroll(ctx context.Context, token string) error {
+	if !c.enabled || c.kid == "" {
+		return contracts.ErrGatewayNotConfigured
+	}
+	if strings.TrimSpace(token) == "" {
+		return errors.New("gateway: enroll: enrollment token is required")
+	}
+	key, err := auth.ParseEd25519PrivateKey(
+		strings.TrimSpace(utils.GetEnvString("APP_PARTY_PRIVATE_KEY", "")))
+	if err != nil {
+		return fmt.Errorf("gateway: enroll: APP_PARTY_PRIVATE_KEY: %w",
+			contracts.ErrGatewayNotConfigured)
+	}
+	encPub, err := deriveEncPublicKey()
+	if err != nil {
+		return fmt.Errorf("gateway: enroll: %w", err)
+	}
+	rawURL := strings.TrimSpace(utils.GetEnvString("APP_GATEWAY_URL", ""))
+	if rawURL == "" {
+		return contracts.ErrGatewayNotConfigured
+	}
+	routes, err := parties.New(c.sdk, rawURL)
+	if err != nil {
+		return fmt.Errorf("gateway: enroll: party routes: %w", err)
+	}
+	if _, err := routes.Enroll(ctx, parties.EnrollInput{
+		PartyID:         c.partyID,
+		EnrollmentToken: token,
+		EncPublicKey:    encPub,
+	}, key); err != nil {
+		return fmt.Errorf("gateway: enroll: %w", err)
+	}
+	return nil
 }

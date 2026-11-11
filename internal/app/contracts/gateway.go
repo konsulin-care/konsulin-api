@@ -35,4 +35,16 @@ type PartyRegistry interface {
 	// Returns: whether the party JWKS serves the adapter's own kid, plus the
 	// error explaining a failed probe.
 	IsEnrolled(ctx context.Context) (bool, error)
+	// Enroll completes first-startup enrollment (BK-PARTYID-002): it
+	// submits the single-use enrollment token, the adapter's signing
+	// public key and the enc_public_key derived from
+	// APP_PARTY_ENC_PRIVATE_KEY through the SDK parties.Enroll route
+	// (POST /v1/parties/{id}/enroll). It fails closed: a disabled adapter
+	// or missing key material reports ErrGatewayNotConfigured before any
+	// I/O.
+	// Parameters: ctx bounds the enrollment call, token is the single-use
+	// enrollment token delivered out of band by the gateway admin.
+	// Returns: nil once the gateway accepts the enrollment, or the error
+	// explaining the failure. Never logs key values.
+	Enroll(ctx context.Context, token string) error
 }

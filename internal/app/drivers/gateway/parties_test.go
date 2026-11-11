@@ -2,8 +2,10 @@ package gateway
 
 import (
 	"context"
+	"crypto/ecdh"
 	"crypto/ed25519"
 	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -158,4 +160,86 @@ func TestIsEnrolledTransportErrorFailsClosed(t *testing.T) {
 	enrolled, err := c.IsEnrolled(ctx)
 	assert.False(t, enrolled, "a failed probe must fail closed")
 	require.Error(t, err, "a failed probe must surface the transport error")
+}
+
+// TestEnrollSubmitsTokenKeysThenPartyEnrolled covers the T12B contract
+// assertion: Enroll submits the enrollment token, the signing public key
+// and enc_public_key (derived from APP_PARTY_ENC_PRIVATE_KEY) to the fake
+// gateway's enroll route, and afterwards the enrollment probe reports the
+// party enrolled on that fake.
+// Parameters: t is the test harness.
+// Returns: nothing; fails on any deviation.
+func TestEnrollSubmitsTokenKeysThenPartyEnrolled(t *testing.T) {
+	gw := gatewaytest.NewGateway()
+	t.Cleanup(gw.Close)
+
+	// Deterministic X25519 key: APP_PARTY_ENC_PRIVATE_KEY in the SDK's
+	// registration encoding (std base64, raw 32 bytes).
+	encSeed := partySeed(100)
+	encPriv, err := ecdh.X25519().NewPrivateKey(encSeed)
+	require.NoError(t, err)
+	wantEnc := base64.StdEncoding.EncodeToString(encPriv.PublicKey().Bytes())
+
+	rawURL := gw.URL()
+	t.Setenv("APP_GATEWAY_URL", rawURL)
+	t.Setenv("APP_PARTY_PRIVATE_KEY", base64.StdEncoding.EncodeToString(partySeed(0)))
+	t.Setenv("APP_PARTY_ENC_PRIVATE_KEY", base64.StdEncoding.EncodeToString(encSeed))
+
+	c := newIsEnrolledAdapter(t, rawURL)
+
+	// Before enrollment the probe must report not-enrolled (canned JWKS
+	// lacks our kid).
+	enrolled, err := c.IsEnrolled(context.Background())
+	require.NoError(t, err)
+	assert.False(t, enrolled, "party must not be enrolled before Enroll")
+
+	const token = "enroll-token-test-0001"
+	require.NoError(t, c.Enroll(context.Background(), token),
+		"gatewaytest fake must accept the enrollment")
+
+	recs := gw.Recorded()
+	require.Len(t, recs, 2, "one probe plus the one enroll request")
+	enroll := recs[1]
+	require.Equal(t, http.MethodPost, enroll.Method)
+	require.Equal(t, "/v1/parties/party-test-001/enroll", enroll.Path)
+	require.NotEmpty(t, enroll.IdempotencyKey, "enroll is an idempotent create")
+
+	var body struct {
+		EnrollmentToken string `json:"enrollment_token"`
+		PublicKey       string `json:"public_key"`
+		Kid             string `json:"kid"`
+		Alg             string `json:"alg"`
+		EncPublicKey    string `json:"enc_public_key"`
+	}
+	require.NoError(t, json.Unmarshal(enroll.Body, &body))
+	assert.Equal(t, token, body.EnrollmentToken, "must submit the enrollment token")
+	assert.Equal(t, base64.StdEncoding.EncodeToString(partyKey(t).Public().(ed25519.PublicKey)),
+		body.PublicKey, "must submit the signing public key")
+	assert.Equal(t, c.Kid(), body.Kid, "kid must be the adapter RFC 7638 thumbprint")
+	assert.Equal(t, "Ed25519", body.Alg)
+	assert.Equal(t, wantEnc, body.EncPublicKey,
+		"must submit enc_public_key derived from APP_PARTY_ENC_PRIVATE_KEY")
+
+	// The proof of possession is a bearer ks-party+jwt signed with the
+	// adapter kid, verified offline against the party JWKS.
+	authz := enroll.Authorization
+	require.True(t, strings.HasPrefix(authz, "Bearer "), "enroll must carry a bearer proof")
+	proof := strings.TrimSpace(strings.TrimPrefix(authz, "Bearer "))
+	hdr, err := decodeHeader(proof)
+	require.NoError(t, err)
+	assert.Equal(t, c.Kid(), hdr.Kid, "proof must be signed with the adapter kid")
+	jwks, err := gatewaytest.Ed25519JWKS(partyKey(t).Public().(ed25519.PublicKey))
+	require.NoError(t, err)
+	srv, err := gatewaytest.NewJWKSServer(jwks)
+	require.NoError(t, err)
+	t.Cleanup(srv.Close)
+	_, err = srv.Verify(proof)
+	require.NoError(t, err, "enrollment proof must verify against the party key")
+
+	// Afterwards the fake serves the party JWKS with our kid, so the
+	// enrolled probe (BK-PARTYID-002) reports the party enrolled.
+	gw.Script(http.MethodGet, "/v1/parties/{id}/jwks", gatewaytest.ScriptStep{Body: jwks})
+	enrolled, err = c.IsEnrolled(context.Background())
+	require.NoError(t, err)
+	assert.True(t, enrolled, "the party must be enrolled afterwards on the fake")
 }
