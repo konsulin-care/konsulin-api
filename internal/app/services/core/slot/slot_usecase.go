@@ -4,16 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"konsulin-service/internal/app/config"
-	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/exceptions"
-	"konsulin-service/internal/pkg/fhir_dto"
 	"net/http"
 	"slices"
 	"sort"
 	"strings"
 	"time"
+
+	"konsulin-service/internal/app/config"
+	"konsulin-service/internal/app/contracts"
+	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/fhir_dto"
 
 	bundleSvc "konsulin-service/internal/app/services/fhir_spark/bundle"
 
@@ -310,7 +311,7 @@ func (s *SlotUsecase) processSingleRoleWindow(ctx context.Context, in processSin
 	if err != nil {
 		res := &singleRoleResult{}
 		for _, c := range slots {
-			if c.Status == fhir_dto.SlotStatusBusyUnavailable || c.Status == fhir_dto.SlotStatusBusyTentative {
+			if isSlotConflicting(c.Status) {
 				res.Conflicts = append(res.Conflicts, contracts.ConflictingSlotItem{
 					PractitionerRoleID: in.pr.ID,
 					SlotID:             c.ID,
@@ -503,8 +504,9 @@ func (s *SlotUsecase) postUnavailabilityBundle(
 
 // detectRoleWindowConflicts detects conflicting slots, idempotency, and deletable IDs for one role's window.
 // isSlotConflicting checks if a slot status indicates a booked conflict.
+// Booked (busy) slots block alongside busy-unavailable and busy-tentative.
 func isSlotConflicting(status fhir_dto.SlotStatus) bool {
-	return status == fhir_dto.SlotStatusBusyUnavailable || status == fhir_dto.SlotStatusBusyTentative
+	return status == fhir_dto.SlotStatusBusy || status == fhir_dto.SlotStatusBusyUnavailable || status == fhir_dto.SlotStatusBusyTentative
 }
 
 // isSlotDeletable checks if a slot should be deleted during unavailability window adjustment.

@@ -7,16 +7,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/services/core/slot"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
-	"net/http"
-	"strings"
-	"sync"
-	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -402,7 +403,7 @@ func (uc *paymentUsecase) findCrossRoleOverlap(
 	overlapParams := contracts.SlotSearchParams{
 		Start:  "lt" + end.Format(time.RFC3339),
 		End:    "gt" + start.Format(time.RFC3339),
-		Status: fhir_dto.SlotStatus(string(fhir_dto.SlotStatusBusyUnavailable) + "," + string(fhir_dto.SlotStatusBusyTentative)),
+		Status: fhir_dto.SlotStatus(string(fhir_dto.SlotStatusBusy) + "," + string(fhir_dto.SlotStatusBusyUnavailable) + "," + string(fhir_dto.SlotStatusBusyTentative)),
 	}
 
 	g, gctx := errgroup.WithContext(ctx)
@@ -483,12 +484,12 @@ func (uc *paymentUsecase) acquireNotificationLocks(ctx context.Context, fields a
 }
 
 // getOverlappingNonFreeSlots filters FHIR Slot query results for slots whose time range
-// overlaps with [slotStart, slotEnd). Only non-free slots (busy-unavailable, busy-tentative)
-// are considered as conflicts. Free slots are ignored since they are dynamically generated.
+// overlaps with [slotStart, slotEnd). Only non-free slots (busy, busy-unavailable,
+// busy-tentative) are considered as conflicts. Free slots are ignored since they are dynamically generated.
 func getOverlappingNonFreeSlots(slots []fhir_dto.Slot, slotStart, slotEnd time.Time) []fhir_dto.Slot {
 	var overlapping []fhir_dto.Slot
 	for _, s := range slots {
-		if s.Status != fhir_dto.SlotStatusBusyUnavailable && s.Status != fhir_dto.SlotStatusBusyTentative {
+		if s.Status != fhir_dto.SlotStatusBusy && s.Status != fhir_dto.SlotStatusBusyUnavailable && s.Status != fhir_dto.SlotStatusBusyTentative {
 			continue
 		}
 		// Overlap condition: existing slot starts before requested ends AND existing slot ends after requested starts

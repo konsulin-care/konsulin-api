@@ -2,6 +2,7 @@ package payments
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -55,6 +56,24 @@ func TestFindCrossRoleOverlap(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, overlap)
 		assert.Equal(t, fhir_dto.SlotStatusBusyUnavailable, overlap.Status)
+	})
+
+	t.Run("returns sibling booked busy overlap", func(t *testing.T) {
+		// A booked (busy) slot on a sibling role must block the booking, and the
+		// server-side status query must request busy alongside the other busy variants.
+		schedMock := &mockScheduleFhirClient{schedulesByRole: map[string][]fhir_dto.Schedule{
+			"role-2": {{ID: "sched-2"}},
+		}}
+		slotMock := &mockSlotFhirClient{slotsBySchedule: func(_ string, params contracts.SlotSearchParams) ([]fhir_dto.Slot, error) {
+			assert.Contains(t, strings.Split(string(params.Status), ","), string(fhir_dto.SlotStatusBusy))
+			return []fhir_dto.Slot{{ID: "slot-busy", Status: fhir_dto.SlotStatusBusy, Start: start, End: end}}, nil
+		}}
+		uc := &paymentUsecase{ScheduleFhirClient: schedMock, SlotFhirClient: slotMock, Log: zap.NewNop()}
+
+		overlap, err := uc.findCrossRoleOverlap(context.Background(), roles, "sched-1", start, end)
+		require.NoError(t, err)
+		require.NotNil(t, overlap)
+		assert.Equal(t, fhir_dto.SlotStatusBusy, overlap.Status)
 	})
 
 	t.Run("clean siblings return nil", func(t *testing.T) {
