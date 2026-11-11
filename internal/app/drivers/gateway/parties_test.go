@@ -243,3 +243,162 @@ func TestEnrollSubmitsTokenKeysThenPartyEnrolled(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, enrolled, "the party must be enrolled afterwards on the fake")
 }
+
+// TestRotateSubmitsNextKeysSignedWithCurrentThenSwitchesSigner covers the
+// T12C contract assertion: Rotate submits the next signing key (public key
+// plus derived kid) to POST /v1/parties/{id}/keys signed with the CURRENT
+// key, and afterwards the adapter signs every subsequent request with the
+// next key's kid.
+// Parameters: t is the test harness.
+// Returns: nothing; fails on any deviation.
+func TestRotateSubmitsNextKeysSignedWithCurrentThenSwitchesSigner(t *testing.T) {
+	gw := gatewaytest.NewGateway()
+	t.Cleanup(gw.Close)
+
+	rawURL := gw.URL() // loopback http:// — WithInsecureTransport applies under env "test"
+	t.Setenv("APP_GATEWAY_URL", rawURL)
+	c := newIsEnrolledAdapter(t, rawURL)
+	currentKid := c.Kid()
+	require.NotEmpty(t, currentKid)
+
+	// Next keypair: seed byte i = fill+i, so seed(1) is distinct from the
+	// adapter's current seed(0). enc uses the SDK registration encoding.
+	nextSig := base64.StdEncoding.EncodeToString(partySeed(1))
+	nextEnc := base64.StdEncoding.EncodeToString(partySeed(101))
+
+	require.NoError(t, c.Rotate(context.Background(), nextSig, nextEnc),
+		"gatewaytest fake must accept the rotation")
+
+	// Exactly one recorded request: the rotate itself, an idempotent create
+	// at POST /v1/parties/{id}/keys.
+	recs := gw.Recorded()
+	require.Len(t, recs, 1, "Rotate must issue exactly one request")
+	rot := recs[0]
+	require.Equal(t, http.MethodPost, rot.Method)
+	require.Equal(t, "/v1/parties/party-test-001/keys", rot.Path)
+	require.NotEmpty(t, rot.IdempotencyKey, "rotate is an idempotent create")
+
+	// The body carries the next key material: its public half and the kid
+	// the SDK derives for it.
+	var body struct {
+		PublicKey string `json:"public_key"`
+		Kid       string `json:"kid"`
+		Alg       string `json:"alg"`
+	}
+	require.NoError(t, json.Unmarshal(rot.Body, &body))
+	nextKey := ed25519.NewKeyFromSeed(partySeed(1))
+	assert.Equal(t, base64.StdEncoding.EncodeToString(
+		nextKey.Public().(ed25519.PublicKey)), body.PublicKey,
+		"must submit the next signing public key")
+	nextKid, err := sdkKid(nextKey, "party-test-001")
+	require.NoError(t, err)
+	assert.Equal(t, nextKid, body.Kid, "must submit the next kid")
+	assert.Equal(t, "Ed25519", body.Alg)
+
+	// The rotation request itself is signed with the CURRENT key: its kid
+	// header is the pre-rotation kid and the token verifies offline against
+	// the current party JWKS.
+	require.True(t, strings.HasPrefix(rot.Authorization, "Bearer "),
+		"rotate must carry a bearer ks-party+jwt")
+	rotTok := strings.TrimSpace(strings.TrimPrefix(rot.Authorization, "Bearer "))
+	hdr, err := decodeHeader(rotTok)
+	require.NoError(t, err)
+	assert.Equal(t, currentKid, hdr.Kid,
+		"rotate must be signed with the current key's kid")
+	curJWKS, err := gatewaytest.Ed25519JWKS(
+		partyKey(t).Public().(ed25519.PublicKey))
+	require.NoError(t, err)
+	curSrv, err := gatewaytest.NewJWKSServer(curJWKS)
+	require.NoError(t, err)
+	t.Cleanup(curSrv.Close)
+	_, err = curSrv.Verify(rotTok)
+	require.NoError(t, err, "rotate must verify against the CURRENT party key")
+
+	// After a successful rotation the adapter signer switched: Kid() is the
+	// next kid and every subsequent request carries it, verifying against
+	// the NEXT key.
+	assert.Equal(t, nextKid, c.Kid(),
+		"the adapter must switch to the next kid after Rotate")
+
+	resp, err := c.Do(context.Background(), Request{
+		Method: http.MethodGet,
+		Path:   "/v1/parties/party-test-001/health",
+	})
+	require.NoError(t, err, "subsequent request through the switched signer must succeed")
+	require.NotNil(t, resp)
+	recs = gw.Recorded()
+	require.Len(t, recs, 2, "the subsequent request must reach the fake")
+	nextTok := strings.TrimSpace(
+		strings.TrimPrefix(recs[1].Authorization, "Bearer "))
+	hdr2, err := decodeHeader(nextTok)
+	require.NoError(t, err)
+	assert.Equal(t, nextKid, hdr2.Kid,
+		"subsequent requests must be signed with the next key's kid")
+	assert.NotEqual(t, currentKid, hdr2.Kid,
+		"subsequent requests must no longer carry the current kid")
+	nextJWKS, err := gatewaytest.Ed25519JWKS(
+		nextKey.Public().(ed25519.PublicKey))
+	require.NoError(t, err)
+	nextSrv, err := gatewaytest.NewJWKSServer(nextJWKS)
+	require.NoError(t, err)
+	t.Cleanup(nextSrv.Close)
+	_, err = nextSrv.Verify(nextTok)
+	require.NoError(t, err,
+		"the subsequent request must verify against the NEXT party key")
+}
+
+// TestRotateFailsClosedBeforeIO proves Rotate rejects a disabled adapter and
+// missing or unparseable next key material with an error before any network
+// I/O (countingTransport records zero attempts).
+// Parameters: t is the test harness.
+// Returns: nothing; fails on any deviation.
+func TestRotateFailsClosedBeforeIO(t *testing.T) {
+	validNextSig := base64.StdEncoding.EncodeToString(partySeed(1))
+	validNextEnc := base64.StdEncoding.EncodeToString(partySeed(101))
+
+	t.Run("disabled adapter", func(t *testing.T) {
+		var hits int
+		orig := http.DefaultTransport
+		http.DefaultTransport = countingTransport{hits: &hits}
+		defer func() { http.DefaultTransport = orig }()
+
+		c, err := New(config.AppGateway{}, "test", nil)
+		require.NoError(t, err)
+		require.False(t, c.Enabled())
+		err = c.Rotate(context.Background(), validNextSig, validNextEnc)
+		require.ErrorIs(t, err, contracts.ErrGatewayNotConfigured)
+		assert.Equal(t, 0, hits, "disabled adapter must not touch the network")
+	})
+
+	t.Run("unparseable next signing key", func(t *testing.T) {
+		var hits int
+		orig := http.DefaultTransport
+		http.DefaultTransport = countingTransport{hits: &hits}
+		defer func() { http.DefaultTransport = orig }()
+
+		c, err := New(config.AppGateway{
+			URL: "https://gateway.example.com", PartyID: "party-test-001",
+			PrivateKey: base64.StdEncoding.EncodeToString(partySeed(0)),
+		}, "test", nil)
+		require.NoError(t, err)
+		err = c.Rotate(context.Background(), "!!!not-a-key", validNextEnc)
+		require.Error(t, err, "unparseable next key must fail closed")
+		assert.Equal(t, 0, hits, "bad key material must be rejected before any I/O")
+	})
+
+	t.Run("unparseable next enc key", func(t *testing.T) {
+		var hits int
+		orig := http.DefaultTransport
+		http.DefaultTransport = countingTransport{hits: &hits}
+		defer func() { http.DefaultTransport = orig }()
+
+		c, err := New(config.AppGateway{
+			URL: "https://gateway.example.com", PartyID: "party-test-001",
+			PrivateKey: base64.StdEncoding.EncodeToString(partySeed(0)),
+		}, "test", nil)
+		require.NoError(t, err)
+		err = c.Rotate(context.Background(), validNextSig, "!!!not-an-enc-key")
+		require.Error(t, err, "unparseable next enc key must fail closed")
+		assert.Equal(t, 0, hits, "bad key material must be rejected before any I/O")
+	})
+}

@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -14,8 +15,10 @@ import (
 	"konsulin-service/internal/pkg/utils"
 
 	"github.com/konsulin-care/gateway-sdk-go/auth"
+	"github.com/konsulin-care/gateway-sdk-go/client"
 	"github.com/konsulin-care/gateway-sdk-go/envelope"
 	"github.com/konsulin-care/gateway-sdk-go/parties"
+	"github.com/konsulin-care/gateway-sdk-go/wire"
 )
 
 // partyRegistryGuard proves at compile time that the adapter satisfies
@@ -127,5 +130,82 @@ func (c *Client) Enroll(ctx context.Context, token string) error {
 	}, key); err != nil {
 		return fmt.Errorf("gateway: enroll: %w", err)
 	}
+	return nil
+}
+
+// Rotate performs one self-service key rotation (BK-PARTYID-003): it submits
+// the next signing key's public key and derived kid (RFC 7638 thumbprint)
+// through the SDK parties.Rotate route (POST /v1/parties/{id}/keys), signed
+// with the CURRENT adapter key, then switches the adapter signer to the next
+// key so every subsequent request carries the next kid. It fails closed: a
+// disabled adapter reports contracts.ErrGatewayNotConfigured before any I/O,
+// as do missing APP_GATEWAY_URL and missing or unparseable next key material
+// (errors name variables, never values). The rotate route body carries the
+// next signing key only — the SDK wire.RotateKeyRequest has no enc member —
+// while nextEnc is validated so an unusable APP_PARTY_NEXT_ENC_PRIVATE_KEY
+// fails before any I/O. Implements contracts.PartyRegistry; never logs key
+// values.
+// Parameters: ctx bounds the rotation call, nextSig is the next signing key
+// value (APP_PARTY_NEXT_PRIVATE_KEY encoding), nextEnc the next X25519 key
+// value (APP_PARTY_NEXT_ENC_PRIVATE_KEY encoding).
+// Returns: nil once the gateway accepts the rotation and the signer has
+// switched, or the error explaining the failure. Never panics.
+func (c *Client) Rotate(ctx context.Context, nextSig, nextEnc string) error {
+	if !c.enabled || c.kid == "" {
+		return contracts.ErrGatewayNotConfigured
+	}
+	nextKey, err := auth.ParseEd25519PrivateKey(strings.TrimSpace(nextSig))
+	if err != nil {
+		return fmt.Errorf("gateway: rotate: APP_PARTY_NEXT_PRIVATE_KEY: %w",
+			contracts.ErrGatewayNotConfigured)
+	}
+	if strings.TrimSpace(nextEnc) == "" {
+		return errors.New("gateway: rotate: APP_PARTY_NEXT_ENC_PRIVATE_KEY is empty")
+	}
+	if _, err := envelope.ParseX25519PrivateKey(strings.TrimSpace(nextEnc)); err != nil {
+		return errors.New("gateway: rotate: APP_PARTY_NEXT_ENC_PRIVATE_KEY is unparseable")
+	}
+	nextKid, err := sdkKid(nextKey, c.partyID)
+	if err != nil {
+		return err
+	}
+	rawURL := strings.TrimSpace(utils.GetEnvString("APP_GATEWAY_URL", ""))
+	if rawURL == "" {
+		return contracts.ErrGatewayNotConfigured
+	}
+	routes, err := parties.New(c.sdk, rawURL)
+	if err != nil {
+		return fmt.Errorf("gateway: rotate: party routes: %w", err)
+	}
+	if _, err := routes.Rotate(ctx, c.partyID, wire.RotateKeyRequest{
+		PublicKey: base64.StdEncoding.EncodeToString(
+			nextKey.Public().(ed25519.PublicKey)),
+		Kid: nextKid,
+		Alg: "Ed25519",
+	}); err != nil {
+		return fmt.Errorf("gateway: rotate: %w", err)
+	}
+	return c.switchSigner(nextKey, nextKid, rawURL)
+}
+
+// switchSigner rebuilds the SDK client with the next signing key and adopts
+// the next kid, so every subsequent party-signed request carries it. The
+// rebuild mirrors New's options (base URL, signer, insecure transport for
+// http loopback URLs); no key value is logged.
+// Parameters: key is the next Ed25519 signing key, kid its RFC 7638
+// thumbprint, rawURL the gateway base URL.
+// Returns: nil once the adapter signer switched, or an error naming only
+// facts. Never panics.
+func (c *Client) switchSigner(key ed25519.PrivateKey, kid, rawURL string) error {
+	sdk, err := client.New(
+		client.WithBaseURL(rawURL),
+		client.WithSigner(c.partyID, key),
+		client.WithInsecureTransport(),
+	)
+	if err != nil {
+		return fmt.Errorf("gateway: rotate: switch signer: %w", err)
+	}
+	c.sdk = sdk
+	c.kid = kid
 	return nil
 }
