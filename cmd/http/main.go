@@ -165,6 +165,12 @@ func main() {
 
 // bootstrapingTheApp initializes and sets up the application with the given bootstrap components
 func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
+	// Build the gateway federation components before the usecases so later
+	// wiring (enrollment, inbound handlers) can depend on the adapter.
+	if _, err := newGateway(bootstrap); err != nil {
+		return fmt.Errorf("error initializing gateway: %w", err)
+	}
+
 	// Initialize the repository for Redis
 	redisRepository := redisKonsulin.NewRedisRepository(bootstrap.Redis, bootstrap.Logger)
 
@@ -321,20 +327,26 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	stopWorker := worker.Start(context.Background())
 	bootstrap.WorkerStop = stopWorker
 
+	// Publish the gateway status on the controller set (starting background
+	// enrollment when APP_GATEWAY_URL is configured) before routes register,
+	// so federation-dependent routes see the status.
+	ctrls := routers.Controllers{
+		Auth:         authController,
+		Payment:      paymentController,
+		Webhook:      webhookController,
+		Schedule:     scheduleController,
+		Organization: orgController,
+		Purge:        purgeController,
+	}
+	registerFederation(bootstrap, &ctrls, bootstrap.InternalConfig.Gateway, paymentUsecase)
+
 	// Setup routes with the router, configuration, middlewares, and controllers
 	routers.SetupRoutes(
 		bootstrap.Router,
 		bootstrap.InternalConfig,
 		bootstrap.Logger,
 		middlewares,
-		routers.Controllers{
-			Auth:         authController,
-			Payment:      paymentController,
-			Webhook:      webhookController,
-			Schedule:     scheduleController,
-			Organization: orgController,
-			Purge:        purgeController,
-		},
+		ctrls,
 	)
 
 	return nil
