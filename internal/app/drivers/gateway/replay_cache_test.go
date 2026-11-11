@@ -60,14 +60,30 @@ func TestReplayCacheRepeatIsReplay(t *testing.T) {
 }
 
 // TestReplayCacheRedisFailureDenies covers assertion 3: a Redis failure
-// makes Check return an error so callers deny (fail closed).
+// makes Check return an error so callers deny (fail closed). Both failure
+// modes are exercised: a server closed mid-test and a client pointed at a
+// dead address.
 // Parameters: t is the test harness.
 // Returns: nothing; fails on any deviation.
 func TestReplayCacheRedisFailureDenies(t *testing.T) {
-	mr, cache := newTestReplayCache(t)
-	mr.Close()
+	t.Run("closed server", func(t *testing.T) {
+		mr, cache := newTestReplayCache(t)
+		mr.Close()
 
-	ok, err := cache.Check(context.Background(), wire.ScopeJTI, "token-1", time.Now().Add(time.Minute))
-	require.Error(t, err, "a Redis failure must surface as an error so callers deny")
-	assert.False(t, ok, "a failed Check must not accept the pair")
+		ok, err := cache.Check(context.Background(), wire.ScopeJTI, "token-1", time.Now().Add(time.Minute))
+		require.Error(t, err, "a Redis failure must surface as an error so callers deny")
+		assert.False(t, ok, "a failed Check must not accept the pair")
+	})
+
+	t.Run("dead address", func(t *testing.T) {
+		dead := NewReplayCache(redis.NewClient(&redis.Options{
+			Addr:        "127.0.0.1:1",
+			DialTimeout: 250 * time.Millisecond,
+			MaxRetries:  0,
+		}))
+
+		ok, err := dead.Check(context.Background(), wire.ScopeJTI, "token-1", time.Now().Add(time.Minute))
+		require.Error(t, err, "a Redis failure must surface as an error so callers deny")
+		assert.False(t, ok, "a failed Check must not accept the pair")
+	})
 }
