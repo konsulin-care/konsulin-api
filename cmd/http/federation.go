@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"net/http"
 
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
@@ -9,7 +12,13 @@ import (
 	"konsulin-service/internal/app/delivery/http/routers"
 	"konsulin-service/internal/app/drivers/gateway"
 	"konsulin-service/internal/app/services/core/federation"
+	"konsulin-service/internal/app/services/core/payments"
+
+	"go.uber.org/zap"
 )
+
+// settlementEventMaxBytes bounds the body read of one settlement notification.
+const settlementEventMaxBytes = 1 << 20
 
 // gatewayWiring bundles the federation components built once per process by
 // newGateway and consumed by registerFederation (and later inbound gateway
@@ -67,12 +76,6 @@ func newGateway(bootstrap *config.Bootstrap) (*gatewayWiring, error) {
 // (APP_GATEWAY_URL plus APP_PARTY_*); paymentUsecase is the payment usecase
 // inbound handlers will need. Returns nothing; never panics.
 func registerFederation(bootstrap *config.Bootstrap, ctrls *routers.Controllers, gatewayEnv config.AppGateway, paymentUsecase contracts.PaymentUsecase) {
-	// Reserved for later tasks: inbound gateway handlers register on
-	// ctrls.Federation (RegisterEventHandler by purpose,
-	// RegisterDeliveryHandler by listing name) and use paymentUsecase;
-	// neither is touched by the enrollment wiring yet.
-	_ = paymentUsecase
-
 	logger := bootstrap.Logger
 	// Constructed unconditionally: the federation router mounts even in
 	// standalone mode (RequireGateway answers 503 before the handler runs).
@@ -81,6 +84,7 @@ func registerFederation(bootstrap *config.Bootstrap, ctrls *routers.Controllers,
 	// RegisterDeliveryHandler binds a handler per listing name here as
 	// inbound delivery handlers land.
 	ctrls.Federation = controllers.NewFederationController(logger)
+	registerSettlementHandler(ctrls.Federation, paymentUsecase, logger)
 	if wiredGateway == nil || wiredGateway.client == nil {
 		if logger != nil {
 			logger.Warn("federation: gateway wiring missing (newGateway not called), gateway stays disabled")
@@ -100,4 +104,37 @@ func registerFederation(bootstrap *config.Bootstrap, ctrls *routers.Controllers,
 		return
 	}
 	go enroller.Start(context.Background())
+}
+
+// registerSettlementHandler binds the payment usecase's HandleSettlement to
+// the settlement-notification federation purpose: the controller dispatches
+// the exact verified body, this function decodes it into a
+// payments.SettlementEvent and hands it to the usecase. A payment usecase that
+// does not implement payments.SettlementEventSink, or a missing controller,
+// leaves the purpose unregistered (the controller then acknowledges the event).
+// Parameters: fed is the federation controller to register on;
+// paymentUsecase is the payment usecase from bootstrap; logger reports a
+// skipped registration and tolerates nil. Returns nothing; never panics.
+func registerSettlementHandler(fed *controllers.FederationController, paymentUsecase contracts.PaymentUsecase, logger *zap.Logger) {
+	if fed == nil || paymentUsecase == nil {
+		return
+	}
+	sink, ok := paymentUsecase.(payments.SettlementEventSink)
+	if !ok {
+		if logger != nil {
+			logger.Warn("federation: payment usecase does not implement HandleSettlement, settlement-notification stays unregistered")
+		}
+		return
+	}
+	fed.RegisterEventHandler(controllers.PurposeSettlementNotification, func(r *http.Request) error {
+		body, err := io.ReadAll(io.LimitReader(r.Body, settlementEventMaxBytes))
+		if err != nil {
+			return fmt.Errorf("settlement event: read body: %w", err)
+		}
+		event, err := payments.DecodeSettlementEvent(body)
+		if err != nil {
+			return err
+		}
+		return sink.HandleSettlement(r.Context(), event)
+	})
 }
