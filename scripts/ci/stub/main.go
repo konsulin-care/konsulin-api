@@ -10,6 +10,10 @@
 //	  GET  /magiclink/api/v2/domains/public/inboxes/:org  — mailbox listing
 //	  GET  /magiclink/api/v2/domains/public/messages/:id/links — magic-link URLs
 //
+//	Provider:
+//	  POST /provider/invoke      — gateway-signed delivery (ks-delivery+jwt)
+//	  GET  /provider/last        — last opened delivery payload
+//
 //	Xendit:
 //	  POST /v2/invoices         — create invoice (returns PENDING)
 //	  GET  /v2/invoices/:id     — get invoice (returns PAID for re-verification)
@@ -99,6 +103,9 @@ func newRouter() *http.ServeMux {
 	mux.HandleFunc("POST /magiclink/send-magiclink", handleSendMagiclink)
 	mux.HandleFunc("GET /magiclink/api/v2/domains/public/inboxes/{org}", handleInboxListing)
 	mux.HandleFunc("GET /magiclink/api/v2/domains/public/messages/{id}/links", handleMessageLinks)
+
+	// Provider-party mode — gateway delivery receiver (T18)
+	registerProvider(mux)
 
 	// Xendit routes
 	mux.HandleFunc("POST /v2/invoices", handleCreateInvoice)
