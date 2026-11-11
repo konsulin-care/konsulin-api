@@ -2,20 +2,35 @@ package middlewares
 
 import (
 	"context"
+	"net/http"
+	"strings"
+	"time"
+
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/utils"
-	"net/http"
-	"time"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/fsnotify/fsnotify"
 	"go.uber.org/zap"
 )
 
-// newEnforcer creates a Casbin enforcer with RBAC model and custom pathMatch function.
-func newEnforcer(logger *zap.Logger) *casbin.Enforcer {
-	enforcer, err := casbin.NewEnforcer("resources/rbac_model.conf", "resources/rbac_policy.csv")
+// defaultRBACPolicyPath is the policy file loaded when no path is configured.
+const defaultRBACPolicyPath = "resources/rbac_policy.csv"
+
+// resolveRBACPolicyPath returns the configured RBAC policy path, falling back
+// to resources/rbac_policy.csv when the configuration is empty.
+func resolveRBACPolicyPath(policyPath string) string {
+	if strings.TrimSpace(policyPath) == "" {
+		return defaultRBACPolicyPath
+	}
+	return policyPath
+}
+
+// newEnforcer creates a Casbin enforcer with RBAC model and custom pathMatch
+// function, loading policies from the configured RBAC policy path.
+func newEnforcer(logger *zap.Logger, policyPath string) *casbin.Enforcer {
+	enforcer, err := casbin.NewEnforcer("resources/rbac_model.conf", resolveRBACPolicyPath(policyPath))
 	if err != nil {
 		logger.Fatal("failed to load RBAC policies", zap.Error(err))
 	}
@@ -75,8 +90,9 @@ func watchPolicyEvents(watcher *fsnotify.Watcher, enforcer *casbin.Enforcer, log
 	}
 }
 
-// startPolicyWatcher monitors the RBAC policy CSV file for changes and reloads automatically.
-func startPolicyWatcher(enforcer *casbin.Enforcer, logger *zap.Logger) {
+// startPolicyWatcher monitors the configured RBAC policy CSV file for changes
+// and reloads automatically.
+func startPolicyWatcher(enforcer *casbin.Enforcer, logger *zap.Logger, policyPath string) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		logger.Fatal("failed to create policy watcher", zap.Error(err))
@@ -84,7 +100,7 @@ func startPolicyWatcher(enforcer *casbin.Enforcer, logger *zap.Logger) {
 
 	go watchPolicyEvents(watcher, enforcer, logger)
 
-	if err := watcher.Add("resources/rbac_policy.csv"); err != nil {
+	if err := watcher.Add(resolveRBACPolicyPath(policyPath)); err != nil {
 		logger.Error("failed to watch policy file", zap.Error(err))
 	}
 }
@@ -108,8 +124,9 @@ func NewMiddlewares(
 	questionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient,
 	planDefinitionFhirClient contracts.PlanDefinitionFinder,
 ) *Middlewares {
-	enforcer := newEnforcer(logger)
-	startPolicyWatcher(enforcer, logger)
+	policyPath := internalConfig.App.RBACPolicyPath
+	enforcer := newEnforcer(logger, policyPath)
+	startPolicyWatcher(enforcer, logger, policyPath)
 	return &Middlewares{
 		Log:                             logger,
 		AuthUsecase:                     authUsecase,
