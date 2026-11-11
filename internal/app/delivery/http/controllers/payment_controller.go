@@ -2,14 +2,15 @@ package controllers
 
 import (
 	"context"
+	"net/http"
+	"sync"
+	"time"
+
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
-	"net/http"
-	"sync"
-	"time"
 
 	"go.uber.org/zap"
 )
@@ -33,101 +34,6 @@ func NewPaymentController(logger *zap.Logger, paymentUsecase contracts.PaymentUs
 		paymentControllerInstance = instance
 	})
 	return paymentControllerInstance
-}
-
-func (ctrl *PaymentController) XenditInvoiceCallback(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	requestID, ok := requireRequestID(ctrl.Log, w, r)
-	if !ok {
-		return
-	}
-
-	utils.LogSecurityEvent(ctrl.Log, "xendit_callback_received", requestID, "info",
-		zap.String(constvars.LoggingRemoteAddrKey, r.RemoteAddr),
-		zap.String(constvars.LoggingUserAgentKey, r.UserAgent()),
-	)
-
-	ctrl.Log.Debug("Xendit invoice callback processing started",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String(constvars.LoggingEndpointKey, r.URL.Path),
-		zap.String(constvars.LoggingMethodKey, r.Method),
-	)
-
-	// Parse headers
-	callbackToken := r.Header.Get(string(requests.HeaderKeyCallbackToken))
-	webhookID := r.Header.Get(string(requests.HeaderKeyWebhookID))
-
-	if callbackToken == "" {
-		ctrl.Log.Error("Missing x-callback-token header",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-		)
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.BuildNewCustomError(
-			nil,
-			constvars.StatusBadRequest,
-			"Missing x-callback-token header",
-			"x-callback-token header is required",
-		))
-		return
-	}
-
-	if webhookID == "" {
-		ctrl.Log.Error("Missing x-webhook-id header",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-		)
-		utils.BuildErrorResponse(ctrl.Log, w, exceptions.BuildNewCustomError(
-			nil,
-			constvars.StatusBadRequest,
-			"Missing x-webhook-id header",
-			"x-webhook-id header is required",
-		))
-		return
-	}
-
-	header := &requests.XenditInvoiceCallbackHeader{
-		CallbackToken: callbackToken,
-		WebhookID:     webhookID,
-	}
-
-	// Parse body
-	body := new(requests.XenditInvoiceCallbackBody)
-	if !decodeJSONBody(ctrl.Log, w, r, requestID, &body, "Failed to parse Xendit invoice callback request", true) {
-		return
-	}
-
-	ctrl.Log.Debug("Xendit invoice callback request parsed successfully",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String("invoice_id", body.ID),
-		zap.String("external_id", body.ExternalID),
-		zap.String("status", string(body.Status)),
-	)
-
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-
-	err := ctrl.PaymentUsecase.XenditInvoiceCallback(ctx, header, body)
-	if err != nil {
-		ctrl.Log.Error("Failed to process Xendit invoice callback",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("invoice_id", body.ID),
-			zap.String("status", string(body.Status)),
-			zap.String(constvars.LoggingErrorTypeKey, "usecase error"),
-			zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
-			zap.Error(err),
-		)
-		if err == context.DeadlineExceeded {
-			utils.BuildErrorResponse(ctrl.Log, w, exceptions.ErrServerDeadlineExceeded(err))
-			return
-		}
-		utils.BuildErrorResponse(ctrl.Log, w, err)
-		return
-	}
-
-	utils.LogBusinessEvent(ctrl.Log, "xendit_callback_processed", requestID,
-		zap.String("invoice_id", body.ID),
-		zap.String("status", string(body.Status)),
-		zap.Duration(constvars.LoggingDurationKey, time.Since(start)),
-	)
-	utils.BuildSuccessResponse(w, constvars.StatusOK, "Xendit invoice callback processed successfully", body.Status)
 }
 
 func (ctrl *PaymentController) CreatePay(w http.ResponseWriter, r *http.Request) {
