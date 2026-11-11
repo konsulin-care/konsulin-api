@@ -9,8 +9,9 @@ name: PR Quality and Security
 #                      Trivy secrets/config (SARIF, non-blocking). Semgrep
 #                      runs via the GitHub App, not in CI.
 #   codeql           — CodeQL Go analysis (SARIF; status lives in Code Scanning)
-#   integration      — disposable Docker env + full Bruno suite (auth, RBAC,
-#                      ownership-violation) — the API security regression gate
+#   integration      — federation gateway bootstrap + disposable Docker env +
+#                      full Bruno suite (auth, RBAC, ownership-violation) —
+#                      the API security regression gate
 #   build            — Docker image smoke build (vendor + app) + Trivy image scan
 #
 # Keep PR-time jobs deterministic: no active scanners, no external mailboxes,
@@ -176,8 +177,85 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The federation gateway starts and bootstraps BEFORE the ci-env action
+      # below: the action starts the app, and the app must boot with the
+      # APP_GATEWAY_URL / APP_PARTY_* values this bootstrap emits. The gateway
+      # is standalone (its own SQLite), so it starts ahead of .env.ci — but
+      # compose interpolates the whole file at load, so the ci-env inputs are
+      # mirrored into this step's environment (the action writes the same
+      # values into .env.ci right after). Signing keys and the operator
+      # credential are generated per run and never committed.
+      - name: Start federation gateway (dev mode)
+        env:
+          POSTGRES_PASSWORD: ${{ vars.CI_POSTGRES_PASSWORD }}
+          REDIS_PASSWORD: ${{ vars.CI_REDIS_PASSWORD }}
+          RABBITMQ_DEFAULT_PASS: ${{ vars.CI_RABBITMQ_PASSWORD }}
+          SUPERTOKEN_API_KEY: ${{ vars.CI_SUPERTOKEN_API_KEY }}
+          SUPERADMIN_API_KEY: ${{ vars.CI_SUPERADMIN_API_KEY }}
+          JWT_HOOK_KEY: ${{ vars.CI_JWT_HOOK_KEY }}
+          XENDIT_SANDBOX_API_KEY: ${{ vars.CI_XENDIT_SANDBOX_API_KEY }}
+          XENDIT_CALLBACK_TOKEN: ${{ vars.CI_XENDIT_CALLBACK_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Ephemeral Ed25519 signing keys (base64 DER, gateway .env.example
+          # format); the gateway and admin keys must be distinct.
+          APP_GATEWAY_SIGNING_KEY=$(openssl genpkey -algorithm ed25519 -outform DER | base64 -w0)
+          APP_ADMIN_SIGNING_KEY=$(openssl genpkey -algorithm ed25519 -outform DER | base64 -w0)
+          if [ -z "$APP_GATEWAY_SIGNING_KEY" ] || [ "$APP_GATEWAY_SIGNING_KEY" = "$APP_ADMIN_SIGNING_KEY" ]; then
+            echo "::error::gateway and admin signing keys must be distinct and non-empty" >&2
+            exit 1
+          fi
+          export APP_GATEWAY_SIGNING_KEY APP_ADMIN_SIGNING_KEY
+
+          # Dev-mode operator login: random password (hex — safe to embed in
+          # the JSON login body) + bcrypt hash for APP_OPERATOR_CREDENTIALS.
+          OPERATOR_PASSWORD=$(openssl rand -hex 16)
+          if ! command -v htpasswd >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq apache2-utils
+          fi
+          OPERATOR_HASH=$(htpasswd -bnBC 12 "" "$OPERATOR_PASSWORD" | tr -d ':\n')
+          export APP_OPERATOR_CREDENTIALS="operator:${OPERATOR_HASH}"
+          # Next step: gateway-bootstrap.sh logs in with this password.
+          printf 'OPERATOR_PASSWORD=%s\n' "$OPERATOR_PASSWORD" >> "$GITHUB_ENV"
+
+          docker compose -f docker-compose.ci.yml up -d gateway
+
+          ok=0
+          for _ in $(seq 1 30); do
+            if curl -fsS http://localhost:8082/health >/dev/null 2>&1; then
+              ok=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ok" != 1 ]; then
+            docker compose -f docker-compose.ci.yml logs --tail=200 gateway 2>/dev/null || true
+            echo "::error::Federation gateway did not become healthy in time" >&2
+            exit 1
+          fi
+
+      # Enroll both parties, grant capabilities and enlist the stub listings,
+      # then export APP_GATEWAY_URL / APP_PARTY_* / APP_AUTOMATION_PARTY_ID
+      # into the job environment — the ci-env action's `docker compose up -d
+      # app` interpolates them into the app service (see docker-compose.ci.yml).
+      # STUB_BASE_URL is the ci-net hostname because the gateway (not the
+      # runner) dials the enlisted endpoints.
+      - name: Bootstrap federation gateway (parties, listings, app env)
+        run: |
+          set -euo pipefail
+          export GATEWAY_URL=http://localhost:8082
+          export STUB_BASE_URL=http://ci-stub:8081
+          bash scripts/ci/gateway-bootstrap.sh
+          # The script exported the runner-loopback URL it used itself; the
+          # app container reaches the gateway over ci-net instead. Last write
+          # to $GITHUB_ENV wins for the steps below.
+          printf 'APP_GATEWAY_URL=http://gateway:8080\n' >> "$GITHUB_ENV"
+
       # Isolated disposable environment: infra + app + unified Go stub
-      # (magiclink + xendit). Synthetic accounts/data only.
+      # (magiclink + xendit). Synthetic accounts/data only. The federation
+      # gateway above is already running; the app boots enrolled against it.
       - name: Start disposable CI environment
         uses: ./.github/actions/ci-env
         with:
