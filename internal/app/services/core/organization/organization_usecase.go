@@ -6,16 +6,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"slices"
+	"strings"
+	"time"
+
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	bundleSvc "konsulin-service/internal/app/services/fhir_spark/bundle"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
-	"net/http"
-	"slices"
-	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -334,18 +335,30 @@ func (uc *Usecase) callMagicLink(ctx context.Context, email string) error {
 	return nil
 }
 
+// InitializeKonsulinOrganizationResource ensures Organization/archetype exists
+// with the configured organization name (APP_ORGANIZATION_NAME) and, when
+// APP_PARTY_ID is set, the urn:konsulin:party identifier carrying it. The
+// resource is always updated in place (PUT) so identifiers never duplicate.
 func (uc *Usecase) InitializeKonsulinOrganizationResource(ctx context.Context) error {
 	existing, err := uc.organizationClient.FindOrganizationByID(ctx, constvars.KonsulinOrganizationResourceID)
-	if err == nil && existing != nil {
+	if err != nil {
+		uc.log.Info("unable to verify if Konsulin organization resource exists, will try to create it", zap.Error(err))
+		existing = nil
+	} else if existing != nil {
 		uc.log.Info("Konsulin organization resource already exists", zap.String("organization_id", constvars.KonsulinOrganizationResourceID))
 	}
-
-	uc.log.Info("unable to verify if Konsulin organization resource exists, will try to create it", zap.Error(err))
 
 	konsulinOrg := fhir_dto.Organization{
 		ResourceType: constvars.ResourceOrganization,
 		ID:           constvars.KonsulinOrganizationResourceID,
 		Active:       true,
+		Name:         uc.config.App.OrganizationName,
+	}
+	if existing != nil {
+		konsulinOrg.Identifier = existing.Identifier
+	}
+	if partyID := strings.TrimSpace(uc.config.Gateway.PartyID); partyID != "" {
+		konsulinOrg.Identifier = upsertPartyIdentifier(konsulinOrg.Identifier, partyID)
 	}
 
 	_, upsertErr := uc.organizationClient.Update(ctx, konsulinOrg)
@@ -355,4 +368,31 @@ func (uc *Usecase) InitializeKonsulinOrganizationResource(ctx context.Context) e
 
 	uc.log.Info("Konsulin organization resource created", zap.String("organization_id", constvars.KonsulinOrganizationResourceID))
 	return nil
+}
+
+// upsertPartyIdentifier returns identifiers carrying the party ID system exactly
+// once: an existing party identifier is updated in place (extra duplicates are
+// dropped), otherwise one party identifier is appended.
+func upsertPartyIdentifier(identifiers []fhir_dto.Identifier, partyID string) []fhir_dto.Identifier {
+	result := make([]fhir_dto.Identifier, 0, len(identifiers)+1)
+	present := false
+	for _, id := range identifiers {
+		if id.System != constvars.KonsulinPartyIdentifierSystem {
+			result = append(result, id)
+			continue
+		}
+		if present {
+			continue
+		}
+		id.Value = partyID
+		result = append(result, id)
+		present = true
+	}
+	if !present {
+		result = append(result, fhir_dto.Identifier{
+			System: constvars.KonsulinPartyIdentifierSystem,
+			Value:  partyID,
+		})
+	}
+	return result
 }

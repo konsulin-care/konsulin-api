@@ -75,10 +75,14 @@ const (
 	KonsulinRolePractitioner = "Practitioner"
 )
 
-// KonsulinOrganizationResourceID is the ID of Organization resource for Konsulin.
-// This resource ID is used to reference the Konsulin organization in the FHIR resources.
-// For now, it is used in the payment service as the recipient and issuer for the payment service.
-const KonsulinOrganizationResourceID = "Konsulin"
+// KonsulinOrganizationResourceID is the ID of the Organization resource that
+// carries this instance's identity (Organization/archetype). It is used to
+// reference the Konsulin organization in FHIR resources such as payments.
+const KonsulinOrganizationResourceID = "archetype"
+
+// KonsulinPartyIdentifierSystem is the FHIR identifier system that carries the
+// gateway-issued party ID (APP_PARTY_ID) on Organization/archetype.
+const KonsulinPartyIdentifierSystem = "urn:konsulin:party"
 
 // SuperTokens access token payload keys shared across middlewares and controllers.
 const (

@@ -146,3 +146,32 @@ func TestRBACPolicy_PrivacyPurge(t *testing.T) {
 		})
 	}
 }
+
+// TestRBACPolicy_OrganizationArchetype asserts the party-identity read surface
+// (BK-PARTYID-001): Guest may GET /fhir/Organization/archetype and nothing
+// else on that path — the policy row is GET-only.
+func TestRBACPolicy_OrganizationArchetype(t *testing.T) {
+	enf := testEnforcer(t)
+
+	cases := []struct {
+		name   string
+		role   string
+		method string
+		want   bool
+	}{
+		{"guest get", constvars.KonsulinRoleGuest, http.MethodGet, true},
+		{"guest post", constvars.KonsulinRoleGuest, http.MethodPost, false},
+		{"guest put", constvars.KonsulinRoleGuest, http.MethodPut, false},
+		{"guest delete", constvars.KonsulinRoleGuest, http.MethodDelete, false},
+		{"patient get", constvars.KonsulinRolePatient, http.MethodGet, true},
+		{"patient put", constvars.KonsulinRolePatient, http.MethodPut, false},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ok, err := enf.Enforce(c.role, c.method, "/fhir/Organization/archetype")
+			assert.NoError(t, err)
+			assert.Equal(t, c.want, ok, "Enforce(%q, %q, /fhir/Organization/archetype)", c.role, c.method)
+		})
+	}
+}

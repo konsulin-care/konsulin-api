@@ -25,6 +25,7 @@ p, Guest, GET, /fhir/Media
 p, Guest, GET, /fhir/HealthcareService
 p, Guest, GET, /fhir/Location
 p, Guest, GET, /fhir/Organization
+p, Guest, GET, /fhir/Organization/archetype
 p, Guest, POST, /fhir/Patient
 p, Guest, GET, /fhir/PractitionerRole
 p, Guest, GET, /fhir/Questionnaire

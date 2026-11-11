@@ -2,8 +2,10 @@ package organization
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
@@ -227,5 +229,114 @@ func TestEnsureClinicAdminManagesOrganization(t *testing.T) {
 		err := uc.ensureClinicAdminManagesOrganization(context.Background(), "st-123", "org-1")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "no practitioner found")
+	})
+}
+
+type mockOrganizationFhirClient struct {
+	mock.Mock
+}
+
+func (m *mockOrganizationFhirClient) FindAll(ctx context.Context, organizationName, fetchType string, page, pageSize int) ([]fhir_dto.Organization, int, error) {
+	args := m.Called(ctx, organizationName, fetchType, page, pageSize)
+	if v := args.Get(0); v != nil {
+		return v.([]fhir_dto.Organization), args.Int(1), args.Error(2)
+	}
+	return nil, args.Int(1), args.Error(2)
+}
+
+func (m *mockOrganizationFhirClient) FindOrganizationByID(ctx context.Context, organizationID string) (*fhir_dto.Organization, error) {
+	args := m.Called(ctx, organizationID)
+	if v := args.Get(0); v != nil {
+		return v.(*fhir_dto.Organization), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+
+func (m *mockOrganizationFhirClient) Update(ctx context.Context, organization fhir_dto.Organization) (*fhir_dto.Organization, error) {
+	args := m.Called(ctx, organization)
+	if v := args.Get(0); v != nil {
+		return v.(*fhir_dto.Organization), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+
+// testOrgConfig builds an InternalConfig carrying only the archetype bootstrap
+// settings: APP_ORGANIZATION_NAME and APP_PARTY_ID.
+func testOrgConfig(orgName, partyID string) *config.InternalConfig {
+	return &config.InternalConfig{
+		App:     config.App{OrganizationName: orgName},
+		Gateway: config.AppGateway{PartyID: partyID},
+	}
+}
+
+// TestInitializeKonsulinOrganizationResource pins the archetype bootstrap
+// (BK-PARTYID-001, BK-AUTH-002): initialization ensures Organization/archetype
+// with the configured name and the urn:konsulin:party identifier carrying the
+// party ID, updating an existing resource in place without duplicating identifiers.
+func TestInitializeKonsulinOrganizationResource(t *testing.T) {
+	t.Run("initialization creates archetype with configured name and party identifier", func(t *testing.T) {
+		mockOrg := new(mockOrganizationFhirClient)
+		uc := &Usecase{
+			organizationClient: mockOrg,
+			config:             testOrgConfig("Konsulin Clinic", "pty-1"),
+			log:                zap.NewNop(),
+		}
+
+		mockOrg.On("FindOrganizationByID", mock.Anything, constvars.KonsulinOrganizationResourceID).
+			Return(nil, errors.New("not found"))
+		var got fhir_dto.Organization
+		mockOrg.On("Update", mock.Anything, mock.Anything).
+			Run(func(args mock.Arguments) { got = args.Get(1).(fhir_dto.Organization) }).
+			Return(nil, nil)
+
+		err := uc.InitializeKonsulinOrganizationResource(context.Background())
+		assert.NoError(t, err)
+
+		assert.Equal(t, "archetype", got.ID)
+		assert.Equal(t, constvars.ResourceOrganization, got.ResourceType)
+		assert.Equal(t, "Konsulin Clinic", got.Name)
+		assert.True(t, got.Active)
+		assert.Len(t, got.Identifier, 1)
+		assert.Equal(t, "urn:konsulin:party", got.Identifier[0].System)
+		assert.Equal(t, "pty-1", got.Identifier[0].Value)
+		mockOrg.AssertExpectations(t)
+	})
+
+	t.Run("existing archetype without party identifier updated in place without duplicates", func(t *testing.T) {
+		mockOrg := new(mockOrganizationFhirClient)
+		uc := &Usecase{
+			organizationClient: mockOrg,
+			config:             testOrgConfig("Konsulin Clinic", "pty-1"),
+			log:                zap.NewNop(),
+		}
+
+		existing := &fhir_dto.Organization{
+			ResourceType: constvars.ResourceOrganization,
+			ID:           "archetype",
+			Active:       true,
+			Name:         "Old Name",
+			Identifier:   []fhir_dto.Identifier{{System: "urn:other", Value: "other-1"}},
+		}
+		mockOrg.On("FindOrganizationByID", mock.Anything, constvars.KonsulinOrganizationResourceID).
+			Return(existing, nil)
+		var got fhir_dto.Organization
+		mockOrg.On("Update", mock.Anything, mock.Anything).
+			Run(func(args mock.Arguments) { got = args.Get(1).(fhir_dto.Organization) }).
+			Return(nil, nil)
+
+		err := uc.InitializeKonsulinOrganizationResource(context.Background())
+		assert.NoError(t, err)
+
+		assert.Equal(t, "archetype", got.ID, "resource updated in place")
+		assert.Equal(t, "Konsulin Clinic", got.Name)
+		partyCount := 0
+		for _, id := range got.Identifier {
+			if id.System == "urn:konsulin:party" {
+				partyCount++
+				assert.Equal(t, "pty-1", id.Value)
+			}
+		}
+		assert.Equal(t, 1, partyCount, "exactly one party identifier, no duplicates")
+		mockOrg.AssertExpectations(t)
 	})
 }
