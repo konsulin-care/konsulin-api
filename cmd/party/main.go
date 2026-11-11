@@ -39,6 +39,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 	switch args[0] {
 	case "keygen":
 		return keygen(stdout)
+	case "rotate":
+		return rotate(stdout)
 	case "help", "-h", "--help":
 		return usage(stdout)
 	default:
@@ -57,6 +59,9 @@ func usage(w io.Writer) error {
 		return err
 	}
 	if _, err := fmt.Fprintln(w, "  keygen   generate Ed25519 + X25519 keys and print paste-ready env values"); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, "  rotate   rotate party keys via the gateway and print paste-ready env values"); err != nil {
 		return err
 	}
 	_, err := fmt.Fprintln(w, "  help     print this synopsis")
