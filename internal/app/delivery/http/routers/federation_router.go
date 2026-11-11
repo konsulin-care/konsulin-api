@@ -18,15 +18,19 @@ import (
 // RequireGateway (503 while the gateway is disabled or this party is not
 // enrolled) and the T20 VerifyMiddleware for ks-event+jwt (gateway-signed
 // token, JWKS verification, webhook-id dedupe), then handed to the
-// FederationController. It sits on the mux chain — session and RBAC are
-// not part of federation callbacks.
+// FederationController. POST /federation/deliveries/{listing} is guarded the
+// same way with the ks-delivery+jwt VerifyMiddleware and handed to
+// FederationController.HandleDelivery, which enforces that the verified
+// service claim equals the {listing} path segment (401) and that the
+// listing is registered (404). Both sit on the mux chain — session and RBAC
+// are not part of federation callbacks.
 //
 // A VerifyMiddleware construction failure (empty APP_GATEWAY_URL or
-// APP_PARTY_ID) cannot be returned from SetupRoutes, so the route fails
+// APP_PARTY_ID) cannot be returned from SetupRoutes, so each route fails
 // closed: every callback is denied 401 instead of reaching the handler
 // unverified.
 //
-// Parameters: router is the chi subrouter the route registers on; ctrls is
+// Parameters: router is the chi subrouter the routes register on; ctrls is
 // the federation controller (nil tolerable: the handler only runs when a
 // request matches); status is the gateway enrollment status RequireGateway
 // consults per request; logger records construction failures.
@@ -42,6 +46,17 @@ func attachFederationRouter(router chi.Router, ctrls *controllers.FederationCont
 	}
 	router.With(middlewares.RequireGateway(status), verifyEvents).
 		Post("/federation/events", ctrls.HandleEvent)
+
+	verifyDeliveries, err := gateway.VerifyMiddleware(wire.TypDelivery)
+	if err != nil {
+		if logger != nil {
+			logger.Warn("federation: delivery verification unavailable, callbacks denied",
+				zap.Error(err))
+		}
+		verifyDeliveries = denyUnverified
+	}
+	router.With(middlewares.RequireGateway(status), verifyDeliveries).
+		Post("/federation/deliveries/{listing}", ctrls.HandleDelivery)
 }
 
 // denyUnverified is the fail-closed stand-in for an unbuildable

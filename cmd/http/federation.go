@@ -52,11 +52,13 @@ func newGateway(bootstrap *config.Bootstrap) (*gatewayWiring, error) {
 
 // registerFederation publishes the gateway status on ctrls.Gateway for the
 // routers to consult per request, constructs the FederationController the
-// federation router dispatches inbound events through (handlers register
-// on it by purpose), and — when the gateway is enabled — starts party
-// enrollment in the background (first pass immediately, bounded backoff
-// retries until enrolled). With an empty APP_GATEWAY_URL the status stays
-// disabled and no enrollment, and therefore no network call, happens.
+// federation router dispatches inbound events and deliveries through
+// (handlers register on it by purpose and the T21B delivery listing registry
+// registers on it by listing name inside this function), and — when the
+// gateway is enabled — starts party enrollment in the background (first pass
+// immediately, bounded backoff retries until enrolled). With an empty
+// APP_GATEWAY_URL the status stays disabled and no enrollment, and therefore
+// no network call, happens.
 // gatewayEnv and paymentUsecase are parameters from day one so later tasks
 // register inbound gateway handlers inside this function without editing
 // main.go.
@@ -66,13 +68,18 @@ func newGateway(bootstrap *config.Bootstrap) (*gatewayWiring, error) {
 // inbound handlers will need. Returns nothing; never panics.
 func registerFederation(bootstrap *config.Bootstrap, ctrls *routers.Controllers, gatewayEnv config.AppGateway, paymentUsecase contracts.PaymentUsecase) {
 	// Reserved for later tasks: inbound gateway handlers register on
-	// ctrls.Federation and use paymentUsecase; neither is touched by the
-	// enrollment wiring yet.
+	// ctrls.Federation (RegisterEventHandler by purpose,
+	// RegisterDeliveryHandler by listing name) and use paymentUsecase;
+	// neither is touched by the enrollment wiring yet.
 	_ = paymentUsecase
 
 	logger := bootstrap.Logger
 	// Constructed unconditionally: the federation router mounts even in
 	// standalone mode (RequireGateway answers 503 before the handler runs).
+	// The controller carries the T21B delivery registry: deliveries for
+	// POST /federation/deliveries/{listing} dispatch through it, and
+	// RegisterDeliveryHandler binds a handler per listing name here as
+	// inbound delivery handlers land.
 	ctrls.Federation = controllers.NewFederationController(logger)
 	if wiredGateway == nil || wiredGateway.client == nil {
 		if logger != nil {

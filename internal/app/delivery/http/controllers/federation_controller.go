@@ -9,6 +9,7 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
 
+	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 )
 
@@ -32,19 +33,32 @@ const (
 // maps to 500 so the gateway retries.
 type EventHandler func(r *http.Request) error
 
+// DeliveryHandler processes one verified federation delivery (POST
+// /api/v1/federation/deliveries/{listing}). It receives the inbound request
+// whose context carries the verified gateway claims (gateway.ClaimsFromContext)
+// and whose body is the exact verified bytes; it must not write the HTTP
+// response — the controller owns the status.
+//
+// Parameters: r is the inbound delivery request.
+// Returns: nil when the delivery was handled, or an error the controller
+// maps to 500 so the gateway retries.
+type DeliveryHandler func(r *http.Request) error
+
 // FederationController dispatches inbound federation events (POST
-// /api/v1/federation/events) to handlers registered by purpose. It sits
-// behind RequireGateway and the T20 VerifyMiddleware, outside the
-// session/RBAC chain, so it reads the purpose from the verified token
-// claims, never from the body.
+// /api/v1/federation/events) to handlers registered by purpose and
+// inbound federation deliveries (POST /api/v1/federation/deliveries/{listing})
+// to handlers registered by listing name. It sits behind RequireGateway and
+// the T20 VerifyMiddleware, outside the session/RBAC chain, so it reads the
+// purpose/service from the verified token claims, never from the body.
 type FederationController struct {
-	Log      *zap.Logger
-	handlers map[string]EventHandler
-	mu       sync.RWMutex
+	Log        *zap.Logger
+	handlers   map[string]EventHandler
+	deliveries map[string]DeliveryHandler
+	mu         sync.RWMutex
 }
 
-// NewFederationController builds the federation event dispatcher with an
-// empty handler registry; a nil logger is replaced by a no-op logger so
+// NewFederationController builds the federation dispatcher with empty event
+// and delivery registries; a nil logger is replaced by a no-op logger so
 // dispatch never panics on logging.
 //
 // Parameters: logger is the application logger; nil is tolerated.
@@ -54,8 +68,9 @@ func NewFederationController(logger *zap.Logger) *FederationController {
 		logger = zap.NewNop()
 	}
 	return &FederationController{
-		Log:      logger,
-		handlers: make(map[string]EventHandler),
+		Log:        logger,
+		handlers:   make(map[string]EventHandler),
+		deliveries: make(map[string]DeliveryHandler),
 	}
 }
 
@@ -76,6 +91,28 @@ func (c *FederationController) RegisterEventHandler(purpose string, handler Even
 		return
 	}
 	c.handlers[purpose] = handler
+}
+
+// RegisterDeliveryHandler binds a handler to one listing name — the
+// {listing} path segment of POST /api/v1/federation/deliveries/{listing},
+// which must equal the verified service claim of the delivery token.
+// Registering the same listing twice replaces the previous handler; a nil
+// handler unregisters the listing (it then answers 404). Safe for
+// concurrent use.
+//
+// Parameters: listing is the listing name the handler answers for; handler
+// is the delivery handler to dispatch to.
+// Returns: nothing.
+func (c *FederationController) RegisterDeliveryHandler(listing string, handler DeliveryHandler) {
+	if handler == nil {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		delete(c.deliveries, listing)
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.deliveries[listing] = handler
 }
 
 // HandleEvent serves POST /api/v1/federation/events: it reads the purpose
@@ -110,6 +147,54 @@ func (c *FederationController) HandleEvent(w http.ResponseWriter, r *http.Reques
 			constvars.StatusInternalServerError,
 			"federation event handling failed",
 			"FEDERATION_EVENT_FAILED"))
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// HandleDelivery serves POST /api/v1/federation/deliveries/{listing}: it
+// reads the {listing} path segment and the verified service claim, answers
+// 401 when the service claim differs from the path listing (the token is
+// not authorized for that path), answers 404 when no handler is registered
+// for the listing name, dispatches to the registered handler otherwise, and
+// answers 200 on success. A handler error answers 500 so the gateway
+// retries the delivery.
+//
+// Parameters: w is the response writer; r is the verified inbound delivery
+// request.
+// Returns: nothing; every path writes exactly one status.
+func (c *FederationController) HandleDelivery(w http.ResponseWriter, r *http.Request) {
+	listing := chi.URLParam(r, "listing")
+	service := gateway.ClaimsFromContext(r.Context()).Service
+
+	if service != listing {
+		c.Log.Warn("federation: delivery service claim differs from path listing, denied",
+			zap.String("listing", listing),
+			zap.String("service", service))
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		return
+	}
+
+	c.mu.RLock()
+	handler, ok := c.deliveries[listing]
+	c.mu.RUnlock()
+
+	if !ok {
+		c.Log.Info("federation: delivery listing has no registered handler, answered 404",
+			zap.String("listing", listing))
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+
+	if err := handler(r); err != nil {
+		c.Log.Error("federation: delivery handler failed, answering 500 for retry",
+			zap.String("listing", listing),
+			zap.Error(err))
+		utils.BuildErrorResponse(c.Log, w, exceptions.BuildNewCustomError(err,
+			constvars.StatusInternalServerError,
+			"federation delivery handling failed",
+			"FEDERATION_DELIVERY_FAILED"))
 		return
 	}
 
