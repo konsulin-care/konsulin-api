@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"konsulin-service/internal/app/config"
-	"konsulin-service/internal/app/delivery/http/controllers"
 	"konsulin-service/internal/app/delivery/http/middlewares"
 
 	"github.com/go-chi/chi/v5"
@@ -63,18 +62,10 @@ func TestSetupRoutesRegistersHealthAfterMiddlewares(t *testing.T) {
 	mw := &middlewares.Middlewares{Log: logger, InternalConfig: cfg}
 
 	router := chi.NewRouter()
-	SetupRoutes(
-		router,
-		cfg,
-		logger,
-		mw,
-		&controllers.AuthController{},
-		&controllers.PaymentController{},
-		&controllers.WebhookController{},
-		&controllers.ScheduleController{},
-		&controllers.OrganizationController{},
-		&controllers.PurgeController{},
-	)
+	// Zero-value Controllers: all controller pointers are nil, proving
+	// SetupRoutes tolerates absent controllers and that future fields
+	// require no test edits here.
+	SetupRoutes(router, cfg, logger, mw, Controllers{})
 
 	// The liveness probe must survive the full middleware chain: it is
 	// registered after the chain, so no route-before-middleware panic.

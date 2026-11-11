@@ -3,13 +3,15 @@ package routers
 import (
 	"encoding/json"
 	"fmt"
-	"konsulin-service/internal/app/config"
-	"konsulin-service/internal/app/delivery/http/controllers"
-	"konsulin-service/internal/app/delivery/http/middlewares"
-	"konsulin-service/internal/pkg/buildinfo"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"konsulin-service/internal/app/config"
+	"konsulin-service/internal/app/contracts"
+	"konsulin-service/internal/app/delivery/http/controllers"
+	"konsulin-service/internal/app/delivery/http/middlewares"
+	"konsulin-service/internal/pkg/buildinfo"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
@@ -17,17 +19,30 @@ import (
 	"go.uber.org/zap"
 )
 
+// Controllers bundles everything SetupRoutes needs beyond the router,
+// config, logger, and middlewares. The zero value is valid: nil controller
+// pointers are tolerated at registration time (route handlers only run when
+// a request matches), and later tasks can add fields without touching
+// existing call sites.
+type Controllers struct {
+	Auth         *controllers.AuthController
+	Payment      *controllers.PaymentController
+	Webhook      *controllers.WebhookController
+	Schedule     *controllers.ScheduleController
+	Organization *controllers.OrganizationController
+	Purge        *controllers.PurgeController
+	Gateway      contracts.GatewayStatus
+}
+
+// SetupRoutes wires the middleware chain and registers every route on the
+// given mux. Controllers is passed as a struct so new dependencies can be
+// added without changing the parameter list.
 func SetupRoutes(
 	router *chi.Mux,
 	internalConfig *config.InternalConfig,
 	logger *zap.Logger,
 	middlewares *middlewares.Middlewares,
-	authController *controllers.AuthController,
-	paymentController *controllers.PaymentController,
-	webhookController *controllers.WebhookController,
-	scheduleController *controllers.ScheduleController,
-	organizationController *controllers.OrganizationController,
-	purgeController *controllers.PurgeController,
+	ctrls Controllers,
 ) {
 	// Liveness endpoint. Registered AFTER the middleware chain: chi requires
 	// all Use() calls to precede any route registration on the same mux, so a
@@ -78,14 +93,14 @@ func SetupRoutes(
 	router.Route(endpointPrefix, func(r chi.Router) {
 		r.Route(versionPrefix, func(r chi.Router) {
 			r.Route("/auth", func(r chi.Router) {
-				attachAuthRoutes(r, middlewares, authController)
+				attachAuthRoutes(r, middlewares, ctrls.Auth)
 			})
 
-			attachPaymentRouter(r, middlewares, paymentController)
-			attachScheduleRouter(r, middlewares, scheduleController)
-			attachWebhookRouter(r, middlewares, webhookController)
-			attachOrganizationRoutes(r, middlewares, organizationController)
-			attachPrivacyRouter(r, purgeController)
+			attachPaymentRouter(r, middlewares, ctrls.Payment)
+			attachScheduleRouter(r, middlewares, ctrls.Schedule)
+			attachWebhookRouter(r, middlewares, ctrls.Webhook)
+			attachOrganizationRoutes(r, middlewares, ctrls.Organization)
+			attachPrivacyRouter(r, ctrls.Purge)
 
 			r.Mount("/tx", middlewares.TxProxy(internalConfig.FHIR.TerminologyServerBaseUrl))
 		})

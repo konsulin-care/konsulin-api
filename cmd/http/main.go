@@ -3,6 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/delivery/http/controllers"
 	"konsulin-service/internal/app/delivery/http/middlewares"
@@ -24,12 +31,6 @@ import (
 	"konsulin-service/internal/app/services/shared/ratelimiter"
 	"konsulin-service/internal/app/services/shared/webhookqueue"
 	"konsulin-service/internal/pkg/buildinfo"
-	"log"
-	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
 	privacy "konsulin-service/internal/app/services/core/privacy"
 
@@ -326,12 +327,14 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		bootstrap.InternalConfig,
 		bootstrap.Logger,
 		middlewares,
-		authController,
-		paymentController,
-		webhookController,
-		scheduleController,
-		orgController,
-		purgeController,
+		routers.Controllers{
+			Auth:         authController,
+			Payment:      paymentController,
+			Webhook:      webhookController,
+			Schedule:     scheduleController,
+			Organization: orgController,
+			Purge:        purgeController,
+		},
 	)
 
 	return nil
