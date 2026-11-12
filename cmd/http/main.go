@@ -219,6 +219,15 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		gatewayWebhooks = gwWiring.client
 	}
 
+	// T44: signup identity registration travels through the gateway
+	// identity plane. The adapter is injected even when disabled: the
+	// usecase skips the registration in standalone mode (no I/O) and a
+	// missing wiring (nil) skips it the same way.
+	var identityClient users.IdentityClient
+	if gwWiring != nil && gwWiring.client != nil {
+		identityClient = gwWiring.client
+	}
+
 	userUsecase := users.NewUserFHIRInitializer(users.UserFHIRInitializerDeps{
 		PatientFhirClient:          patientFhirClient,
 		PractitionerFhirClient:     practitionerFhirClient,
@@ -230,6 +239,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		LockerService:              lockService,
 		GatewayWebhooks:            gatewayWebhooks,
 		GatewayAutomationPartyID:   bootstrap.InternalConfig.Gateway.AutomationPartyID,
+		IdentityClient:             identityClient,
 	})
 
 	bundleClient := bundle.NewBundleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)

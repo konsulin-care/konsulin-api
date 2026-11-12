@@ -54,6 +54,12 @@ type userUsecase struct {
 	// gatewayAutomationPartyID is APP_AUTOMATION_PARTY_ID: the party serving
 	// the modify-profile listing.
 	gatewayAutomationPartyID string
+
+	// identityClient registers the new user's peppered email/phone hashes
+	// with the gateway identity plane after FHIR initialization (T44). nil
+	// means no gateway deps: the registration is skipped with a log and no
+	// error (standalone mode behaves the same through the disabled adapter).
+	identityClient IdentityClient
 }
 
 var (
@@ -78,6 +84,10 @@ type UserFHIRInitializerDeps struct {
 	// GatewayAutomationPartyID is APP_AUTOMATION_PARTY_ID (the party serving
 	// the modify-profile listing).
 	GatewayAutomationPartyID string
+	// IdentityClient is the optional gateway identity-plane client for the
+	// post-initialization identity registration (T44); nil or a disabled
+	// adapter skips the registration with no error.
+	IdentityClient IdentityClient
 }
 
 func NewUserFHIRInitializer(deps UserFHIRInitializerDeps) contracts.UserFHIRInitializer {
@@ -93,6 +103,7 @@ func NewUserFHIRInitializer(deps UserFHIRInitializerDeps) contracts.UserFHIRInit
 			LockerService:              deps.LockerService,
 			gatewayWebhooks:            deps.GatewayWebhooks,
 			gatewayAutomationPartyID:   deps.GatewayAutomationPartyID,
+			identityClient:             deps.IdentityClient,
 		}
 		userUsecaseInstance = instance
 	})
@@ -114,6 +125,11 @@ func (uc *userUsecase) InitializeNewUserFHIRResources(ctx context.Context, input
 		}
 		practitionerID = id
 	}
+
+	// T44: register the new user's peppered email/phone hashes with the
+	// gateway identity plane. Best-effort: failures are logged and never
+	// fail the signup; skipped entirely without a (enabled) client.
+	uc.registerNewUserIdentities(ctx, input, output)
 	return output, nil
 }
 
