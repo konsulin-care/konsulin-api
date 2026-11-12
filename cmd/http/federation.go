@@ -13,12 +13,18 @@ import (
 	"konsulin-service/internal/app/drivers/gateway"
 	"konsulin-service/internal/app/services/core/federation"
 	"konsulin-service/internal/app/services/core/payments"
+	"konsulin-service/internal/app/services/core/services"
+	"konsulin-service/internal/app/services/fhir_spark/service_requests"
 
 	"go.uber.org/zap"
 )
 
 // settlementEventMaxBytes bounds the body read of one settlement notification.
 const settlementEventMaxBytes = 1 << 20
+
+// serviceResultEventMaxBytes bounds the sealed result body of one
+// service-result event.
+const serviceResultEventMaxBytes = 1 << 20
 
 // gatewayWiring bundles the federation components built once per process by
 // newGateway and consumed by registerFederation (and later inbound gateway
@@ -85,6 +91,7 @@ func registerFederation(bootstrap *config.Bootstrap, ctrls *routers.Controllers,
 	// inbound delivery handlers land.
 	ctrls.Federation = controllers.NewFederationController(logger)
 	registerSettlementHandler(ctrls.Federation, paymentUsecase, logger)
+	registerServiceResultHandler(ctrls.Federation, bootstrap, gatewayEnv, logger)
 	if wiredGateway == nil || wiredGateway.client == nil {
 		if logger != nil {
 			logger.Warn("federation: gateway wiring missing (newGateway not called), gateway stays disabled")
@@ -138,6 +145,33 @@ func registerSettlementHandler(fed *controllers.FederationController, paymentUse
 			return err
 		}
 		return sink.HandleSettlement(r.Context(), event)
+	})
+}
+
+// registerServiceResultHandler binds the service-result event purpose to
+// the services usecase built here over a ServiceRequest FHIR client: the
+// handler reads the verified webhook_id claim off the inbound request,
+// hands the exact body bytes to the usecase, which opens the sealed result
+// and stores it on the matching ServiceRequest. A missing controller or
+// bootstrap leaves the purpose unregistered (the controller then
+// acknowledges the event).
+// Parameters: fed is the federation controller to register on; bootstrap
+// carries the FHIR base URL; gatewayEnv carries the party id and the
+// use:enc private key opening sealed results; logger reports a skipped
+// registration and tolerates nil. Returns nothing; never panics.
+func registerServiceResultHandler(fed *controllers.FederationController, bootstrap *config.Bootstrap, gatewayEnv config.AppGateway, logger *zap.Logger) {
+	if fed == nil || bootstrap == nil || bootstrap.InternalConfig == nil {
+		return
+	}
+	client := service_requests.NewServiceRequestFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, logger)
+	results := services.NewResultUsecase(client, &gatewayEnv, logger)
+	fed.RegisterEventHandler(controllers.PurposeServiceResult, func(r *http.Request) error {
+		body, err := io.ReadAll(io.LimitReader(r.Body, serviceResultEventMaxBytes))
+		if err != nil {
+			return fmt.Errorf("service-result event: read body: %w", err)
+		}
+		webhookID := gateway.ClaimsFromContext(r.Context()).WebhookID
+		return results.HandleServiceResultEvent(r.Context(), webhookID, body)
 	})
 }
 
