@@ -14,6 +14,11 @@ var ErrGatewayNotConfigured = errors.New("gateway not configured")
 // gateway enrollment. Callers should surface it as an onboarding requirement.
 var ErrGatewayNotEnrolled = errors.New("gateway not enrolled")
 
+// ErrListingNotFound indicates the gateway served no active listing for the
+// requested provider and name after the adapter's single refetch. Callers
+// should surface it as a missing marketplace entry, not a transport failure.
+var ErrListingNotFound = errors.New("listing not found")
+
 // GatewayStatus reports the availability of a gateway integration.
 type GatewayStatus interface {
 	// Enabled reports whether the gateway integration is configured and active.
@@ -147,4 +152,88 @@ type WebhookClient interface {
 	// Returns: the gateway's state ("pending", "delivered" or
 	// "failed"), plus the error to render through gateway.MapError.
 	Status(ctx context.Context, id string) (state string, err error)
+}
+
+// Listing is one active marketplace listing row as the adapter surfaces it
+// to contracts consumers — the backend-side mirror of the gateway read row;
+// the SDK's own wire types never leave the gateway driver package.
+type Listing struct {
+	// ListingID is the listing's id (buyers reference it at payment create).
+	ListingID string
+	// ProviderPartyID is the providing party.
+	ProviderPartyID string
+	// Name is the listing title.
+	Name string
+	// Description is the marketplace detail ("" when unset).
+	Description string
+	// EndpointURL is set for commodity listings, empty for webhook rows.
+	EndpointURL string
+	// Price is the amount in IDR minor units; 0 marks a free listing.
+	Price int64
+	// Currency is the market currency ("IDR").
+	Currency string
+	// Invocation is "webhook" or "commodity".
+	Invocation string
+	// PriceScope is "party" or "user".
+	PriceScope string
+	// Metering is "gateway" or "provider".
+	Metering string
+	// ProviderTier is the operator trust tier ("" when unset).
+	ProviderTier string
+	// ProviderOrgName is the provider display name ("" when unset).
+	ProviderOrgName string
+}
+
+// EnlistRequest is the listing to enlist at POST /v1/listings (BK-MARKET-001):
+// a price change is a re-enlist through this request, never a redeploy.
+type EnlistRequest struct {
+	// Name is the listing title shown to buyers.
+	Name string
+	// Description is the optional marketplace detail.
+	Description string
+	// EndpointURL is where the buyer reaches the provider.
+	EndpointURL string
+	// Price is the amount in IDR minor units; 0 marks a free listing.
+	Price int64
+	// Invocation is "webhook" or "commodity" ("" lets the gateway default).
+	Invocation string
+	// PriceScope is "party" or "user" ("" lets the gateway default).
+	PriceScope string
+	// Metering is "gateway" or "provider" ("" lets the gateway default).
+	Metering string
+}
+
+// ListingDirectory routes the marketplace listing endpoints (SDK-API-001,
+// SDKP-007) through the adapter. Reads are memoized for listingCacheTTL so
+// discovery and invocation lookups do not hammer the gateway. Errors surface
+// raw (except a persistent miss, which fails closed with
+// ErrListingNotFound) and are rendered through gateway.MapError.
+type ListingDirectory interface {
+	// FindListing resolves the single active listing named name provided by
+	// provider through the SDK listings FindByName route: a cached row within
+	// the TTL is served without I/O; on a miss exactly one refetch runs before
+	// the lookup fails closed with ErrListingNotFound. A disabled adapter
+	// reports ErrGatewayNotConfigured before any I/O.
+	// Parameters: ctx bounds the lookup, provider the providing party, name
+	// the listing title.
+	// Returns: the active listing, or the error — ErrListingNotFound when the
+	// gateway keeps reporting no match. Never panics.
+	FindListing(ctx context.Context, provider, name string) (*Listing, error)
+	// ListWebhookListings reads the active invocation=webhook listings for
+	// discovery (GET /v1/listings filtered to webhook rows) and serves
+	// repeated reads from its cache within the TTL. A disabled adapter reports
+	// ErrGatewayNotConfigured before any I/O.
+	// Parameters: ctx bounds the read.
+	// Returns: the active webhook listings, plus the error to render through
+	// MapError. Never panics.
+	ListWebhookListings(ctx context.Context) ([]Listing, error)
+	// Enlist creates or re-enlists one listing at POST /v1/listings through
+	// the SDK listings Create route — party-signed and idempotent (one
+	// Idempotency-Key per logical create). Any cached lookup for the enlisted
+	// name is dropped so the next read sees the new listing. A disabled
+	// adapter reports ErrGatewayNotConfigured before any I/O.
+	// Parameters: ctx bounds the call, req the listing to enlist.
+	// Returns: the created listing id, plus the error to render through
+	// MapError. Never panics.
+	Enlist(ctx context.Context, req EnlistRequest) (listingID string, err error)
 }
