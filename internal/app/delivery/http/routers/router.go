@@ -97,7 +97,7 @@ func SetupRoutes(
 				attachAuthRoutes(r, middlewares, ctrls.Auth)
 			})
 
-			attachPaymentRouter(r, middlewares, ctrls.Payment)
+			attachPaymentRouter(r, middlewares, ctrls.Payment, ctrls.Gateway)
 			attachScheduleRouter(r, middlewares, ctrls.Schedule)
 			attachWebhookRouter(r, middlewares, ctrls.Webhook)
 			attachOrganizationRoutes(r, middlewares, ctrls.Organization)
