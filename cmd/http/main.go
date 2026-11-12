@@ -24,12 +24,9 @@ import (
 	"konsulin-service/internal/app/services/core/slot"
 	"konsulin-service/internal/app/services/core/transactions"
 	"konsulin-service/internal/app/services/core/users"
-	"konsulin-service/internal/app/services/core/webhook"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
 	"konsulin-service/internal/app/services/fhir_spark/service_requests"
-	"konsulin-service/internal/app/services/shared/jwtmanager"
 	"konsulin-service/internal/app/services/shared/locker"
-	"konsulin-service/internal/app/services/shared/webhookqueue"
 	"konsulin-service/internal/pkg/buildinfo"
 
 	privacy "konsulin-service/internal/app/services/core/privacy"
@@ -186,15 +183,8 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	questionnaireResponseFhirClient := questionnaireResponsesFhir.NewQuestionnaireResponseFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 	planDefinitionFhirClient := planDefinitionsFhir.NewPlanDefinitionFinder(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 
-	jwtManager, err := jwtmanager.NewJWTManager(bootstrap.InternalConfig, bootstrap.Logger)
-	if err != nil {
-		return err
-	}
-
 	// T39: magic links travel through the gateway send-magiclink listing on
-	// the automation party, using the adapter built early by newGateway. The
-	// in-process forwarder wiring below no-ops for this sender until it is
-	// removed.
+	// the automation party, using the adapter built early by newGateway.
 	var magicLinkGateway auth.GatewayWebhookClient
 	if gwWiring != nil && gwWiring.client != nil {
 		magicLinkGateway = gwWiring.client
@@ -275,30 +265,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		return fmt.Errorf("error initializing supertokens: %w", err)
 	}
 
-	// Initialize webhook components (T50: hook/resource limiters and the
-	// legacy WebhookController are removed with the legacy /hook stack).
-	webhookQueueService, err := webhookqueue.NewService(bootstrap.RabbitMQ, bootstrap.Logger, bootstrap.InternalConfig.Webhook.MaxQueue)
-	if err != nil {
-		return err
-	}
-	webhookUsecase := webhook.NewUsecase(webhook.Options{
-		Log:                bootstrap.Logger,
-		Config:             bootstrap.InternalConfig,
-		Queue:              webhookQueueService,
-		JWTManager:         jwtManager,
-		PatientFhir:        patientFhirClient,
-		PractitionerFhir:   practitionerFhirClient,
-		ServiceRequestFhir: serviceRequestFhirClient,
-		Enforcer:           middlewares.Enforcer,
-	})
-
-	// Wire the in-process forwarder for the magic link delivery to skip the
-	// HTTP loopback and call ForwardSynchronousInternal directly. The user
-	// usecase no longer implements the forwarder setter (T42B removed its
-	// legacy profile-sync paths; the sync runs through the gateway).
-	wireWebhookForwarder(magicLinkDelivery, webhookUsecase.ForwardSynchronousInternal)
-
-	// Initialize payment usecase and controller (inject JWT manager)
+	// Initialize payment usecase and controller
 	invoiceFhirClient := invoicesFhir.NewInvoiceFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 
 	slotUsecase := slot.NewSlotUsecase(scheduleClient, lockService, slotClient, practitionerRoleClient, practitionerFhirClient, bundleClient, bootstrap.InternalConfig, bootstrap.Logger)
@@ -320,7 +287,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	paymentUsecase := payments.NewPaymentUsecase(
 		transactions.NewTransactionPostgresRepository(nil, bootstrap.Logger),
 		bootstrap.InternalConfig,
-		jwtManager,
+		nil, // JWT manager construction removed (T51): payment no longer consumes it
 		patientFhirClient,
 		practitionerFhirClient,
 		invoiceFhirClient,
@@ -357,11 +324,6 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		return fmt.Errorf("error initializing Konsulin organization resource: %w", err)
 	}
 
-	// Start webhook worker ticker (best-effort lock ensures single execution)
-	worker := webhook.NewWorker(bootstrap.Logger, bootstrap.InternalConfig, lockService, webhookQueueService, jwtManager)
-	stopWorker := worker.Start(context.Background())
-	bootstrap.WorkerStop = stopWorker
-
 	// Publish the gateway status on the controller set (starting background
 	// enrollment when APP_GATEWAY_URL is configured) before routes register,
 	// so federation-dependent routes see the status.
@@ -384,23 +346,4 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	)
 
 	return nil
-}
-
-// wireWebhookForwarder connects an in-process caller (magic link delivery)
-// to the synchronous webhook service, skipping the HTTP loopback.
-// Targets that do not implement SetWebhookForwarder are left untouched.
-func wireWebhookForwarder(target any, forward func(ctx context.Context, service, method string, body []byte, contentType string) (*webhook.HandleSynchronousWebhookServiceOutput, error)) {
-	f, ok := target.(interface {
-		SetWebhookForwarder(fn func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error))
-	})
-	if !ok {
-		return
-	}
-	f.SetWebhookForwarder(func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
-		out, err := forward(ctx, service, method, body, contentType)
-		if err != nil {
-			return 0, nil, err
-		}
-		return out.StatusCode, out.Body, nil
-	})
 }
