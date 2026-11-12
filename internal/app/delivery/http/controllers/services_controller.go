@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
+	"konsulin-service/internal/app/drivers/gateway"
 	"konsulin-service/internal/app/services/core/services"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
@@ -30,7 +32,9 @@ const serviceInvokeMaxBytes = 1 << 20
 // ServicesController serves marketplace service discovery (GET /services,
 // T30 listings filtered by Casbin Enforce on each listing's POST path) and
 // async invocation (POST /services/{provider}/{name}: T33 resolve, T37
-// per-user limiter, T34 async invoke). Every deny fails closed with 404
+// per-user limiter, T34 async invoke), inline sync invocation (POST
+// /services/{provider}/{name}/sync, T36B) and owner-only request reads
+// (GET /services/requests/{id}, T36B). Every deny fails closed with 404
 // before any gateway call.
 type ServicesController struct {
 	Log        *zap.Logger
@@ -38,6 +42,7 @@ type ServicesController struct {
 	Resolver   *services.ProviderResolver
 	Limiter    *services.ServiceLimiter
 	Invoker    *services.Invoker
+	Results    *services.ResultUsecase
 	Enforcer   *casbin.Enforcer
 	GatewayEnv config.AppGateway
 	AppConfig  *config.InternalConfig
@@ -56,13 +61,15 @@ type serviceListingResponse struct {
 }
 
 // NewServicesController builds the controller over the T30 directory, T33
-// resolver, T37 limiter and T34 invoker, plus the gateway env used to
-// reverse-map a party id to the alias segment its POST path uses. Logger,
-// limiter, invoker and cfg may be nil (fail closed / quota 0 = unlimited).
+// resolver, T37 limiter, T34 invoker and the T36B result usecase serving
+// owner-only request reads, plus the gateway env used to reverse-map a
+// party id to the alias segment its POST path uses. Logger, limiter,
+// invoker, results and cfg may be nil (fail closed / quota 0 = unlimited).
 // Returns a controller ready to mount. Never panics.
 func NewServicesController(logger *zap.Logger, directory contracts.ListingDirectory,
 	resolver *services.ProviderResolver, limiter *services.ServiceLimiter,
-	invoker *services.Invoker, gatewayEnv config.AppGateway, cfg *config.InternalConfig,
+	invoker *services.Invoker, results *services.ResultUsecase,
+	gatewayEnv config.AppGateway, cfg *config.InternalConfig,
 ) *ServicesController {
 	return &ServicesController{
 		Log:        logger,
@@ -70,6 +77,7 @@ func NewServicesController(logger *zap.Logger, directory contracts.ListingDirect
 		Resolver:   resolver,
 		Limiter:    limiter,
 		Invoker:    invoker,
+		Results:    results,
 		GatewayEnv: gatewayEnv,
 		AppConfig:  cfg,
 	}
@@ -121,15 +129,9 @@ func (ctrl *ServicesController) ListServices(w http.ResponseWriter, r *http.Requ
 // receipt as requestId. Parameters: w receives the envelope; r carries
 // the route params, roles and body. Never panics.
 func (ctrl *ServicesController) InvokeService(w http.ResponseWriter, r *http.Request) {
-	log := zap.NewNop()
-	if ctrl != nil && ctrl.Log != nil {
-		log = ctrl.Log
-	}
-	provider := strings.TrimSpace(chi.URLParam(r, "provider"))
-	name := strings.TrimSpace(chi.URLParam(r, "name"))
-	partyID, err := ctrl.authorizeInvocation(r, provider, name)
-	if err != nil {
-		utils.BuildErrorResponse(log, w, err)
+	log := ctrl.logger()
+	name, partyID, ok := ctrl.authorizeServiceRoute(w, r, log)
+	if !ok {
 		return
 	}
 	if err := ctrl.lookupServiceListing(r, partyID, name); err != nil {
@@ -160,6 +162,88 @@ func (ctrl *ServicesController) InvokeService(w http.ResponseWriter, r *http.Req
 	}
 	utils.BuildSuccessResponse(w, constvars.StatusAccepted, constvars.ResponseSuccess,
 		map[string]string{"requestId": out.ServiceRequestID})
+}
+
+// SyncService serves POST /api/v1/services/{provider}/{name}/sync: the
+// same fail-closed authorization as the async invoke (T33 resolve + Casbin
+// on the exact POST path, deny = 404 before any gateway call), then the
+// inline T34 invocation answering 200 with the opened reply body. A
+// gateway answer keeps its own status — a 504 passes through — while an
+// error that already carries a renderable envelope (payment required 402)
+// keeps it. Parameters: w receives the envelope; r carries the route
+// params, roles and body. Never panics.
+func (ctrl *ServicesController) SyncService(w http.ResponseWriter, r *http.Request) {
+	log := ctrl.logger()
+	name, partyID, ok := ctrl.authorizeServiceRoute(w, r, log)
+	if !ok {
+		return
+	}
+	if ctrl.Invoker == nil {
+		utils.BuildErrorResponse(log, w, gatewayUnavailable())
+		return
+	}
+	raw, err := io.ReadAll(io.LimitReader(r.Body, serviceInvokeMaxBytes))
+	if err != nil {
+		utils.BuildErrorResponse(log, w, exceptions.ErrReadBody(err))
+		return
+	}
+	out, err := ctrl.Invoker.Invoke(r.Context(), serviceCallerRef(r.Context()),
+		partyID, name, raw, services.InvokeModeSync)
+	if err != nil {
+		renderServiceGatewayError(log, w, err)
+		return
+	}
+	if out == nil {
+		utils.BuildErrorResponse(log, w, gatewayUnavailable())
+		return
+	}
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.ResponseSuccess,
+		serviceReplyPayload(out.Reply))
+}
+
+// GetServiceRequest serves GET /api/v1/services/requests/{id}: the caller
+// recorded as the request's requester reads {status, result}, every other
+// caller — and an unknown id — gets the usecase's fail-closed 404 that
+// leaks nothing about the request's existence. Parameters: w receives the
+// envelope; r carries the id route param and the caller uid. Never
+// panics.
+func (ctrl *ServicesController) GetServiceRequest(w http.ResponseWriter, r *http.Request) {
+	log := ctrl.logger()
+	if ctrl == nil || ctrl.Results == nil {
+		utils.BuildErrorResponse(log, w, gatewayUnavailable())
+		return
+	}
+	view, err := ctrl.Results.GetRequest(r.Context(), serviceCallerRef(r.Context()),
+		strings.TrimSpace(chi.URLParam(r, "id")))
+	if err != nil {
+		utils.BuildErrorResponse(log, w, err)
+		return
+	}
+	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.ResponseSuccess, view)
+}
+
+// logger returns the controller's logger, falling back to a no-op logger
+// for a nil controller or logger. Never panics.
+func (ctrl *ServicesController) logger() *zap.Logger {
+	if ctrl != nil && ctrl.Log != nil {
+		return ctrl.Log
+	}
+	return zap.NewNop()
+}
+
+// authorizeServiceRoute reads the {provider}/{name} route params off r and
+// runs the fail-closed invocation authorization, rendering the refusal
+// itself. Returns the listing name, the resolved party id and whether the
+// caller is authorized. Never panics.
+func (ctrl *ServicesController) authorizeServiceRoute(w http.ResponseWriter, r *http.Request, log *zap.Logger) (string, string, bool) {
+	provider := strings.TrimSpace(chi.URLParam(r, "provider"))
+	name := strings.TrimSpace(chi.URLParam(r, "name"))
+	partyID, err := ctrl.authorizeInvocation(r, provider, name)
+	if err != nil {
+		utils.BuildErrorResponse(log, w, err)
+		return "", "", false
+	}
+	return name, partyID, true
 }
 
 // authorizeInvocation resolves the provider (T33) and enforces the exact
@@ -284,6 +368,35 @@ func serviceRoles(ctx context.Context) []string {
 func serviceCallerRef(ctx context.Context) string {
 	uid, _ := ctx.Value(constvars.CONTEXT_UID).(string)
 	return uid
+}
+
+// renderServiceGatewayError renders an invocation error: an error that
+// already carries a renderable custom envelope (payment required 402,
+// body read 400, ...) passes through unchanged, any other error is mapped
+// through gateway.MapError so a gateway answer keeps its status — a 504
+// passes through as 504. A nil error renders the 503 fallback. Never
+// panics.
+func renderServiceGatewayError(log *zap.Logger, w http.ResponseWriter, err error) {
+	if err == nil {
+		utils.BuildErrorResponse(log, w, gatewayUnavailable())
+		return
+	}
+	var customErr *exceptions.CustomError
+	if errors.As(err, &customErr) {
+		utils.BuildErrorResponse(log, w, err)
+		return
+	}
+	utils.BuildErrorResponse(log, w, gateway.MapError(err))
+}
+
+// serviceReplyPayload renders one opened sync reply for the success
+// envelope: a valid JSON reply is embedded as raw JSON, anything else is
+// carried as a string. Never panics.
+func serviceReplyPayload(reply []byte) any {
+	if json.Valid(reply) {
+		return json.RawMessage(reply)
+	}
+	return string(reply)
 }
 
 // serviceNotFound renders the fail-closed 404 used for every unknown or

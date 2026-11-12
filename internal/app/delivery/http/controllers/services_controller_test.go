@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,8 +14,11 @@ import (
 	"konsulin-service/internal/app/delivery/http/middlewares"
 	"konsulin-service/internal/app/services/core/services"
 	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/fhir_dto"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/konsulin-care/gateway-sdk-go/wire"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -63,9 +67,14 @@ func (f *servicesFakeDirectory) Enlist(context.Context, contracts.EnlistRequest)
 }
 
 // servicesFakeHooks records gateway invocations so tests can assert that a
-// 404 path never calls the gateway.
+// 404 path never calls the gateway. The sync members back the T36B inline
+// route: syncReply is the opened reply, syncErr the gateway failure (e.g.
+// a 504 wire error) the handler must pass through.
 type servicesFakeHooks struct {
-	enqueued []string
+	enqueued  []string
+	syncCalls int
+	syncReply []byte
+	syncErr   error
 }
 
 // Enqueue records the recipient and service of one async invocation.
@@ -74,9 +83,12 @@ func (f *servicesFakeHooks) Enqueue(_ context.Context, to, service, _ string, _ 
 	return nil
 }
 
-// Sync is never exercised by these tests.
+// Sync counts the inline invocation and answers the configured reply or
+// error so a test can prove the opened reply is returned and a gateway 504
+// keeps its status.
 func (f *servicesFakeHooks) Sync(context.Context, string, string, string, []byte) ([]byte, error) {
-	return nil, nil
+	f.syncCalls++
+	return f.syncReply, f.syncErr
 }
 
 // Status is never exercised by these tests.
@@ -120,27 +132,43 @@ func newServicesTestFixture(t *testing.T) (*ServicesController, *servicesFakeDir
 		services.NewProviderResolver(&gatewayEnv),
 		services.NewServiceLimiter(nil),
 		services.NewInvoker(hooks, dir, &servicesFakeRecorder{id: "sr-fixed-1"}),
+		services.NewResultUsecase(&servicesFakeRequests{}, nil, zap.NewNop()),
 		gatewayEnv, &config.InternalConfig{})
 	ctrl.Enforcer = controllerTestEnforcer(t)
 	return ctrl, dir, hooks
 }
 
-// newServicesTestMux mirrors the attachServicesRouter wiring: both routes
-// behind RequireGateway on a bare chi mux.
+// newServicesTestMux mirrors the attachServicesRouter wiring: every
+// services route behind RequireGateway on a bare chi mux, with an enabled
+// gateway status so requests reach the handlers.
 func newServicesTestMux(ctrl *ServicesController) *chi.Mux {
+	return newServicesTestMuxWithStatus(ctrl, servicesFakeGatewayStatus{})
+}
+
+// newServicesTestMuxWithStatus mounts the same routes behind RequireGateway
+// over an arbitrary gateway status (disabled = standalone mode).
+func newServicesTestMuxWithStatus(ctrl *ServicesController, status contracts.GatewayStatus) *chi.Mux {
 	mux := chi.NewRouter()
-	r := mux.With(middlewares.RequireGateway(servicesFakeGatewayStatus{}))
+	r := mux.With(middlewares.RequireGateway(status))
 	r.Get("/services", ctrl.ListServices)
 	r.Post("/services/{provider}/{name}", ctrl.InvokeService)
+	r.Post("/services/{provider}/{name}/sync", ctrl.SyncService)
+	r.Get("/services/requests/{id}", ctrl.GetServiceRequest)
 	return mux
 }
 
 // servicesRequest builds a request carrying the caller roles and uid the
 // handlers read from context.
 func servicesRequest(method, target, body string, roles ...string) *http.Request {
+	return servicesRequestAs("uid-1", method, target, body, roles...)
+}
+
+// servicesRequestAs is servicesRequest with an explicit caller uid, so a
+// test can act as a caller other than the request owner.
+func servicesRequestAs(uid, method, target, body string, roles ...string) *http.Request {
 	req := httptest.NewRequest(method, target, strings.NewReader(body))
 	ctx := context.WithValue(req.Context(), constvars.CONTEXT_FHIR_ROLE, roles)
-	ctx = context.WithValue(ctx, constvars.CONTEXT_UID, "uid-1")
+	ctx = context.WithValue(ctx, constvars.CONTEXT_UID, uid)
 	return req.WithContext(ctx)
 }
 
@@ -233,5 +261,163 @@ func TestInvokeServiceUnknownOrForbiddenAnswers404WithoutGatewayCall(t *testing.
 			assert.Empty(t, hooks.enqueued, "no gateway invocation may happen on a 404")
 			assert.Equal(t, tc.wantFind, dir.findCalls, "the lookup seam must only run when the deny is the listing miss")
 		})
+	}
+}
+
+// servicesFakeRequests is a contracts.ServiceRequestFhirClient double
+// serving seeded ServiceRequests from Search, so the T36B status handler
+// runs the real ResultUsecase owner check over it.
+type servicesFakeRequests struct {
+	stored []fhir_dto.GetServiceRequestOutput
+}
+
+var _ contracts.ServiceRequestFhirClient = (*servicesFakeRequests)(nil)
+
+// Search serves the seeded resources filtered by input id.
+func (f *servicesFakeRequests) Search(_ context.Context, input *fhir_dto.SearchServiceRequestInput) ([]fhir_dto.GetServiceRequestOutput, error) {
+	out := make([]fhir_dto.GetServiceRequestOutput, 0, len(f.stored))
+	for _, sr := range f.stored {
+		if input.ID == "" || sr.ID == input.ID {
+			out = append(out, sr)
+		}
+	}
+	return out, nil
+}
+
+// CreateServiceRequest fails: these tests never create receipts.
+func (*servicesFakeRequests) CreateServiceRequest(context.Context, *fhir_dto.CreateServiceRequestInput) (*fhir_dto.CreateServiceRequestOutput, error) {
+	return nil, errors.New("services fake: create not expected")
+}
+
+// GetServiceRequestByIDAndVersion is never exercised by these tests.
+func (*servicesFakeRequests) GetServiceRequestByIDAndVersion(context.Context, string, string) (*fhir_dto.GetServiceRequestOutput, error) {
+	return nil, errors.New("services fake: version read not expected")
+}
+
+// Update is never exercised by these tests.
+func (*servicesFakeRequests) Update(context.Context, string, *fhir_dto.UpdateServiceRequestInput) (*fhir_dto.GetServiceRequestOutput, error) {
+	return nil, errors.New("services fake: update not expected")
+}
+
+// EnsureAllNecessaryGroupsExists is never exercised by these tests.
+func (*servicesFakeRequests) EnsureAllNecessaryGroupsExists(context.Context) error { return nil }
+
+// servicesDisabledGatewayStatus reports a disabled gateway (standalone
+// mode) so RequireGateway answers 503 before any handler runs.
+type servicesDisabledGatewayStatus struct{}
+
+// Enabled reports the gateway as not configured.
+func (servicesDisabledGatewayStatus) Enabled() bool { return false }
+
+// Enrolled reports the party as not enrolled.
+func (servicesDisabledGatewayStatus) Enrolled() bool { return false }
+
+// TestSyncServiceReturnsOpenedReplyAndPassesGateway504 covers the first
+// T36B assertion: an authorized sync POST answers 200 with the opened
+// reply body, a denied one fails closed 404 without a gateway call, and a
+// gateway 504 keeps its status.
+func TestSyncServiceReturnsOpenedReplyAndPassesGateway504(t *testing.T) {
+	// BuildErrorResponse only exposes dev_message outside production.
+	t.Setenv("APP_ENV", "development")
+	ctrl, _, hooks := newServicesTestFixture(t)
+	mux := newServicesTestMux(ctrl)
+
+	hooks.syncReply = []byte(`{"answer":42}`)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, servicesRequest(http.MethodPost,
+		"/services/automation/interpret/sync", `{"prompt":"x"}`, "Guest"))
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var payload struct {
+		Success bool            `json:"success"`
+		Data    json.RawMessage `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+	require.True(t, payload.Success)
+	assert.JSONEq(t, `{"answer":42}`, string(payload.Data),
+		"sync must return the opened reply body")
+	require.Equal(t, 1, hooks.syncCalls, "exactly one inline invocation")
+
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, servicesRequest(http.MethodPost,
+		"/services/automation/send-wa-link/sync", `{}`, "Guest"))
+	require.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
+	assert.Equal(t, 1, hooks.syncCalls, "a denied sync must not reach the gateway")
+
+	hooks.syncReply = nil
+	hooks.syncErr = &wire.Error{
+		Code: "GW-SRV-005", Message: "upstream timeout",
+		RequestID: "gw-req-9", Status: http.StatusGatewayTimeout,
+	}
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, servicesRequest(http.MethodPost,
+		"/services/automation/interpret/sync", `{"prompt":"x"}`, "Guest"))
+	require.Equal(t, http.StatusGatewayTimeout, rec.Code, rec.Body.String())
+	assert.Equal(t, 2, hooks.syncCalls, "the failing sync must reach the gateway once")
+}
+
+// TestGetServiceRequestReturnsOwnerViewAnd404ToOthers covers the second
+// T36B assertion: the request owner reads {status, result}, any other
+// caller gets 404.
+func TestGetServiceRequestReturnsOwnerViewAnd404ToOthers(t *testing.T) {
+	ctrl, _, _ := newServicesTestFixture(t)
+	ctrl.Results = services.NewResultUsecase(&servicesFakeRequests{stored: []fhir_dto.GetServiceRequestOutput{{
+		ResourceType: constvars.ResourceServiceRequest,
+		ID:           "sr-1",
+		Status:       "completed",
+		Requester:    fhir_dto.Reference{Reference: "uid-1"},
+		Note:         []fhir_dto.Annotation{{Text: `{"answer":42}`}},
+	}}}, nil, zap.NewNop())
+	mux := newServicesTestMux(ctrl)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, servicesRequest(http.MethodGet, "/services/requests/sr-1", "", "Guest"))
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var payload struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Status string `json:"status"`
+			Result string `json:"result"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+	require.True(t, payload.Success)
+	assert.Equal(t, "completed", payload.Data.Status, "the owner must get the request status")
+	assert.Equal(t, `{"answer":42}`, payload.Data.Result, "the owner must get the stored result")
+
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, servicesRequestAs("uid-2", http.MethodGet,
+		"/services/requests/sr-1", "", "Guest"))
+	require.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
+}
+
+// TestServicesRoutesStandaloneAnswer503NotConfigured covers the third T36B
+// assertion: with the gateway disabled every /api/v1/services route answers
+// 503 with dev_message GATEWAY_NOT_CONFIGURED because RequireGateway runs
+// on the mount before any handler.
+func TestServicesRoutesStandaloneAnswer503NotConfigured(t *testing.T) {
+	// BuildErrorResponse only exposes dev_message outside production.
+	t.Setenv("APP_ENV", "development")
+	ctrl, _, _ := newServicesTestFixture(t)
+	mux := newServicesTestMuxWithStatus(ctrl, servicesDisabledGatewayStatus{})
+
+	for _, tc := range []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/services"},
+		{http.MethodPost, "/services/automation/interpret"},
+		{http.MethodPost, "/services/automation/interpret/sync"},
+		{http.MethodGet, "/services/requests/sr-1"},
+	} {
+		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(""))
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+		require.Equal(t, http.StatusServiceUnavailable, w.Code,
+			tc.path+": standalone mode must answer 503")
+		var envelope exceptions.CustomError
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &envelope),
+			tc.path+": the error response must be a CustomError JSON envelope")
+		assert.Equal(t, "GATEWAY_NOT_CONFIGURED", envelope.DevMessage,
+			tc.path+": dev_message must be the GATEWAY_NOT_CONFIGURED code")
 	}
 }
