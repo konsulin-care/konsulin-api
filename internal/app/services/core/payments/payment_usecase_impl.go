@@ -15,7 +15,6 @@ import (
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/services/shared/jwtmanager"
-	"konsulin-service/internal/app/services/shared/storage"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
@@ -56,7 +55,6 @@ type paymentUsecase struct {
 	JWTManager                 *jwtmanager.JWTManager
 	PatientFhirClient          contracts.PatientFhirClient
 	PractitionerFhirClient     contracts.PractitionerFhirClient
-	Storage                    *storage.ServiceRequestStorage
 	InvoiceFhirClient          contracts.InvoiceFhirClient
 	PractitionerRoleFhirClient contracts.PractitionerRoleFhirClient
 	SlotFhirClient             contracts.SlotFhirClient
@@ -85,7 +83,6 @@ func NewPaymentUsecase(
 	jwtMgr *jwtmanager.JWTManager,
 	patientFhirClient contracts.PatientFhirClient,
 	practitionerFhirClient contracts.PractitionerFhirClient,
-	storageService *storage.ServiceRequestStorage,
 	invoiceFhirClient contracts.InvoiceFhirClient,
 	practitionerRoleFhirClient contracts.PractitionerRoleFhirClient,
 	slotFhirClient contracts.SlotFhirClient,
@@ -103,7 +100,6 @@ func NewPaymentUsecase(
 			JWTManager:                 jwtMgr,
 			PatientFhirClient:          patientFhirClient,
 			PractitionerFhirClient:     practitionerFhirClient,
-			Storage:                    storageService,
 			InvoiceFhirClient:          invoiceFhirClient,
 			PractitionerRoleFhirClient: practitionerRoleFhirClient,
 			SlotFhirClient:             slotFhirClient,

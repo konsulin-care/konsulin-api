@@ -50,7 +50,6 @@ import (
 	slotFhir "konsulin-service/internal/app/services/fhir_spark/slots"
 
 	redisKonsulin "konsulin-service/internal/app/services/shared/redis"
-	storageKonsulin "konsulin-service/internal/app/services/shared/storage"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -303,7 +302,6 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 
 	webhookController := controllers.NewWebhookController(bootstrap.Logger, webhookUsecase, webhookLimiter, resourceLimiter, bootstrap.InternalConfig)
 	// Initialize payment usecase and controller (inject JWT manager)
-	serviceRequestStorage := storageKonsulin.NewServiceRequestStorage(serviceRequestFhirClient, bootstrap.Logger)
 	invoiceFhirClient := invoicesFhir.NewInvoiceFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 
 	slotUsecase := slot.NewSlotUsecase(scheduleClient, lockService, slotClient, practitionerRoleClient, practitionerFhirClient, bundleClient, bootstrap.InternalConfig, bootstrap.Logger)
@@ -328,7 +326,6 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		jwtManager,
 		patientFhirClient,
 		practitionerFhirClient,
-		serviceRequestStorage,
 		invoiceFhirClient,
 		practitionerRoleClient,
 		slotClient,
