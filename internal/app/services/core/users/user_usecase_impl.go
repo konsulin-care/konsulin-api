@@ -15,6 +15,7 @@ import (
 
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
+	"konsulin-service/internal/app/services/core/federation"
 	"konsulin-service/internal/app/services/shared/jwtmanager"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
@@ -26,6 +27,20 @@ import (
 
 // logPrefix namespaces every log entry emitted by this use case.
 const logPrefix = "userUsecase."
+
+// gatewayOmnichannelListing is the gateway listing served by the automation
+// party that carries the omnichannel profile sync (T42A).
+const gatewayOmnichannelListing = "modify-profile"
+
+// GatewayWebhookClient is the gateway surface the omnichannel profile sync
+// needs: the webhook routes (contracts.WebhookClient) plus the adapter's
+// enabled status. The gateway driver's *gateway.Client implements it.
+type GatewayWebhookClient interface {
+	contracts.WebhookClient
+	// Enabled reports whether the gateway adapter is configured (a
+	// non-empty APP_GATEWAY_URL).
+	Enabled() bool
+}
 
 type userUsecase struct {
 	PatientFhirClient          contracts.PatientFhirClient
@@ -41,6 +56,13 @@ type userUsecase struct {
 	// webhookForwardFn, when set, bypasses the HTTP loopback for synchronous webhook forwarding.
 	// Intended for in-process callers that are already trusted.
 	webhookForwardFn func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error)
+
+	// gatewayWebhooks, when set, routes the profile sync through the gateway
+	// (T42A); nil keeps the legacy forwarder/HTTP paths below until T42B.
+	gatewayWebhooks GatewayWebhookClient
+	// gatewayAutomationPartyID is APP_AUTOMATION_PARTY_ID: the party serving
+	// the modify-profile listing.
+	gatewayAutomationPartyID string
 }
 
 // SetWebhookForwarder sets the in-process forwarder for synchronous webhook calls.
@@ -66,6 +88,12 @@ type UserFHIRInitializerDeps struct {
 	Logger                     *zap.Logger
 	LockerService              contracts.LockerService
 	JWTTokenManager            *jwtmanager.JWTManager
+	// GatewayWebhooks is the optional gateway adapter for the profile sync
+	// (nil keeps the legacy paths; skipped-with-no-error when disabled).
+	GatewayWebhooks GatewayWebhookClient
+	// GatewayAutomationPartyID is APP_AUTOMATION_PARTY_ID (the party serving
+	// the modify-profile listing).
+	GatewayAutomationPartyID string
 }
 
 func NewUserFHIRInitializer(deps UserFHIRInitializerDeps) contracts.UserFHIRInitializer {
@@ -80,6 +108,8 @@ func NewUserFHIRInitializer(deps UserFHIRInitializerDeps) contracts.UserFHIRInit
 			Log:                        deps.Logger,
 			LockerService:              deps.LockerService,
 			JWTTokenManager:            deps.JWTTokenManager,
+			gatewayWebhooks:            deps.GatewayWebhooks,
+			gatewayAutomationPartyID:   deps.GatewayAutomationPartyID,
 		}
 		userUsecaseInstance = instance
 	})
@@ -541,28 +571,14 @@ type callWebhookSvcKonsulinOmnichannelRawOutput struct {
 }
 
 func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, input callWebhookSvcKonsulinOmnichannelInput) (callWebhookSvcKonsulinOmnichannelOutput, error) {
-	lastUsername := input.Username
-	if lastUsername == "" {
-		if strings.TrimSpace(input.Email) != "" {
-			lastUsername = strings.Split(input.Email, "@")[0]
-		}
+	// T42A: once the gateway adapter is wired, the profile sync goes through
+	// the gateway; the legacy forwarder/HTTP paths below stay for callers
+	// without gateway deps until T42B removes them.
+	if uc.gatewayWebhooks != nil {
+		return uc.callGatewayOmnichannel(ctx, input)
 	}
 
-	// The rest of the system stores phone without a leading '+', but the upstream expects E.164 with '+'.
-	// Keep this detail internal so callers don't have to know about it.
-	phoneE164 := utils.FormatE164WithPlus(input.Phone)
-
-	body := struct {
-		Email string `json:"email,omitempty"`
-		Name  string `json:"name"`
-		Phone string `json:"phoneNumber,omitempty"`
-	}{
-		Email: input.Email,
-		Name:  lastUsername,
-		Phone: phoneE164,
-	}
-
-	bodyBytes, err := json.Marshal(body)
+	bodyBytes, err := marshalOmnichannelBody(input)
 	if err != nil {
 		return callWebhookSvcKonsulinOmnichannelOutput{}, err
 	}
@@ -624,6 +640,70 @@ func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, in
 	}
 
 	return parseOmnichannelResponse(bodyBytesResp)
+}
+
+// marshalOmnichannelBody builds the existing profile-sync body: the username
+// falls back to the email local part and the phone is normalized to E.164
+// with a leading '+' (a detail kept internal to this use case).
+// Parameters: input carries the email, username and phone.
+// Returns the JSON body bytes, or nil and the marshal error. Never panics.
+func marshalOmnichannelBody(input callWebhookSvcKonsulinOmnichannelInput) ([]byte, error) {
+	lastUsername := input.Username
+	if lastUsername == "" {
+		if strings.TrimSpace(input.Email) != "" {
+			lastUsername = strings.Split(input.Email, "@")[0]
+		}
+	}
+
+	phoneE164 := utils.FormatE164WithPlus(input.Phone)
+
+	body := struct {
+		Email string `json:"email,omitempty"`
+		Name  string `json:"name"`
+		Phone string `json:"phoneNumber,omitempty"`
+	}{
+		Email: input.Email,
+		Name:  lastUsername,
+		Phone: phoneE164,
+	}
+
+	return json.Marshal(body)
+}
+
+// callGatewayOmnichannel performs the T42A gateway profile sync: it invokes
+// the automation party's modify-profile listing through the gateway
+// WebhookClient (data = the existing body, user_ref = the user's peppered
+// hash) and parses the chatwoot reply. It is skipped with a log and no error
+// when the gateway is disabled or APP_AUTOMATION_PARTY_ID is empty — no
+// legacy path runs in that case either.
+// Parameters: ctx bounds the sync; input carries email, username and phone.
+// Returns the parsed chatwoot output, or the zero output with nil when the
+// sync is skipped. Never panics.
+func (uc *userUsecase) callGatewayOmnichannel(ctx context.Context, input callWebhookSvcKonsulinOmnichannelInput) (callWebhookSvcKonsulinOmnichannelOutput, error) {
+	if !uc.gatewayWebhooks.Enabled() {
+		uc.Log.Info(logPrefix + "callWebhookSvcKonsulinOmnichannel skipped: gateway disabled")
+		return callWebhookSvcKonsulinOmnichannelOutput{}, nil
+	}
+	automation := strings.TrimSpace(uc.gatewayAutomationPartyID)
+	if automation == "" {
+		uc.Log.Info(logPrefix + "callWebhookSvcKonsulinOmnichannel skipped: APP_AUTOMATION_PARTY_ID is empty")
+		return callWebhookSvcKonsulinOmnichannelOutput{}, nil
+	}
+
+	bodyBytes, err := marshalOmnichannelBody(input)
+	if err != nil {
+		return callWebhookSvcKonsulinOmnichannelOutput{}, err
+	}
+	userRef, err := federation.UserRef(input.Email, input.Phone)
+	if err != nil {
+		return callWebhookSvcKonsulinOmnichannelOutput{}, err
+	}
+
+	reply, err := uc.gatewayWebhooks.Sync(ctx, automation, gatewayOmnichannelListing, userRef, bodyBytes)
+	if err != nil {
+		return callWebhookSvcKonsulinOmnichannelOutput{}, err
+	}
+	return parseOmnichannelResponse(reply)
 }
 
 // parseOmnichannelResponse parses the raw response body from the omnichannel webhook

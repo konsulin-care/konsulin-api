@@ -210,6 +210,14 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	// Ensure default FHIR Groups exist for ServiceRequest subjects
 	_ = serviceRequestFhirClient.EnsureAllNecessaryGroupsExists(context.Background())
 
+	// T42A: optional gateway deps for the omnichannel profile sync. A nil
+	// client keeps the legacy forwarder/HTTP paths; once wired, a disabled
+	// gateway or an empty APP_AUTOMATION_PARTY_ID skips the sync with a log.
+	var gatewayWebhooks users.GatewayWebhookClient
+	if gwWiring != nil && gwWiring.client != nil {
+		gatewayWebhooks = gwWiring.client
+	}
+
 	userUsecase := users.NewUserFHIRInitializer(users.UserFHIRInitializerDeps{
 		PatientFhirClient:          patientFhirClient,
 		PractitionerFhirClient:     practitionerFhirClient,
@@ -220,6 +228,8 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		Logger:                     bootstrap.Logger,
 		LockerService:              lockService,
 		JWTTokenManager:            jwtManager,
+		GatewayWebhooks:            gatewayWebhooks,
+		GatewayAutomationPartyID:   bootstrap.InternalConfig.Gateway.AutomationPartyID,
 	})
 
 	bundleClient := bundle.NewBundleFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
