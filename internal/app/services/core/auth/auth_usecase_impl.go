@@ -3,6 +3,12 @@ package auth
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/models"
@@ -12,11 +18,6 @@ import (
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/utils"
-	"net/http"
-	"sort"
-	"strings"
-	"sync"
-	"time"
 
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
@@ -87,6 +88,11 @@ func (uc *authUsecase) CreateMagicLink(ctx context.Context, request *requests.Su
 	hasEmail := strings.TrimSpace(request.Email) != ""
 
 	if hasPhone && !hasEmail {
+		if !uc.gatewayConfigured() {
+			return exceptions.BuildNewCustomError(nil, constvars.StatusServiceUnavailable,
+				"WhatsApp login requires the federation gateway. Configure APP_GATEWAY_URL to enable phone login.",
+				"GATEWAY_NOT_CONFIGURED")
+		}
 		return uc.handlePhoneMagicLink(ctx, request)
 	}
 

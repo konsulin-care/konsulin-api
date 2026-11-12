@@ -21,6 +21,33 @@ import (
 	"go.uber.org/zap"
 )
 
+// TestBuildPasswordlessConfig_ContactMethodByGatewayMode verifies T41: the
+// passwordless recipe enables email-only contact in standalone mode (gateway
+// not configured) and email-or-phone contact in gateway mode.
+func TestBuildPasswordlessConfig_ContactMethodByGatewayMode(t *testing.T) {
+	standalone := &authUsecase{
+		InternalConfig: &config.InternalConfig{},
+		Log:            zap.NewNop(),
+	}
+	cfg := standalone.buildPasswordlessConfig()
+	assert.True(t, cfg.ContactMethodEmail.Enabled,
+		"standalone mode must enable the email contact method only")
+	assert.False(t, cfg.ContactMethodEmailOrPhone.Enabled,
+		"standalone mode must not enable email-or-phone contact")
+
+	gatewayMode := &authUsecase{
+		InternalConfig: &config.InternalConfig{
+			Gateway: config.AppGateway{Enabled: true, URL: "https://gateway.example.test"},
+		},
+		Log: zap.NewNop(),
+	}
+	cfg = gatewayMode.buildPasswordlessConfig()
+	assert.False(t, cfg.ContactMethodEmail.Enabled,
+		"gateway mode must not enable the email-only contact method")
+	assert.True(t, cfg.ContactMethodEmailOrPhone.Enabled,
+		"gateway mode must keep email-or-phone contact")
+}
+
 // TestHandleSupertokensAPIError_WritesJSON500 verifies that recipe API errors
 // produce a real 500 JSON response instead of letting net/http emit the
 // implicit 200 with an empty body (which breaks the SuperTokens frontend SDK's

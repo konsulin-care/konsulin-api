@@ -102,9 +102,51 @@ func handleSupertokensAPIError(err error, _ *http.Request, res http.ResponseWrit
 	})
 }
 
+// gatewayConfigured reports whether the federation gateway is configured
+// (standalone mode when the gateway URL is empty).
+func (uc *authUsecase) gatewayConfigured() bool {
+	if uc.InternalConfig == nil {
+		return false
+	}
+	gw := uc.InternalConfig.Gateway
+	return gw.Enabled && strings.TrimSpace(gw.URL) != ""
+}
+
 // buildPasswordlessConfig builds the full passwordless recipe configuration.
+// Standalone mode (gateway not configured) enables the email contact method
+// only; gateway mode keeps email-or-phone contact.
 func (uc *authUsecase) buildPasswordlessConfig() plessmodels.TypeInput {
-	return plessmodels.TypeInput{
+	validateEmailAddress := func(email interface{}, _ string) *string {
+		emailStr, ok := email.(string)
+		if !ok {
+			msg := "invalid email format"
+			return &msg
+		}
+
+		matched, err := regexp.MatchString(constvars.RegexEmail, emailStr)
+		if err != nil || !matched {
+			msg := "invalid email address"
+			return &msg
+		}
+
+		return nil
+	}
+	validatePhoneNumber := func(phoneNumber interface{}, _ string) *string {
+		phoneStr, ok := phoneNumber.(string)
+		if !ok {
+			msg := "invalid phone format"
+			return &msg
+		}
+		phoneDigits := utils.NormalizePhoneDigits(phoneStr)
+		if err := utils.ValidateInternationalPhoneDigits(phoneDigits); err != nil {
+			msg := err.Error()
+			return &msg
+		}
+
+		return nil
+	}
+
+	cfg := plessmodels.TypeInput{
 		Override: &plessmodels.OverrideStruct{
 			Functions: func(originalImplementation plessmodels.RecipeInterface) plessmodels.RecipeInterface {
 				originalCreateCode := *originalImplementation.CreateCode
@@ -122,39 +164,22 @@ func (uc *authUsecase) buildPasswordlessConfig() plessmodels.TypeInput {
 		EmailDelivery: uc.buildEmailDeliveryConfig(),
 		SmsDelivery:   uc.buildSMSDeliveryConfig(),
 		FlowType:      "MAGIC_LINK",
-		ContactMethodEmailOrPhone: plessmodels.ContactMethodEmailOrPhoneConfig{
-			Enabled: true,
-			ValidateEmailAddress: func(email interface{}, _ string) *string {
-				emailStr, ok := email.(string)
-				if !ok {
-					msg := "invalid email format"
-					return &msg
-				}
-
-				matched, err := regexp.MatchString(constvars.RegexEmail, emailStr)
-				if err != nil || !matched {
-					msg := "invalid email address"
-					return &msg
-				}
-
-				return nil
-			},
-			ValidatePhoneNumber: func(phoneNumber interface{}, _ string) *string {
-				phoneStr, ok := phoneNumber.(string)
-				if !ok {
-					msg := "invalid phone format"
-					return &msg
-				}
-				phoneDigits := utils.NormalizePhoneDigits(phoneStr)
-				if err := utils.ValidateInternationalPhoneDigits(phoneDigits); err != nil {
-					msg := err.Error()
-					return &msg
-				}
-
-				return nil
-			},
-		},
 	}
+
+	if uc.gatewayConfigured() {
+		cfg.ContactMethodEmailOrPhone = plessmodels.ContactMethodEmailOrPhoneConfig{
+			Enabled:              true,
+			ValidateEmailAddress: validateEmailAddress,
+			ValidatePhoneNumber:  validatePhoneNumber,
+		}
+		return cfg
+	}
+
+	cfg.ContactMethodEmail = plessmodels.ContactMethodEmailConfig{
+		Enabled:              true,
+		ValidateEmailAddress: validateEmailAddress,
+	}
+	return cfg
 }
 
 // initializeRoles creates SuperTokens roles if they do not already exist.

@@ -3,11 +3,15 @@ package auth
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
+	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/dto/requests"
+	"konsulin-service/internal/pkg/exceptions"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -16,6 +20,31 @@ import (
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
 )
+
+// TestCreateMagicLink_PhoneInStandaloneReturnsGatewayNotConfigured verifies
+// T41: a phone magic link in standalone mode (gateway not configured) fails
+// fast with 503 and dev_message GATEWAY_NOT_CONFIGURED, without touching
+// SuperTokens.
+func TestCreateMagicLink_PhoneInStandaloneReturnsGatewayNotConfigured(t *testing.T) {
+	uc := &authUsecase{
+		InternalConfig: &config.InternalConfig{},
+		Log:            zap.NewNop(),
+	}
+
+	err := uc.CreateMagicLink(context.Background(), &requests.SupertokenPasswordlessCreateMagicLink{
+		Phone: "6281234567890",
+	})
+	require.Error(t, err, "phone magic link in standalone mode must be rejected")
+
+	var customErr *exceptions.CustomError
+	require.True(t, errors.As(err, &customErr), "error must be a CustomError")
+	assert.Equal(t, http.StatusServiceUnavailable, customErr.StatusCode,
+		"standalone phone magic link must answer 503")
+	assert.Equal(t, "GATEWAY_NOT_CONFIGURED", customErr.DevMessage,
+		"dev_message must be the GATEWAY_NOT_CONFIGURED code")
+	assert.Contains(t, customErr.ClientMessage, "WhatsApp login requires the federation gateway",
+		"client message must say WhatsApp login requires the federation gateway")
+}
 
 func TestLogErrorAndReturn(t *testing.T) {
 	// Arrange: capture log output
