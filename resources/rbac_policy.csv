@@ -34,6 +34,9 @@ p, Guest, POST, /fhir/QuestionnaireResponse
 p, Guest, GET, /fhir/ResearchStudy
 p, Guest, GET, /fhir/Slot
 p, Guest, GET, /fhir/metadata
+p, Guest, POST, /api/v1/services/automation/interpret
+p, Guest, POST, /api/v1/services/automation/modify-profile
+p, Guest, POST, /api/v1/services/automation/update-avatar
 p, Guest, POST, /hook/synchronous/modify-profile
 p, Guest, POST, /hook/synchronous/send-magiclink
 p, Patient, GET, /fhir/Appointment
@@ -72,6 +75,9 @@ p, Patient, GET, /fhir/Slot
 p, Patient, POST, /fhir/Slot
 p, Patient, PUT, /fhir/Slot
 p, Patient, PUT, /fhir/Condition
+p, Patient, POST, /api/v1/services/automation/interpret
+p, Patient, POST, /api/v1/services/automation/modify-profile
+p, Patient, POST, /api/v1/services/automation/update-avatar
 p, Patient, POST, /hook/synchronous/modify-profile
 p, Patient, POST, /hook/synchronous/update-avatar
 p, Patient, DELETE, /privacy/purge
@@ -102,6 +108,9 @@ p, Practitioner, GET, /fhir/QuestionnaireResponse
 p, Practitioner, GET, /fhir/ResearchStudy
 p, Practitioner, GET, /fhir/Slot
 p, Practitioner, PUT, /fhir/Schedule
+p, Practitioner, POST, /api/v1/services/automation/interpret
+p, Practitioner, POST, /api/v1/services/automation/modify-profile
+p, Practitioner, POST, /api/v1/services/automation/update-avatar
 p, Practitioner, POST, /hook/synchronous/modify-profile
 p, Practitioner, POST, /hook/synchronous/update-avatar
 p, Practitioner, GET, /api/v1/tx
@@ -160,5 +169,6 @@ p, Superadmin, PUT, /fhir/Schedule
 p, Superadmin, GET, /fhir/Slot
 p, Superadmin, PUT, /fhir/Slot
 p, Superadmin, GET, /fhir/metadata
+p, Superadmin, POST, /api/v1/services/automation/send-wa-link
 p, Superadmin, POST, /hook/synchronous/send-wa-link
 p, Superadmin, GET, /api/v1/tx

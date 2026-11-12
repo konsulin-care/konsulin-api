@@ -175,3 +175,44 @@ func TestRBACPolicy_OrganizationArchetype(t *testing.T) {
 		})
 	}
 }
+
+// TestRBACPolicy_ServiceAutomation asserts the user-facing automation
+// listings under /api/v1/services/automation: Patient, Practitioner and Guest
+// may POST interpret, modify-profile and update-avatar; Superadmin may POST
+// send-wa-link; send-magiclink is not granted on the automation surface
+// (login stays on /hook/synchronous/send-magiclink).
+func TestRBACPolicy_ServiceAutomation(t *testing.T) {
+	enf := testEnforcer(t)
+
+	cases := []struct {
+		name string
+		role string
+		path string
+		want bool
+	}{
+		{"patient post interpret", constvars.KonsulinRolePatient, "/api/v1/services/automation/interpret", true},
+		{"patient post modify-profile", constvars.KonsulinRolePatient, "/api/v1/services/automation/modify-profile", true},
+		{"patient post update-avatar", constvars.KonsulinRolePatient, "/api/v1/services/automation/update-avatar", true},
+		{"patient post send-magiclink", constvars.KonsulinRolePatient, "/api/v1/services/automation/send-magiclink", false},
+		{"patient post send-wa-link", constvars.KonsulinRolePatient, "/api/v1/services/automation/send-wa-link", false},
+		{"practitioner post interpret", constvars.KonsulinRolePractitioner, "/api/v1/services/automation/interpret", true},
+		{"practitioner post modify-profile", constvars.KonsulinRolePractitioner, "/api/v1/services/automation/modify-profile", true},
+		{"practitioner post update-avatar", constvars.KonsulinRolePractitioner, "/api/v1/services/automation/update-avatar", true},
+		{"guest post interpret", constvars.KonsulinRoleGuest, "/api/v1/services/automation/interpret", true},
+		{"guest post modify-profile", constvars.KonsulinRoleGuest, "/api/v1/services/automation/modify-profile", true},
+		{"guest post update-avatar", constvars.KonsulinRoleGuest, "/api/v1/services/automation/update-avatar", true},
+		{"guest post send-magiclink", constvars.KonsulinRoleGuest, "/api/v1/services/automation/send-magiclink", false},
+		{"superadmin post send-wa-link", constvars.KonsulinRoleSuperadmin, "/api/v1/services/automation/send-wa-link", true},
+		{"superadmin post interpret", constvars.KonsulinRoleSuperadmin, "/api/v1/services/automation/interpret", false},
+		{"researcher post interpret", constvars.KonsulinRoleResearcher, "/api/v1/services/automation/interpret", false},
+		{"clinic admin post interpret", constvars.KonsulinRoleClinicAdmin, "/api/v1/services/automation/interpret", false},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ok, err := enf.Enforce(c.role, http.MethodPost, c.path)
+			assert.NoError(t, err)
+			assert.Equal(t, c.want, ok, "Enforce(%q, POST, %s)", c.role, c.path)
+		})
+	}
+}
