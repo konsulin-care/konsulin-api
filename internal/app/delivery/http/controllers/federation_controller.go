@@ -51,10 +51,11 @@ type DeliveryHandler func(r *http.Request) error
 // the T20 VerifyMiddleware, outside the session/RBAC chain, so it reads the
 // purpose/service from the verified token claims, never from the body.
 type FederationController struct {
-	Log        *zap.Logger
-	handlers   map[string]EventHandler
-	deliveries map[string]DeliveryHandler
-	mu         sync.RWMutex
+	Log              *zap.Logger
+	handlers         map[string]EventHandler
+	deliveries       map[string]DeliveryHandler
+	writerDeliveries map[string]func(http.ResponseWriter, *http.Request)
+	mu               sync.RWMutex
 }
 
 // NewFederationController builds the federation dispatcher with empty event
@@ -68,9 +69,10 @@ func NewFederationController(logger *zap.Logger) *FederationController {
 		logger = zap.NewNop()
 	}
 	return &FederationController{
-		Log:        logger,
-		handlers:   make(map[string]EventHandler),
-		deliveries: make(map[string]DeliveryHandler),
+		Log:              logger,
+		handlers:         make(map[string]EventHandler),
+		deliveries:       make(map[string]DeliveryHandler),
+		writerDeliveries: make(map[string]func(http.ResponseWriter, *http.Request)),
 	}
 }
 
@@ -113,6 +115,27 @@ func (c *FederationController) RegisterDeliveryHandler(listing string, handler D
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.deliveries[listing] = handler
+}
+
+// RegisterDeliveryWriterHandler binds a response-writing handler to one
+// listing name — for deliveries whose handler owns its own HTTP response
+// (custom statuses and bodies such as 403/503 or an application/jose
+// reply) and therefore cannot run through DeliveryHandler. Registering the
+// same listing twice replaces the previous handler; a nil handler
+// unregisters the listing. The verified service claim check in HandleDelivery
+// still wins before this branch. Safe for concurrent use.
+//
+// Parameters: listing is the listing name the handler answers for; handler
+// writes the response itself.
+// Returns: nothing.
+func (c *FederationController) RegisterDeliveryWriterHandler(listing string, handler func(http.ResponseWriter, *http.Request)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if handler == nil {
+		delete(c.writerDeliveries, listing)
+		return
+	}
+	c.writerDeliveries[listing] = handler
 }
 
 // HandleEvent serves POST /api/v1/federation/events: it reads the purpose
@@ -173,6 +196,17 @@ func (c *FederationController) HandleDelivery(w http.ResponseWriter, r *http.Req
 			zap.String("listing", listing),
 			zap.String("service", service))
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		return
+	}
+
+	// A registered writer handler owns its whole response (status and
+	// body); it runs after the service-claim check and returns without a
+	// second status write.
+	c.mu.RLock()
+	writer, hasWriter := c.writerDeliveries[listing]
+	c.mu.RUnlock()
+	if hasWriter {
+		writer(w, r)
 		return
 	}
 

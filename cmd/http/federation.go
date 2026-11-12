@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"time"
 
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
@@ -17,8 +19,13 @@ import (
 	"konsulin-service/internal/app/services/fhir_spark/service_requests"
 	sharedredis "konsulin-service/internal/app/services/shared/redis"
 
+	"github.com/konsulin-care/gateway-sdk-go/envelope"
 	"go.uber.org/zap"
 )
+
+// pepperKeyTTL bounds how long the SDK EncKeyResolver serves one resolved
+// caller use:enc key before refetching GET /v1/parties/{id}/jwks.
+const pepperKeyTTL = 5 * time.Minute
 
 // settlementEventMaxBytes bounds the body read of one settlement notification.
 const settlementEventMaxBytes = 1 << 20
@@ -110,6 +117,32 @@ func registerFederation(bootstrap *config.Bootstrap, ctrls *routers.Controllers,
 	// The adapter is the single source of truth: it is enabled only for a
 	// non-empty APP_GATEWAY_URL.
 	cfg.Enabled = client.Enabled()
+
+	// T46A: the federation-pepper delivery (BK-PEPPER-002): the caller's
+	// use:enc key resolves through the party JWKS over the gateway
+	// adapter, the pepper comes from APP_PEPPER, and the handler writes
+	// the sealed reply itself as application/jose (403 without a usable
+	// key, 503 without a pepper). Registered before the enabled gate so
+	// RequireGateway owns the standalone-mode 503.
+	fetchJWKS := func(ctx context.Context, id string) ([]byte, error) {
+		resp, err := client.Do(ctx, gateway.Request{
+			Method: http.MethodGet,
+			Path:   "/v1/parties/" + url.PathEscape(id) + "/jwks",
+		})
+		if err != nil {
+			return nil, err
+		}
+		return resp.Body, nil
+	}
+	pepperResolver := envelope.NewEncKeyResolver(fetchJWKS, pepperKeyTTL, nil)
+	ctrls.Federation.RegisterDeliveryWriterHandler(federation.PepperListingName,
+		federation.NewPepperDelivery(federation.PepperDeliveryDeps{
+			GetSub: func(r *http.Request) string {
+				return gateway.ClaimsFromContext(r.Context()).Sub
+			},
+			ResolveKey: pepperResolver.Resolve,
+			Pepper:     federation.EnvPepper,
+		}))
 
 	enroller := federation.NewEnroller(client, cfg, logger, nil)
 	ctrls.Gateway = enroller

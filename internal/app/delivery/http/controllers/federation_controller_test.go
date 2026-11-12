@@ -278,6 +278,48 @@ func TestHandleDeliveryServiceClaimMismatchRejected(t *testing.T) {
 		"a mismatched delivery must never reach the registered handler")
 }
 
+// TestHandleDeliveryWriterHandlerStatusPassesThrough covers the writer
+// registration seam: a registered writer handler owns its response (its
+// 403 passes through with no controller 200 on top), and the verified
+// service-claim check still wins before the writer branch (a mismatched
+// claim answers 401 and the writer never runs).
+//
+// Parameters: t is the test harness.
+// Returns: nothing; fails on any deviation.
+func TestHandleDeliveryWriterHandlerStatusPassesThrough(t *testing.T) {
+	minter, mw := newDeliveryTestEnv(t)
+	ctrl := NewFederationController(zap.NewNop())
+
+	var writerCalls int
+	ctrl.RegisterDeliveryWriterHandler("svc-pepper", func(w http.ResponseWriter, _ *http.Request) {
+		writerCalls++
+		w.WriteHeader(http.StatusForbidden)
+	})
+
+	body := []byte(`{"event":"delivery.ping"}`)
+	h := newDeliveryRoute(mw, ctrl)
+
+	t.Run("writer status passes through", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, newDeliveryRequest(
+			mintDelivery(t, minter, "svc-pepper", "wh-writer-1", body), body, "svc-pepper"))
+		assert.Equal(t, http.StatusForbidden, rec.Code,
+			"the writer handler's own status must pass through with no double-200")
+		assert.Equal(t, 1, writerCalls,
+			"the writer handler must run exactly once for a matching claim")
+	})
+
+	t.Run("service-claim mismatch answers 401 before the writer", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, newDeliveryRequest(
+			mintDelivery(t, minter, "svc-other", "wh-writer-2", body), body, "svc-pepper"))
+		assert.Equal(t, http.StatusUnauthorized, rec.Code,
+			"the service-claim check must win before the writer branch")
+		assert.Equal(t, 1, writerCalls,
+			"a mismatched claim must never reach the writer handler")
+	})
+}
+
 // TestHandleDeliveryUnregisteredListingNotFound covers assertion 2: a
 // delivery naming a listing with no registered handler is answered 404 and
 // never dispatched.
