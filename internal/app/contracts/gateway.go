@@ -154,6 +154,65 @@ type WebhookClient interface {
 	Status(ctx context.Context, id string) (state string, err error)
 }
 
+// IdentityCandidate is one resolve candidate as the adapter surfaces it to
+// contracts consumers — the backend-side mirror of the gateway row; the
+// SDK's own wire types never leave the gateway driver package.
+type IdentityCandidate struct {
+	// GlobalKey is the shared identity key behind the candidate.
+	GlobalKey string
+	// PartyID is the party holding the linked resource.
+	PartyID string
+	// LocalResourceID is that party's local resource reference.
+	LocalResourceID string
+	// MatchField is "email", "phone", "email+phone" or "link".
+	MatchField string
+}
+
+// IdentityClient routes the gateway identity-plane endpoints (SDK-API-001,
+// BK-FED-003): register, resolve and link through the SDK identities
+// routes. Every request body carries hashed identity fields only — the
+// peppered email and phone hashes in the gateway hashfmt (the "N/A" marker
+// or standard base64 of exactly 32 bytes) plus the party-local resource
+// references; plaintext PII never reaches the gateway. Register and Link
+// are idempotent creates (one Idempotency-Key each); Resolve is a read and
+// sends none. Errors surface raw and are rendered through
+// gateway.MapError.
+type IdentityClient interface {
+	// Register registers one party-local subject's hashed identity at
+	// POST /v1/identities/register through the SDK identities Register
+	// route (party-signed, idempotent). A disabled adapter reports
+	// ErrGatewayNotConfigured before any I/O; a non-hashfmt email or phone
+	// hash fails closed before any request is sent.
+	// Parameters: ctx bounds the call, resourceType the local resource type
+	// (e.g. "patient"), localResourceID the party-local resource reference,
+	// emailHash and phoneHash the peppered hashfmt values ("N/A" when
+	// non-applicable).
+	// Returns: the gateway's global_key grouping the equivalent
+	// identities, plus the error to render through gateway.MapError. Never
+	// panics.
+	Register(ctx context.Context, resourceType, localResourceID, emailHash, phoneHash string) (globalKey string, err error)
+	// Resolve resolves hashed identity fields to candidate links at
+	// POST /v1/identities/resolve through the SDK identities Resolve route
+	// — a read, so it sends no Idempotency-Key. A disabled adapter reports
+	// ErrGatewayNotConfigured before any I/O; a non-hashfmt field fails
+	// closed before any request is sent.
+	// Parameters: ctx bounds the call, emailHash and phoneHash the
+	// peppered hashfmt values ("N/A" when non-applicable).
+	// Returns: the matching candidates (empty when the gateway reports
+	// none), plus the error to render through gateway.MapError. Never
+	// panics.
+	Resolve(ctx context.Context, emailHash, phoneHash string) ([]IdentityCandidate, error)
+	// Link declares equivalence between a confirmed global key and a
+	// party-local resource at POST /v1/identities/link through the SDK
+	// identities Link route (party-signed, idempotent). A disabled adapter
+	// reports ErrGatewayNotConfigured before any I/O.
+	// Parameters: ctx bounds the call, globalKey the confirmed candidate
+	// key, localResourceID the party-local resource to link.
+	// Returns: whether the gateway wrote the equivalence row, plus the
+	// error to render through gateway.MapError. Never panics.
+	Link(ctx context.Context, globalKey, localResourceID string) (linked bool, err error)
+}
+
 // Listing is one active marketplace listing row as the adapter surfaces it
 // to contracts consumers — the backend-side mirror of the gateway read row;
 // the SDK's own wire types never leave the gateway driver package.
