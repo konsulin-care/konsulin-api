@@ -29,7 +29,6 @@ require (
 	github.com/stretchr/testify v1.12.1
 	github.com/supertokens/supertokens-golang v0.26.0
 	github.com/tidwall/gjson v1.19.0
-	github.com/xendit/xendit-go/v7 v7.0.0
 	go.mongodb.org/mongo-driver v1.17.9
 	go.uber.org/zap v1.28.0
 	golang.org/x/crypto v0.56.0

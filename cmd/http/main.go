@@ -53,7 +53,6 @@ import (
 	storageKonsulin "konsulin-service/internal/app/services/shared/storage"
 
 	"github.com/go-chi/chi/v5"
-	xendit "github.com/xendit/xendit-go/v7"
 )
 
 func main() {
@@ -175,9 +174,6 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 
 	// Initialize the repository for Redis
 	redisRepository := redisKonsulin.NewRedisRepository(bootstrap.Redis, bootstrap.Logger)
-
-	// Initialize Xendit client (reusable)
-	xenditClient := xendit.NewClient(bootstrap.InternalConfig.Xendit.APIKey)
 
 	lockService := locker.NewLockService(redisRepository, bootstrap.Logger)
 
@@ -333,7 +329,6 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		patientFhirClient,
 		practitionerFhirClient,
 		serviceRequestStorage,
-		xenditClient,
 		invoiceFhirClient,
 		practitionerRoleClient,
 		slotClient,

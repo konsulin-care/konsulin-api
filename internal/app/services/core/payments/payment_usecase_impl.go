@@ -6,12 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
-	"net/url"
-	"path"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -29,9 +25,6 @@ import (
 
 	bundleSvc "konsulin-service/internal/app/services/fhir_spark/bundle"
 
-	xendit "github.com/xendit/xendit-go/v7"
-	common "github.com/xendit/xendit-go/v7/common"
-	xinvoice "github.com/xendit/xendit-go/v7/invoice"
 	"go.uber.org/zap"
 )
 
@@ -70,7 +63,6 @@ type paymentUsecase struct {
 	ScheduleFhirClient         contracts.ScheduleFhirClient
 	BundleFhirClient           bundleSvc.BundleFhirClient
 	SlotUsecase                contracts.SlotUsecaseIface
-	XenditClient               *xendit.APIClient
 	FHIRClient                 appointmentResourceClient
 	// Gateway holds the gateway federation deps (payments, webhooks, listings,
 	// provider resolver, party ids) used by the default appointment checkout.
@@ -94,7 +86,6 @@ func NewPaymentUsecase(
 	patientFhirClient contracts.PatientFhirClient,
 	practitionerFhirClient contracts.PractitionerFhirClient,
 	storageService *storage.ServiceRequestStorage,
-	xenditClient *xendit.APIClient,
 	invoiceFhirClient contracts.InvoiceFhirClient,
 	practitionerRoleFhirClient contracts.PractitionerRoleFhirClient,
 	slotFhirClient contracts.SlotFhirClient,
@@ -119,7 +110,6 @@ func NewPaymentUsecase(
 			ScheduleFhirClient:         scheduleFhirClient,
 			BundleFhirClient:           bundleFhirClient,
 			SlotUsecase:                slotUsecase,
-			XenditClient:               xenditClient,
 			FHIRClient:                 fhir_http_client.New(logger),
 			Gateway:                    gatewayDeps,
 		}
@@ -184,199 +174,6 @@ func (uc *paymentUsecase) handleAppointmentPaymentExpired(
 		zap.String("appointmentId", fields.AppointmentID),
 	)
 	return nil
-}
-
-func (uc *paymentUsecase) CreatePay(ctx context.Context, req *requests.CreatePayRequest) (*responses.CreatePayResponse, error) {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	uc.Log.Info("paymentUsecase.CreatePay called",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-	)
-
-	// 1) Reject guest role
-	roles, _ := ctx.Value(constvars.CONTEXT_FHIR_ROLE).([]string)
-	if len(roles) == 0 || (len(roles) == 1 && strings.EqualFold(roles[0], constvars.KonsulinRoleGuest)) {
-		return nil, exceptions.ErrAuthInvalidRole(fmt.Errorf("guest not allowed"))
-	}
-
-	// 1a) Validate and normalize service value (do not mutate request)
-	requestedService, err := normalizeService(req.Service)
-	if err != nil {
-		return nil, err
-	}
-
-	// 1b) Enforce service access rule
-	if !isServicePurchaseAllowed(requestedService, roles) {
-		return nil, exceptions.ErrAuthInvalidRole(fmt.Errorf("role(s) not allowed to purchase service: %s", requestedService))
-	}
-
-	// 2) Extract uid from context
-	uid, _ := ctx.Value(constvars.CONTEXT_UID).(string)
-
-	// 3) Extract email from req.Body
-	var raw map[string]interface{}
-	if err := json.Unmarshal(req.Body, &raw); err != nil {
-		return nil, exceptions.ErrCannotParseJSON(err)
-	}
-	email, _ := raw["email"].(string)
-	if strings.TrimSpace(email) == "" {
-		return nil, exceptions.ErrClientCustomMessage(fmt.Errorf("email is required in body"))
-	}
-
-	// 4) Lookup resource identity by service (encapsulated)
-	resourceID, displayFullName, err := uc.lookupIdentityByService(ctx, requestedService, email)
-	if err != nil {
-		return nil, err
-	}
-
-	// 5) Determine ServiceRequest.subject
-	subject := determineServiceRequestSubject(requestedService, resourceID)
-
-	// 6) Build instantiateUri
-	baseURL := strings.TrimRight(uc.InternalConfig.App.BaseUrl, "/")
-	basePath := uc.InternalConfig.App.WebhookInstantiateBasePath
-	instantiateURI := fmt.Sprintf("%s/%s/%s", baseURL, basePath, requestedService)
-	// Normalize the URL to avoid duplicate slashes in the path
-	if u, err := url.Parse(instantiateURI); err == nil {
-		u.Path = path.Clean(u.Path)
-		instantiateURI = u.String()
-	}
-	occurrence := time.Now().Format("2006-01-02T15:04:05-07:00")
-	// Map service to requester resource type via specialized helper
-	requesterResourceType := mapServiceToRequesterResourceType(requestedService)
-
-	storageOutput, err := uc.Storage.Create(ctx, &requests.CreateServiceRequestStorageInput{
-		UID:             uid,
-		ResourceType:    requesterResourceType,
-		ID:              resourceID,
-		Subject:         subject,
-		InstantiatesUri: instantiateURI,
-		RawBody:         req.Body,
-		Occurrence:      occurrence,
-	})
-	if err != nil {
-		uc.Log.Error("paymentUsecase.CreatePay failed storing ServiceRequest",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(err),
-		)
-
-		return nil, err
-	}
-	partnerTrxID := storageOutput.PartnerTrxID
-
-	// 6) Compute amount using service-based calculator
-	amount, basePrice, err := uc.calculateAmount(requestedService, req.TotalItem)
-	if err != nil {
-		return nil, err
-	}
-
-	// 7) Create Xendit invoice
-	if uc.XenditClient == nil {
-		return nil, exceptions.ErrServerProcess(fmt.Errorf("xendit client not initialized"))
-	}
-
-	desc := fmt.Sprintf("pembayaran layanan %s dari konsulin sejumlah %d item", req.Service, req.TotalItem)
-	durationSeconds := float32(uc.InternalConfig.App.PaymentExpiredTimeInMinutes * 60)
-
-	externalID := fmt.Sprintf("%s:%s", constvars.WebhookPaymentService, partnerTrxID)
-	invoiceReq := xinvoice.NewCreateInvoiceRequest(externalID, float64(amount))
-	invoiceReq.SetCurrency(constvars.CurrencyIndonesianRupiah)
-	invoiceReq.SetDescription(desc)
-	invoiceReq.SetSuccessRedirectUrl(uc.InternalConfig.App.FrontendDomain)
-	invoiceReq.SetFailureRedirectUrl(uc.InternalConfig.App.FrontendDomain)
-	if durationSeconds > 0 {
-		invoiceReq.SetInvoiceDuration(durationSeconds)
-	}
-
-	customer := xinvoice.NewCustomerObject()
-	customer.SetGivenNames(displayFullName)
-	customer.SetEmail(email)
-	invoiceReq.SetCustomer(*customer)
-
-	notif := xinvoice.NewNotificationPreference()
-	notif.SetInvoiceCreated([]xinvoice.NotificationChannel{xinvoice.NOTIFICATIONCHANNEL_EMAIL})
-	notif.SetInvoicePaid([]xinvoice.NotificationChannel{xinvoice.NOTIFICATIONCHANNEL_EMAIL})
-	invoiceReq.SetCustomerNotificationPreference(*notif)
-
-	item := xinvoice.NewInvoiceItem(requestedService, float32(basePrice), float32(req.TotalItem))
-	invoiceReq.SetItems([]xinvoice.InvoiceItem{*item})
-
-	// 8) Execute with timeout
-	ctxTimeout, cancel := context.WithTimeout(ctx, time.Duration(uc.InternalConfig.App.PaymentGatewayRequestTimeoutInSeconds)*time.Second)
-	defer cancel()
-	apiReq := uc.XenditClient.InvoiceApi.CreateInvoice(ctxTimeout).CreateInvoiceRequest(*invoiceReq)
-	inv, httpResp, xenditErr := apiReq.Execute()
-	if xenditErr != nil {
-		return nil, uc.mapXenditError(ctx, xenditErr, httpResp)
-	}
-
-	// 9) Build response from Xendit invoice
-	return &responses.CreatePayResponse{
-		PaymentCheckoutURL: inv.GetInvoiceUrl(),
-		PartnerTrxID:       partnerTrxID,
-		TrxID:              inv.GetId(),
-		Amount:             amount,
-	}, nil
-}
-
-func (uc *paymentUsecase) mapXenditError(ctx context.Context, err *common.XenditSdkError, httpResp *http.Response) *exceptions.CustomError {
-	logXenditErrorResponse(ctx, uc.Log, httpResp)
-
-	statusCode := extractStatusCodeFromXenditError(err, httpResp)
-	rawMsg := extractMessageFromXenditError(err)
-	devMsg := fmt.Sprintf("xendit error code=%s message=%s", err.ErrorCode(), rawMsg)
-	wrappedErr := errors.New(devMsg)
-
-	if err.ErrorCode() == "API_VALIDATION_ERROR" || statusCode == http.StatusBadRequest {
-		return exceptions.BuildNewCustomError(wrappedErr, constvars.StatusBadRequest, rawMsg, devMsg)
-	}
-	return exceptions.BuildNewCustomError(wrappedErr, statusCode, rawMsg, devMsg)
-}
-
-// logXenditErrorResponse logs the Xendit error response body if available.
-func logXenditErrorResponse(ctx context.Context, log *zap.Logger, httpResp *http.Response) {
-	if httpResp == nil || httpResp.Body == nil {
-		return
-	}
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
-	bodyBytes, readErr := io.ReadAll(httpResp.Body)
-	if readErr == nil && len(bodyBytes) > 0 {
-		log.Error("paymentUsecase.mapXenditError Xendit error response body",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("response_body", string(bodyBytes)),
-			zap.Int("status_code", httpResp.StatusCode),
-		)
-	}
-}
-
-// extractStatusCodeFromXenditError determines HTTP status from Xendit SDK error or HTTP response.
-func extractStatusCodeFromXenditError(err *common.XenditSdkError, httpResp *http.Response) int {
-	if httpResp != nil && httpResp.StatusCode > 0 {
-		return httpResp.StatusCode
-	}
-	if statusText := strings.TrimSpace(err.Status()); statusText != "" {
-		if parsed, convErr := strconv.Atoi(statusText); convErr == nil {
-			return parsed
-		}
-	}
-	return constvars.StatusInternalServerError
-}
-
-// extractMessageFromXenditError extracts a user-facing message from a Xendit error.
-func extractMessageFromXenditError(err *common.XenditSdkError) string {
-	rawMsg := strings.TrimSpace(err.Error())
-	if raw := err.RawResponse(); raw != nil {
-		if messageAny, ok := raw["message"]; ok {
-			if msgStr, ok := messageAny.(string); ok {
-				if trimmed := strings.TrimSpace(msgStr); trimmed != "" {
-					rawMsg = trimmed
-				}
-			}
-		}
-	}
-	if rawMsg == "" {
-		return constvars.ErrClientCannotProcessRequest
-	}
-	return rawMsg
 }
 
 // gatewayAppointmentCheckout is the default CreateAppointmentInvoice seam: it
@@ -464,155 +261,6 @@ func parseAppointmentExternalID(externalID string) (appointmentExternalIDFields,
 		return appointmentExternalIDFields{}, fmt.Errorf("invalid appointment external_id format: one or more fields are empty")
 	}
 	return fields, nil
-}
-
-func isServicePurchaseAllowed(service string, requesterRoles []string) bool {
-	// Superadmin can purchase any service
-	if hasRole(requesterRoles, constvars.KonsulinRoleSuperadmin) {
-		return true
-	}
-	normalized := strings.ToLower(service)
-	switch normalized {
-	case string(constvars.ServiceAnalyze):
-		return hasAnyRole(requesterRoles, []string{constvars.KonsulinRolePatient})
-	case string(constvars.ServiceReport):
-		return hasAnyRole(requesterRoles, []string{constvars.KonsulinRolePractitioner})
-	case string(constvars.ServicePerformanceReport):
-		return hasAnyRole(requesterRoles, []string{constvars.KonsulinRoleClinicAdmin})
-	case string(constvars.ServiceAccessDataset):
-		return hasAnyRole(requesterRoles, []string{constvars.KonsulinRoleResearcher})
-	default:
-		return false
-	}
-}
-
-func hasAnyRole(roles []string, targets []string) bool {
-	for _, t := range targets {
-		if hasRole(roles, t) {
-			return true
-		}
-	}
-	return false
-}
-
-func hasRole(roles []string, target string) bool {
-	for _, r := range roles {
-		if strings.EqualFold(r, target) {
-			return true
-		}
-	}
-	return false
-}
-
-// normalizeService validates the service and returns its canonical value or an error (400-style) if invalid.
-func normalizeService(service string) (string, error) {
-	for _, known := range constvars.KnownServices {
-		if strings.EqualFold(service, string(known)) {
-			return string(known), nil
-		}
-	}
-	return "", exceptions.ErrClientCustomMessage(fmt.Errorf("invalid service value: %s", service))
-}
-
-// calculateAmount validates service and totalItem against business rules and returns basePrice(service) * totalItem.
-func (uc *paymentUsecase) calculateAmount(service string, totalItem int) (int, int, error) {
-	serviceName := strings.ToLower(service)
-
-	var (
-		serviceType constvars.ServiceType
-		basePrice   int
-	)
-
-	switch serviceName {
-	case string(constvars.ServiceAnalyze):
-		serviceType = constvars.ServiceAnalyze
-		basePrice = uc.InternalConfig.ServicePricing.AnalyzeBasePrice
-	case string(constvars.ServiceReport):
-		serviceType = constvars.ServiceReport
-		basePrice = uc.InternalConfig.ServicePricing.ReportBasePrice
-	case string(constvars.ServicePerformanceReport):
-		serviceType = constvars.ServicePerformanceReport
-		basePrice = uc.InternalConfig.ServicePricing.PerformanceReportBasePrice
-	case string(constvars.ServiceAccessDataset):
-		serviceType = constvars.ServiceAccessDataset
-		basePrice = uc.InternalConfig.ServicePricing.AccessDatasetBasePrice
-	default:
-		return 0, 0, exceptions.ErrClientCustomMessage(fmt.Errorf("invalid service: %s", service))
-	}
-
-	minQty, ok := constvars.ServiceToMinQuantity[serviceType]
-	if !ok {
-		return 0, 0, exceptions.ErrClientCustomMessage(fmt.Errorf("unsupported service: %s", service))
-	}
-	if totalItem < int(minQty) {
-		return 0, 0, exceptions.ErrClientCustomMessage(fmt.Errorf("total_item must be >= %d for service %s", int(minQty), serviceName))
-	}
-
-	amount := basePrice * totalItem
-	return amount, basePrice, nil
-}
-
-// determineServiceRequestSubject returns the FHIR subject reference string based on service.
-// For Patient service, it returns "Patient/<patient-id>". For others, it maps to configured Group subjects.
-func determineServiceRequestSubject(service string, patientID string) string {
-	normalized := strings.ToLower(service)
-	switch normalized {
-	case string(constvars.ServiceAnalyze):
-		return fmt.Sprintf("%s/%s", constvars.ResourcePatient, patientID)
-	case string(constvars.ServiceReport):
-		return string(constvars.ServiceRequestSubjectPractitioner)
-	case string(constvars.ServicePerformanceReport):
-		return string(constvars.ServiceRequestSubjectClinicAdmin)
-	case string(constvars.ServiceAccessDataset):
-		return string(constvars.ServiceRequestSubjectResearcher)
-	default:
-		return string(constvars.ServiceRequestSubjectGuest)
-	}
-}
-
-// lookupIdentityByService fetches resource identity based on the service and returns (resourceID, fullName).
-// For analyze, it returns Patient ID; for report, Practitioner ID; for performance report and access dataset, Person ID.
-func (uc *paymentUsecase) lookupIdentityByService(ctx context.Context, service string, email string) (string, string, error) {
-	switch service {
-	case string(constvars.ServiceAnalyze):
-		return resolveEmailIdentity(ctx, email, "no patient found", uc.PatientFhirClient.FindPatientByEmail,
-			func(ps []fhir_dto.Patient) (string, string) { return ps[0].ID, ps[0].FullName() })
-	case string(constvars.ServiceReport), string(constvars.ServicePerformanceReport), string(constvars.ServiceAccessDataset):
-		return resolveEmailIdentity(ctx, email, "no practitioner found", uc.PractitionerFhirClient.FindPractitionerByEmail,
-			func(ps []fhir_dto.Practitioner) (string, string) { return ps[0].ID, ps[0].FullName() })
-	default:
-		return "", "", exceptions.ErrClientCustomMessage(fmt.Errorf("unsupported service: %s", service))
-	}
-}
-
-// resolveEmailIdentity looks up the FHIR resource matching email via find and
-// returns its ID and display name, or ErrUserNotExist when no match is found.
-// first extracts the identity from the first result.
-func resolveEmailIdentity[T any](ctx context.Context, email, notFoundMsg string, find func(context.Context, string) ([]T, error), first func([]T) (string, string)) (string, string, error) {
-	results, err := find(ctx, email)
-	if err != nil {
-		return "", "", err
-	}
-	if len(results) == 0 {
-		return "", "", exceptions.ErrUserNotExist(errors.New(notFoundMsg))
-	}
-	id, name := first(results)
-	return id, name, nil
-}
-
-// mapServiceToRequesterResourceType returns the FHIR requester resource type for a given service.
-// analyze -> Patient, report -> Practitioner, performance-report/access-dataset -> Person, default empty.
-func mapServiceToRequesterResourceType(service string) string {
-	switch strings.ToLower(service) {
-	case string(constvars.ServiceAnalyze):
-		return constvars.ResourcePatient
-	case string(constvars.ServiceReport):
-		return constvars.ResourcePractitioner
-	case string(constvars.ServicePerformanceReport), string(constvars.ServiceAccessDataset):
-		return constvars.ResourcePractitioner
-	default:
-		return ""
-	}
 }
 
 func (uc *paymentUsecase) HandleAppointmentPayment(
