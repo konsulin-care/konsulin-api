@@ -120,6 +120,10 @@ func registerFederation(bootstrap *config.Bootstrap, ctrls *routers.Controllers,
 	}
 	startSettlementReconciler(context.Background(), paymentUsecase, client, logger)
 	go enroller.Start(context.Background())
+	// T45: once enrollment completes, fetch the sealed federation pepper
+	// when no sealed file exists (BK-PEPPER-001); the fetch itself keeps
+	// the APP_PEPPER fallback on zero or multiple listings.
+	go federation.FetchPepperAfterEnrollment(context.Background(), enroller, client, client, logger)
 }
 
 // registerSettlementHandler binds the payment usecase's HandleSettlement to
