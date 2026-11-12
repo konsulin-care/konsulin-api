@@ -63,3 +63,44 @@ type PartyRegistry interface {
 	// key values.
 	Rotate(ctx context.Context, nextSig, nextEnc string) error
 }
+
+// PaymentClient routes the gateway payment endpoints (SDK-API-001): the
+// seller-amount create, the listing create and the reconciliation read.
+// Every create is one logical create: it carries a single Idempotency-Key
+// the SDK generates once and holds stable for that create (SDK-CLIENT-002).
+// The request body never carries customer PII — no customer_email and no
+// customer_name; the end user reaches the gateway only as a peppered
+// customer_ref. Errors surface raw and are rendered through
+// gateway.MapError.
+type PaymentClient interface {
+	// CreateSellerPayment initiates a seller-amount payment
+	// (POST /v1/payments in seller-amount mode: domain + opaque +
+	// amount >= 1, return URLs optional).
+	// Parameters: ctx bounds the call, domain the seller-mode domain,
+	// opaque the seller-mode opaque identifier, amount the amount in IDR
+	// minor units, customerRef the peppered end-user hash (never
+	// plaintext PII), successURL and cancelURL the buyer redirect targets
+	// (empty sends no return URL).
+	// Returns: the created payment_id and its payment_url ("" when the
+	// gateway settles immediately and serves a null URL), plus the error
+	// to render through gateway.MapError. Never panics.
+	CreateSellerPayment(ctx context.Context, domain, opaque string, amount int64,
+		customerRef, successURL, cancelURL string) (paymentID, paymentURL string, err error)
+	// CreateListingPayment initiates a listing-mode payment
+	// (POST /v1/payments in listing mode: the gateway reads the price
+	// from the listing row).
+	// Parameters: ctx bounds the call, listingID the active listing to
+	// purchase, customerRef the peppered end-user hash required for
+	// price_scope=user listings (never plaintext PII).
+	// Returns: the created payment_id and its payment_url ("" when the
+	// gateway settles immediately and serves a null URL), plus the error
+	// to render through gateway.MapError. Never panics.
+	CreateListingPayment(ctx context.Context, listingID, customerRef string) (paymentID, paymentURL string, err error)
+	// GetPayment fetches one payment's reconciliation read
+	// (GET /v1/payments/{id}): a read, so it sends no Idempotency-Key.
+	// Parameters: ctx bounds the call, paymentID the payment to fetch.
+	// Returns: the gateway status ("PENDING", "PAID", "EXPIRED" or
+	// "CANCELED"), plus the error to render through gateway.MapError.
+	// Never panics.
+	GetPayment(ctx context.Context, paymentID string) (status string, err error)
+}
