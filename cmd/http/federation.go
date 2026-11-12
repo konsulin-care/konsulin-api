@@ -15,6 +15,7 @@ import (
 	"konsulin-service/internal/app/services/core/payments"
 	"konsulin-service/internal/app/services/core/services"
 	"konsulin-service/internal/app/services/fhir_spark/service_requests"
+	sharedredis "konsulin-service/internal/app/services/shared/redis"
 
 	"go.uber.org/zap"
 )
@@ -92,6 +93,12 @@ func registerFederation(bootstrap *config.Bootstrap, ctrls *routers.Controllers,
 	ctrls.Federation = controllers.NewFederationController(logger)
 	registerSettlementHandler(ctrls.Federation, paymentUsecase, logger)
 	registerServiceResultHandler(ctrls.Federation, bootstrap, gatewayEnv, logger)
+	// T36A: services discovery + async invoke. Constructed unconditionally,
+	// like the federation controller: the router mounts even in standalone
+	// mode (RequireGateway answers 503 before a handler runs) and a missing
+	// gateway wiring leaves the directory and hooks nil so handlers fail
+	// closed instead of panicking.
+	ctrls.Services = newServicesController(bootstrap, gatewayEnv, wiredGateway, logger)
 	if wiredGateway == nil || wiredGateway.client == nil {
 		if logger != nil {
 			logger.Warn("federation: gateway wiring missing (newGateway not called), gateway stays disabled")
@@ -173,6 +180,42 @@ func registerServiceResultHandler(fed *controllers.FederationController, bootstr
 		webhookID := gateway.ClaimsFromContext(r.Context()).WebhookID
 		return results.HandleServiceResultEvent(r.Context(), webhookID, body)
 	})
+}
+
+// newServicesController builds the T36A services controller from
+// bootstrap: the T30 listing directory and the T34 invocation hooks come
+// from the gateway wiring (nil in standalone mode, so the handlers fail
+// closed), the T33 provider resolver and the T37 per-user limiter from the
+// gateway env and Redis, and the async receipt recorder from a
+// ServiceRequest FHIR client. Parameters: bootstrap carries config, Redis
+// and the FHIR base URL; gatewayEnv is the gateway/party configuration;
+// wiring is the process-wide gateway adapter (may be nil); logger reports
+// and tolerates nil. Returns: the controller to mount; never panics.
+func newServicesController(bootstrap *config.Bootstrap, gatewayEnv config.AppGateway, wiring *gatewayWiring, logger *zap.Logger) *controllers.ServicesController {
+	var directory contracts.ListingDirectory
+	var hooks contracts.WebhookClient
+	if wiring != nil && wiring.client != nil {
+		directory = wiring.client
+		hooks = wiring.client
+	}
+	var cfg *config.InternalConfig
+	var fhirBase string
+	var redisRepo contracts.RedisRepository
+	if bootstrap != nil {
+		if bootstrap.InternalConfig != nil {
+			cfg = bootstrap.InternalConfig
+			fhirBase = bootstrap.InternalConfig.FHIR.BaseUrl
+		}
+		if bootstrap.Redis != nil {
+			redisRepo = sharedredis.NewRedisRepository(bootstrap.Redis, logger)
+		}
+	}
+	recorder := services.NewFHIRServiceRequestRecorder(
+		service_requests.NewServiceRequestFhirClient(fhirBase, logger))
+	invoker := services.NewInvoker(hooks, directory, recorder)
+	limiter := services.NewServiceLimiter(redisRepo)
+	return controllers.NewServicesController(logger, directory,
+		services.NewProviderResolver(&gatewayEnv), limiter, invoker, gatewayEnv, cfg)
 }
 
 // startSettlementReconciler starts the periodic settlement reconciler (T28)
