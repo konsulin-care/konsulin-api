@@ -170,15 +170,6 @@ func ctx() context.Context {
 	return context.Background()
 }
 
-// stubWebhookForwarder returns a webhookForwardFn that short-circuits the
-// Chatwoot omnichannel call so createNewPractitioner/createNewPatient tests do
-// not need JWTTokenManager or an HTTP server.
-func stubWebhookForwarder() func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error) {
-	return func(context.Context, string, string, []byte, string) (int, []byte, error) {
-		return 200, []byte(`[{"chatwoot_id":123,"email":"test@example.com"}]`), nil
-	}
-}
-
 // ---------------------------------------------------------------------------
 // scanIdentifiers
 // ---------------------------------------------------------------------------
@@ -538,7 +529,7 @@ func TestCreateNewPractitioner_MissingSupertoken_Error(t *testing.T) {
 
 func TestCreateNewPractitioner_Success(t *testing.T) {
 	// Pass empty email and phone to avoid triggering the Chatwoot webhook call
-	// (which requires JWTTokenManager and HTTP server setup).
+	// (which needs gateway deps that this test does not set).
 	mockPrac := new(MockPractitionerFhirClient)
 	uc := newTestUsecase(mockPrac, nil, nil)
 
@@ -577,7 +568,7 @@ func TestCreateNewPractitioner_FhirClientError(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCreatePractitionerIfNotExists_Found_EnsuresIdentifiers(t *testing.T) {
-	// Use identifier-based lookup to avoid triggering Chatwoot (requires JWTTokenManager).
+	// Use identifier-based lookup to avoid triggering Chatwoot (needs gateway deps).
 	// Both email and phone are empty so the Chatwoot guard returns early.
 	mockPrac := new(MockPractitionerFhirClient)
 	uc := newTestUsecase(mockPrac, nil, nil)
@@ -800,7 +791,6 @@ func TestInitializeNewUserFHIRResources_ResearcherPlan(t *testing.T) {
 	mockPrac := new(MockPractitionerFhirClient)
 	mockPR := new(MockPractitionerRoleFhirClient)
 	uc := newTestUsecase(mockPrac, nil, mockPR)
-	uc.webhookForwardFn = stubWebhookForwarder()
 
 	input := &contracts.InitializeNewUserFHIRResourcesInput{
 		SuperTokenUserID: "st-123",
@@ -836,7 +826,6 @@ func TestInitializeNewUserFHIRResources_ClinicAdminAndResearcher_OrgLinked(t *te
 	mockPrac := new(MockPractitionerFhirClient)
 	mockPR := new(MockPractitionerRoleFhirClient)
 	uc := newTestUsecase(mockPrac, nil, mockPR)
-	uc.webhookForwardFn = stubWebhookForwarder()
 
 	input := &contracts.InitializeNewUserFHIRResourcesInput{
 		SuperTokenUserID: "st-123",
@@ -888,7 +877,6 @@ func TestInitializeNewUserFHIRResources_PatientPlan_NoRoles(t *testing.T) {
 	mockPat := new(MockPatientFhirClient)
 	mockPR := new(MockPractitionerRoleFhirClient)
 	uc := newTestUsecase(mockPrac, mockPat, mockPR)
-	uc.webhookForwardFn = stubWebhookForwarder()
 
 	input := &contracts.InitializeNewUserFHIRResourcesInput{
 		SuperTokenUserID: "st-123",
@@ -919,7 +907,6 @@ func TestInitializeNewUserFHIRResources_DoubleInit_SinglePatient(t *testing.T) {
 	mockPat := new(MockPatientFhirClient)
 	mockPR := new(MockPractitionerRoleFhirClient)
 	uc := newTestUsecase(mockPrac, mockPat, mockPR)
-	uc.webhookForwardFn = stubWebhookForwarder()
 
 	input := &contracts.InitializeNewUserFHIRResourcesInput{
 		SuperTokenUserID: "st-123",
@@ -935,6 +922,9 @@ func TestInitializeNewUserFHIRResources_DoubleInit_SinglePatient(t *testing.T) {
 	mockPat.On("FindPatientByEmail", ctx(), "pat@test.com").Return([]fhir_dto.Patient{}, nil).Once()
 	mockPat.On("CreatePatient", ctx(), mock.Anything).Return(createdPat, nil).Once()
 	// Second call: the uid identifier now resolves the existing resource.
+	// The exact identifier match plus the skipped (nil-gateway) Chatwoot sync
+	// mean no identifier update is needed on the second init, so no
+	// UpdatePatient call may happen there.
 	mockPat.On("FindPatientByIdentifier", ctx(), identifierQuery).Return(
 		[]fhir_dto.Patient{{
 			ID: "pat-1",
@@ -942,7 +932,6 @@ func TestInitializeNewUserFHIRResources_DoubleInit_SinglePatient(t *testing.T) {
 				{System: constvars.FhirSupertokenSystemIdentifier, Value: "st-123"},
 			},
 		}}, nil).Once()
-	mockPat.On("UpdatePatient", ctx(), mock.Anything).Return(createdPat, nil).Once()
 
 	out1, err := uc.InitializeNewUserFHIRResources(ctx(), input)
 	require.NoError(t, err)

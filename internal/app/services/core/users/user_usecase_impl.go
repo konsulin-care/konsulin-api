@@ -1,22 +1,17 @@
 package users
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/services/core/federation"
-	"konsulin-service/internal/app/services/shared/jwtmanager"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
@@ -51,25 +46,14 @@ type userUsecase struct {
 	InternalConfig             *config.InternalConfig
 	Log                        *zap.Logger
 	LockerService              contracts.LockerService
-	JWTTokenManager            *jwtmanager.JWTManager
 
-	// webhookForwardFn, when set, bypasses the HTTP loopback for synchronous webhook forwarding.
-	// Intended for in-process callers that are already trusted.
-	webhookForwardFn func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error)
-
-	// gatewayWebhooks, when set, routes the profile sync through the gateway
-	// (T42A); nil keeps the legacy forwarder/HTTP paths below until T42B.
+	// gatewayWebhooks routes the profile sync through the gateway (T42A).
+	// nil means no gateway deps: the sync is skipped with a log and no
+	// error (the legacy forwarder/HTTP paths were removed in T42B).
 	gatewayWebhooks GatewayWebhookClient
 	// gatewayAutomationPartyID is APP_AUTOMATION_PARTY_ID: the party serving
 	// the modify-profile listing.
 	gatewayAutomationPartyID string
-}
-
-// SetWebhookForwarder sets the in-process forwarder for synchronous webhook calls.
-// When set, callWebhookSvcKonsulinOmnichannel calls this function directly instead
-// of making an HTTP loopback to the backend's own webhook endpoint.
-func (uc *userUsecase) SetWebhookForwarder(fn func(ctx context.Context, service, method string, body []byte, contentType string) (int, []byte, error)) {
-	uc.webhookForwardFn = fn
 }
 
 var (
@@ -87,9 +71,9 @@ type UserFHIRInitializerDeps struct {
 	InternalConfig             *config.InternalConfig
 	Logger                     *zap.Logger
 	LockerService              contracts.LockerService
-	JWTTokenManager            *jwtmanager.JWTManager
 	// GatewayWebhooks is the optional gateway adapter for the profile sync
-	// (nil keeps the legacy paths; skipped-with-no-error when disabled).
+	// (nil skips the sync with no error; also skipped-with-no-error when
+	// disabled).
 	GatewayWebhooks GatewayWebhookClient
 	// GatewayAutomationPartyID is APP_AUTOMATION_PARTY_ID (the party serving
 	// the modify-profile listing).
@@ -107,7 +91,6 @@ func NewUserFHIRInitializer(deps UserFHIRInitializerDeps) contracts.UserFHIRInit
 			InternalConfig:             deps.InternalConfig,
 			Log:                        deps.Logger,
 			LockerService:              deps.LockerService,
-			JWTTokenManager:            deps.JWTTokenManager,
 			gatewayWebhooks:            deps.GatewayWebhooks,
 			gatewayAutomationPartyID:   deps.GatewayAutomationPartyID,
 		}
@@ -571,75 +554,15 @@ type callWebhookSvcKonsulinOmnichannelRawOutput struct {
 }
 
 func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, input callWebhookSvcKonsulinOmnichannelInput) (callWebhookSvcKonsulinOmnichannelOutput, error) {
-	// T42A: once the gateway adapter is wired, the profile sync goes through
-	// the gateway; the legacy forwarder/HTTP paths below stay for callers
-	// without gateway deps until T42B removes them.
-	if uc.gatewayWebhooks != nil {
-		return uc.callGatewayOmnichannel(ctx, input)
+	// T42B: the legacy in-process forwarder and HTTP loopback paths are
+	// removed; the profile sync runs only through the gateway. Without
+	// gateway deps the sync is skipped with a log and no error, matching
+	// the disabled-gateway behavior.
+	if uc.gatewayWebhooks == nil {
+		uc.Log.Info(logPrefix + "callWebhookSvcKonsulinOmnichannel skipped: no gateway client")
+		return callWebhookSvcKonsulinOmnichannelOutput{}, nil
 	}
-
-	bodyBytes, err := marshalOmnichannelBody(input)
-	if err != nil {
-		return callWebhookSvcKonsulinOmnichannelOutput{}, err
-	}
-
-	// Use in-process forwarder when available (skips HTTP loopback, JWT creation, auth).
-	if uc.webhookForwardFn != nil {
-		outStatusCode, respBody, err := uc.webhookForwardFn(ctx, "modify-profile", http.MethodPost, bodyBytes, "application/json")
-		if err != nil {
-			return callWebhookSvcKonsulinOmnichannelOutput{}, err
-		}
-		if outStatusCode != http.StatusOK {
-			return callWebhookSvcKonsulinOmnichannelOutput{}, errors.New("failed to call webhook svc konsulin omnichannel")
-		}
-
-		return parseOmnichannelResponse(respBody)
-	}
-
-	tokenOut, err := uc.JWTTokenManager.CreateToken(
-		ctx,
-		&jwtmanager.CreateTokenInput{
-			Subject: constvars.KonsulinOmnichannelSystemIdentifier,
-		},
-	)
-	if err != nil {
-		return callWebhookSvcKonsulinOmnichannelOutput{}, err
-	}
-
-	url := fmt.Sprintf(
-		"%s/%s/synchronous/modify-profile",
-		strings.TrimRight(uc.InternalConfig.App.BaseUrl, "/"),
-		strings.Trim(uc.InternalConfig.App.WebhookInstantiateBasePath, "/"),
-	)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(bodyBytes))
-	if err != nil {
-		return callWebhookSvcKonsulinOmnichannelOutput{}, err
-	}
-
-	req.Header.Set(constvars.HeaderAuthorization, "Bearer "+tokenOut.Token)
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{
-		Timeout: time.Duration(uc.InternalConfig.Webhook.HTTPTimeoutInSeconds) * time.Second,
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return callWebhookSvcKonsulinOmnichannelOutput{}, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return callWebhookSvcKonsulinOmnichannelOutput{}, errors.New("failed to call webhook svc konsulin omnichannel")
-	}
-
-	bodyBytesResp, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return callWebhookSvcKonsulinOmnichannelOutput{}, err
-	}
-
-	return parseOmnichannelResponse(bodyBytesResp)
+	return uc.callGatewayOmnichannel(ctx, input)
 }
 
 // marshalOmnichannelBody builds the existing profile-sync body: the username

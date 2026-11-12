@@ -99,8 +99,8 @@ func TestCallWebhookSvcKonsulinOmnichannel_GatewaySync(t *testing.T) {
 
 // TestCallWebhookSvcKonsulinOmnichannel_SkippedWhenGatewayUnavailable pins
 // the second contract line: profile sync is skipped without error when the
-// gateway is disabled or the automation party is unset — no gateway Sync and
-// no legacy forwarder call happens either.
+// gateway is disabled or the automation party is unset — no gateway Sync
+// happens, and the legacy forwarder path (removed in T42B) cannot run either.
 func TestCallWebhookSvcKonsulinOmnichannel_SkippedWhenGatewayUnavailable(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -116,10 +116,6 @@ func TestCallWebhookSvcKonsulinOmnichannel_SkippedWhenGatewayUnavailable(t *test
 				Log:                      zap.NewNop(),
 				gatewayWebhooks:          tt.client,
 				gatewayAutomationPartyID: tt.party,
-				webhookForwardFn: func(context.Context, string, string, []byte, string) (int, []byte, error) {
-					t.Fatal("the legacy forwarder must not run while the gateway path is wired")
-					return 0, nil, nil
-				},
 			}
 
 			out, err := uc.callWebhookSvcKonsulinOmnichannel(context.Background(), callWebhookSvcKonsulinOmnichannelInput{

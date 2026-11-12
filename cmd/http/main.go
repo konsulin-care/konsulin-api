@@ -210,9 +210,10 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	// Ensure default FHIR Groups exist for ServiceRequest subjects
 	_ = serviceRequestFhirClient.EnsureAllNecessaryGroupsExists(context.Background())
 
-	// T42A: optional gateway deps for the omnichannel profile sync. A nil
-	// client keeps the legacy forwarder/HTTP paths; once wired, a disabled
-	// gateway or an empty APP_AUTOMATION_PARTY_ID skips the sync with a log.
+	// T42A/T42B: optional gateway deps for the omnichannel profile sync.
+	// The legacy forwarder/HTTP paths are removed (T42B): a nil client, a
+	// disabled gateway or an empty APP_AUTOMATION_PARTY_ID skips the sync
+	// with a log.
 	var gatewayWebhooks users.GatewayWebhookClient
 	if gwWiring != nil && gwWiring.client != nil {
 		gatewayWebhooks = gwWiring.client
@@ -227,7 +228,6 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		InternalConfig:             bootstrap.InternalConfig,
 		Logger:                     bootstrap.Logger,
 		LockerService:              lockService,
-		JWTTokenManager:            jwtManager,
 		GatewayWebhooks:            gatewayWebhooks,
 		GatewayAutomationPartyID:   bootstrap.InternalConfig.Gateway.AutomationPartyID,
 	})
@@ -289,10 +289,11 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		Enforcer:           middlewares.Enforcer,
 	})
 
-	// Wire in-process forwarders for internal callers (magic link delivery, omnichannel)
-	// to skip the HTTP loopback and call ForwardSynchronousInternal directly.
+	// Wire the in-process forwarder for the magic link delivery to skip the
+	// HTTP loopback and call ForwardSynchronousInternal directly. The user
+	// usecase no longer implements the forwarder setter (T42B removed its
+	// legacy profile-sync paths; the sync runs through the gateway).
 	wireWebhookForwarder(magicLinkDelivery, webhookUsecase.ForwardSynchronousInternal)
-	wireWebhookForwarder(userUsecase, webhookUsecase.ForwardSynchronousInternal)
 
 	webhookController := controllers.NewWebhookController(bootstrap.Logger, webhookUsecase, webhookLimiter, resourceLimiter, bootstrap.InternalConfig)
 	// Initialize payment usecase and controller (inject JWT manager)
@@ -387,8 +388,8 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	return nil
 }
 
-// wireWebhookForwarder connects an in-process caller (magic link delivery,
-// omnichannel) to the synchronous webhook service, skipping the HTTP loopback.
+// wireWebhookForwarder connects an in-process caller (magic link delivery)
+// to the synchronous webhook service, skipping the HTTP loopback.
 // Targets that do not implement SetWebhookForwarder are left untouched.
 func wireWebhookForwarder(target any, forward func(ctx context.Context, service, method string, body []byte, contentType string) (*webhook.HandleSynchronousWebhookServiceOutput, error)) {
 	f, ok := target.(interface {
