@@ -14,16 +14,16 @@ import (
 // allowlisted automation listings, POST /hook/{service} fails closed 404
 // for every other name, and GET /service-request/{id}/result serves the
 // owner-only result view. POST /callback/service-request and the legacy
-// WebhookController bindings are gone. The alias routes are not wrapped in
-// RequireGateway (this call site carries no gateway status); the handlers
-// fail closed on their own when a gateway seam is missing.
+// WebhookController bindings (and the controller parameter itself) are
+// gone: this file's purpose is now solely the temporary /hook aliases. The
+// alias routes are not wrapped in RequireGateway (this call site carries no
+// gateway status); the handlers fail closed on their own when a gateway
+// seam is missing.
 //
 // Parameters: router is the chi subrouter the routes register on; mw
 // supplies the Casbin enforcer wired onto the controller (nil tolerable:
-// authorization then fails closed); the legacy WebhookController is unused
-// since T38 — the router.go call site still passes it, so the parameter is
-// kept for compatibility. Returns: nothing; never panics.
-func attachWebhookRouter(router chi.Router, middlewares *middlewares.Middlewares, _ *controllers.WebhookController) {
+// authorization then fails closed). Returns: nothing; never panics.
+func attachWebhookRouter(router chi.Router, middlewares *middlewares.Middlewares) {
 	svc := controllers.HookAliasController()
 	if svc == nil {
 		// No ServicesController constructed (zero-value wiring): the alias

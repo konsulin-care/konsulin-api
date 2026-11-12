@@ -27,7 +27,6 @@ import (
 type Controllers struct {
 	Auth         *controllers.AuthController
 	Payment      *controllers.PaymentController
-	Webhook      *controllers.WebhookController
 	Schedule     *controllers.ScheduleController
 	Organization *controllers.OrganizationController
 	Purge        *controllers.PurgeController
@@ -100,7 +99,9 @@ func SetupRoutes(
 
 			attachPaymentRouter(r, middlewares, ctrls.Payment, ctrls.Gateway)
 			attachScheduleRouter(r, middlewares, ctrls.Schedule)
-			attachWebhookRouter(r, middlewares, ctrls.Webhook)
+			// T50: the legacy WebhookController is gone; the temporary /hook
+			// aliases bind without any controller parameter.
+			attachWebhookRouter(r, middlewares)
 			attachOrganizationRoutes(r, middlewares, ctrls.Organization)
 			attachPrivacyRouter(r, ctrls.Purge)
 			attachFederationRouter(r, ctrls.Federation, ctrls.Gateway, logger)

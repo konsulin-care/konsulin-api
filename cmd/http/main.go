@@ -29,7 +29,6 @@ import (
 	"konsulin-service/internal/app/services/fhir_spark/service_requests"
 	"konsulin-service/internal/app/services/shared/jwtmanager"
 	"konsulin-service/internal/app/services/shared/locker"
-	"konsulin-service/internal/app/services/shared/ratelimiter"
 	"konsulin-service/internal/app/services/shared/webhookqueue"
 	"konsulin-service/internal/pkg/buildinfo"
 
@@ -276,9 +275,8 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		return fmt.Errorf("error initializing supertokens: %w", err)
 	}
 
-	// Initialize webhook components
-	webhookLimiter := ratelimiter.NewHookRateLimiter(redisRepository, bootstrap.Logger, bootstrap.InternalConfig)
-	resourceLimiter := ratelimiter.NewResourceLimiter(redisRepository, bootstrap.Logger)
+	// Initialize webhook components (T50: hook/resource limiters and the
+	// legacy WebhookController are removed with the legacy /hook stack).
 	webhookQueueService, err := webhookqueue.NewService(bootstrap.RabbitMQ, bootstrap.Logger, bootstrap.InternalConfig.Webhook.MaxQueue)
 	if err != nil {
 		return err
@@ -300,7 +298,6 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	// legacy profile-sync paths; the sync runs through the gateway).
 	wireWebhookForwarder(magicLinkDelivery, webhookUsecase.ForwardSynchronousInternal)
 
-	webhookController := controllers.NewWebhookController(bootstrap.Logger, webhookUsecase, webhookLimiter, resourceLimiter, bootstrap.InternalConfig)
 	// Initialize payment usecase and controller (inject JWT manager)
 	invoiceFhirClient := invoicesFhir.NewInvoiceFhirClient(bootstrap.InternalConfig.FHIR.BaseUrl, bootstrap.Logger)
 
@@ -371,7 +368,6 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	ctrls := routers.Controllers{
 		Auth:         authController,
 		Payment:      paymentController,
-		Webhook:      webhookController,
 		Schedule:     scheduleController,
 		Organization: orgController,
 		Purge:        purgeController,

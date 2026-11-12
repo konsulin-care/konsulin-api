@@ -32,7 +32,7 @@ const serviceInvokeMaxBytes = 1 << 20
 
 // hookAliasController publishes the ServicesController that serves the
 // temporary /hook aliases (T38). The routers call site for
-// attachWebhookRouter only receives the legacy WebhookController, so the
+// attachWebhookRouter takes no controller parameter (T50), so the
 // constructor publishes the instance here for the routers package to bind;
 // the bootstrap constructs the controller (registerFederation) before it
 // registers routes (SetupRoutes). The zero value (never constructed) leaves
@@ -372,7 +372,7 @@ func (ctrl *ServicesController) applyServiceRateLimit(w http.ResponseWriter, r *
 		limit = ctrl.AppConfig.Webhook.SynchronousServiceRateLimit
 		window = ctrl.AppConfig.Webhook.SynchronousServiceWindowSeconds
 	}
-	eval, err := ctrl.Limiter.Check(r.Context(), deriveActorID(r.Context()),
+	eval, err := ctrl.Limiter.Check(r.Context(), servicesActorID(r.Context()),
 		name, limit, window, time.Now().UTC())
 	if err != nil {
 		utils.BuildErrorResponse(log, w, err)
@@ -485,6 +485,30 @@ func serviceReplyPayload(reply []byte) any {
 func serviceNotFound() error {
 	return exceptions.BuildNewCustomError(nil, constvars.StatusNotFound,
 		"Service not found", "SERVICE_NOT_FOUND")
+}
+
+// anonymousActor is the actor id the rate limiter records for a caller
+// without a uid (middleware behavior: such callers are anonymous).
+const anonymousActor = "anonymous"
+
+// servicesActorID extracts the actor identifier from context for the
+// per-user service rate limit. It mirrors the legacy webhook controller's
+// deriveActorID under a new name so both can coexist in this package until
+// that controller is deleted; the body is shaped differently on purpose to
+// keep the two implementations distinct for the dupl linter. Parameters:
+// ctx is the request context carrying the api-key flag and uid values.
+// Returns the actor id: "api-key-superadmin" for an api-key caller, the
+// uid when present and not anonymous, otherwise anonymousActor. Never
+// panics.
+func servicesActorID(ctx context.Context) string {
+	if isAPIKey, _ := ctx.Value(constvars.CONTEXT_API_KEY_AUTH).(bool); isAPIKey {
+		return "api-key-superadmin"
+	}
+	uid, _ := ctx.Value(constvars.CONTEXT_UID).(string)
+	if uid == "" || strings.EqualFold(uid, anonymousActor) {
+		return anonymousActor
+	}
+	return uid
 }
 
 // gatewayUnavailable renders the 503 used when a required gateway seam
