@@ -1,12 +1,12 @@
 package payments
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"net/url"
 	"path"
@@ -35,6 +35,27 @@ import (
 	"go.uber.org/zap"
 )
 
+// GatewayDeps bundles the gateway federation dependencies the payment usecase
+// carries for the appointment booking checkout: the outbound gateway clients
+// (payments, webhooks, listings), the provider alias resolver bound to the
+// configured aliases, and this adapter's own and automation party ids. It is
+// passed to NewPaymentUsecase at bootstrap; tests that build paymentUsecase
+// literals directly do not need it.
+type GatewayDeps struct {
+	// Payments creates gateway payments (seller-mode checkout).
+	Payments contracts.PaymentClient
+	// Webhooks invokes the gateway webhook endpoints.
+	Webhooks contracts.WebhookClient
+	// Listings reads and enlists marketplace listings.
+	Listings contracts.ListingDirectory
+	// ResolveProvider maps a provider alias to the providing party id.
+	ResolveProvider func(alias string) (string, error)
+	// OwnPartyID is APP_PARTY_ID — the party this adapter owns.
+	OwnPartyID string
+	// AutomationPartyID is APP_AUTOMATION_PARTY_ID.
+	AutomationPartyID string
+}
+
 type paymentUsecase struct {
 	TransactionRepository      contracts.TransactionRepository
 	InternalConfig             *config.InternalConfig
@@ -51,10 +72,13 @@ type paymentUsecase struct {
 	SlotUsecase                contracts.SlotUsecaseIface
 	XenditClient               *xendit.APIClient
 	FHIRClient                 appointmentResourceClient
-	// CreateAppointmentInvoice is the injectable seam for the Xendit invoice
-	// creation call made by handleAppointmentBooking; when nil it falls back to
-	// createXenditInvoiceForAppointment. Tests stub it to exercise the booking
-	// flow offline without a Xendit sandbox.
+	// Gateway holds the gateway federation deps (payments, webhooks, listings,
+	// provider resolver, party ids) used by the default appointment checkout.
+	Gateway GatewayDeps
+	// CreateAppointmentInvoice is the injectable seam for the payment checkout
+	// call made by handleAppointmentBooking; when nil it falls back to the
+	// gateway checkout closure over CreateAppointmentCheckout. Tests stub it to
+	// exercise the booking flow offline without a gateway or Xendit sandbox.
 	CreateAppointmentInvoice func(ctx context.Context, req *requests.AppointmentPaymentRequest, precond *preconditionData) (string, error)
 }
 
@@ -77,6 +101,7 @@ func NewPaymentUsecase(
 	scheduleFhirClient contracts.ScheduleFhirClient,
 	bundleFhirClient bundleSvc.BundleFhirClient,
 	slotUsecase contracts.SlotUsecaseIface,
+	gatewayDeps GatewayDeps,
 	logger *zap.Logger,
 ) contracts.PaymentUsecase {
 	oncePaymentUsecase.Do(func() {
@@ -96,6 +121,7 @@ func NewPaymentUsecase(
 			SlotUsecase:                slotUsecase,
 			XenditClient:               xenditClient,
 			FHIRClient:                 fhir_http_client.New(logger),
+			Gateway:                    gatewayDeps,
 		}
 		paymentUsecaseInstance = instance
 	})
@@ -353,126 +379,51 @@ func extractMessageFromXenditError(err *common.XenditSdkError) string {
 	return rawMsg
 }
 
-// createXenditInvoiceForAppointment creates a Xendit invoice for appointment payment
-func (uc *paymentUsecase) createXenditInvoiceForAppointment(
+// gatewayAppointmentCheckout is the default CreateAppointmentInvoice seam: it
+// delegates to the T27A seller-mode gateway checkout (CreateAppointmentCheckout)
+// over the six appointment ids, the precondition invoice and the
+// APP_FRONTEND_DOMAIN return URLs, then persists the gateway payment id back
+// onto the Invoice. It fails closed when the gateway payment client was not
+// wired or the precondition invoice is missing.
+func (uc *paymentUsecase) gatewayAppointmentCheckout(
 	ctx context.Context,
 	req *requests.AppointmentPaymentRequest,
 	precond *preconditionData,
 ) (string, error) {
-	requestID, _ := ctx.Value(constvars.CONTEXT_REQUEST_ID_KEY).(string)
+	if uc.Gateway.Payments == nil {
+		return "", exceptions.ErrServerProcess(fmt.Errorf("gateway payment client not initialized"))
+	}
+	if precond == nil || precond.Invoice == nil {
+		return "", errors.New("checkout invoice is required")
+	}
+	input := AppointmentCheckoutInput{
+		SlotID:              strings.TrimPrefix(req.SlotID, constvars.ResourceSlot+"/"),
+		PractitionerRoleID:  strings.TrimPrefix(req.PractitionerRoleID, constvars.FHIRRefPrefixPractitionerRole),
+		PatientID:           strings.TrimPrefix(req.PatientID, constvars.FHIRRefPrefixPatient),
+		InvoiceID:           strings.TrimPrefix(req.InvoiceID, constvars.FHIRRefPrefixInvoice),
+		HealthcareServiceID: strings.TrimPrefix(req.HealthcareServiceID, constvars.FHIRRefPrefixHealthcareService),
+		AppointmentID:       strings.TrimPrefix(req.AppointmentID, constvars.ResourceAppointment+"/"),
+		Invoice:             precond.Invoice,
+		FrontendDomain:      uc.InternalConfig.App.FrontendDomain,
+	}
+	return CreateAppointmentCheckout(ctx, uc.Gateway.Payments, uc.persistCheckoutInvoice, input)
+}
 
-	slotID := strings.TrimPrefix(req.SlotID, "Slot/")
-	practitionerRoleID := strings.TrimPrefix(req.PractitionerRoleID, constvars.FHIRRefPrefixPractitionerRole)
-	patientID := strings.TrimPrefix(req.PatientID, constvars.FHIRRefPrefixPatient)
-	invoiceID := strings.TrimPrefix(req.InvoiceID, constvars.FHIRRefPrefixInvoice)
-	healthcareServiceID := strings.TrimPrefix(req.HealthcareServiceID, constvars.FHIRRefPrefixHealthcareService)
-	appointmentID := strings.TrimPrefix(req.AppointmentID, constvars.ResourceAppointment+"/")
-	// Format: appointment:{slotID}:{practitionerRoleID}:{patientID}:{invoiceID}:{healthcareServiceID}:{appointmentID}
-	externalID := fmt.Sprintf("%s:%s:%s:%s:%s:%s:%s",
-		constvars.AppointmentPaymentService,
-		slotID,
-		practitionerRoleID,
-		patientID,
-		invoiceID,
-		healthcareServiceID,
-		appointmentID,
-	)
+// persistCheckoutInvoice persists the invoice carrying the gateway payment
+// identifier through a full-replacement PUT, mirroring updateAppointment.
+func (uc *paymentUsecase) persistCheckoutInvoice(ctx context.Context, invoice *fhir_dto.Invoice) error {
+	invoiceID := strings.TrimPrefix(invoice.ID, constvars.ResourceInvoice+"/")
+	url := uc.InternalConfig.FHIR.BaseUrl + constvars.ResourceInvoice + "/" + invoiceID
 
-	dateOnly := precond.Slot.Start.Format(time.DateOnly)
-	startTime := precond.Slot.Start.Format(time.TimeOnly)
-	endTime := precond.Slot.End.Format(time.TimeOnly)
-	description := fmt.Sprintf("Pembayaran janji temu pada tanggal %s pukul %s - %s", dateOnly, startTime, endTime)
-
-	amount := int(math.Ceil(precond.Invoice.TotalNet.Value))
-
-	patientEmails := precond.Patient.GetEmailAddresses()
-	var patientEmail string
-	if len(patientEmails) > 0 {
-		patientEmail = patientEmails[0]
+	payload, err := json.Marshal(invoice)
+	if err != nil {
+		return fmt.Errorf("failed to marshal invoice: %w", err)
 	}
 
-	patientPhoneNumbers := precond.Patient.GetPhoneNumbers()
-	var patientPhoneNumber string
-	if len(patientPhoneNumbers) > 0 {
-		patientPhoneNumber = patientPhoneNumbers[0]
+	if _, err := uc.FHIRClient.Do(ctx, http.MethodPut, url, bytes.NewReader(payload)); err != nil {
+		return fmt.Errorf("failed to update invoice: %w", err)
 	}
-
-	patientName := precond.Patient.FullName()
-	if patientName == "" {
-		patientName = "Pasien Konsulin"
-	}
-
-	durationSeconds := float32(uc.InternalConfig.App.PaymentExpiredTimeInMinutes * 60)
-
-	invoiceReq := xinvoice.NewCreateInvoiceRequest(externalID, float64(amount))
-	invoiceReq.SetCurrency(constvars.CurrencyIndonesianRupiah)
-	invoiceReq.SetDescription(description)
-	invoiceReq.SetSuccessRedirectUrl(uc.InternalConfig.App.FrontendDomain)
-	invoiceReq.SetFailureRedirectUrl(uc.InternalConfig.App.FrontendDomain)
-	if durationSeconds > 0 {
-		invoiceReq.SetInvoiceDuration(durationSeconds)
-	}
-
-	customer := xinvoice.NewCustomerObject()
-	customer.SetGivenNames(patientName)
-
-	var preferredNotificationChannel []xinvoice.NotificationChannel
-
-	if patientEmail != "" {
-		customer.SetEmail(patientEmail)
-		preferredNotificationChannel = append(
-			preferredNotificationChannel,
-			xinvoice.NOTIFICATIONCHANNEL_EMAIL,
-		)
-	}
-
-	if patientPhoneNumber != "" {
-		customer.SetMobileNumber(patientPhoneNumber)
-		customer.SetPhoneNumber(patientPhoneNumber)
-
-		preferredNotificationChannel = append(
-			preferredNotificationChannel,
-			xinvoice.NOTIFICATIONCHANNEL_SMS,
-			xinvoice.NOTIFICATIONCHANNEL_WHATSAPP,
-		)
-	}
-
-	invoiceReq.SetCustomer(*customer)
-
-	if len(preferredNotificationChannel) != 0 {
-		notif := xinvoice.NewNotificationPreference()
-		notif.SetInvoiceCreated(preferredNotificationChannel)
-		notif.SetInvoicePaid(preferredNotificationChannel)
-		notif.SetInvoiceReminder(preferredNotificationChannel)
-
-		invoiceReq.SetCustomerNotificationPreference(*notif)
-	}
-
-	item := xinvoice.NewInvoiceItem("Pembayaran Janji Temu", float32(amount), float32(1))
-	invoiceReq.SetItems([]xinvoice.InvoiceItem{*item})
-
-	ctxTimeout, cancel := context.WithTimeout(ctx, time.Duration(uc.InternalConfig.App.PaymentGatewayRequestTimeoutInSeconds)*time.Second)
-	defer cancel()
-
-	apiReq := uc.XenditClient.InvoiceApi.CreateInvoice(ctxTimeout).CreateInvoiceRequest(*invoiceReq)
-	inv, httpResp, xenditErr := apiReq.Execute()
-	if xenditErr != nil {
-		uc.Log.Error("paymentUsecase.createXenditInvoiceForAppointment failed",
-			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.String("slotId", slotID),
-			zap.Error(xenditErr),
-		)
-		return "", uc.mapXenditError(ctx, xenditErr, httpResp)
-	}
-
-	uc.Log.Info("paymentUsecase.createXenditInvoiceForAppointment succeeded",
-		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String("slotId", slotID),
-		zap.String("invoiceId", inv.GetId()),
-		zap.String("externalId", externalID),
-	)
-
-	return inv.GetInvoiceUrl(), nil
+	return nil
 }
 
 // appointmentExternalIDFields holds all identifiers parsed from the Xendit external_id.
@@ -860,8 +811,8 @@ func (uc *paymentUsecase) HandleAppointmentPayment(
 
 // handleAppointmentBooking executes the single booking flow: it reserves the
 // slot as busy-tentative, moves the BFF-created proposed appointment to pending,
-// creates a Xendit invoice, and returns the payment URL. On any failure the slot
-// and appointment are rolled back to their pre-booking states.
+// creates the gateway payment checkout, and returns the payment URL. On any
+// failure the slot and appointment are rolled back to their pre-booking states.
 func (uc *paymentUsecase) handleAppointmentBooking(
 	ctx context.Context,
 	req *requests.AppointmentPaymentRequest,
@@ -905,25 +856,25 @@ func (uc *paymentUsecase) handleAppointmentBooking(
 
 	createInvoice := uc.CreateAppointmentInvoice
 	if createInvoice == nil {
-		createInvoice = uc.createXenditInvoiceForAppointment
+		createInvoice = uc.gatewayAppointmentCheckout
 	}
-	url, xenditErr := createInvoice(ctx, req, precond)
-	if xenditErr != nil {
-		uc.Log.Error("paymentUsecase.handleAppointmentBooking failed to create Xendit invoice",
+	url, checkoutErr := createInvoice(ctx, req, precond)
+	if checkoutErr != nil {
+		uc.Log.Error("paymentUsecase.handleAppointmentBooking failed to create payment checkout",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
-			zap.Error(xenditErr),
+			zap.Error(checkoutErr),
 		)
 		// Rollback slot to free and appointment to proposed to avoid reservation leak
 		uc.rollbackSlotToFree(ctx, slotID, revalidatedSlot, requestID)
 		appointment.Status = constvars.FhirAppointmentStatusProposed
 		if rollbackErr := uc.updateAppointment(ctx, appointment); rollbackErr != nil {
-			uc.Log.Error("paymentUsecase.handleAppointmentBooking failed to rollback appointment after Xendit failure",
+			uc.Log.Error("paymentUsecase.handleAppointmentBooking failed to rollback appointment after checkout failure",
 				zap.String(constvars.LoggingRequestIDKey, requestID),
 				zap.String("appointmentId", appointment.ID),
 				zap.Error(rollbackErr),
 			)
 		}
-		return nil, xenditErr
+		return nil, checkoutErr
 	}
 
 	expiresAt := time.Now().Add(time.Duration(uc.InternalConfig.App.PaymentExpiredTimeInMinutes) * time.Minute)

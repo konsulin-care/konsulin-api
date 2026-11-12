@@ -20,6 +20,7 @@ import (
 	"konsulin-service/internal/app/services/core/auth"
 	"konsulin-service/internal/app/services/core/organization"
 	"konsulin-service/internal/app/services/core/payments"
+	"konsulin-service/internal/app/services/core/services"
 	"konsulin-service/internal/app/services/core/slot"
 	"konsulin-service/internal/app/services/core/transactions"
 	"konsulin-service/internal/app/services/core/users"
@@ -167,7 +168,8 @@ func main() {
 func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	// Build the gateway federation components before the usecases so later
 	// wiring (enrollment, inbound handlers) can depend on the adapter.
-	if _, err := newGateway(bootstrap); err != nil {
+	gwWiring, err := newGateway(bootstrap)
+	if err != nil {
 		return fmt.Errorf("error initializing gateway: %w", err)
 	}
 
@@ -281,6 +283,20 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 
 	slotUsecase := slot.NewSlotUsecase(scheduleClient, lockService, slotClient, practitionerRoleClient, practitionerFhirClient, bundleClient, bootstrap.InternalConfig, bootstrap.Logger)
 
+	// Gateway deps for the payment usecase, built from the gateway federation
+	// clients plus the provider resolver bound to the configured aliases.
+	providerResolver := services.NewProviderResolver(&bootstrap.InternalConfig.Gateway)
+	gatewayDeps := payments.GatewayDeps{
+		ResolveProvider:   providerResolver.ResolveProvider,
+		OwnPartyID:        bootstrap.InternalConfig.Gateway.PartyID,
+		AutomationPartyID: bootstrap.InternalConfig.Gateway.AutomationPartyID,
+	}
+	if gwWiring != nil && gwWiring.client != nil {
+		gatewayDeps.Payments = gwWiring.client
+		gatewayDeps.Webhooks = gwWiring.client
+		gatewayDeps.Listings = gwWiring.client
+	}
+
 	paymentUsecase := payments.NewPaymentUsecase(
 		transactions.NewTransactionPostgresRepository(nil, bootstrap.Logger),
 		bootstrap.InternalConfig,
@@ -295,6 +311,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		scheduleClient,
 		bundleClient,
 		slotUsecase,
+		gatewayDeps,
 		bootstrap.Logger,
 	)
 	paymentController := controllers.NewPaymentController(bootstrap.Logger, paymentUsecase)
