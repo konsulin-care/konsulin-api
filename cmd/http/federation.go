@@ -100,9 +100,11 @@ func registerFederation(bootstrap *config.Bootstrap, ctrls *routers.Controllers,
 	enroller := federation.NewEnroller(client, cfg, logger, nil)
 	ctrls.Gateway = enroller
 	if !cfg.Enabled {
-		// Standalone mode: disabled status, no enrollment, no network calls.
+		// Standalone mode: disabled status, no enrollment, no network calls,
+		// and no settlement reconciler (T28 starts it only when enabled).
 		return
 	}
+	startSettlementReconciler(context.Background(), paymentUsecase, client, logger)
 	go enroller.Start(context.Background())
 }
 
@@ -137,4 +139,33 @@ func registerSettlementHandler(fed *controllers.FederationController, paymentUse
 		}
 		return sink.HandleSettlement(r.Context(), event)
 	})
+}
+
+// startSettlementReconciler starts the periodic settlement reconciler (T28)
+// for an enabled gateway: the payment usecase must expose both the
+// settlement sink and the stale-slot scan seam; otherwise the registration is
+// skipped with a warning and no background job runs. The reconciler itself
+// also gates on the enabled flag, so a disabled gateway never starts it.
+// Parameters: ctx bounds the background loop; paymentUsecase is the usecase
+// from bootstrap; client reads the gateway payment status; logger reports a
+// skipped registration and tolerates nil. Returns nothing; never panics.
+func startSettlementReconciler(ctx context.Context, paymentUsecase contracts.PaymentUsecase, client *gateway.Client, logger *zap.Logger) {
+	if paymentUsecase == nil || client == nil {
+		return
+	}
+	sink, ok := paymentUsecase.(payments.SettlementEventSink)
+	if !ok {
+		if logger != nil {
+			logger.Warn("federation: payment usecase does not implement HandleSettlement, settlement reconciler stays unstarted")
+		}
+		return
+	}
+	scanner, ok := paymentUsecase.(payments.SettlementScanner)
+	if !ok {
+		if logger != nil {
+			logger.Warn("federation: payment usecase does not expose the stale-slot scan seam, settlement reconciler stays unstarted")
+		}
+		return
+	}
+	payments.StartSettlementReconciler(ctx, client.Enabled(), client, sink, scanner, 0, logger)
 }
