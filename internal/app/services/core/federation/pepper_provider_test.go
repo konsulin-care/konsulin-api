@@ -3,6 +3,7 @@ package federation
 import (
 	"context"
 	"crypto/ecdh"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -50,4 +51,64 @@ func TestPepperDeliverySealsPepperToCallerEncKey(t *testing.T) {
 		"the body must open with the caller's use:enc private key")
 	assert.Equal(t, pepper, opened,
 		"the sealed body must carry the pepper")
+}
+
+// TestPepperDeliveryDeniesCallerWithoutEncKey covers T46B assertion 1: a
+// caller whose key cannot be resolved (a party JWKS without a use:enc key)
+// is denied with 403 — the delivery fails closed before any pepper is
+// loaded or sealed. The handler runs with injected fakes: ResolveKey
+// returns an error, Pepper would return a plaintext but must never be
+// reached.
+//
+// Parameters: t is the test harness.
+// Returns: nothing; fails on any deviation.
+func TestPepperDeliveryDeniesCallerWithoutEncKey(t *testing.T) {
+	pepper := []byte("pepper-secret")
+	pepperCalled := false
+	handler := NewPepperDelivery(PepperDeliveryDeps{
+		GetSub: func(*http.Request) string { return "pty-caller" },
+		ResolveKey: func(context.Context, string) (*ecdh.PublicKey, string, error) {
+			return nil, "", errors.New("party JWKS has no use:enc key")
+		},
+		Pepper: func() ([]byte, error) {
+			pepperCalled = true
+			return pepper, nil
+		},
+	})
+
+	rec := httptest.NewRecorder()
+	handler(rec, httptest.NewRequest(http.MethodPost,
+		"/api/v1/federation/deliveries/"+pepperListingName, nil))
+
+	require.Equal(t, http.StatusForbidden, rec.Code,
+		"a caller without a use:enc key must be denied with 403")
+	assert.False(t, pepperCalled,
+		"the pepper must not be loaded when key resolution fails")
+}
+
+// TestPepperDeliveryAnswers503WithoutAppPepper covers T46B assertion 2: an
+// instance with APP_PEPPER unset answers 503 when the caller's key
+// resolves. The handler runs with the real envPepper seam (EnvPepper)
+// under an empty APP_PEPPER, plus a fake ResolveKey that succeeds.
+//
+// Parameters: t is the test harness; it sets APP_PEPPER to empty for the
+// duration of the test.
+// Returns: nothing; fails on any deviation.
+func TestPepperDeliveryAnswers503WithoutAppPepper(t *testing.T) {
+	t.Setenv("APP_PEPPER", "")
+	callerKey, _ := partyEncKey(t)
+	handler := NewPepperDelivery(PepperDeliveryDeps{
+		GetSub: func(*http.Request) string { return "pty-caller" },
+		ResolveKey: func(context.Context, string) (*ecdh.PublicKey, string, error) {
+			return callerKey.PublicKey(), "test-enc-kid", nil
+		},
+		Pepper: EnvPepper,
+	})
+
+	rec := httptest.NewRecorder()
+	handler(rec, httptest.NewRequest(http.MethodPost,
+		"/api/v1/federation/deliveries/"+pepperListingName, nil))
+
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code,
+		"an instance without APP_PEPPER must answer 503")
 }
