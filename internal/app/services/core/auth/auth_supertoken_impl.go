@@ -5,14 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/utils"
 	"log"
 	"net/http"
 	"regexp"
 	"strings"
 	"time"
+
+	"konsulin-service/internal/app/contracts"
+	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/utils"
 
 	"github.com/supertokens/supertokens-golang/ingredients/emaildelivery"
 	"github.com/supertokens/supertokens-golang/ingredients/smsdelivery"
@@ -30,6 +31,10 @@ import (
 const (
 	supertokenAccessTokenPayloadRolesKey      = "st-role"
 	supertokenAccessTokenPayloadRolesValueKey = "v"
+	// magicLinkDeliveryTimeout is the fixed timeout for magic-link webhook
+	// delivery (email and SMS); it intentionally does not read
+	// InternalConfig.Webhook.HTTPTimeoutInSeconds.
+	magicLinkDeliveryTimeout = 10 * time.Second
 )
 
 func (uc *authUsecase) InitializeSupertoken() error {
@@ -382,12 +387,8 @@ func (uc *authUsecase) buildEmailDeliveryConfig() *emaildelivery.TypeInput {
 				}
 
 				// NOTE: SuperTokens' email delivery interface does not provide request context.
-				// Use Background context with timeout (from InternalConfig) for now.
-				timeoutSeconds := uc.InternalConfig.Webhook.HTTPTimeoutInSeconds
-				if timeoutSeconds <= 0 {
-					timeoutSeconds = 10
-				}
-				ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
+				// Use a Background context with a fixed 10s timeout.
+				ctx, cancel := context.WithTimeout(context.Background(), magicLinkDeliveryTimeout)
 				defer cancel()
 
 				err := uc.MagicLinkDelivery.SendMagicLink(ctx, contracts.SendMagicLinkInput{
@@ -395,10 +396,12 @@ func (uc *authUsecase) buildEmailDeliveryConfig() *emaildelivery.TypeInput {
 					Email: input.PasswordlessLogin.Email,
 				})
 				if err != nil {
-					uc.Log.Error("authUsecase.EmailDelivery.SendEmail error calling magiclink webhook",
+					uc.Log.Error("authUsecase.EmailDelivery.SendEmail error calling magiclink webhook, falling back to supertokens original sender",
 						zap.Error(err),
 					)
-					return err
+					// Fall back to SuperTokens' built-in sender so magic-link
+					// delivery still succeeds when the webhook path fails.
+					return originalSendEmail(input, userContext)
 				}
 				return nil
 			}
@@ -476,11 +479,7 @@ func (uc *authUsecase) sendSMSViaWebhook(input smsdelivery.PasswordlessLoginType
 	if err := utils.ValidateInternationalPhoneDigits(phoneDigitsNormalized); err != nil {
 		return err
 	}
-	timeoutSeconds := uc.InternalConfig.Webhook.HTTPTimeoutInSeconds
-	if timeoutSeconds <= 0 {
-		timeoutSeconds = 10
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), magicLinkDeliveryTimeout)
 	defer cancel()
 	return uc.MagicLinkDelivery.SendMagicLink(ctx, contracts.SendMagicLinkInput{
 		URL:   *input.UrlWithLinkCode,
