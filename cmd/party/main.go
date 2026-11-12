@@ -41,6 +41,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return keygen(stdout)
 	case "rotate":
 		return rotate(stdout)
+	case "enlist":
+		return enlist(args[1:], stdout, stderr)
 	case "help", "-h", "--help":
 		return usage(stdout)
 	default:
@@ -62,6 +64,9 @@ func usage(w io.Writer) error {
 		return err
 	}
 	if _, err := fmt.Fprintln(w, "  rotate   rotate party keys via the gateway and print paste-ready env values"); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, "  enlist   enlist a marketplace listing via the gateway and print listing_id"); err != nil {
 		return err
 	}
 	_, err := fmt.Fprintln(w, "  help     print this synopsis")
