@@ -47,7 +47,7 @@ func (ctrl *PaymentController) CreatePay(w http.ResponseWriter, r *http.Request)
 		zap.String(constvars.LoggingRequestIDKey, requestID),
 	)
 
-	req := new(requests.CreatePayRequest)
+	req := new(requests.ServicePurchaseRequest)
 	if !decodeJSONBody(ctrl.Log, w, r, requestID, &req, "PaymentController.CreatePay error decoding JSON", false) {
 		return
 	}
@@ -55,7 +55,7 @@ func (ctrl *PaymentController) CreatePay(w http.ResponseWriter, r *http.Request)
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 
-	resp, err := ctrl.PaymentUsecase.CreatePay(ctx, req)
+	resp, err := ctrl.PaymentUsecase.CreateServicePurchase(ctx, req)
 	if err != nil {
 		ctrl.Log.Error("PaymentController.CreatePay error from usecase",
 			zap.String(constvars.LoggingRequestIDKey, requestID),
@@ -71,7 +71,7 @@ func (ctrl *PaymentController) CreatePay(w http.ResponseWriter, r *http.Request)
 
 	ctrl.Log.Info("PaymentController.CreatePay succeeded",
 		zap.String(constvars.LoggingRequestIDKey, requestID),
-		zap.String("partner_trx_id", resp.PartnerTrxID),
+		zap.String("payment_id", resp.PaymentID),
 	)
 	utils.BuildSuccessResponse(w, constvars.StatusOK, constvars.ResponseSuccess, resp)
 }
