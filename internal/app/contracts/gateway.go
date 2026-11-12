@@ -104,3 +104,47 @@ type PaymentClient interface {
 	// Never panics.
 	GetPayment(ctx context.Context, paymentID string) (status string, err error)
 }
+
+// WebhookClient routes the gateway webhook endpoints (SDK-API-001). Every
+// invocation payload is sealed to the recipient's use:enc key through the
+// SDK bound envelope (envelope.SealBound, bound from/to/service) before it
+// leaves the adapter: plaintext payload bytes are never sent. An
+// application/jose reply is opened with envelope.OpenBound under swapped
+// expectations. A missing recipient use:enc key fails closed before any
+// webhook request is sent. Errors surface raw and are rendered through
+// gateway.MapError.
+type WebhookClient interface {
+	// Enqueue queues one async invocation at POST /v1/webhooks: the body
+	// carries to, service, user_ref and payload — the payload is the
+	// compact JWE as a JSON string, sealed to the recipient's use:enc
+	// key and bound from the adapter's party, to the recipient and to
+	// the service. The call is idempotent, so it carries one
+	// Idempotency-Key (SDK-CLIENT-002).
+	// Parameters: ctx bounds the call, to the recipient party, service
+	// the listing name, userRef the peppered end-user hash ("" when the
+	// listing is not user-scoped), data the plaintext payload to seal.
+	// Returns: nil once the gateway accepts the enqueue (202), or the
+	// error — including a recipient-key resolution failure raised before
+	// any webhook request — to render through gateway.MapError.
+	Enqueue(ctx context.Context, to, service, userRef string, data []byte) error
+	// Sync forwards one invocation inline at POST /v1/webhooks/sync and
+	// opens the reply: the request body is the same sealed payload as
+	// Enqueue, and an application/jose reply is opened with
+	// envelope.OpenBound under the swapped expectations (from = the
+	// recipient, to = the adapter's party, service = the service) using
+	// APP_PARTY_ENC_PRIVATE_KEY.
+	// Parameters: ctx bounds the call, to the recipient party, service
+	// the listing name, userRef the peppered end-user hash ("" when the
+	// listing is not user-scoped), data the plaintext payload to seal.
+	// Returns: the opened reply data and nil, or nil and the error — a
+	// non-jose reply, an unopenable envelope or a recipient-key
+	// resolution failure raised before any webhook request — to render
+	// through gateway.MapError.
+	Sync(ctx context.Context, to, service, userRef string, data []byte) ([]byte, error)
+	// Status reads one enqueued invocation's delivery state at GET
+	// /v1/webhooks/{id}/status — a read, so it sends no Idempotency-Key.
+	// Parameters: ctx bounds the call, id the enqueued webhook id.
+	// Returns: the gateway's state ("pending", "delivered" or
+	// "failed"), plus the error to render through gateway.MapError.
+	Status(ctx context.Context, id string) (state string, err error)
+}
