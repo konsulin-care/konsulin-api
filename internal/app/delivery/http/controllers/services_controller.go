@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"konsulin-service/internal/app/config"
@@ -28,6 +29,24 @@ const servicePathPrefix = "/api/v1/services"
 
 // serviceInvokeMaxBytes bounds the client body read of one invocation.
 const serviceInvokeMaxBytes = 1 << 20
+
+// hookAliasController publishes the ServicesController that serves the
+// temporary /hook aliases (T38). The routers call site for
+// attachWebhookRouter only receives the legacy WebhookController, so the
+// constructor publishes the instance here for the routers package to bind;
+// the bootstrap constructs the controller (registerFederation) before it
+// registers routes (SetupRoutes). The zero value (never constructed) leaves
+// the alias routes unregistered so chi answers 404. Never panics.
+var hookAliasController atomic.Pointer[ServicesController]
+
+// hookSyncServices lists the automation listings the temporary
+// /hook/synchronous/{service} alias serves inline; every other service
+// name (send-magiclink included) fails closed 404. Never panics.
+var hookSyncServices = map[string]bool{
+	"modify-profile": true,
+	"update-avatar":  true,
+	"send-wa-link":   true,
+}
 
 // ServicesController serves marketplace service discovery (GET /services,
 // T30 listings filtered by Casbin Enforce on each listing's POST path) and
@@ -65,13 +84,15 @@ type serviceListingResponse struct {
 // owner-only request reads, plus the gateway env used to reverse-map a
 // party id to the alias segment its POST path uses. Logger, limiter,
 // invoker, results and cfg may be nil (fail closed / quota 0 = unlimited).
+// The constructed controller is published on the package-level alias
+// registry so webhook_router.go can bind the temporary /hook aliases.
 // Returns a controller ready to mount. Never panics.
 func NewServicesController(logger *zap.Logger, directory contracts.ListingDirectory,
 	resolver *services.ProviderResolver, limiter *services.ServiceLimiter,
 	invoker *services.Invoker, results *services.ResultUsecase,
 	gatewayEnv config.AppGateway, cfg *config.InternalConfig,
 ) *ServicesController {
-	return &ServicesController{
+	ctrl := &ServicesController{
 		Log:        logger,
 		Directory:  directory,
 		Resolver:   resolver,
@@ -81,6 +102,17 @@ func NewServicesController(logger *zap.Logger, directory contracts.ListingDirect
 		GatewayEnv: gatewayEnv,
 		AppConfig:  cfg,
 	}
+	hookAliasController.Store(ctrl)
+	return ctrl
+}
+
+// HookAliasController returns the ServicesController published by the most
+// recent NewServicesController call for the routers package to bind the
+// temporary /hook aliases on, or nil when none has been constructed yet
+// (the routes then stay unregistered and chi answers 404). Returns the
+// published controller or nil; never panics.
+func HookAliasController() *ServicesController {
+	return hookAliasController.Load()
 }
 
 // ListServices serves GET /api/v1/services: the T30 cached webhook
@@ -229,6 +261,55 @@ func (ctrl *ServicesController) logger() *zap.Logger {
 		return ctrl.Log
 	}
 	return zap.NewNop()
+}
+
+// HookInterpret serves the temporary POST /hook/interpret alias: it pins
+// the route params to the canonical automation/interpret pair and
+// delegates to InvokeService, so the legacy path runs the exact async
+// invocation the canonical route runs (202 with the receipt as requestId).
+// Parameters: w receives the envelope; r carries the caller roles, uid and
+// body. Never panics.
+func (ctrl *ServicesController) HookInterpret(w http.ResponseWriter, r *http.Request) {
+	ctrl.InvokeService(w, pinServiceRouteParams(r, "automation", "interpret"))
+}
+
+// HookSynchronous serves the temporary POST /hook/synchronous/{service}
+// alias: an allowlisted automation listing pins the route params to the
+// canonical sync invocation and delegates to SyncService (200 with the
+// opened reply); every other service name fails closed 404 before any
+// gateway call. Parameters: w receives the envelope; r carries the
+// {service} route param, caller roles, uid and body. Never panics.
+func (ctrl *ServicesController) HookSynchronous(w http.ResponseWriter, r *http.Request) {
+	service := strings.ToLower(strings.TrimSpace(chi.URLParam(r, "service")))
+	if !hookSyncServices[service] {
+		utils.BuildErrorResponse(ctrl.logger(), w, serviceNotFound())
+		return
+	}
+	ctrl.SyncService(w, pinServiceRouteParams(r, "automation", service))
+}
+
+// HookUnknown serves the temporary POST /hook/{service} wildcard for every
+// name the alias map does not cover: fail-closed 404 with the same
+// SERVICE_NOT_FOUND envelope as an unknown canonical service, so no
+// distinction leaks to the caller. Parameters: w receives the envelope; r
+// is unused. Never panics.
+func (ctrl *ServicesController) HookUnknown(w http.ResponseWriter, _ *http.Request) {
+	utils.BuildErrorResponse(ctrl.logger(), w, serviceNotFound())
+}
+
+// pinServiceRouteParams appends provider and name to the request's chi
+// route params so the temporary /hook aliases can delegate to the
+// canonical /api/v1/services/{provider}/{name} handlers unchanged. The
+// route context is request-local, so mutating it in place is safe; a
+// request without a route context stays unpinned and the delegated handler
+// fails closed 404. Parameters: r is the request to pin; provider and name
+// are the canonical path segments. Returns the same request; never panics.
+func pinServiceRouteParams(r *http.Request, provider, name string) *http.Request {
+	if rctx := chi.RouteContext(r.Context()); rctx != nil {
+		rctx.URLParams.Keys = append(rctx.URLParams.Keys, "provider", "name")
+		rctx.URLParams.Values = append(rctx.URLParams.Values, provider, name)
+	}
+	return r
 }
 
 // authorizeServiceRoute reads the {provider}/{name} route params off r and

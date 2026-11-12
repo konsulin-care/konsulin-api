@@ -71,10 +71,11 @@ func (f *servicesFakeDirectory) Enlist(context.Context, contracts.EnlistRequest)
 // route: syncReply is the opened reply, syncErr the gateway failure (e.g.
 // a 504 wire error) the handler must pass through.
 type servicesFakeHooks struct {
-	enqueued  []string
-	syncCalls int
-	syncReply []byte
-	syncErr   error
+	enqueued    []string
+	syncCalls   int
+	syncTargets []string
+	syncReply   []byte
+	syncErr     error
 }
 
 // Enqueue records the recipient and service of one async invocation.
@@ -83,11 +84,13 @@ func (f *servicesFakeHooks) Enqueue(_ context.Context, to, service, _ string, _ 
 	return nil
 }
 
-// Sync counts the inline invocation and answers the configured reply or
+// Sync counts the inline invocation, records the recipient and service so
+// a test can prove which listing ran, and answers the configured reply or
 // error so a test can prove the opened reply is returned and a gateway 504
 // keeps its status.
-func (f *servicesFakeHooks) Sync(context.Context, string, string, string, []byte) ([]byte, error) {
+func (f *servicesFakeHooks) Sync(_ context.Context, to, service, _ string, _ []byte) ([]byte, error) {
 	f.syncCalls++
+	f.syncTargets = append(f.syncTargets, to+"/"+service)
 	return f.syncReply, f.syncErr
 }
 
@@ -420,4 +423,126 @@ func TestServicesRoutesStandaloneAnswer503NotConfigured(t *testing.T) {
 		assert.Equal(t, "GATEWAY_NOT_CONFIGURED", envelope.DevMessage,
 			tc.path+": dev_message must be the GATEWAY_NOT_CONFIGURED code")
 	}
+}
+
+// newServicesTestHookMux mirrors routers.attachWebhookRouter's temporary
+// T38 alias wiring: the ServicesController serves POST /hook/interpret
+// (async), POST /hook/synchronous/{service} (allowlisted sync), the
+// fail-closed POST /hook/{service} wildcard and the owner-only result view
+// at GET /service-request/{id}/result. The legacy WebhookController
+// bindings and POST /callback/service-request are gone.
+func newServicesTestHookMux(ctrl *ServicesController) *chi.Mux {
+	mux := chi.NewRouter()
+	mux.Post("/hook/interpret", ctrl.HookInterpret)
+	mux.Post("/hook/synchronous/{service}", ctrl.HookSynchronous)
+	mux.Post("/hook/{service}", ctrl.HookUnknown)
+	mux.Get("/service-request/{id}/result", ctrl.GetServiceRequest)
+	return mux
+}
+
+// TestHookInterpretAliasAnswers202WithRequestID covers the first T38
+// assertion: the temporary POST /hook/interpret alias runs the async
+// automation/interpret invocation and answers 202 with the receipt as
+// requestId.
+func TestHookInterpretAliasAnswers202WithRequestID(t *testing.T) {
+	ctrl, dir, hooks := newServicesTestFixture(t)
+	mux := newServicesTestHookMux(ctrl)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, servicesRequest(http.MethodPost, "/hook/interpret",
+		`{"prompt":"interpret this"}`, "Guest"))
+
+	require.Equal(t, http.StatusAccepted, rec.Code, rec.Body.String())
+	var payload struct {
+		Success bool              `json:"success"`
+		Data    map[string]string `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+	require.True(t, payload.Success)
+	require.Equal(t, "sr-fixed-1", payload.Data["requestId"], "must carry the async receipt id")
+	require.Len(t, hooks.enqueued, 1, "exactly one async invocation")
+	assert.Equal(t, servicesAutomationParty+"/interpret", hooks.enqueued[0],
+		"the alias must invoke automation/interpret")
+	assert.Equal(t, 1, dir.findCalls, "the listing must be resolved exactly once")
+}
+
+// TestHookSynchronousModifyProfileRunsSyncInvocation covers the second T38
+// assertion: POST /hook/synchronous/modify-profile performs the inline
+// sync automation/modify-profile invocation and returns its opened reply.
+func TestHookSynchronousModifyProfileRunsSyncInvocation(t *testing.T) {
+	ctrl, _, hooks := newServicesTestFixture(t)
+	hooks.syncReply = []byte(`{"saved":true}`)
+	mux := newServicesTestHookMux(ctrl)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, servicesRequest(http.MethodPost,
+		"/hook/synchronous/modify-profile", `{"name":"x"}`, "Guest"))
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var payload struct {
+		Success bool            `json:"success"`
+		Data    json.RawMessage `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+	require.True(t, payload.Success)
+	assert.JSONEq(t, `{"saved":true}`, string(payload.Data),
+		"the alias must return the opened reply body")
+	require.Equal(t, 1, hooks.syncCalls, "exactly one sync invocation")
+	require.Len(t, hooks.syncTargets, 1)
+	assert.Equal(t, servicesAutomationParty+"/modify-profile", hooks.syncTargets[0],
+		"the alias must sync the automation modify-profile listing")
+	assert.Empty(t, hooks.enqueued, "the alias must not enqueue an async invocation")
+}
+
+// TestUnmappedHookServiceNameAnswers404 covers the third T38 assertion: a
+// /hook name outside the alias map fails closed 404 — both the wildcard
+// route and a synchronous service outside the allowlist — without any
+// gateway invocation.
+func TestUnmappedHookServiceNameAnswers404(t *testing.T) {
+	ctrl, _, hooks := newServicesTestFixture(t)
+	mux := newServicesTestHookMux(ctrl)
+
+	for _, target := range []string{
+		"/hook/send-magiclink",
+		"/hook/notify-provider",
+		"/hook/synchronous/send-magiclink",
+	} {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, servicesRequest(http.MethodPost, target, `{}`, "Guest"))
+		require.Equal(t, http.StatusNotFound, rec.Code, target)
+	}
+	assert.Empty(t, hooks.enqueued, "no async invocation may happen on a 404")
+	assert.Zero(t, hooks.syncCalls, "no sync invocation may happen on a 404")
+}
+
+// TestServiceRequestResultAliasServesOwnerView pins the fourth T38 alias:
+// GET /service-request/{id}/result is the owner-only result view served by
+// the ServicesController's GetServiceRequest.
+func TestServiceRequestResultAliasServesOwnerView(t *testing.T) {
+	ctrl, _, _ := newServicesTestFixture(t)
+	ctrl.Results = services.NewResultUsecase(&servicesFakeRequests{stored: []fhir_dto.GetServiceRequestOutput{{
+		ResourceType: constvars.ResourceServiceRequest,
+		ID:           "sr-9",
+		Status:       "completed",
+		Requester:    fhir_dto.Reference{Reference: "uid-1"},
+		Note:         []fhir_dto.Annotation{{Text: `{"answer":7}`}},
+	}}}, nil, zap.NewNop())
+	mux := newServicesTestHookMux(ctrl)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, servicesRequest(http.MethodGet,
+		"/service-request/sr-9/result", "", "Guest"))
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var payload struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Status string `json:"status"`
+			Result string `json:"result"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+	require.True(t, payload.Success)
+	assert.Equal(t, "completed", payload.Data.Status, "the owner must get the request status")
+	assert.Equal(t, `{"answer":7}`, payload.Data.Result, "the owner must get the stored result")
 }
