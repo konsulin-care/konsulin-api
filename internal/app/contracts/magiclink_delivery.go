@@ -1,6 +1,15 @@
 package contracts
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+// ErrMagicLinkUnavailable indicates the configured magic-link delivery
+// channel cannot send right now: the gateway is disabled or
+// APP_AUTOMATION_PARTY_ID is unset. Callers should surface it as a
+// configuration problem, not a transient delivery failure.
+var ErrMagicLinkUnavailable = errors.New("magic link unavailable")
 
 // SendMagicLinkInput is the payload used by internal magic-link delivery.
 // Exactly one of Email or Phone must be provided.

@@ -197,7 +197,15 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 		return err
 	}
 
-	magicLinkDelivery := webhook.NewMagicLinkSender(bootstrap.InternalConfig, jwtManager, bootstrap.Logger)
+	// T39: magic links travel through the gateway send-magiclink listing on
+	// the automation party, using the adapter built early by newGateway. The
+	// in-process forwarder wiring below no-ops for this sender until it is
+	// removed.
+	var magicLinkGateway auth.GatewayWebhookClient
+	if gwWiring != nil && gwWiring.client != nil {
+		magicLinkGateway = gwWiring.client
+	}
+	magicLinkDelivery := auth.NewGatewayMagicLinkSender(magicLinkGateway, bootstrap.InternalConfig.Gateway)
 
 	// Ensure default FHIR Groups exist for ServiceRequest subjects
 	_ = serviceRequestFhirClient.EnsureAllNecessaryGroupsExists(context.Background())
