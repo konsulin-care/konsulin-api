@@ -1,13 +1,10 @@
 package payments
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -300,11 +297,34 @@ type notifyProviderAsyncInput struct {
 	amountPaid    string
 }
 
-// notifyProviderAsync sends webhook notification to provider (best effort)
+// notifyProviderListingName is the gateway listing the practitioner
+// notification is enqueued on; it is served by the automation party.
+const notifyProviderListingName = "notify-provider"
+
+// notifyProviderAsync enqueues the practitioner payment notification through
+// the usecase's gateway WebhookClient onto the automation party's
+// notify-provider listing (best effort): the payload carries the existing
+// practitioner/payment fields and user_ref stays empty because the listing is
+// party-scoped. It never POSTs to /hook/notify-provider anymore. When the
+// gateway is disabled or APP_AUTOMATION_PARTY_ID is empty the notification is
+// skipped with a log and no error surfaces to the caller.
 func (uc *paymentUsecase) notifyProviderAsync(
 	ctx context.Context,
 	input notifyProviderAsyncInput,
 ) {
+	if uc.InternalConfig == nil || !uc.InternalConfig.Gateway.Enabled || uc.Gateway.Webhooks == nil {
+		uc.Log.Info("notifyProviderAsync skipped: gateway disabled")
+		return
+	}
+	automationParty := strings.TrimSpace(uc.Gateway.AutomationPartyID)
+	if automationParty == "" {
+		automationParty = strings.TrimSpace(uc.InternalConfig.Gateway.AutomationPartyID)
+	}
+	if automationParty == "" {
+		uc.Log.Info("notifyProviderAsync skipped: APP_AUTOMATION_PARTY_ID is empty")
+		return
+	}
+
 	payload := map[string]any{
 		"patientName":   input.patient.FullName(),
 		"paymentDate":   time.Now().Format(time.RFC3339),
@@ -335,46 +355,19 @@ func (uc *paymentUsecase) notifyProviderAsync(
 		return
 	}
 
-	webhookURL := strings.TrimRight(uc.InternalConfig.App.BaseUrl, "/") + "/hook/notify-provider"
-	httpReq, err := http.NewRequestWithContext(ctx, constvars.MethodPost, webhookURL, bytes.NewBuffer(payloadBytes))
-	if err != nil {
-		uc.Log.Error("notifyProviderAsync failed to create request",
-
+	if err := uc.Gateway.Webhooks.Enqueue(ctx, automationParty, notifyProviderListingName, "", payloadBytes); err != nil {
+		uc.Log.Error("notifyProviderAsync enqueue failed",
+			zap.String("service", notifyProviderListingName),
+			zap.String("automationParty", automationParty),
 			zap.Error(err),
 		)
 		return
 	}
 
-	httpReq.Header.Set(constvars.HeaderContentType, constvars.MIMEApplicationJSON)
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		uc.Log.Error("notifyProviderAsync webhook call failed",
-			zap.String("webhookURL", webhookURL),
-			zap.Error(err),
-		)
-		return
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			uc.Log.Error("notifyProviderAsync failed to read response body",
-
-				zap.Error(err),
-			)
-		}
-		uc.Log.Warn("notifyProviderAsync webhook returned error status",
-
-			zap.Int("statusCode", resp.StatusCode),
-			zap.String("response", string(body)),
-		)
-		return
-	}
-
-	uc.Log.Info("notifyProviderAsync webhook called successfully")
+	uc.Log.Info("notifyProviderAsync notification enqueued",
+		zap.String("service", notifyProviderListingName),
+		zap.String("automationParty", automationParty),
+	)
 }
 
 // acquireBookingLocks acquires the practitioner-day locks for a booking. The
