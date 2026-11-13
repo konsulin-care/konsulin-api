@@ -3,9 +3,11 @@ package privacy
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"strings"
+
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/services/fhir_spark/bundle"
-	"net/http"
 
 	"go.uber.org/zap"
 )
@@ -14,10 +16,19 @@ import (
 // within Blaze request limits.
 const purgeBatchSize = 100
 
+// ResearchRowDeleter removes a subject's derived research-databank rows
+// (*sqlite.ResearchStore), so a patient purge erases the derived copies too.
+type ResearchRowDeleter interface {
+	// DeleteBySubject deletes every stored row for subjectRef and returns how
+	// many were removed.
+	DeleteBySubject(ctx context.Context, subjectRef string) (int64, error)
+}
+
 type purgeUsecaseImpl struct {
 	purgeClient     contracts.PurgeFhirClient
 	bundleClient    bundle.BundleFhirClient
 	accountDeletion contracts.UserAccountDeleter
+	research        ResearchRowDeleter
 	log             *zap.Logger
 	batchSize       int
 }
@@ -25,17 +36,25 @@ type purgeUsecaseImpl struct {
 // NewPatientDataPurger returns a PatientDataPurger that erases a patient's actively-owned
 // FHIR data via registry-driven enumeration + batch DELETE bundles, strips the
 // Patient resource to a shell, verifies erasure, and only then deletes the
-// associated SuperTokens account.
+// associated SuperTokens account. research (optional, at most the first
+// argument is used) additionally deletes the patient's derived research
+// databank rows so no de-identified copy outlives the purge.
 func NewPatientDataPurger(
 	purgeClient contracts.PurgeFhirClient,
 	bundleClient bundle.BundleFhirClient,
 	accountDeletion contracts.UserAccountDeleter,
 	logger *zap.Logger,
+	research ...ResearchRowDeleter,
 ) contracts.PatientDataPurger {
+	var researchDeleter ResearchRowDeleter
+	if len(research) > 0 {
+		researchDeleter = research[0]
+	}
 	return &purgeUsecaseImpl{
 		purgeClient:     purgeClient,
 		bundleClient:    bundleClient,
 		accountDeletion: accountDeletion,
+		research:        researchDeleter,
 		log:             logger,
 		batchSize:       purgeBatchSize,
 	}
@@ -48,6 +67,15 @@ func NewPatientDataPurger(
 // practitioners) are excluded by the client and remain referencing the shell.
 // An empty enumeration (already purged) is a no-op success.
 func (uc *purgeUsecaseImpl) PurgePatientData(ctx context.Context, fhirID, supertokensUserID string) error {
+	// Research rows are deleted first and fail closed: derived copies must
+	// not survive a purge (BK-DATABANK-003), and a broken databank store
+	// aborts the erasure before any irreversible FHIR delete.
+	if uc.research != nil {
+		if _, err := uc.research.DeleteBySubject(ctx, patientSubjectRef(fhirID)); err != nil {
+			return fmt.Errorf("purge: delete research rows: %w", err)
+		}
+	}
+
 	deletable, err := uc.purgeClient.FindActivelyOwnedResources(ctx, fhirID)
 	if err != nil {
 		return fmt.Errorf("purge: enumerate actively owned resources: %w", err)
@@ -78,6 +106,15 @@ func (uc *purgeUsecaseImpl) PurgePatientData(ctx context.Context, fhirID, supert
 		}
 	}
 	return nil
+}
+
+// patientSubjectRef normalizes a patient FHIR id to the Patient/{id}
+// reference the research databank rows are keyed by.
+func patientSubjectRef(fhirID string) string {
+	if strings.Contains(fhirID, "/") {
+		return fhirID
+	}
+	return "Patient/" + fhirID
 }
 
 // postDeleteBundles posts chunked batch bundles of DELETE entries for refs.

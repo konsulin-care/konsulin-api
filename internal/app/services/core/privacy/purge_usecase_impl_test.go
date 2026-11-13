@@ -6,9 +6,8 @@ import (
 	"testing"
 
 	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/pkg/fhir_dto"
-
 	bundlepkg "konsulin-service/internal/app/services/fhir_spark/bundle"
+	"konsulin-service/internal/pkg/fhir_dto"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -67,6 +66,20 @@ func (m *mockAccountDeletion) DeleteUserAccount(_ context.Context, userID string
 	return m.err
 }
 
+// mockResearchDeleter records research-databank row deletions.
+type mockResearchDeleter struct {
+	deleted []string
+	err     error
+}
+
+func (m *mockResearchDeleter) DeleteBySubject(_ context.Context, subjectRef string) (int64, error) {
+	m.deleted = append(m.deleted, subjectRef)
+	if m.err != nil {
+		return 0, m.err
+	}
+	return 1, nil
+}
+
 func newTestUsecase(purge *mockPurgeClient, bundle *mockBundleClient, acct *mockAccountDeletion) *purgeUsecaseImpl {
 	return &purgeUsecaseImpl{
 		purgeClient:     purge,
@@ -123,6 +136,44 @@ func TestPurgePatientData_ChunksLargeBatches(t *testing.T) {
 	assert.Len(t, bundle.posted[1]["entry"].([]map[string]any), 100)
 	assert.Len(t, bundle.posted[2]["entry"].([]map[string]any), 50)
 	assert.Empty(t, acct.deleted, "account deletion must be skipped when no supertokens user id is provided")
+}
+
+func TestPurgePatientData_DeletesSubjectResearchRows(t *testing.T) {
+	// The second contract line: a patient purge also deletes the subject's
+	// research-databank rows, keyed by the Patient/{id} reference.
+	purge := &mockPurgeClient{
+		owned: []contracts.ResourceRef{{ResourceType: "QuestionnaireResponse", ID: "qr-1"}},
+	}
+	bundle := &mockBundleClient{}
+	acct := &mockAccountDeletion{}
+	research := &mockResearchDeleter{}
+
+	uc := newTestUsecase(purge, bundle, acct)
+	uc.research = research
+	require.NoError(t, uc.PurgePatientData(context.Background(), "pat-1", "user-123"))
+
+	assert.Equal(t, []string{"Patient/pat-1"}, research.deleted,
+		"the subject's research rows must be deleted during the purge")
+	assert.Equal(t, []string{"user-123"}, acct.deleted, "the purge itself must still succeed")
+}
+
+func TestPurgePatientData_ResearchRowDeletionFailureAborts(t *testing.T) {
+	// Fail closed: a broken databank store aborts the erasure before any
+	// irreversible FHIR delete or account deletion.
+	purge := &mockPurgeClient{
+		owned: []contracts.ResourceRef{{ResourceType: "QuestionnaireResponse", ID: "qr-1"}},
+	}
+	bundle := &mockBundleClient{}
+	acct := &mockAccountDeletion{}
+	research := &mockResearchDeleter{err: errors.New("sqlite locked")}
+
+	uc := newTestUsecase(purge, bundle, acct)
+	uc.research = research
+	err := uc.PurgePatientData(context.Background(), "pat-1", "user-123")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "delete research rows")
+	assert.Equal(t, 0, purge.ownedCalls, "no FHIR delete may run when research rows cannot be removed")
+	assert.Empty(t, acct.deleted, "account deletion must never run when the purge did not fully succeed")
 }
 
 func TestPurgePatientData_AccountDeletionFailurePropagates(t *testing.T) {
@@ -222,6 +273,9 @@ func TestPurgePatientData_AlreadyPurgedIsIdempotentNoOp(t *testing.T) {
 	assert.Equal(t, []string{"user-123"}, acct.deleted)
 }
 
-var _ contracts.PurgeFhirClient = (*mockPurgeClient)(nil)
-var _ contracts.UserAccountDeleter = (*mockAccountDeletion)(nil)
-var _ bundlepkg.BundleFhirClient = (*mockBundleClient)(nil)
+var (
+	_ contracts.PurgeFhirClient    = (*mockPurgeClient)(nil)
+	_ contracts.UserAccountDeleter = (*mockAccountDeletion)(nil)
+	_ bundlepkg.BundleFhirClient   = (*mockBundleClient)(nil)
+	_ ResearchRowDeleter           = (*mockResearchDeleter)(nil)
+)
