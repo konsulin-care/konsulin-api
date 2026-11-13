@@ -21,6 +21,9 @@ p, Clinic Admin, POST, /fhir/Schedule
 p, Clinic Admin, GET, /fhir/Slot
 p, Clinic Admin, PUT, /fhir/Slot
 p, Clinic Admin, POST, /api/v1/auth/magiclink
+p, Clinic Admin, POST, /api/v1/referrals
+p, Clinic Admin, GET, /api/v1/referrals/incoming
+p, Clinic Admin, POST, /api/v1/referrals/incoming
 p, Guest, GET, /fhir/Media
 p, Guest, GET, /fhir/HealthcareService
 p, Guest, GET, /fhir/Location
@@ -107,6 +110,9 @@ p, Practitioner, GET, /fhir/QuestionnaireResponse
 p, Practitioner, GET, /fhir/ResearchStudy
 p, Practitioner, GET, /fhir/Slot
 p, Practitioner, PUT, /fhir/Schedule
+p, Practitioner, POST, /api/v1/referrals
+p, Practitioner, GET, /api/v1/referrals/incoming
+p, Practitioner, POST, /api/v1/referrals/incoming
 p, Practitioner, POST, /api/v1/services/automation/interpret
 p, Practitioner, POST, /api/v1/services/automation/modify-profile
 p, Practitioner, POST, /api/v1/services/automation/update-avatar

@@ -216,3 +216,44 @@ func TestRBACPolicy_ServiceAutomation(t *testing.T) {
 		})
 	}
 }
+
+// TestRBACPolicy_Referrals asserts the referral workflow matrix: only
+// Practitioner and Clinic Admin may send, list, confirm and reject referrals;
+// Patient and Guest are denied on every operation. The controller enforces
+// the live Task id on confirm/reject, so those cases carry one.
+func TestRBACPolicy_Referrals(t *testing.T) {
+	enf := testEnforcer(t)
+
+	cases := []struct {
+		name   string
+		role   string
+		method string
+		path   string
+		want   bool
+	}{
+		{"practitioner send", constvars.KonsulinRolePractitioner, http.MethodPost, "/api/v1/referrals", true},
+		{"practitioner list", constvars.KonsulinRolePractitioner, http.MethodGet, "/api/v1/referrals/incoming", true},
+		{"practitioner confirm", constvars.KonsulinRolePractitioner, http.MethodPost, "/api/v1/referrals/incoming/task-42/confirm", true},
+		{"practitioner reject", constvars.KonsulinRolePractitioner, http.MethodPost, "/api/v1/referrals/incoming/task-42/reject", true},
+		{"clinic admin send", constvars.KonsulinRoleClinicAdmin, http.MethodPost, "/api/v1/referrals", true},
+		{"clinic admin list", constvars.KonsulinRoleClinicAdmin, http.MethodGet, "/api/v1/referrals/incoming", true},
+		{"clinic admin confirm", constvars.KonsulinRoleClinicAdmin, http.MethodPost, "/api/v1/referrals/incoming/task-42/confirm", true},
+		{"clinic admin reject", constvars.KonsulinRoleClinicAdmin, http.MethodPost, "/api/v1/referrals/incoming/task-42/reject", true},
+		{"patient send", constvars.KonsulinRolePatient, http.MethodPost, "/api/v1/referrals", false},
+		{"patient list", constvars.KonsulinRolePatient, http.MethodGet, "/api/v1/referrals/incoming", false},
+		{"patient confirm", constvars.KonsulinRolePatient, http.MethodPost, "/api/v1/referrals/incoming/task-42/confirm", false},
+		{"patient reject", constvars.KonsulinRolePatient, http.MethodPost, "/api/v1/referrals/incoming/task-42/reject", false},
+		{"guest send", constvars.KonsulinRoleGuest, http.MethodPost, "/api/v1/referrals", false},
+		{"guest list", constvars.KonsulinRoleGuest, http.MethodGet, "/api/v1/referrals/incoming", false},
+		{"guest confirm", constvars.KonsulinRoleGuest, http.MethodPost, "/api/v1/referrals/incoming/task-42/confirm", false},
+		{"guest reject", constvars.KonsulinRoleGuest, http.MethodPost, "/api/v1/referrals/incoming/task-42/reject", false},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ok, err := enf.Enforce(c.role, c.method, c.path)
+			assert.NoError(t, err)
+			assert.Equal(t, c.want, ok, "Enforce(%q, %q, %s)", c.role, c.method, c.path)
+		})
+	}
+}
