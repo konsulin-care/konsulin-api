@@ -32,6 +32,7 @@ type Controllers struct {
 	Purge        *controllers.PurgeController
 	Federation   *controllers.FederationController
 	Services     *controllers.ServicesController
+	Referral     *controllers.ReferralController
 	Gateway      contracts.GatewayStatus
 }
 
@@ -106,6 +107,7 @@ func SetupRoutes(
 			attachPrivacyRouter(r, ctrls.Purge)
 			attachFederationRouter(r, ctrls.Federation, ctrls.Gateway, logger)
 			attachServicesRouter(r, middlewares, ctrls.Services, ctrls.Gateway)
+			attachReferralRouter(r, middlewares, ctrls.Referral, ctrls.Gateway)
 		})
 	})
 

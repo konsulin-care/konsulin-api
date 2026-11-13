@@ -15,9 +15,11 @@ import (
 	"konsulin-service/internal/app/drivers/gateway"
 	"konsulin-service/internal/app/services/core/federation"
 	"konsulin-service/internal/app/services/core/payments"
+	"konsulin-service/internal/app/services/core/referrals"
 	"konsulin-service/internal/app/services/core/services"
 	"konsulin-service/internal/app/services/fhir_spark/service_requests"
 	sharedredis "konsulin-service/internal/app/services/shared/redis"
+	"konsulin-service/internal/pkg/fhir_http_client"
 
 	"github.com/konsulin-care/gateway-sdk-go/envelope"
 	"go.uber.org/zap"
@@ -106,6 +108,12 @@ func registerFederation(bootstrap *config.Bootstrap, ctrls *routers.Controllers,
 	// gateway wiring leaves the directory and hooks nil so handlers fail
 	// closed instead of panicking.
 	ctrls.Services = newServicesController(bootstrap, gatewayEnv, wiredGateway, logger)
+	// T66: referral workflow. Constructed unconditionally, like the other
+	// federation controllers: the router mounts even in standalone mode
+	// (RequireGateway answers 503 before a handler runs) and a missing
+	// gateway wiring leaves the ticket, sealer and identity seams nil so
+	// handlers fail closed instead of panicking.
+	ctrls.Referral = newReferralController(bootstrap, wiredGateway, logger)
 	if wiredGateway == nil || wiredGateway.client == nil {
 		if logger != nil {
 			logger.Warn("federation: gateway wiring missing (newGateway not called), gateway stays disabled")
@@ -255,6 +263,57 @@ func newServicesController(bootstrap *config.Bootstrap, gatewayEnv config.AppGat
 	results := services.NewResultUsecase(srClient, &gatewayEnv, logger)
 	return controllers.NewServicesController(logger, directory,
 		services.NewProviderResolver(&gatewayEnv), limiter, invoker, results, gatewayEnv, cfg)
+}
+
+// newReferralController builds the T66 referral controller over the
+// referrals Sender/Receiver/Confirmer: the local FHIR resource client and
+// partner directory serve every referral operation, and the gateway
+// adapter — when present — mints and verifies referral tickets and
+// resolves identities. The Sender's sealer is taken from the adapter only
+// when it exposes SealBound; without it SendReferral fails closed inside
+// the referrals package.
+// Parameters: bootstrap carries the FHIR base URL; wiring is the
+// process-wide gateway adapter (may be nil); logger reports and tolerates
+// nil. Returns: the controller to mount; never panics.
+func newReferralController(bootstrap *config.Bootstrap, wiring *gatewayWiring, logger *zap.Logger) *controllers.ReferralController {
+	var fhirBase string
+	if bootstrap != nil && bootstrap.InternalConfig != nil {
+		fhirBase = bootstrap.InternalConfig.FHIR.BaseUrl
+	}
+	fhir := fhir_http_client.New(logger)
+	var minter referrals.TicketMinter
+	var verifier referrals.TicketVerifier
+	var identities referrals.IdentityLinker
+	var sealer referrals.ReferralSealer
+	if wiring != nil && wiring.client != nil {
+		client := wiring.client
+		minter = client
+		verifier = client
+		identities = client
+		sealer, _ = any(client).(referrals.ReferralSealer)
+	}
+	sender := referrals.NewSender(referrals.SenderDeps{
+		Directory:   referrals.NewDirectory(fhir, fhirBase, logger),
+		Tickets:     minter,
+		Sealer:      sealer,
+		FHIRClient:  fhir,
+		FHIRBaseURL: fhirBase,
+		Logger:      logger,
+	})
+	receiver := referrals.NewReceiver(referrals.ReceiverDeps{
+		Tickets:     verifier,
+		FHIRClient:  fhir,
+		FHIRBaseURL: fhirBase,
+		Logger:      logger,
+	})
+	confirmer := referrals.NewConfirmer(referrals.ConfirmerDeps{
+		Identities:  identities,
+		FHIRClient:  fhir,
+		FHIRBaseURL: fhirBase,
+		Logger:      logger,
+	})
+	usecase := controllers.NewReferralUsecase(sender, receiver, confirmer, fhir, fhirBase, logger)
+	return controllers.NewReferralController(logger, usecase)
 }
 
 // startSettlementReconciler starts the periodic settlement reconciler (T28)
