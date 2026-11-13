@@ -33,7 +33,24 @@ type Controllers struct {
 	Federation   *controllers.FederationController
 	Services     *controllers.ServicesController
 	Referral     *controllers.ReferralController
+	Research     *controllers.ResearchController
 	Gateway      contracts.GatewayStatus
+}
+
+// registeredResearch holds the research controller published by
+// cmd/http's registerResearch during bootstrap: main.go does not pass
+// ctrls into that function, so the controller reaches SetupRoutes through
+// this variable when Controllers.Research is unset. Zero value nil:
+// attachResearchRouter then registers nothing and chi answers 404.
+var registeredResearch *controllers.ResearchController
+
+// RegisterResearch publishes the research controller for SetupRoutes to
+// mount when Controllers.Research is nil. Call it during bootstrap, before
+// SetupRoutes.
+// Parameters: ctrl is the controller to mount (nil clears the fallback).
+// Returns nothing; never panics.
+func RegisterResearch(ctrl *controllers.ResearchController) {
+	registeredResearch = ctrl
 }
 
 // SetupRoutes wires the middleware chain and registers every route on the
@@ -108,6 +125,11 @@ func SetupRoutes(
 			attachFederationRouter(r, ctrls.Federation, ctrls.Gateway, logger)
 			attachServicesRouter(r, middlewares, ctrls.Services, ctrls.Gateway)
 			attachReferralRouter(r, middlewares, ctrls.Referral, ctrls.Gateway)
+			research := ctrls.Research
+			if research == nil {
+				research = registeredResearch
+			}
+			attachResearchRouter(r, research, ctrls.Gateway)
 		})
 	})
 

@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"konsulin-service/internal/app/config"
+	"konsulin-service/internal/app/delivery/http/controllers"
+	"konsulin-service/internal/app/delivery/http/routers"
 	"konsulin-service/internal/app/drivers/sqlite"
 	"konsulin-service/internal/app/services/core/research"
 	"konsulin-service/internal/app/services/fhir_spark/resources"
@@ -29,6 +31,10 @@ func registerResearch(bootstrap *config.Bootstrap) error {
 	}
 	cfg := bootstrap.InternalConfig
 	if !cfg.Research.DatabankEnabled() {
+		// T76: publish the controller anyway with nil collaborators so the
+		// routes register and every handler fails closed (503) instead of
+		// the router hiding them behind a 404.
+		routers.RegisterResearch(controllers.NewResearchController(bootstrap.Logger, nil, nil, nil))
 		return nil // databank disabled: no store, no scheduler
 	}
 
@@ -44,6 +50,11 @@ func registerResearch(bootstrap *config.Bootstrap) error {
 	}
 
 	searcher := resources.New(cfg.FHIR.BaseUrl, bootstrap.Logger)
+	// T76: publish the research controller with the withdrawal flow wired
+	// over the open store; the requester and exporter need gateway-driven
+	// dependencies and stay nil for now, so their handlers fail closed.
+	routers.RegisterResearch(controllers.NewResearchController(bootstrap.Logger,
+		research.NewWithdrawer(searcher, store), nil, nil))
 	extractor := research.NewExtractor(searcher, store,
 		cfg.Research.PseudonymKey, cfg.Gateway.PartyID, nil)
 	scheduler := research.NewScheduler(extractor, loc, nil, bootstrap.Logger)
