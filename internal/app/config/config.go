@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"konsulin-service/internal/pkg/constvars"
@@ -89,6 +90,11 @@ func loadInternalConfigWithEnv() (*InternalConfig, error) {
 			AutomationPartyID:      utils.GetEnvString("APP_AUTOMATION_PARTY_ID", ""),
 			ServiceProviderAliases: utils.GetEnvString("APP_SERVICE_PROVIDER_ALIASES", ""),
 		},
+		Research: AppResearch{
+			AutoPublish:    utils.GetEnvBool("APP_AUTOPUBLISH", false),
+			PseudonymKey:   utils.GetEnvString("APP_RESEARCH_PSEUDONYM_KEY", ""), // Sensitive — never logged
+			ExportMaxBytes: utils.GetEnvInt("APP_RESEARCH_EXPORT_MAX_BYTES", 52428800),
+		},
 	}
 
 	if err := validateNonDevConfig(cfg); err != nil {
@@ -97,8 +103,39 @@ func loadInternalConfigWithEnv() (*InternalConfig, error) {
 	if err := validateGatewaySettings(cfg); err != nil {
 		return nil, err
 	}
+	if err := validateDataDirWritable(cfg.App.DataDir); err != nil {
+		return nil, err
+	}
 
 	return cfg, nil
+}
+
+// validateDataDirWritable ensures APP_DATA_DIR exists and can be written,
+// creating it when missing (BK-CONF-002), so startup fails with an actionable
+// message instead of a later runtime error.
+//
+// Parameters:
+//   - dataDir: the configured APP_DATA_DIR value.
+//
+// Returns nil when the directory is ready for on-disk state; otherwise an
+// error naming APP_DATA_DIR only (no key material).
+func validateDataDirWritable(dataDir string) error {
+	dir := strings.TrimSpace(dataDir)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return fmt.Errorf("env var APP_DATA_DIR %q cannot be created: %v; fix the path or its permissions", dir, err)
+	}
+	probe := filepath.Join(dir, ".write-probe")
+	file, err := os.OpenFile(probe, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return fmt.Errorf("env var APP_DATA_DIR %q is not writable: %v; fix its permissions", dir, err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("env var APP_DATA_DIR %q is not writable: %v", dir, err)
+	}
+	if err := os.Remove(probe); err != nil {
+		return fmt.Errorf("env var APP_DATA_DIR %q is not writable: %v", dir, err)
+	}
+	return nil
 }
 
 func loadDriverConfigWithEnv() (*DriverConfig, error) {

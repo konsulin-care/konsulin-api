@@ -14,6 +14,7 @@ type InternalConfig struct {
 	Supertoken AppSupertoken `mapstructure:"supertoken"`
 	Webhook    AppWebhook    `mapstructure:"webhook"`
 	Gateway    AppGateway    `mapstructure:"gateway"`
+	Research   AppResearch   `mapstructure:"research"`
 }
 
 type App struct {
@@ -86,6 +87,26 @@ type AppGateway struct {
 	AutomationPartyID string `mapstructure:"automation_party_id"`
 	// ServiceProviderAliases is a comma-separated alias=partyId list
 	ServiceProviderAliases string `mapstructure:"service_provider_aliases"`
+}
+
+// AppResearch holds the research databank settings (BK-DATABANK).
+type AppResearch struct {
+	// AutoPublish maps APP_AUTOPUBLISH: publish derived resources without manual review
+	AutoPublish bool `mapstructure:"autopublish"`
+	// PseudonymKey is the HMAC key pseudonymizing subjects; sensitive, never logged.
+	// The databank is disabled while it is empty.
+	PseudonymKey string `mapstructure:"pseudonym_key"` // Sensitive — never logged
+	// ExportMaxBytes maps APP_RESEARCH_EXPORT_MAX_BYTES: cap for one sealed export
+	ExportMaxBytes int `mapstructure:"export_max_bytes"`
+}
+
+// DatabankEnabled reports whether the research databank is active: it needs a
+// non-empty APP_RESEARCH_PSEUDONYM_KEY, otherwise extraction and export stay
+// disabled.
+//
+// Returns true only when a pseudonymization key is configured.
+func (r AppResearch) DatabankEnabled() bool {
+	return strings.TrimSpace(r.PseudonymKey) != ""
 }
 
 // validateGatewayConfig validates gateway/party configuration in
