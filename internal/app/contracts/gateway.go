@@ -296,3 +296,38 @@ type ListingDirectory interface {
 	// MapError. Never panics.
 	Enlist(ctx context.Context, req EnlistRequest) (listingID string, err error)
 }
+
+// ApprovalClient routes the gateway approval plane (SDK-API-001,
+// SDK-API-002): the outbound ticket mint and the inbound ticket check.
+// Errors surface raw and are rendered through gateway.MapError.
+type ApprovalClient interface {
+	// Mint mints an approval handoff ticket at POST /v1/approvals through
+	// the SDK approvals Mint route — party-signed and idempotent (one
+	// Idempotency-Key per logical create, SDK-CLIENT-002). The body carries
+	// the recipient party, the allowlisted scope, the literal purpose and
+	// the researcher hash. A disabled adapter reports
+	// ErrGatewayNotConfigured before any I/O.
+	// Parameters: ctx bounds the call, to the recipient party id, scope the
+	// allowlisted scope ("referral" or "export:<study>"), purpose the
+	// literal purpose string, researcherHash the base64 32-byte researcher
+	// hash or "N/A".
+	// Returns: the minted ks-approval+jwt ticket (the response's
+	// access_token), plus the error to render through gateway.MapError.
+	// Never panics.
+	Mint(ctx context.Context, to, scope, purpose, researcherHash string) (ticket string, err error)
+	// VerifyTicket checks one directly presented ks-approval+jwt against
+	// the gateway JWKS (APP_GATEWAY_URL/.well-known/jwks): exact typ
+	// ks-approval+jwt, Ed25519 signature by the token's own header kid,
+	// iss "gateway", aud equal to this party (APP_PARTY_ID), exp inside
+	// the 60-second skew, scope exactly equal to expectedScope, and finally
+	// a single-use jti consumed in the Redis replay cache — a replayed jti
+	// or a Redis failure denies (fail closed). A disabled adapter reports
+	// ErrGatewayNotConfigured before any I/O.
+	// Parameters: ctx bounds the JWKS fetch and the jti reservation, token
+	// the compact ticket JWS, expectedScope the exact scope of the
+	// operation about to be performed.
+	// Returns: nil once the ticket verifies for the expected scope, or the
+	// error carrying the SDK sentinel (matchable with errors.Is). Never
+	// panics.
+	VerifyTicket(ctx context.Context, token, expectedScope string) error
+}
