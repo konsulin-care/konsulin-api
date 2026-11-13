@@ -106,8 +106,6 @@ func SetupRoutes(
 			attachPrivacyRouter(r, ctrls.Purge)
 			attachFederationRouter(r, ctrls.Federation, ctrls.Gateway, logger)
 			attachServicesRouter(r, middlewares, ctrls.Services, ctrls.Gateway)
-
-			r.Mount("/tx", middlewares.TxProxy(internalConfig.FHIR.TerminologyServerBaseUrl))
 		})
 	})
 
