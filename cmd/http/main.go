@@ -16,7 +16,6 @@ import (
 	"konsulin-service/internal/app/delivery/http/routers"
 	"konsulin-service/internal/app/drivers/database"
 	"konsulin-service/internal/app/drivers/logger"
-	"konsulin-service/internal/app/drivers/messaging"
 	"konsulin-service/internal/app/services/core/auth"
 	"konsulin-service/internal/app/services/core/organization"
 	"konsulin-service/internal/app/services/core/payments"
@@ -77,12 +76,6 @@ func main() {
 		log.Fatalf("Error connecting to Redis: %s", err.Error())
 	}
 
-	// Initialize RabbitMQ connection
-	rabbitMQ, err := messaging.NewRabbitMQ(driverConfig)
-	if err != nil {
-		log.Fatalf("Error connecting to RabbitMQ: %v", err)
-	}
-
 	// Create a new router
 	chiRouter := chi.NewRouter()
 
@@ -91,7 +84,6 @@ func main() {
 		Router:         chiRouter,
 		Redis:          redis,
 		Logger:         logger,
-		RabbitMQ:       rabbitMQ,
 		InternalConfig: internalConfig,
 		DriverConfig:   driverConfig,
 	}
