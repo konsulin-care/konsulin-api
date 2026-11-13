@@ -23,7 +23,6 @@ require (
 	github.com/klauspost/compress v1.19.2
 	github.com/konsulin-care/gateway-sdk-go v0.1.1
 	github.com/lib/pq v1.12.3
-	github.com/rabbitmq/amqp091-go v1.14.0
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/rubenv/sql-migrate v1.8.1
 	github.com/stretchr/testify v1.12.1
