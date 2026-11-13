@@ -3,7 +3,6 @@ package config
 type DriverConfig struct {
 	Redis      Redis      `mapstructure:"redis"`
 	Logger     Logger     `mapstructure:"logger"`
-	RabbitMQ   RabbitMQ   `mapstructure:"rabbitmq"`
 	Supertoken Supertoken `mapstructure:"supertoken"`
 }
 type Redis struct {
@@ -16,13 +15,6 @@ type Logger struct {
 	Level               string `mapstructure:"level"`
 	OutputFileName      string `mapstructure:"output_file_name"`
 	OutputErrorFileName string `mapstructure:"output_error_file_name"`
-}
-
-type RabbitMQ struct {
-	Port     string `mapstructure:"port"`
-	Host     string `mapstructure:"host"`
-	Username string `mapstructure:"username"`
-	Password string `mapstructure:"password"`
 }
 
 type Supertoken struct {
