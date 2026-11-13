@@ -54,18 +54,9 @@ func TestValidateNonDevDriverConfig_errorStringsAreLowercase(t *testing.T) {
 			env: "production",
 		},
 		{
-			name: "production missing RabbitMQ creds",
-			cfg: &DriverConfig{
-				Redis: Redis{Password: "set"},
-				// RabbitMQ.Username and Password are zero value -> triggers error
-			},
-			env: "production",
-		},
-		{
 			name: "production missing Supertoken API key",
 			cfg: &DriverConfig{
-				Redis:    Redis{Password: "set"},
-				RabbitMQ: RabbitMQ{Username: "u", Password: "p"},
+				Redis: Redis{Password: "set"},
 				// Supertoken.APIKey is zero value -> triggers error
 			},
 			env: "production",

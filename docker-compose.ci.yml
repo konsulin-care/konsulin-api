@@ -9,7 +9,6 @@
 # Layout:
 #   postgres      — SuperTokens core database
 #   redis         — gateway session/cache store
-#   rabbitmq      — webhook async queue
 #   blaze         — FHIR R4 server (seeded with synthetic resources)
 #   supertokens   — passwordless auth core (magic links)
 #   ci-stub       — unified Go stub server replacing both the external
@@ -22,7 +21,7 @@
 #
 # The app is started AFTER the infrastructure group, because the gateway
 # performs boot-time FHIR and SuperTokens initialization and fatals otherwise.
-# The workflow probes Blaze, SuperTokens, Redis and RabbitMQ from the runner
+# The workflow probes Blaze, SuperTokens and Redis from the runner
 # before `docker compose up -d app`.
 #
 # The federation `gateway` service is started by pr.yml ahead of this file's
@@ -62,14 +61,6 @@ services:
     environment:
       ALLOW_EMPTY_PASSWORD: "no"
       REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env.ci}
-    networks: [ci-net]
-
-  rabbitmq:
-    image: rabbitmq:4.0-management-alpine
-    container_name: konsulin-ci-rabbitmq
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:?set RABBITMQ_DEFAULT_PASS in .env.ci}
     networks: [ci-net]
 
   blaze:
@@ -160,8 +151,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-      rabbitmq:
-        condition: service_started
       blaze:
         condition: service_started
       supertokens:
@@ -208,10 +197,6 @@ services:
       REDIS_HOST: "redis"
       REDIS_PORT: "6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env.ci}
-      RABBITMQ_HOST: "rabbitmq"
-      RABBITMQ_PORT: "5672"
-      RABBITMQ_USERNAME: "guest"
-      RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:?set RABBITMQ_DEFAULT_PASS in .env.ci}
       # Xendit API key — only used for SDK initialization; the stub ignores
       # the Authorization header. Set via repository variable.
       APP_XENDIT_API_KEY: "${XENDIT_SANDBOX_API_KEY:?set XENDIT_SANDBOX_API_KEY in .env.ci}"

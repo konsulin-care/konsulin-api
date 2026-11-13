@@ -113,14 +113,6 @@ func loadDriverConfigWithEnv() (*DriverConfig, error) {
 			OutputFileName:      utils.GetEnvString("LOGGER_OUTPUT_FILE_NAME", "logger.log"),
 			OutputErrorFileName: utils.GetEnvString("LOGGER_OUTPUT_ERROR_FILE_NAME", "logger-error.log"),
 		},
-		RabbitMQ: RabbitMQ{
-			// Defaults for connectivity (Standard Localhost)
-			Host: utils.GetEnvString("RABBITMQ_HOST", "localhost"),
-			Port: utils.GetEnvString("RABBITMQ_PORT", "5672"),
-			// These must be set in .env
-			Username: utils.GetEnvString("RABBITMQ_USERNAME", ""),
-			Password: utils.GetEnvString("RABBITMQ_PASSWORD", ""),
-		},
 		Supertoken: Supertoken{
 			ApiBasePath:     utils.GetEnvString("SUPERTOKEN_API_BASE_PATH", "/auth"),
 			WebsiteBasePath: utils.GetEnvString("SUPERTOKEN_WEBSITE_BASE_PATH", "/auth"),
@@ -179,9 +171,6 @@ func validateNonDevDriverConfig(cfg *DriverConfig, env string) error {
 	}
 	if cfg.Redis.Password == "" {
 		return fmt.Errorf("env var REDIS_PASSWORD is required in %s environment", env)
-	}
-	if cfg.RabbitMQ.Username == "" || cfg.RabbitMQ.Password == "" {
-		return fmt.Errorf("env vars RABBITMQ_USERNAME and RABBITMQ_PASSWORD are required in %s environment", env)
 	}
 	if cfg.Supertoken.APIKey == "" {
 		return fmt.Errorf("env var SUPERTOKEN_API_KEY is required in %s environment", env)
