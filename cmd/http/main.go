@@ -325,6 +325,12 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	}
 	registerFederation(bootstrap, &ctrls, bootstrap.InternalConfig.Gateway, paymentUsecase)
 
+	// T71: research databank — SQLite store plus the nightly 00:00 local
+	// extraction scheduler (no-op unless APP_RESEARCH_PSEUDONYM_KEY is set).
+	if err := registerResearch(bootstrap); err != nil {
+		return fmt.Errorf("error initializing research databank: %w", err)
+	}
+
 	// Setup routes with the router, configuration, middlewares, and controllers
 	routers.SetupRoutes(
 		bootstrap.Router,
