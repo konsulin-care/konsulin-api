@@ -257,3 +257,39 @@ func TestRBACPolicy_Referrals(t *testing.T) {
 		})
 	}
 }
+
+// TestRBACPolicy_ResearchDatabank asserts the research databank matrix:
+// only a Patient may POST the study withdrawal (the handler binds the
+// session uid as the withdrawing patient), only a Researcher may create
+// and list export requests, and Patient and Guest are denied on the
+// export-request surface entirely.
+func TestRBACPolicy_ResearchDatabank(t *testing.T) {
+	enf := testEnforcer(t)
+
+	cases := []struct {
+		name   string
+		role   string
+		method string
+		path   string
+		want   bool
+	}{
+		{"patient post withdraw", constvars.KonsulinRolePatient, http.MethodPost, "/api/v1/research/studies/st-1/withdraw", true},
+		{"researcher post withdraw", constvars.KonsulinRoleResearcher, http.MethodPost, "/api/v1/research/studies/st-1/withdraw", false},
+		{"practitioner post withdraw", constvars.KonsulinRolePractitioner, http.MethodPost, "/api/v1/research/studies/st-1/withdraw", false},
+		{"guest post withdraw", constvars.KonsulinRoleGuest, http.MethodPost, "/api/v1/research/studies/st-1/withdraw", false},
+		{"researcher post requests", constvars.KonsulinRoleResearcher, http.MethodPost, "/api/v1/research/requests", true},
+		{"researcher get requests", constvars.KonsulinRoleResearcher, http.MethodGet, "/api/v1/research/requests", true},
+		{"patient post requests", constvars.KonsulinRolePatient, http.MethodPost, "/api/v1/research/requests", false},
+		{"patient get requests", constvars.KonsulinRolePatient, http.MethodGet, "/api/v1/research/requests", false},
+		{"guest post requests", constvars.KonsulinRoleGuest, http.MethodPost, "/api/v1/research/requests", false},
+		{"superadmin post requests", constvars.KonsulinRoleSuperadmin, http.MethodPost, "/api/v1/research/requests", false},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ok, err := enf.Enforce(c.role, c.method, c.path)
+			assert.NoError(t, err)
+			assert.Equal(t, c.want, ok, "Enforce(%q, %q, %s)", c.role, c.method, c.path)
+		})
+	}
+}

@@ -77,6 +77,7 @@ p, Patient, GET, /fhir/Slot
 p, Patient, POST, /fhir/Slot
 p, Patient, PUT, /fhir/Slot
 p, Patient, PUT, /fhir/Condition
+p, Patient, POST, /api/v1/research/studies
 p, Patient, POST, /api/v1/services/automation/interpret
 p, Patient, POST, /api/v1/services/automation/modify-profile
 p, Patient, POST, /api/v1/services/automation/update-avatar
@@ -131,6 +132,8 @@ p, Researcher, POST, /fhir/ResearchStudy
 p, Researcher, PUT, /fhir/ResearchStudy
 p, Researcher, GET, /fhir/Consent
 p, Researcher, GET, /fhir/ResearchSubject
+p, Researcher, GET, /api/v1/research/requests
+p, Researcher, POST, /api/v1/research/requests
 p, Superadmin, POST, /fhir/Appointment
 p, Superadmin, PUT, /fhir/Condition
 p, Superadmin, GET, /fhir/HealthcareService
