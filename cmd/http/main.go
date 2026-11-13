@@ -21,7 +21,6 @@ import (
 	"konsulin-service/internal/app/services/core/payments"
 	"konsulin-service/internal/app/services/core/services"
 	"konsulin-service/internal/app/services/core/slot"
-	"konsulin-service/internal/app/services/core/transactions"
 	"konsulin-service/internal/app/services/core/users"
 	"konsulin-service/internal/app/services/fhir_spark/practitioners"
 	"konsulin-service/internal/app/services/fhir_spark/service_requests"
@@ -277,9 +276,7 @@ func bootstrapingTheApp(bootstrap *config.Bootstrap) error {
 	}
 
 	paymentUsecase := payments.NewPaymentUsecase(
-		transactions.NewTransactionPostgresRepository(nil, bootstrap.Logger),
 		bootstrap.InternalConfig,
-		nil, // JWT manager construction removed (T51): payment no longer consumes it
 		patientFhirClient,
 		practitionerFhirClient,
 		invoiceFhirClient,

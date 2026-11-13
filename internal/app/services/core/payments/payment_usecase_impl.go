@@ -14,7 +14,6 @@ import (
 
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/app/services/shared/jwtmanager"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
@@ -49,10 +48,8 @@ type GatewayDeps struct {
 }
 
 type paymentUsecase struct {
-	TransactionRepository      contracts.TransactionRepository
 	InternalConfig             *config.InternalConfig
 	Log                        *zap.Logger
-	JWTManager                 *jwtmanager.JWTManager
 	PatientFhirClient          contracts.PatientFhirClient
 	PractitionerFhirClient     contracts.PractitionerFhirClient
 	InvoiceFhirClient          contracts.InvoiceFhirClient
@@ -78,9 +75,7 @@ var (
 )
 
 func NewPaymentUsecase(
-	transactionRepository contracts.TransactionRepository,
 	internalConfig *config.InternalConfig,
-	jwtMgr *jwtmanager.JWTManager,
 	patientFhirClient contracts.PatientFhirClient,
 	practitionerFhirClient contracts.PractitionerFhirClient,
 	invoiceFhirClient contracts.InvoiceFhirClient,
@@ -94,10 +89,8 @@ func NewPaymentUsecase(
 ) contracts.PaymentUsecase {
 	oncePaymentUsecase.Do(func() {
 		instance := &paymentUsecase{
-			TransactionRepository:      transactionRepository,
 			InternalConfig:             internalConfig,
 			Log:                        logger,
-			JWTManager:                 jwtMgr,
 			PatientFhirClient:          patientFhirClient,
 			PractitionerFhirClient:     practitionerFhirClient,
 			InvoiceFhirClient:          invoiceFhirClient,
