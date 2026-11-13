@@ -27,23 +27,6 @@ func TestValidateNonDevConfig_errorStringsAreLowercase(t *testing.T) {
 				// JWT.Secret is zero value -> "" triggers error
 			},
 		},
-		{
-			name: "production missing JWT_HOOK_KEY",
-			cfg: &InternalConfig{
-				App: App{Env: "production"},
-				JWT: AppJWT{Secret: "set"},
-				// Webhook.JWTHookKey is zero value -> "" triggers error
-			},
-		},
-		{
-			name: "production missing APP_XENDIT_API_KEY",
-			cfg: &InternalConfig{
-				App:     App{Env: "production"},
-				JWT:     AppJWT{Secret: "set"},
-				Webhook: AppWebhook{JWTHookKey: "set"},
-				// Xendit.APIKey is zero value -> triggers error
-			},
-		},
 	}
 
 	for _, tt := range tests {

@@ -30,8 +30,7 @@ func setupRoutesTestConfig() *config.InternalConfig {
 			SuperadminAPIKeyRateLimit: 100,
 		},
 		FHIR: config.AppFHIR{
-			BaseUrl:                  "http://localhost:8080/fhir",
-			TerminologyServerBaseUrl: "http://localhost:8081",
+			BaseUrl: "http://localhost:8080/fhir",
 		},
 	}
 }

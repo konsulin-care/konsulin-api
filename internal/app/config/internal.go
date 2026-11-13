@@ -8,41 +8,36 @@ import (
 )
 
 type InternalConfig struct {
-	App            App               `mapstructure:"app"`
-	FHIR           AppFHIR           `mapstructure:"fhir"`
-	JWT            AppJWT            `mapstructure:"jwt"`
-	Supertoken     AppSupertoken     `mapstructure:"supertoken"`
-	ServicePricing AppServicePricing `mapstructure:"service_pricing"`
-	Webhook        AppWebhook        `mapstructure:"webhook"`
-	Xendit         AppXendit         `mapstructure:"xendit"`
-	Gateway        AppGateway        `mapstructure:"gateway"`
+	App        App           `mapstructure:"app"`
+	FHIR       AppFHIR       `mapstructure:"fhir"`
+	JWT        AppJWT        `mapstructure:"jwt"`
+	Supertoken AppSupertoken `mapstructure:"supertoken"`
+	Webhook    AppWebhook    `mapstructure:"webhook"`
+	Gateway    AppGateway    `mapstructure:"gateway"`
 }
 
 type App struct {
-	Env                                   string `mapstructure:"env"`
-	Port                                  string `mapstructure:"port"`
-	Version                               string `mapstructure:"version"`
-	Address                               string `mapstructure:"address"`
-	BaseUrl                               string `mapstructure:"base_url"`
-	Timezone                              string `mapstructure:"timezone"`
-	FrontendDomain                        string `mapstructure:"frontend_domain"`
-	EndpointPrefix                        string `mapstructure:"endpoint_prefix"`
-	MaxRequests                           int    `mapstructure:"max_requests"`
-	ShutdownTimeoutInSeconds              int    `mapstructure:"shutdown_timeout_in_seconds"`
-	PaymentExpiredTimeInMinutes           int    `mapstructure:"payment_expired_time_in_minutes"`
-	PaymentGatewayRequestTimeoutInSeconds int    `mapstructure:"payment_gateway_request_timeout_in_seconds"`
-	SuperadminAPIKey                      string `mapstructure:"superadmin_api_key"`
-	SuperadminAPIKeyRateLimit             int    `mapstructure:"superadmin_api_key_rate_limit"`
-	WebhookInstantiateBasePath            string `mapstructure:"webhook_instantiate_base_path"`
-	RBACPolicyPath                        string `mapstructure:"rbac_policy_path"`
-	OrganizationName                      string `mapstructure:"organization_name"`
-	DataDir                               string `mapstructure:"data_dir"`
-	Pepper                                string `mapstructure:"pepper"` // Sensitive — never logged
+	Env                         string `mapstructure:"env"`
+	Port                        string `mapstructure:"port"`
+	Version                     string `mapstructure:"version"`
+	Address                     string `mapstructure:"address"`
+	BaseUrl                     string `mapstructure:"base_url"`
+	Timezone                    string `mapstructure:"timezone"`
+	FrontendDomain              string `mapstructure:"frontend_domain"`
+	EndpointPrefix              string `mapstructure:"endpoint_prefix"`
+	MaxRequests                 int    `mapstructure:"max_requests"`
+	ShutdownTimeoutInSeconds    int    `mapstructure:"shutdown_timeout_in_seconds"`
+	PaymentExpiredTimeInMinutes int    `mapstructure:"payment_expired_time_in_minutes"`
+	SuperadminAPIKey            string `mapstructure:"superadmin_api_key"`
+	SuperadminAPIKeyRateLimit   int    `mapstructure:"superadmin_api_key_rate_limit"`
+	RBACPolicyPath              string `mapstructure:"rbac_policy_path"`
+	OrganizationName            string `mapstructure:"organization_name"`
+	DataDir                     string `mapstructure:"data_dir"`
+	Pepper                      string `mapstructure:"pepper"` // Sensitive — never logged
 }
 
 type AppFHIR struct {
-	BaseUrl                  string `mapstructure:"base_url"`
-	TerminologyServerBaseUrl string `mapstructure:"terminology_server_base_url"`
+	BaseUrl string `mapstructure:"base_url"`
 }
 
 type AppJWT struct {
@@ -54,52 +49,18 @@ type AppSupertoken struct {
 	KonsulinDasboardAdminEmail string `mapstructure:"konsulin_dashboard_admin_email"`
 }
 
-// AppServicePricing represents per-service base prices for service-based payments.
-type AppServicePricing struct {
-	AnalyzeBasePrice           int `mapstructure:"analyze_base_price"`
-	ReportBasePrice            int `mapstructure:"report_base_price"`
-	PerformanceReportBasePrice int `mapstructure:"performance_report_base_price"`
-	AccessDatasetBasePrice     int `mapstructure:"access_dataset_base_price"`
-}
-
-// AppWebhook holds configuration for the Webhook Service Integration feature.
+// AppWebhook retains only the knobs still consumed outside config: the
+// services rate-limit window read by the T37 limiter in ServicesController
+// and the delivery timeout placeholder pinned by the auth test fixture.
+// All HOOK_* environment reads were removed with the legacy webhook stack.
 type AppWebhook struct {
-	// RateLimit is the number of allowed requests per 60-second window (by service name)
-	RateLimit int `mapstructure:"rate_limit"`
-	// MonthlyQuota is the number of allowed requests per calendar month UTC (by service name)
-	MonthlyQuota int `mapstructure:"monthly_quota"`
-	// RateLimitedServices is a CSV list of service names subject to rate limiting
-	RateLimitedServices string `mapstructure:"rate_limited_services"`
-	// PaidOnlyServices is a CSV list of service names that require a forwarded JWT from payment service
-	PaidOnlyServices string `mapstructure:"paid_only_services"`
-	// AsyncServiceNames is a parsed list of service names that trigger async ServiceRequest creation
-	AsyncServiceNames []string
-	// SynchronousServiceNames is a parsed list of service names allowed for synchronous routing
-	SynchronousServiceNames []string
-	// MaxQueue defines how many items the worker processes per tick
-	MaxQueue int `mapstructure:"max_queue"`
-	// ThrottleRetry is the failedCount threshold before sending to DLQ
-	ThrottleRetry int `mapstructure:"throttle_retry"`
-	// URL is the base URL of the external webhook service
-	URL string `mapstructure:"url"`
-	// HTTPTimeoutInSeconds is the HTTP client timeout when calling the webhook
+	// HTTPTimeoutInSeconds is retained as a fixture pin for the auth tests
+	// (the magic-link sender uses a fixed timeout and ignores it)
 	HTTPTimeoutInSeconds int `mapstructure:"http_timeout_in_seconds"`
 	// SynchronousServiceRateLimit controls requests allowed per window for synchronous services
 	SynchronousServiceRateLimit int `mapstructure:"synchronous_service_rate_limit"`
 	// SynchronousServiceWindowSeconds is the limiter window duration in seconds for synchronous services
 	SynchronousServiceWindowSeconds int `mapstructure:"synchronous_service_window_seconds"`
-	// SynchronousServiceFailurePolicy configures fallback behavior when synchronous forwarding fails
-	SynchronousServiceFailurePolicy string `mapstructure:"synchronous_service_failure_policy"`
-	// JWTAlg selects the signing algorithm (ES256|RS256)
-	JWTAlg string `mapstructure:"jwt_alg"`
-	// JWTHookKey is the private key PEM for signing webhook JWTs
-	JWTHookKey string `mapstructure:"jwt_hook_key"`
-}
-
-// AppXendit holds Xendit SDK configuration
-type AppXendit struct {
-	APIKey       string `mapstructure:"api_key"`
-	WebhookToken string `mapstructure:"webhook_token"`
 }
 
 // AppGateway holds gateway/party configuration for federation mode.

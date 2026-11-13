@@ -55,23 +55,20 @@ func loadInternalConfigWithEnv() (*InternalConfig, error) {
 			EndpointPrefix: utils.GetEnvString("APP_ENDPOINT_PREFIX", "api"),
 
 			// URLs & Timeouts
-			MaxRequests:                           utils.GetEnvInt("APP_MAX_REQUESTS", 20),
-			PaymentExpiredTimeInMinutes:           utils.GetEnvInt("APP_PAYMENT_EXPIRED_TIME_IN_MINUTES", 60),
-			PaymentGatewayRequestTimeoutInSeconds: utils.GetEnvInt("APP_PAYMENT_GATEWAY_REQUEST_TIMEOUT_IN_SECONDS", 120),
-			ShutdownTimeoutInSeconds:              utils.GetEnvInt("APP_SHUTDOWN_TIMEOUT_IN_SECONDS", 30),
+			MaxRequests:                 utils.GetEnvInt("APP_MAX_REQUESTS", 20),
+			PaymentExpiredTimeInMinutes: utils.GetEnvInt("APP_PAYMENT_EXPIRED_TIME_IN_MINUTES", 60),
+			ShutdownTimeoutInSeconds:    utils.GetEnvInt("APP_SHUTDOWN_TIMEOUT_IN_SECONDS", 30),
 
 			// Sensitive / Key Logic
-			SuperadminAPIKey:           utils.GetEnvString("SUPERADMIN_API_KEY", ""), // Sensitive
-			SuperadminAPIKeyRateLimit:  utils.GetEnvInt("SUPERADMIN_API_KEY_RATE_LIMIT", 10),
-			WebhookInstantiateBasePath: fmt.Sprintf("/api/%s/%s", utils.GetEnvString("APP_VERSION", "v1"), utils.GetEnvString("APP_WEBHOOK_INSTANTIATE_BASE_PATH", "hook")), // expected format: /api/<app-version>/<hook-base-path>
-			RBACPolicyPath:             utils.GetEnvString("APP_RBAC_POLICY_PATH", "resources/rbac_policy.csv"),
-			OrganizationName:           utils.GetEnvString("APP_ORGANIZATION_NAME", "Konsulin"),
-			DataDir:                    utils.GetEnvString("APP_DATA_DIR", "./data"),
-			Pepper:                     utils.GetEnvString("APP_PEPPER", ""), // Sensitive
+			SuperadminAPIKey:          utils.GetEnvString("SUPERADMIN_API_KEY", ""), // Sensitive
+			SuperadminAPIKeyRateLimit: utils.GetEnvInt("SUPERADMIN_API_KEY_RATE_LIMIT", 10),
+			RBACPolicyPath:            utils.GetEnvString("APP_RBAC_POLICY_PATH", "resources/rbac_policy.csv"),
+			OrganizationName:          utils.GetEnvString("APP_ORGANIZATION_NAME", "Konsulin"),
+			DataDir:                   utils.GetEnvString("APP_DATA_DIR", "./data"),
+			Pepper:                    utils.GetEnvString("APP_PEPPER", ""), // Sensitive
 		},
 		FHIR: AppFHIR{
-			BaseUrl:                  utils.GetEnvString("APP_FHIR_BASE_URL", "http://localhost:8080/fhir/"),
-			TerminologyServerBaseUrl: utils.GetEnvString("APP_TERMINOLOGY_BASE_URL", "https://tx.konsulin.care/fhir"),
+			BaseUrl: utils.GetEnvString("APP_FHIR_BASE_URL", "http://localhost:8080/fhir/"),
 		},
 		JWT: AppJWT{
 			Secret: utils.GetEnvString("APP_JWT_SECRET", ""),
@@ -79,34 +76,6 @@ func loadInternalConfigWithEnv() (*InternalConfig, error) {
 		Supertoken: AppSupertoken{
 			KonsulinTenantID:           utils.GetEnvString("APP_SUPERTOKEN_KONSULIN_TENANT_ID", "public"),
 			KonsulinDasboardAdminEmail: utils.GetEnvString("APP_SUPERTOKEN_KONSULIN_DASHBOARD_ADMIN_EMAIL", ""),
-		},
-		ServicePricing: AppServicePricing{
-			// Default Pricing fallback
-			AnalyzeBasePrice:           utils.GetEnvInt("BASE_PRICE_ANALYZE", 5000),
-			ReportBasePrice:            utils.GetEnvInt("BASE_PRICE_REPORT", 20000),
-			PerformanceReportBasePrice: utils.GetEnvInt("BASE_PRICE_PERFORMANCE_REPORT", 50000),
-			AccessDatasetBasePrice:     utils.GetEnvInt("BASE_PRICE_ACCESS_DATASET", 100000),
-		},
-		Webhook: AppWebhook{
-			RateLimit:                       utils.GetEnvInt("HOOK_RATE_LIMIT", -1),
-			MonthlyQuota:                    utils.GetEnvInt("HOOK_QUOTA", -1),
-			RateLimitedServices:             utils.GetEnvString("HOOK_RATE_LIMITED_SERVICES", "analyze,interpret"),
-			PaidOnlyServices:                utils.GetEnvString("HOOK_PAID_ONLY_SERVICES", "analyze"),
-			AsyncServiceNames:               parseCSVToLowerSlice(utils.GetEnvString("HOOK_ASYNC_SERVICE_NAMES", "")),
-			SynchronousServiceNames:         parseCSVToLowerSlice(utils.GetEnvString("HOOK_SYNC_SERVICE_NAMES", "analyze")), // we default to "analyze" for satisfying the non-empty validation check
-			SynchronousServiceRateLimit:     utils.GetEnvInt("HOOK_SYNCHRONOUS_SERVICE_RATE_LIMIT", 60),
-			SynchronousServiceWindowSeconds: utils.GetEnvInt("HOOK_SYNCHRONOUS_SERVICE_WINDOW_SECONDS", 60),
-			SynchronousServiceFailurePolicy: strings.ToLower(strings.TrimSpace(utils.GetEnvString("HOOK_SYNCHRONOUS_SERVICE_FAILURE_POLICY", "return_error"))),
-			MaxQueue:                        utils.GetEnvInt("HOOK_MAX_QUEUE", 150),
-			ThrottleRetry:                   utils.GetEnvInt("HOOK_THROTTLE_RETRY", 3),
-			URL:                             utils.GetEnvString("HOOK_URL", ""),
-			HTTPTimeoutInSeconds:            utils.GetEnvInt("HOOK_HTTP_TIMEOUT", 5),
-			JWTAlg:                          utils.GetEnvString("HOOK_JWT_ALG", "ES256"),
-			JWTHookKey:                      utils.GetEnvString("JWT_HOOK_KEY", ""), // Sensitive
-		},
-		Xendit: AppXendit{
-			APIKey:       utils.GetEnvString("APP_XENDIT_API_KEY", ""), // Sensitive
-			WebhookToken: utils.GetEnvString("APP_XENDIT_WEBHOOK_TOKEN", ""),
 		},
 		Gateway: AppGateway{
 			Enabled:                gatewayURL != "",
@@ -126,12 +95,6 @@ func loadInternalConfigWithEnv() (*InternalConfig, error) {
 		return nil, err
 	}
 	if err := validateGatewaySettings(cfg); err != nil {
-		return nil, err
-	}
-	if err := validateBasePrices(cfg); err != nil {
-		return nil, err
-	}
-	if err := normalizeWebhookConfig(cfg); err != nil {
 		return nil, err
 	}
 
@@ -206,42 +169,6 @@ func validateNonDevConfig(cfg *InternalConfig) error {
 	if cfg.JWT.Secret == "" {
 		return fmt.Errorf("env var APP_JWT_SECRET is required in %s environment", cfg.App.Env)
 	}
-	if cfg.Webhook.JWTHookKey == "" {
-		return fmt.Errorf("env var JWT_HOOK_KEY is required in %s environment", cfg.App.Env)
-	}
-	if cfg.Xendit.APIKey == "" {
-		return fmt.Errorf("env var APP_XENDIT_API_KEY is required in %s environment", cfg.App.Env)
-	}
-	return nil
-}
-
-// validateBasePrices ensures no service base price is left unset (would cause $0 payments).
-func validateBasePrices(cfg *InternalConfig) error {
-	if cfg.ServicePricing.AnalyzeBasePrice <= 0 ||
-		cfg.ServicePricing.ReportBasePrice <= 0 ||
-		cfg.ServicePricing.PerformanceReportBasePrice <= 0 ||
-		cfg.ServicePricing.AccessDatasetBasePrice <= 0 {
-		return fmt.Errorf("invalid service base price configuration: all BASE_PRICE_* must be > 0")
-	}
-	return nil
-}
-
-// normalizeWebhookConfig validates and sets defaults for webhook synchronous service config.
-func normalizeWebhookConfig(cfg *InternalConfig) error {
-	if len(cfg.Webhook.SynchronousServiceNames) == 0 {
-		return fmt.Errorf("invalid webhook configuration: HOOK_SYNC_SERVICE_NAMES must be set and non-empty")
-	}
-	if cfg.Webhook.SynchronousServiceRateLimit <= 0 {
-		cfg.Webhook.SynchronousServiceRateLimit = 60
-	}
-	if cfg.Webhook.SynchronousServiceWindowSeconds <= 0 {
-		cfg.Webhook.SynchronousServiceWindowSeconds = 60
-	}
-	switch cfg.Webhook.SynchronousServiceFailurePolicy {
-	case "return_error", "enqueue_request":
-	default:
-		cfg.Webhook.SynchronousServiceFailurePolicy = "return_error"
-	}
 	return nil
 }
 
@@ -260,22 +187,4 @@ func validateNonDevDriverConfig(cfg *DriverConfig, env string) error {
 		return fmt.Errorf("env var SUPERTOKEN_API_KEY is required in %s environment", env)
 	}
 	return nil
-}
-
-// parseCSVToLowerSlice parses a comma-separated string into a slice of trimmed, lowercased strings.
-// Returns an empty slice if the input is empty or contains only whitespace.
-func parseCSVToLowerSlice(csv string) []string {
-	csv = strings.TrimSpace(csv)
-	if csv == "" {
-		return []string{}
-	}
-	parts := strings.Split(csv, ",")
-	result := make([]string, 0, len(parts))
-	for _, p := range parts {
-		trimmed := strings.TrimSpace(p)
-		if trimmed != "" {
-			result = append(result, strings.ToLower(trimmed))
-		}
-	}
-	return result
 }
