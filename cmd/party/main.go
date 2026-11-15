@@ -45,6 +45,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return enlist(args[1:], stdout, stderr)
 	case "enroll":
 		return enroll(args[1:], stdout, stderr)
+	case "verify":
+		return verify(args[1:], stdout, stderr)
 	case "help", "-h", "--help":
 		return usage(stdout)
 	default:
@@ -72,6 +74,9 @@ func usage(w io.Writer) error {
 		return err
 	}
 	if _, err := fmt.Fprintln(w, "  enroll   redeem APP_PARTY_ENROLLMENT_TOKEN via the gateway"); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, "  verify   verify [FILE] [--standalone|--federation] [--offline]: check an env file"); err != nil {
 		return err
 	}
 	_, err := fmt.Fprintln(w, "  help     print this synopsis")
