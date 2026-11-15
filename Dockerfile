@@ -75,6 +75,11 @@ COPY --from=gobuild /go/src/github.com/konsulin-id/be-konsulin/ .
 # COPY --from=gobuild /go/src/github.com/konsulin-id/be-konsulin/api-service .
 # COPY --from=gobuild /go/src/github.com/konsulin-id/be-konsulin/RELEASE ./RELEASE
 
+# /app/data must be mounted as a persistent volume owned by uid 1000.
+# No VOLUME instruction: it would create a fresh anonymous volume per deploy.
+ENV APP_DATA_DIR=/app/data
+RUN mkdir -p /app/data && chown app:app /app/data
+
 USER app
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=10s \
