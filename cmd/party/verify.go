@@ -19,7 +19,7 @@ func verify(args []string, stdout, stderr io.Writer) error {
 	fs.SetOutput(stderr)
 	standalone := fs.Bool("standalone", false, "assert standalone mode")
 	federation := fs.Bool("federation", false, "assert federation mode")
-	_ = fs.Bool("offline", false, "skip the online check")
+	offline := fs.Bool("offline", false, "skip the online check")
 	files, err := parseInterleaved(fs, args)
 	if err != nil {
 		return err
@@ -47,13 +47,24 @@ func verify(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	fails := 0
+	keyFail := false
 	for _, f := range config.VerifyEnv(values, mode) {
 		if f.Level == "FAIL" {
 			fails++
+			if f.Var == "APP_PARTY_PRIVATE_KEY" || f.Var == "APP_PARTY_ENC_PRIVATE_KEY" {
+				keyFail = true
+			}
 		}
 		if _, err := fmt.Fprintf(stdout, "%s %s: %s\n", f.Level, f.Var, f.Message); err != nil {
 			return err
 		}
+	}
+	if mode == config.VerifyFederation && !*offline && !keyFail {
+		n, err := verifyOnline(values, stdout)
+		if err != nil {
+			return err
+		}
+		fails += n
 	}
 	if fails > 0 {
 		return fmt.Errorf("verify: %d FAIL finding(s)", fails)
