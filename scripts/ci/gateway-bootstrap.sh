@@ -97,7 +97,7 @@ sign_jwt() {
   openssl pkeyutl -sign -inkey "$3" -rawin \
     -in "$TMP_DIR/jwt.msg" -out "$TMP_DIR/jwt.sig" >/dev/null 2>&1 ||
     die "openssl pkeyutl -sign failed (OpenSSL 3+ with Ed25519 required)"
-  printf '%s.%s' "$_input" "$(b64 < "$TMP_DIR/jwt.sig")"
+  printf '%s.%s' "$_input" "$(b64url < "$TMP_DIR/jwt.sig")"
 }
 
 # gen_party_keys ROLE — generates an Ed25519 + X25519 pair for ROLE and
@@ -187,14 +187,16 @@ mint_party_jwt() {
   sign_jwt "$_hdr" "$_claims" "$_keyfile"
 }
 
-# enlist JWT NAME ENDPOINT — creates one free webhook listing.
+# enlist NAME ENDPOINT — creates one free webhook listing. Mints a fresh
+# automation party JWT per call (the gateway treats each jti as single-use).
 enlist() {
+  _jwt=$(mint_party_jwt automation "$AUTOMATION_PID")
   _body=$(printf '{"name":"%s","description":"CI stub service %s","endpoint_url":"%s","price":0,"invocation":"webhook","price_scope":"party"}' \
-    "$2" "$2" "$3")
-  request POST /v1/listings "$_body" "$1"
+    "$1" "$1" "$2")
+  request POST /v1/listings "$_body" "$_jwt"
   _lid=$(json_field listing_id "$REQ_BODY")
-  [ -n "$_lid" ] || die "enlist $2 returned no listing_id"
-  log "enlisted listing $2 -> $3 ($_lid)"
+  [ -n "$_lid" ] || die "enlist $1 returned no listing_id"
+  log "enlisted listing $1 -> $2 ($_lid)"
 }
 
 # emit NAME VALUE — prints one APP_* export line and mirrors it into
@@ -235,13 +237,12 @@ request POST "/v1/admin/parties/$AUTOMATION_PID/capabilities" \
   '{"capability":"listing:enlist"}' "$ADMIN_TOKEN"
 log "granted listing:enlist to $AUTOMATION_PID"
 
-AUTOMATION_JWT=$(mint_party_jwt automation "$AUTOMATION_PID")
-enlist "$AUTOMATION_JWT" send-magiclink "$STUB_BASE_URL/magiclink/send-magiclink"
-enlist "$AUTOMATION_JWT" notify-provider "$STUB_BASE_URL/provider/invoke"
-enlist "$AUTOMATION_JWT" modify-profile "$STUB_BASE_URL/provider/invoke"
-enlist "$AUTOMATION_JWT" update-avatar "$STUB_BASE_URL/provider/invoke"
-enlist "$AUTOMATION_JWT" interpret "$STUB_BASE_URL/provider/invoke"
-enlist "$AUTOMATION_JWT" send-wa-link "$STUB_BASE_URL/provider/invoke"
+enlist send-magiclink "$STUB_BASE_URL/magiclink/send-magiclink"
+enlist notify-provider "$STUB_BASE_URL/provider/invoke"
+enlist modify-profile "$STUB_BASE_URL/provider/invoke"
+enlist update-avatar "$STUB_BASE_URL/provider/invoke"
+enlist interpret "$STUB_BASE_URL/provider/invoke"
+enlist send-wa-link "$STUB_BASE_URL/provider/invoke"
 
 emit APP_GATEWAY_URL "$GATEWAY_URL"
 emit APP_PARTY_ID "$BACKEND_PID"
