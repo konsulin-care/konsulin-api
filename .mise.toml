@@ -21,3 +21,26 @@ flag "--status" help="Show service status"
 flag "--reset" help="Stop and delete volumes (asks first)"
 '''
 run = 'sh scripts/dev/stack.sh'
+
+[tasks.dev]
+description = "Run the backend locally (sources .env if present)"
+run = '''
+if [ -f ./.env ]; then set -a; . ./.env; set +a; fi
+go run ./cmd/http
+'''
+
+[tasks.logs]
+description = "Follow docker compose logs (compose services only; backend logs go to stdout and are not covered)"
+usage = '''
+arg "[service]" help="Compose service"
+'''
+run = 'sh scripts/dev/logs.sh'
+
+[tasks.gateway]
+description = "Gateway onboarding: --init keygen, --enroll redeem token, --dev contributor bootstrap"
+usage = '''
+flag "--init" help="Generate party keys (stdout only)"
+flag "--enroll" help="Redeem the enrollment token (sources .env)"
+flag "--dev" help="Contributor-only: run gateway-bootstrap.sh (needs GATEWAY_URL, OPERATOR_PASSWORD in env)"
+'''
+run = 'sh scripts/dev/gateway.sh'
