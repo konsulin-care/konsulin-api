@@ -29,7 +29,6 @@ type Finding struct {
 //
 // Returns findings; messages name variables only, never values.
 func VerifyEnv(values map[string]string, mode VerifyMode) []Finding {
-	_ = mode
 	get := func(k string) string { return strings.TrimSpace(values[k]) }
 	appEnv := strings.ToLower(get("APP_ENV"))
 	if appEnv == "" {
@@ -56,6 +55,11 @@ func VerifyEnv(values map[string]string, mode VerifyMode) []Finding {
 	}
 	if !dev {
 		out = append(out, verifyHosts(get)...)
+	}
+	if mode == VerifyFederation {
+		out = append(out, verifyFederationRules(get, appEnv)...)
+	} else {
+		out = append(out, verifyStandaloneWarnings(get)...)
 	}
 	return out
 }
