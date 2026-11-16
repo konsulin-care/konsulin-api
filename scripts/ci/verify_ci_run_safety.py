@@ -5,7 +5,7 @@
 Each check_* group maps to one task in the implementation plan:
 
   T-1  pr.yml gofumpt step passes base_ref through env (no ${{ in run:)
-  T-2  ci-env "Write CI env files" env-maps all 9 inputs, keeps every
+  T-2  ci-env "Write CI env files" env-maps all 8 inputs, keeps every
        credential in the generated files, and adds umask 077
   T-3  ci-env readiness probe passes the redis password through env
 
@@ -140,7 +140,6 @@ ENV_MAP = {
     "XENDIT_SANDBOX_API_KEY": OPEN + " inputs.xendit-sandbox-api-key }}",
     "CI_POSTGRES_PASSWORD": OPEN + " inputs.ci-postgres-password }}",
     "CI_REDIS_PASSWORD": OPEN + " inputs.ci-redis-password }}",
-    "CI_RABBITMQ_PASSWORD": OPEN + " inputs.ci-rabbitmq-password }}",
     "CI_SUPERTOKEN_API_KEY": OPEN + " inputs.ci-supertoken-api-key }}",
     "CI_SUPERADMIN_API_KEY": OPEN + " inputs.ci-superadmin-api-key }}",
     "CI_XENDIT_CALLBACK_TOKEN": OPEN + " inputs.ci-xendit-callback-token }}",
@@ -150,7 +149,6 @@ ENV_MAP = {
 ENV_CI_KEYS = (
     "POSTGRES_PASSWORD",
     "REDIS_PASSWORD",
-    "RABBITMQ_DEFAULT_PASS",
     "SUPERTOKEN_API_KEY",
     "SUPERADMIN_API_KEY",
     "XENDIT_CALLBACK_TOKEN",
@@ -166,7 +164,7 @@ def check_task2():
     run = step.get("run") or ""
     env = step.get("env") or {}
     missing = [k for k, v in ENV_MAP.items() if env.get(k) != v]
-    check("T-2 all 9 inputs mapped in env", not missing, str(missing))
+    check("T-2 all 8 inputs mapped in env", not missing, str(missing))
     check("T-2 run block has no " + OPEN, OPEN not in run)
     first = run.lstrip().splitlines()[0].strip() if run.strip() else ""
     check("T-2 umask 077 is the first command", first == "umask 077", repr(first))
@@ -196,7 +194,6 @@ HOSTILE = {
     "XINJECT_XENDIT": 'x"; touch injected-marker; echo "',
     "XINJECT_POSTGRES": "p'w$d",
     "XINJECT_REDIS": "r3$()",
-    "XINJECT_RABBITMQ": "r4`id`",
     "XINJECT_SUPERTOKEN": "S${T}ecret",
     "XINJECT_SUPERADMIN": 'sa"dmin "$(id)"',
     "XINJECT_XENDIT_TOKEN": "tok$};x",  # nosec B105 - test injection payload
@@ -210,7 +207,6 @@ HOSTILE_ENV = {
     "XENDIT_SANDBOX_API_KEY": "XINJECT_XENDIT",
     "CI_POSTGRES_PASSWORD": "XINJECT_POSTGRES",  # nosec B105 - test fixture key name, not a secret
     "CI_REDIS_PASSWORD": "XINJECT_REDIS",  # nosec B105 - test fixture key name, not a secret
-    "CI_RABBITMQ_PASSWORD": "XINJECT_RABBITMQ",  # nosec B105 - test fixture key name, not a secret
     "CI_SUPERTOKEN_API_KEY": "XINJECT_SUPERTOKEN",
     "CI_SUPERADMIN_API_KEY": "XINJECT_SUPERADMIN",
     "CI_XENDIT_CALLBACK_TOKEN": "XINJECT_XENDIT_TOKEN",  # nosec B105 - test fixture key name, not a secret
@@ -222,7 +218,6 @@ EXPECTED_ENV_CI = (
     "XENDIT_SANDBOX_API_KEY=" + HOSTILE["XINJECT_XENDIT"]
     + "\nPOSTGRES_PASSWORD=" + HOSTILE["XINJECT_POSTGRES"]
     + "\nREDIS_PASSWORD=" + HOSTILE["XINJECT_REDIS"]
-    + "\nRABBITMQ_DEFAULT_PASS=" + HOSTILE["XINJECT_RABBITMQ"]
     + "\nSUPERTOKEN_API_KEY=" + HOSTILE["XINJECT_SUPERTOKEN"]
     + "\nSUPERADMIN_API_KEY=" + HOSTILE["XINJECT_SUPERADMIN"]
     + "\nXENDIT_CALLBACK_TOKEN=" + HOSTILE["XINJECT_XENDIT_TOKEN"]
