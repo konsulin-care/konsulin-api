@@ -26,7 +26,7 @@ konsulin-service/
 │   │   ├── drivers/           # Infrastructure wrappers
 │   │   │   ├── database/      # DB connection drivers
 │   │   │   ├── logger/        # Zap logger wrapper
-│   │   │   ├── messaging/     # RabbitMQ wrapper
+│   │   │   ├── messaging/     # Messaging wrapper
 │   │   │   └── thirdparty/    # External service integration
 │   │   └── models/            # Domain entities (BSON-tagged)
 │   │

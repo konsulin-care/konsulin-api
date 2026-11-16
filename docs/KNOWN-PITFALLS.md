@@ -29,11 +29,7 @@ Documented traps and gotchas. Update this file incrementally when discovering ne
 
 ## Webhook Failure Policies
 
-Webhook forwarding supports two failure modes (configurable per webhook):
-- `return_error` — fail immediately and return error to caller
-- `enqueue_request` — retry via RabbitMQ queue
-
-If `enqueue_request` is set without a properly configured RabbitMQ consumer, webhooks are silently lost.
+Webhook forwarding fails immediately and returns the error to the caller (`return_error`). There is no queue-based retry.
 
 ## Casbin Policy CSV Ordering
 

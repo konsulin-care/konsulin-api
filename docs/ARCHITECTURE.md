@@ -2,7 +2,7 @@
 
 ## System Overview
 
-Clients → **API Gateway** (auth → RBAC → routing) → Internal (Blaze FHIR, webhooks) / External (Xendit)
+Clients → **API Gateway** (auth → RBAC → routing) → Internal (Blaze FHIR, webhooks). Payments are handled by the federation gateway.
 
 ## High-Level Architecture
 
@@ -24,7 +24,7 @@ Routes:
 | Delivery | `internal/app/delivery/http/` | HTTP handlers, controllers, middleware |
 | Services | `internal/app/services/` | Business logic (core/fhir_spark/shared) |
 | Contracts | `internal/app/contracts/` | Interface definitions |
-| Drivers | `internal/app/drivers/` | Infrastructure wrappers (Redis, RabbitMQ, logger) |
+| Drivers | `internal/app/drivers/` | Infrastructure wrappers (Redis, logger) |
 | Config | `internal/app/config/` | Environment + YAML config loading |
 
 ## Request Flow
@@ -36,7 +36,7 @@ Routes:
 
 ### Payment Flow
 ```
-/pay/* → Auth Middleware → RBAC Filter → Payment Service → Xendit → Transaction Storage
+/pay/* → Auth Middleware → RBAC Filter → Federation Gateway (payments handled by the gateway)
 ```
 
 ### Auth Flow
@@ -178,8 +178,6 @@ Each rule declares:
 | Authorization | Casbin v2 |
 | FHIR | Blaze (FHIR R4), proxied internally |
 | Session/Cache | Redis |
-| Payments | Xendit |
-| Messaging | RabbitMQ (mailer, WhatsApp queues) |
 | Logging | Zap (structured) |
 | Config | godotenv (.env) |
 | Container | Docker multi-stage (Alpine) |
@@ -190,8 +188,6 @@ Each rule declares:
 - `github.com/go-chi/chi/v5` — HTTP router
 - `github.com/supertokens/supertokens-golang` — Auth
 - `github.com/casbin/casbin/v2` — RBAC
-- `github.com/rabbitmq/amqp091-go` — Messaging
-- `github.com/xendit/xendit-go/v7` — Payments
 - `go.uber.org/zap` — Logging
 - `github.com/joho/godotenv` — Config (.env loading)
 - `github.com/konsulin-care/gateway-sdk-go` — gateway client, imported only by the SDK adapter `internal/app/drivers/gateway`
@@ -200,5 +196,5 @@ Each rule declares:
 
 - **Domain**: api.konsulin.care
 - **SSL**: Let's Encrypt (via Nginx reverse proxy)
-- **Infra**: Docker Compose services (Redis, Blaze, SuperTokens, RabbitMQ, PostgreSQL)
+- **Infra**: Docker Compose services (Redis, Blaze, SuperTokens, PostgreSQL)
 - **CI/CD**: GitHub Actions (`.github/workflows/`) → Coolify
