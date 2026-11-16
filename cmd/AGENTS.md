@@ -1,10 +1,10 @@
 # cmd/ — Entry Points
 
-Three entry points in this directory:
+Entry points in this directory:
 
 ## `cmd/http/` — HTTP API Server (Main)
 
-Primary entry point. Bootstraps config, logger, Redis, RabbitMQ, all services, middleware chain, routes, and starts HTTP server with graceful shutdown.
+Primary entry point. Bootstraps config, logger, Redis, all services, middleware chain, routes, and starts HTTP server with graceful shutdown.
 
 ```bash
 go run ./cmd/http           # development
@@ -16,21 +16,23 @@ Configuration via `.env` file + `config.*.yaml`. No CLI flags — all config is 
 ### Startup sequence
 1. Load env vars (godotenv) + YAML config (Viper)
 2. Initialize logger (Zap)
-3. Connect Redis, RabbitMQ, SuperTokens
+3. Connect Redis, SuperTokens
 4. Initialize FHIR HTTP client
 5. Build middleware chain
 6. Register routes (API v1 under `/api/v1/`, FHIR proxy under `/fhir`, terminology proxy under `/api/v1/tx`)
 7. Start HTTP server with graceful shutdown (SIGTERM/SIGINT)
 
-## `cmd/migration/` — Database Migration Tool
+## `cmd/party/` — Federation Party CLI
 
-Runs SQL migrations for the SuperTokens PostgreSQL database.
+Subcommands: `keygen`, `rotate`, `enlist`, `enroll`, `verify`.
 
 ```bash
-go run ./cmd/migration
+go run ./cmd/party <subcommand>
 ```
 
-Uses `sql-migrate` library. Migration files expected in `migrations/` directory.
+## `cmd/migration/` — Migration Package (not wired yet)
+
+Library package, not a command: `Run(db)` applies SQL files from a `migration/` directory via `sql-migrate`. It has no `main` and no caller yet. Kept as preparation for the next development phase, so it is not runnable today.
 
 ## `cmd/example/` — Sample / Reference Code
 

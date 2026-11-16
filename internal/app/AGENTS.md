@@ -6,7 +6,7 @@ Clean Architecture layers, organized by concern.
 
 ### `internal/app/config/`
 Configuration structs loaded from `.env` + `config.*.yaml`. Two main structs:
-- `InternalConfig` — app, FHIR, JWT, mailer, RabbitMQ, Konsulin, SuperToken, payment gateway, service pricing, webhook, Xendit
+- `InternalConfig` — app, FHIR, JWT, mailer, Konsulin, SuperToken, payment gateway, service pricing, webhook
 - `DriverConfig` — infrastructure components
 
 ### `internal/app/contracts/`
@@ -28,7 +28,7 @@ Three service groups:
 Infrastructure wrappers:
 - **`database/`** — DB connection drivers
 - **`logger/`** — Zap logger wrapper
-- **`messaging/`** — RabbitMQ wrapper
+- **`messaging/`** — messaging drivers (currently an empty placeholder directory)
 - **`thirdparty/`** — External service integration
 
 ### `internal/app/models/`

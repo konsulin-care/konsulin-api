@@ -2,33 +2,38 @@
 
 ## Overview
 
-Konsulin is a digital mental health platform API gateway. It routes requests to FHIR (Blaze), authentication (SuperTokens), payment (Xendit), and webhook services. The backend is a **stateless Go API gateway** — it owns auth, authorization (RBAC), and routing but no domain business logic.
+Konsulin is a digital mental health platform API gateway. It routes requests to FHIR (Blaze), authentication (SuperTokens), and webhook services. The backend is a **stateless Go API gateway** — it owns auth, authorization (RBAC), and routing but no domain business logic.
 
 ## What This Project Achieves
 
 - Passwordless magic-link authentication via SuperTokens
 - Role-based access control (6 roles: Guest, Patient, Practitioner, Clinic Admin, Researcher, Superadmin)
 - FHIR R4-compliant health record proxying (Blaze server) with role-based filtering
-- Service-based payment processing (Xendit gateway)
 - Scheduled slot management with rolling window generation
 - Async webhook forwarding with rate limiting and JWT-signed payloads
-- Background job processing via RabbitMQ (mailer, WhatsApp)
 
 ## Key Commands
 
 ```bash
-# Run locally (requires Docker services running)
-go run ./cmd/http
-
-# Start dependencies
-docker compose up -d
+mise run setup     # prepare .env and local prerequisites
+mise run stack     # start dependencies (docker compose)
+mise run dev       # run the HTTP server
+mise run logs      # tail stack logs
+mise run verify    # offline env checks (party verify)
+mise run gateway   # gateway helper
 
 # Build
 bash build.sh -a 'Your Name'
-
-# DB migrations
-go run ./cmd/migration
 ```
+
+`cmd/migration` is a library package (`Run(db)` applies SQL files from a `migration/` directory via sql-migrate) with no main and no caller yet. It is prepared for the next phase and is not runnable today.
+
+## Modes
+
+- **Standalone**: no `APP_GATEWAY_URL`; the backend runs on its own.
+- **Federation**: `APP_GATEWAY_URL` set; the backend enrolls with the Konsulin-hosted gateway.
+
+See [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md).
 
 ## Quick Navigation
 
@@ -55,14 +60,12 @@ go run ./cmd/migration
 | Authorization | Casbin RBAC |
 | FHIR | Blaze server (FHIR R4) |
 | Session/Cache | Redis |
-| Payments | Xendit |
-| Messaging | RabbitMQ |
 | Logging | Zap (structured) |
 | Configuration | Viper + godotenv |
 
 ## Architecture in One Sentence
 
-Clients → API Gateway (auth → RBAC → routing) → Internal services (FHIR Blaze, webhooks) / External services (Xendit)
+Clients → API Gateway (auth → RBAC → routing) → Internal services (FHIR Blaze, webhooks)
 
 ## Important Conventions
 
