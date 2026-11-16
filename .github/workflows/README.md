@@ -92,7 +92,6 @@ fast and deterministic.
 | `XENDIT_SANDBOX_API_KEY` | `pr.yml` / `security-weekly.yml` (integration env) | repo |
 | `CI_POSTGRES_PASSWORD` | `ci-env` action → `.env.ci` (postgres + SuperTokens URI) | env `Pull Request Screening` |
 | `CI_REDIS_PASSWORD` | `ci-env` action → `.env.ci` (redis + gateway sessions) | env `Pull Request Screening` |
-| `CI_RABBITMQ_PASSWORD` | `ci-env` action → `.env.ci` (rabbitmq) | env `Pull Request Screening` |
 | `CI_SUPERTOKEN_API_KEY` | `ci-env` action → `.env.ci` (SuperTokens core + SDK) | env `Pull Request Screening` |
 | `CI_SUPERADMIN_API_KEY` | `ci-env` action → `.env.ci` + `docs/api/.env` (Bruno admin) | env `Pull Request Screening` |
 | `CI_XENDIT_CALLBACK_TOKEN` | `ci-env` action → `.env.ci` + `docs/api/.env` (Bruno callbacks) | env `Pull Request Screening` |

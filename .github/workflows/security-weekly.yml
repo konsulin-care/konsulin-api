@@ -38,7 +38,6 @@ jobs:
         with:
           ci-postgres-password: ${{ vars.CI_POSTGRES_PASSWORD }}
           ci-redis-password: ${{ vars.CI_REDIS_PASSWORD }}
-          ci-rabbitmq-password: ${{ vars.CI_RABBITMQ_PASSWORD }}
           ci-supertoken-api-key: ${{ vars.CI_SUPERTOKEN_API_KEY }}
           ci-superadmin-api-key: ${{ vars.CI_SUPERADMIN_API_KEY }}
           ci-xendit-callback-token: ${{ vars.CI_XENDIT_CALLBACK_TOKEN }}
