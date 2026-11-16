@@ -22,7 +22,6 @@ The backend aims for a **Clean Architecture** pattern with **API Gateway** desig
 - **FHIR Integration**: Blaze FHIR server for healthcare data storage (FHIR R4 compliant)
 - **Authentication**: SuperTokens with magic link authentication
 - **Authorization**: Role-based access control (RBAC) using Casbin
-- **Payment Processing**: Xendit payment gateway integration
 - **Session Management**: Redis-based session storage
 
 ## Features
@@ -30,14 +29,13 @@ The backend aims for a **Clean Architecture** pattern with **API Gateway** desig
 - **Psychological Instruments**: Access to various psychometric tools and assessments
 - **Digital Interventions**: Evidence-based exercises for self-compassion, mindfulness, and mental health
 - **Appointment Management**: Schedule and manage appointments with psychologists
-- **Payment Gateway**: Secure payment processing for healthcare services
 - **FHIR-Compliant Health Records**: Comprehensive health record management using FHIR R4 standards
 - **Role-Based Access Control**: Fine-grained permissions system with multiple user roles
 
 ## Technology Stack
 
 ### Core Technologies
-- **Language**: Go 1.26 (managed via mise)
+- **Language**: Go 1.27.3 (pinned in `.mise.toml`, managed via mise)
 - **HTTP Router**: Chi v5
 - **Architecture**: Clean Architecture with API Gateway pattern
 - **Toolchain**: [mise](https://mise.jdx.dev) for reproducible, version-pinned tooling (Go, golangci-lint, pre-commit)
@@ -52,10 +50,6 @@ The backend aims for a **Clean Architecture** pattern with **API Gateway** desig
 - **Authorization**: Casbin RBAC
 - **Session Management**: Redis-based sessions
 - **API Keys**: Custom implementation for superadmin access
-
-### External Integrations
-- **Payment Gateway**: Xendit
-- **Messaging**: RabbitMQ (email, WhatsApp notifications)
 
 ## Prerequisites
 
@@ -103,14 +97,15 @@ cp .env.example .env
 
 `.env` is the **single source of truth**: it feeds both the API Gateway (loaded at startup via `godotenv`) and `docker compose` (via variable interpolation with sane fallbacks).
 
-`.env.example` documents every variable in four sections:
+`.env.example` documents every variable in five sections:
 
-1. **MINIMUM — copy & run** — the only values needed for local development. The Redis/RabbitMQ credentials are pre-filled to match `docker-compose.yml`; generate your own `APP_JWT_SECRET` and `SUPERADMIN_API_KEY`.
+1. **MINIMUM — copy & run** — the only values needed for local development. The Redis credentials are pre-filled to match `docker-compose.yml`; generate your own `APP_JWT_SECRET` and `SUPERADMIN_API_KEY`.
 2. **REQUIRED IN NON-LOCAL** — enforced at boot by `validateNonDevConfig`/`validateNonDevDriverConfig`. Missing any of these outside `local`/`dev`/`test` environments stops the server.
-3. **FUNCTIONALLY REQUIRED** — not boot-validated, but payment callbacks, the webhook service, and dashboard provisioning break without them.
+3. **FUNCTIONALLY REQUIRED** — not boot-validated, but the webhook service and dashboard provisioning break without them.
 4. **OPTIONAL** — commented out, each with its baked-in default; uncomment to override.
+5. **GATEWAY / PARTY** — federation settings (`APP_GATEWAY_URL`, `APP_PARTY_*`); leave empty to run standalone. See [Federation](#federation).
 
-`APP_ENV` in the MINIMUM section selects the environment. Set it to something other than `local`/`dev`/`development`/`test` and the Section 2 variables (plus the REDIS/RabbitMQ credentials) become mandatory at startup.
+`APP_ENV` in the MINIMUM section selects the environment. Set it to something other than `local`/`dev`/`development`/`test` and the Section 2 variables (plus the Redis credentials) become mandatory at startup.
 
 **Ask fellow Engineers for .env credentials**
 
@@ -128,8 +123,10 @@ This will start:
 
 ### 7. Run the Backend Service
 ```bash
-go run cmd/http/main.go
+go run ./cmd/http
 ```
+
+Mise tasks wrap these steps: `mise run setup`, `stack`, `dev`, `logs`, `verify`, `gateway`.
 
 The API Gateway will be available at the configured port (default: check your `.env` file).
 
@@ -143,7 +140,7 @@ Client Request → API Gateway → Authentication → Authorization → Service 
 ### Route Patterns
 - `/auth/*` - Authentication and user management (SuperTokens)
 - `/fhir/*` - FHIR resources (proxied to Blaze server with RBAC filtering)
-- `/pay/*` - Payment processing (Xendit integration)
+- `/federation/*` - Federation gateway integration (see [Federation](#federation))
 - `/hook/*` - Webhook handling (internal and external)
 
 ### Authentication & Authorization
@@ -158,34 +155,23 @@ The system uses SuperTokens for authentication with magic link login. Authorizat
 
 For detailed role permissions, see [`resources/rbac_policy.csv`](resources/rbac_policy.csv).
 
-## Payment Services
+## Federation
 
-The platform supports service-based pricing through the Xendit payment gateway:
+The **Konsulin federation gateway** is a separate, Konsulin-hosted service that connects parties (hospitals, clinics, researchers). It is not the same thing as this backend's own "API gateway" role (auth, RBAC, routing in front of FHIR). This backend can act as a federation party.
 
-### Available Services
-- `analyze`: Patient data analysis (min quantity: 10)
-- `report`: Practitioner reports (min quantity: 1)
-- `performance-report`: Performance analytics (min quantity: 1)
-- `access-dataset`: Research dataset access (min quantity: 1)
+### Standalone vs federation mode
+- **Standalone**: `APP_GATEWAY_URL` is empty. The backend runs on its own and `/federation/*` routes answer `503 GATEWAY_NOT_CONFIGURED`.
+- **Federation**: `APP_GATEWAY_URL` is set. `APP_PARTY_ID`, `APP_PARTY_PRIVATE_KEY` and `APP_PARTY_ENC_PRIVATE_KEY` are then required. A plain `http` gateway URL is accepted only when `APP_ENV` is `local`, `dev`, `development` or `test`.
 
-### Access Rules
-- `analyze` → patient role
-- `report` → practitioner role
-- `performance-report` → clinic_admin role
-- `access-dataset` → researcher role
-- All services → superadmin role
+### Routes
+- `/federation/events`
+- `/federation/deliveries/{listing}`
+- `/federation/referrals`
+- `/federation/research/exports` (and its download route, `/federation/research/exports/downloads/{token}`)
 
-### Request Format
-```json
-{
-  "total_item": 3,
-  "service": "analyze",
-  "body": {
-    "email": "user@email.com",
-    "additional_data": "..."
-  }
-}
-```
+Inbound delivery from the gateway requires a public `https` URL for your backend.
+
+For onboarding, key generation and deployment, see [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md).
 
 ## Docker Deployment
 
