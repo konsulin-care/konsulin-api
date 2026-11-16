@@ -36,6 +36,22 @@ arg "[service]" help="Compose service"
 '''
 run = 'sh scripts/dev/logs.sh'
 
+[tasks.verify]
+description = "Check an env file: mise run verify [FILE] [--standalone|--federation] [--offline]"
+usage = '''
+arg "[file]" help="Env file to check" default=".env"
+flag "--standalone" help="Check a standalone backend env"
+flag "--federation" help="Check a backend + gateway env"
+flag "--offline" help="Skip gateway network checks"
+'''
+run = '''
+set -- "$usage_file"
+if [ "${usage_standalone:-false}" = "true" ]; then set -- "$@" --standalone; fi
+if [ "${usage_federation:-false}" = "true" ]; then set -- "$@" --federation; fi
+if [ "${usage_offline:-false}" = "true" ]; then set -- "$@" --offline; fi
+go run ./cmd/party verify "$@"
+'''
+
 [tasks.gateway]
 description = "Gateway onboarding: --init keygen, --enroll redeem token, --dev contributor bootstrap"
 usage = '''
