@@ -1,6 +1,30 @@
 package utils
 
-import "testing"
+import (
+	"bytes"
+	"log"
+	"os"
+	"strings"
+	"testing"
+)
+
+func TestGetEnvStringUnsetLogsInformational(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+
+	got := GetEnvString("TEST_UNSET_KEY_XYZ", "dflt")
+	if got != "dflt" {
+		t.Errorf("got %q, want dflt", got)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "TEST_UNSET_KEY_XYZ") || !strings.Contains(out, "not set") || !strings.Contains(out, "built-in default") {
+		t.Errorf("unexpected log: %q", out)
+	}
+	if strings.Contains(out, "Error") {
+		t.Errorf("log contains Error: %q", out)
+	}
+}
 
 func TestGetEnvString(t *testing.T) {
 	t.Run("key exists", func(t *testing.T) {

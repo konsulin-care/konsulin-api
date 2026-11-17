@@ -210,5 +210,5 @@ const (
 
 const (
 	ErrEnvParsing     = "Error parsing %s: %v, will use default value"
-	ErrEnvKeyNotExist = "Error getting env key: %s, will use default value"
+	ErrEnvKeyNotExist = "[env] %s is not set; using its built-in default"
 )
