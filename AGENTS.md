@@ -54,7 +54,7 @@ See [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md).
 
 | Layer | Technology |
 |---|---|
-| Language | Go 1.27.3 |
+| Language | Go (version in `go.mod`, mise follows it) |
 | HTTP Router | Chi v5 |
 | Auth | SuperTokens (magic link) + JWT |
 | Authorization | Casbin RBAC |

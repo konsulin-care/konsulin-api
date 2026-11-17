@@ -7,7 +7,8 @@ Each check_* group maps to one task in the implementation plan:
   T-1  pr.yml gofumpt step passes base_ref through env (no ${{ in run:)
   T-2  ci-env "Write CI env files" env-maps all 8 inputs, keeps every
        credential in the generated files, and adds umask 077
-  T-3  ci-env readiness probe passes the redis password through env
+  T-3  ci-env readiness probe (lives in the merged "Build images & start
+       infrastructure (parallel)" step) passes the redis password through env
 
 Repo-wide rule: no ${{ may appear inside any run: block under .github/.
 
@@ -137,7 +138,7 @@ def check_task1():
 
 
 ENV_MAP = {
-    "XENDIT_SANDBOX_API_KEY": OPEN + " inputs.xendit-sandbox-api-key }}",
+    "XENDIT_SANDBOX_API_KEY": OPEN + " inputs.ci-xendit-sandbox-api-key }}",
     "CI_POSTGRES_PASSWORD": OPEN + " inputs.ci-postgres-password }}",
     "CI_REDIS_PASSWORD": OPEN + " inputs.ci-redis-password }}",
     "CI_SUPERTOKEN_API_KEY": OPEN + " inputs.ci-supertoken-api-key }}",
@@ -179,8 +180,8 @@ def check_task2():
 
 def check_task3():
     rel = CI_ENV_ACTION_REL
-    step = get_step(rel, "Wait for infrastructure readiness")
-    check("T-3 readiness step found", step is not None)
+    step = get_step(rel, "Build images & start infrastructure (parallel)")
+    check("T-3 parallel build+readiness step found", step is not None)
     if step is None:
         return
     run = step.get("run") or ""
@@ -308,9 +309,14 @@ def check_task6():
 
 
 def check_task7():
-    """Task 7: Dockerfile-vendor Go version must be 1.26 to match go.mod."""
+    """Go image versions in Dockerfiles must match the go.mod go directive."""
+    m = re.search(r'^go\s+(\d+\.\d+\.\d+)\s*$', (ROOT / "go.mod").read_text(encoding="utf-8"), re.M)
+    check("T-7 go.mod has an exact go directive", m is not None)
+    ver = m.group(1) if m else ""
     line1 = (ROOT / "Dockerfile-vendor").read_text(encoding="utf-8").splitlines()[0]
-    check("T-7 Dockerfile-vendor uses golang:1.26", "golang:1.26" in line1, line1)
+    stub_line = (ROOT / "scripts/ci/stub/Dockerfile").read_text(encoding="utf-8").splitlines()[4]
+    check("T-7 Dockerfile-vendor uses golang:" + ver, bool(ver) and "golang:" + ver in line1, line1)
+    check("T-7 stub Dockerfile uses golang:" + ver, bool(ver) and "golang:" + ver in stub_line, stub_line)
 
 
 def main():

@@ -119,28 +119,36 @@ Security-relevant tool versions are pinned, not floating:
 
 | Tool | Pin | Kept fresh by |
 |---|---|---|
-| `gofumpt` | `v0.11.0` | dependabot (`go.mod` via `tools/tools.go`) |
-| `govulncheck` | `v1.7.0` | dependabot (`go.mod` via `tools/tools.go`) |
-| `trivy-action` | commit SHA `ed142fd…` `# v0.36.0` | dependabot (github-actions) |
-| `mise-action` | commit SHA `c37c932…` `# v2` | dependabot (github-actions) |
-| `ssh-action` | commit SHA `0ff4204d…` `# v1.2.5` | dependabot (github-actions) |
-| Trivy binary version | `v0.74.0` (action input) | manual |
-| `actionlint` (pre-commit) | `v1.7.12` | dependabot updates the rev via pre-commit autoupdate manually — treat as manual |
-| ZAP image | `ghcr.io/zaproxy/zaproxy:v2.17.0` | manual |
+| `gofumpt` | `v0.11.0` | Renovate (gomod `tool` directive; grouped with the mise `gofumpt` pin) |
+| `govulncheck` | `v1.7.0` | Renovate (gomod `tool` directive) |
+| `trivy-action` | commit SHA `ed142fd…` `# v0.36.0` | Renovate (github-actions) |
+| `mise-action` | commit SHA `c37c932…` `# v2` | Renovate (github-actions) |
+| `ssh-action` | commit SHA `0ff4204d…` `# v1.2.5` | Renovate (github-actions) |
+| Trivy binary version | `v0.74.0` (action input) | Renovate (regex manager via the `# renovate:` annotation above each `version:` input) |
+| `actionlint` (pre-commit) | `v1.7.12` | Renovate (pre-commit manager) |
+| ZAP image | `ghcr.io/zaproxy/zaproxy:v2.17.0` | Renovate (regex manager) |
 
 **SHA + tag comment pattern.** `trivy-action` is pinned to a full commit SHA
 with a `# v0.36.0` comment because the March 2026 supply-chain incident
 published a malicious Trivy `v0.69.4` release and re-tagged action refs. The
-SHA makes the pin immutable; the tag comment lets Dependabot (github-actions
-ecosystem) bump it to the next release. Follow this pattern for any action
-that pulls a binary or image.
+SHA makes the pin immutable; the tag comment lets Renovate bump it to the
+next release. Follow this pattern for any action that pulls a binary or image.
 
-**Dependabot boundaries.** Dependabot updates: GitHub Actions refs (including
-SHA-pinned-with-comment), Docker images inside `Dockerfile`s, and `go.mod`
-modules. CI tools (`gofumpt`, `govulncheck`) are pinned in `go.mod`
-(`tools/tools.go` + `tool` directives) and invoked via `go tool`, so dependabot
-keeps them fresh as regular modules. Image tags inside `docker run` inputs
-(e.g. the ZAP image) are bumped manually.
+**Renovate boundaries.** `renovate.json` at the repo root configures Renovate
+(the Mend GitHub App), extending `config:best-practices`. Version sources of
+truth: the Go version lives only in the `go.mod` `go` directive and mise
+follows it (`idiomatic_version_file_enable_tools` in `mise.toml`); every other
+tool version lives in `mise.toml`. Workflows install tools from both via
+`.github/actions/setup-tools`, so no Go version is duplicated in any workflow.
+Renovate bumps the `go` directive together with the Docker `golang` images
+(one `go toolchain` group); Docker base images and the pre-commit `hadolint`
+rev are grouped with their `mise.toml` counterparts the same way. Indirect
+`go.mod` deps are not updated (they move with direct deps via `go mod tidy`),
+and `:latest` compose images are out of scope. `gateway-sdk-go` upgrades are
+deliberate, separate PRs — never grouped, never automerge — checked against
+the SDK's `COMPATIBILITY.md` first (PROPOSAL BK-FED-007). Image tags inside
+`docker run` inputs are tracked by a Renovate regex manager instead of being
+bumped manually.
 
 ## Validation strategy
 

@@ -35,7 +35,7 @@ The backend aims for a **Clean Architecture** pattern with **API Gateway** desig
 ## Technology Stack
 
 ### Core Technologies
-- **Language**: Go 1.27.3 (pinned in `.mise.toml`, managed via mise)
+- **Language**: Go (version pinned in `go.mod`, installed by mise via the go.mod idiomatic version file)
 - **HTTP Router**: Chi v5
 - **Architecture**: Clean Architecture with API Gateway pattern
 - **Toolchain**: [mise](https://mise.jdx.dev) for reproducible, version-pinned tooling (Go, golangci-lint, pre-commit)

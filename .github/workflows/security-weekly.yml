@@ -20,9 +20,6 @@ on:
 permissions:
   contents: read
 
-env:
-  GO_VERSION: "1.27.3"
-
 jobs:
   zap-and-regression:
     name: ZAP active scan and security regression
@@ -96,10 +93,6 @@ jobs:
         with:
           sarif_file: zap
 
-      - uses: actions/setup-go@v7
-        with:
-          go-version: ${{ env.GO_VERSION }}
-
       - name: govulncheck (fresh scan)
         run: go tool govulncheck ./...
 
@@ -113,6 +106,7 @@ jobs:
         with:
           scan-type: fs
           scan-ref: .
+          # renovate: datasource=github-releases depName=aquasecurity/trivy
           version: v0.74.0
           severity: HIGH,CRITICAL
           scanners: vuln,secret,config
@@ -147,9 +141,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v7
+      # Go comes from go.mod via mise (idiomatic version file); no hard-coded
+      # version in this workflow.
+      - uses: ./.github/actions/setup-tools
         with:
-          go-version: ${{ env.GO_VERSION }}
+          tools: go
 
       # Coverage-guided fuzzing of the parse entry points (service-layer FHIR
       # bundle/invoice responses, Xendit callbacks, webhook bodies, and the

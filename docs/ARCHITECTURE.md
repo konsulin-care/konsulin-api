@@ -171,7 +171,7 @@ Each rule declares:
 
 | Category | Technology |
 |---|---|
-| Language | Go 1.27.3 |
+| Language | Go (version in `go.mod`, mise follows it) |
 | Gateway SDK | `github.com/konsulin-care/gateway-sdk-go` (pinned) — sole importer: `internal/app/drivers/gateway` |
 | HTTP Router | Chi v5 |
 | Auth | SuperTokens (passwordless magic link) |

@@ -1,0 +1,113 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:best-practices"],
+  "timezone": "Asia/Jakarta",
+  "schedule": ["before 6am on monday"],
+  "semanticCommits": "enabled",
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "deps",
+  "labels": ["dependencies"],
+  "dependencyDashboard": true,
+  "minimumReleaseAge": "3 days",
+  "minimumReleaseAgeBehaviour": "timestamp-optional",
+  "pre-commit": { "enabled": true },
+  "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
+  "packageRules": [
+    {
+      "description": "Go version source of truth is the go.mod go directive (mise follows it); Renovate does not bump it by default, so opt in",
+      "matchManagers": ["gomod"],
+      "matchDepNames": ["go"],
+      "matchDepTypes": ["golang"],
+      "rangeStrategy": "bump"
+    },
+    {
+      "description": "Only propose Go module versions compatible with the project Go version (not applied to the go directive itself)",
+      "matchManagers": ["gomod"],
+      "matchDepTypes": ["require", "tool"],
+      "constraintsFiltering": "strict"
+    },
+    {
+      "description": "Skip go.mod indirect deps (they move with direct deps via go mod tidy)",
+      "matchManagers": ["gomod"],
+      "matchDepTypes": ["indirect"],
+      "enabled": false
+    },
+    {
+      "description": "Local agent tooling, not product dependencies",
+      "matchFileNames": [".pi/**"],
+      "enabled": false
+    },
+    {
+      "description": "Group non-major Go module updates (gateway-sdk-go excluded, handled below)",
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchPackageNames": ["!github.com/konsulin-care/gateway-sdk-go"],
+      "groupName": "go modules (non-major)"
+    },
+    {
+      "description": "Group non-major mise tool updates",
+      "matchManagers": ["mise"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "mise tools (non-major)"
+    },
+    {
+      "description": "Group non-major GitHub Actions updates",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "github actions (non-major)"
+    },
+    {
+      "description": "Group non-major Docker image updates",
+      "matchManagers": ["dockerfile", "docker-compose"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "docker images (non-major)"
+    },
+    {
+      "description": "Group non-major pre-commit hook updates",
+      "matchManagers": ["pre-commit"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "pre-commit hooks (non-major)"
+    },
+    {
+      "description": "Go toolchain: go.mod go directive + golang docker images",
+      "matchDepNames": ["go", "golang"],
+      "matchManagers": ["gomod", "dockerfile"],
+      "groupName": "go toolchain"
+    },
+    {
+      "description": "hadolint: mise + pre-commit",
+      "matchPackageNames": ["/hadolint/"],
+      "groupName": "hadolint"
+    },
+    {
+      "description": "gofumpt: mise + go.mod tool",
+      "matchPackageNames": ["/gofumpt/"],
+      "groupName": "gofumpt"
+    },
+    {
+      "description": "gateway-sdk-go: deliberate upgrades only (PROPOSAL BK-FED-007)",
+      "matchPackageNames": ["github.com/konsulin-care/gateway-sdk-go"],
+      "separateMinorPatch": true,
+      "automerge": false,
+      "labels": ["dependencies", "gateway-sdk"],
+      "prBodyNotes": [
+        "Read COMPATIBILITY.md in konsulin-care/gateway-sdk-go and confirm gateway compatibility before merging (BK-FED-007)."
+      ]
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Annotated tool versions in workflows (e.g. Trivy binary)",
+      "managerFilePatterns": ["/^\\.github/workflows/.+\\.ya?ml$/"],
+      "matchStrings": ["# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>\\S+)\\n\\s+version: (?<currentValue>v[0-9.]+)"]
+    },
+    {
+      "customType": "regex",
+      "description": "ZAP docker image referenced inside a docker run script",
+      "managerFilePatterns": ["/^\\.github/workflows/.+\\.ya?ml$/"],
+      "matchStrings": ["(?<depName>ghcr\\.io/zaproxy/zaproxy):(?<currentValue>v[0-9.]+)"],
+      "datasourceTemplate": "docker"
+    }
+  ]
+}

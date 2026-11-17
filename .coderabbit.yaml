@@ -9,7 +9,7 @@ reviews:
   suggested_reviewers: false
   poem: false
   auto_review:
-    ignore_usernames: [dependabot]
+    ignore_usernames: ["renovate[bot]"]
     labels: ["!wip", "!draft", "!chore"]
 chat:
   auto_reply: false
