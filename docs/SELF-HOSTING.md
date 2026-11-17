@@ -18,6 +18,23 @@ Onboarding is operator-approved. The Konsulin operator creates your party and is
 
 Plain-http gateway URLs fail in any non-dev `APP_ENV`, production included.
 
+## Reading verify output
+
+`mise run verify` checks whether the given `.env` can boot the system. Only `FAIL`/`WARN` lines and the exit status are verification results.
+
+Lines like `[env] X is not set; using its built-in default` are informational: the variable has a default and the env did not override it.
+
+Optional variables and their defaults:
+
+- `APP_RBAC_POLICY_PATH`: `resources/rbac_policy.csv`
+- `APP_ORGANIZATION_NAME`: `Konsulin`
+- `APP_DATA_DIR`: `./data`
+- `APP_AUTOPUBLISH`: `false`
+- `APP_RESEARCH_EXPORT_MAX_BYTES`: `52428800`
+- `APP_RESEARCH_PSEUDONYM_KEY`: empty, which disables the databank
+
+`APP_JWT_SECRET` should be at least 32 characters.
+
 ## Persistent data
 
 `APP_DATA_DIR` (image default `/app/data`) holds:
