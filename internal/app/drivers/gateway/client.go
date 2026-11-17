@@ -25,6 +25,12 @@ import (
 	"go.uber.org/zap"
 )
 
+// ErrPartyIDRequired means APP_PARTY_ID is empty while APP_GATEWAY_URL is set.
+var ErrPartyIDRequired = errors.New("gateway: APP_PARTY_ID is required when APP_GATEWAY_URL is set")
+
+// ErrPartyKeyInvalid means APP_PARTY_PRIVATE_KEY could not be parsed.
+var ErrPartyKeyInvalid = errors.New("gateway: APP_PARTY_PRIVATE_KEY")
+
 // enrolledTimeout bounds one Enrolled JWKS probe.
 const enrolledTimeout = 5 * time.Second
 
@@ -81,11 +87,11 @@ func New(cfg config.AppGateway, env string, logger *zap.Logger) (*Client, error)
 		return &Client{enabled: false, partyID: cfg.PartyID, logger: logger}, nil
 	}
 	if cfg.PartyID == "" {
-		return nil, errors.New("gateway: APP_PARTY_ID is required when APP_GATEWAY_URL is set")
+		return nil, fmt.Errorf("%w", ErrPartyIDRequired)
 	}
 	key, err := auth.ParseEd25519PrivateKey(strings.TrimSpace(cfg.PrivateKey))
 	if err != nil {
-		return nil, fmt.Errorf("gateway: APP_PARTY_PRIVATE_KEY: %w", err)
+		return nil, fmt.Errorf("%w: %v", ErrPartyKeyInvalid, err)
 	}
 	kid, err := sdkKid(key, cfg.PartyID)
 	if err != nil {

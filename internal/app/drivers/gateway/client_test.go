@@ -60,6 +60,17 @@ func TestNewEmptyURLDisabled(t *testing.T) {
 	assert.Equal(t, 0, hits, "disabled adapter must not touch the network")
 }
 
+// TestNewSentinelErrors checks the exported sentinels and key secrecy.
+func TestNewSentinelErrors(t *testing.T) {
+	_, err := New(config.AppGateway{URL: "https://g.example.com"}, "test", nil)
+	require.ErrorIs(t, err, ErrPartyIDRequired)
+
+	bad := "not-a-valid-key-SECRET"
+	_, err = New(config.AppGateway{URL: "https://g.example.com", PartyID: "p", PrivateKey: bad}, "test", nil)
+	require.ErrorIs(t, err, ErrPartyKeyInvalid)
+	assert.NotContains(t, err.Error(), bad)
+}
+
 // TestKidIsRFC7638Thumbprint covers assertion 2: the adapter's Kid() equals
 // the RFC 7638 thumbprint the SDK derives for APP_PARTY_PRIVATE_KEY.
 // Parameters: t is the test harness.
