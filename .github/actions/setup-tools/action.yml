@@ -1,0 +1,18 @@
+name: Setup mise tools
+description: Install tools pinned in mise.toml; Go is read from go.mod (idiomatic version file). Single source of truth for versions.
+
+inputs:
+  tools:
+    description: Space-separated mise tool names to install. Empty installs everything in mise.toml.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    # Checkout must have run before this action: mise reads the Go version
+    # from go.mod (idiomatic_version_file_enable_tools in mise.toml).
+    - uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2
+      with:
+        install: true
+        install_args: ${{ inputs.tools }}

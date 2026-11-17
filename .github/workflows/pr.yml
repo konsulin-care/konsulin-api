@@ -35,9 +35,6 @@ concurrency:
   group: pr-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  GO_VERSION: "1.27.3"
-
 jobs:
   quality:
     name: Quality (format, lint, vet, tests)
@@ -47,9 +44,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v7
+      # Go version comes from go.mod (read by mise via the idiomatic version
+      # file setting); every other tool version comes from mise.toml.
+      - uses: ./.github/actions/setup-tools
         with:
-          go-version: ${{ env.GO_VERSION }}
+          tools: go golangci-lint
 
       # Formatting gate on changed files only — mirrors the "new issues"
       # philosophy of the golangci-lint gate below so pre-existing legacy files
@@ -72,10 +71,16 @@ jobs:
           go mod tidy
           git diff --exit-code go.mod go.sum
 
+      # Version pinned in mise.toml; resolved at runtime so the action and
+      # mise can never drift apart.
+      - name: Resolve golangci-lint version
+        id: gcl
+        run: echo "version=v$(mise current golangci-lint)" >> "$GITHUB_OUTPUT"
+
       - name: golangci-lint (new issues only)
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a
         with:
-          version: v2.12.2
+          version: ${{ steps.gcl.outputs.version }}
           only-new-issues: true
           args: --timeout=5m
 
@@ -98,9 +103,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v7
+      - uses: ./.github/actions/setup-tools
         with:
-          go-version: ${{ env.GO_VERSION }}
+          tools: go
 
       - name: govulncheck (blocking)
         run: go tool govulncheck ./...
@@ -108,12 +113,13 @@ jobs:
       # Blocking: HIGH/CRITICAL vulnerabilities in the Go module graph.
       # Uses aquasecurity/trivy-action pinned by commit SHA (post March-2026
       # supply-chain incident) with an explicit clean Trivy version. The `#
-      # v0.36.0` tag comment lets Dependabot bump the pin safely.
+      # v0.36.0` tag comment lets Renovate bump the pin safely.
       - name: Trivy vulnerability scan (blocking)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scan-ref: .
+          # renovate: datasource=github-releases depName=aquasecurity/trivy
           version: v0.74.0
           severity: HIGH,CRITICAL
           exit-code: "1"
@@ -131,6 +137,7 @@ jobs:
         with:
           scan-type: fs
           scan-ref: .
+          # renovate: datasource=github-releases depName=aquasecurity/trivy
           version: v0.74.0
           severity: HIGH,CRITICAL
           scanners: secret,config
@@ -156,9 +163,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v7
+      - uses: ./.github/actions/setup-tools
         with:
-          go-version: ${{ env.GO_VERSION }}
+          tools: go
 
       - uses: github/codeql-action/init@v4
         with:
@@ -351,6 +358,7 @@ jobs:
         with:
           scan-type: image
           image-ref: konsulin/konsulin-api:pr-${{ env.SHORT_SHA }}
+          # renovate: datasource=github-releases depName=aquasecurity/trivy
           version: v0.74.0
           severity: HIGH,CRITICAL
           exit-code: "1"
