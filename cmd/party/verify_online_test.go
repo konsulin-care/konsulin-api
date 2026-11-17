@@ -69,6 +69,21 @@ func TestVerifyOnlineEnrolledWarnsOnToken(t *testing.T) {
 	assert.NotContains(t, out.String(), "tok\n")
 }
 
+func TestVerifyOnlineBuildErrors(t *testing.T) {
+	p, cfg := onlineEnvFile(t, "http://x.example", "")
+	var out bytes.Buffer
+	n, err := verifyOnline(map[string]string{"APP_GATEWAY_URL": cfg.URL, "APP_ENV": "test", "APP_PARTY_PRIVATE_KEY": cfg.PrivateKey}, &out)
+	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+	assert.Contains(t, out.String(), "FAIL APP_PARTY_ID")
+	out.Reset()
+	n, _ = verifyOnline(map[string]string{"APP_GATEWAY_URL": cfg.URL, "APP_ENV": "test", "APP_PARTY_ID": "p1", "APP_PARTY_PRIVATE_KEY": "SECRETBAD"}, &out)
+	assert.Equal(t, 1, n)
+	assert.Contains(t, out.String(), "FAIL APP_PARTY_PRIVATE_KEY")
+	assert.NotContains(t, out.String(), "SECRETBAD")
+	_ = p
+}
+
 func TestVerifyOfflineMakesNoRequest(t *testing.T) {
 	var hits int32
 	srv := jwksServer(t, "other", &hits)

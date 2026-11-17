@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -30,7 +31,13 @@ func verifyOnline(values map[string]string, stdout io.Writer) (int, error) {
 	}
 	adapter, err := gateway.New(cfg, values["APP_ENV"], nil)
 	if err != nil {
-		return 1, line("FAIL", "APP_GATEWAY_URL", "cannot build gateway client for the online check")
+		switch {
+		case errors.Is(err, gateway.ErrPartyIDRequired):
+			return 1, line("FAIL", "APP_PARTY_ID", "party id is required when APP_GATEWAY_URL is set")
+		case errors.Is(err, gateway.ErrPartyKeyInvalid):
+			return 1, line("FAIL", "APP_PARTY_PRIVATE_KEY", "private key is invalid and could not be parsed")
+		}
+		return 1, line("FAIL", "APP_GATEWAY_URL", "cannot build gateway client for the online check: "+err.Error())
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), onlineTimeout)
 	defer cancel()
