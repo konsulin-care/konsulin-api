@@ -1,5 +1,4 @@
 [tools]
-go = "1.27.3"
 golangci-lint = "2.15.0"
 gofumpt = "0.11.0"
 shellcheck = "0.11.0"
@@ -60,3 +59,6 @@ flag "--enroll" help="Redeem the enrollment token (sources .env)"
 flag "--dev" help="Contributor-only: run gateway-bootstrap.sh (needs GATEWAY_URL, OPERATOR_PASSWORD in env)"
 '''
 run = 'sh scripts/dev/gateway.sh'
+
+[settings]
+idiomatic_version_file_enable_tools = ["go"]
