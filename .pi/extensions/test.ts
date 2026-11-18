@@ -17,7 +17,7 @@
 
 /** Detected test suites (label + argv + routing scope/cwd), frozen at generation time. */
 const SUITES = [
-  { "label": "go (go test {pkgs})", "argv": ["go","test","{pkgs}"], "scope": "packages" }
+  { "label": "config (go test {pkgs})", "argv": ["go","test","{pkgs}"], "scope": "packages" }
 ];
 
 /** Per-suite wall clock budget: PI_TEST_TIMEOUT_MS, 300000ms default. */
