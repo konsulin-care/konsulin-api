@@ -1,0 +1,87 @@
+# Git Hooks Philosophy
+# ====================
+# pre-commit  → fast quality feedback (~10s target). No tests, no API calls.
+# pre-push    → comprehensive local verification. Tests, Bruno API, vuln scan.
+# CI          → authoritative enforcement. Cannot be bypassed with --no-verify.
+#
+# Hook name prefixes:
+#   [quality]    — linting, formatting, file validation
+#   [functional] — tests, build verification
+#   [security]   — vulnerability scanning, RBAC/authorization checks
+#
+# Every command delegates to a mise task (`mise run <task>`), so each check is
+# defined once and can be run by hand outside git. Versions come from mise.toml.
+
+pre-commit:
+  parallel: true
+  commands:
+    # Fixers rewrite files; stage_fixed re-stages the result so the commit
+    # carries the fix instead of failing on it.
+    "[quality] file hygiene":
+      run: mise run lint:files {staged_files}
+      stage_fixed: true
+
+    # golangci-lint on the current change only. Uses the same --new-from-patch
+    # semantics as CI's only-new-issues gate, so the commit gate and the CI
+    # gate can never disagree. No --fix: formatting problems are reported, not
+    # silently rewritten and left unstaged.
+    "[quality] golangci-lint (new vs HEAD)":
+      glob: "*.go"
+      run: mise run lint:go
+
+    # gofumpt on staged .go files, whole-file — same semantics as CI's
+    # gofumpt -l step.
+    "[quality] gofumpt (staged)":
+      glob: "*.go"
+      run: mise run lint:fmt {staged_files}
+
+    "[quality] go mod tidy":
+      glob: "*.{go,mod,sum}"
+      run: mise run lint:mod
+
+    "[quality] hadolint":
+      glob: "*Dockerfile*"
+      run: mise run lint:docker
+
+    "[quality] actionlint":
+      glob: ".github/workflows/*.{yml,yaml}"
+      run: mise run lint:actions
+
+    # Lint-config hygiene: validate .golangci.yml and re-scan the whole module
+    # when it changes so tightened rules immediately resurface existing debt
+    # instead of leaking to CI.
+    "[quality] golangci-lint config + full scan":
+      glob: ".golangci.{yml,yaml}"
+      run: mise run lint:config && mise run lint:go --full
+
+pre-push:
+  # Ordered: the cheap gates run before the slow test and API suites.
+  piped: true
+  commands:
+    # golangci-lint over the whole branch diff vs the base. Replicates CI's
+    # only-new-issues gate and catches whole-branch debt.
+    "[quality] golangci-lint (new vs develop)":
+      priority: 1
+      run: mise run lint:go --base origin/develop
+
+    # Whole-file gofumpt on every .go file changed vs develop — exact replica
+    # of CI's gofumpt step.
+    "[quality] gofumpt (changed vs develop)":
+      priority: 2
+      run: mise run lint:fmt --base origin/develop
+
+    "[functional] go test -race":
+      priority: 3
+      run: mise run test
+
+    # Bruno API collection tests REQUIRED — fail if the API server is down or
+    # any journey assertion fails. Includes ownership-violation/RBAC tests.
+    # Runs without the chained teardown (--skip-cleanup); scripts/bru-run.sh
+    # sweeps the seeds afterwards.
+    "[functional] bru run (required)":
+      priority: 4
+      run: mise run test:api
+
+    "[security] govulncheck":
+      priority: 5
+      run: mise run vuln

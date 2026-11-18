@@ -11,6 +11,9 @@ else
 	echo "created .env from .env.example"
 fi
 
+# Enable the git hooks (lefthook) so commits and pushes run the local gates.
+mise run hooks:install
+
 sh scripts/dev/stack.sh --up
 docker compose up -d --wait
 sh scripts/dev/stack.sh --status

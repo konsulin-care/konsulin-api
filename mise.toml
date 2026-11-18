@@ -4,8 +4,67 @@ gofumpt = "0.11.0"
 shellcheck = "0.11.0"
 node = "26"
 "npm:@usebruno/cli" = "4.0.0"
-pre-commit = { version = "4.2", backend = "pipx" }
+lefthook = "2.2.2"
+actionlint = "1.7.12"
+yq = "4.54.3"
 "github:hadolint/hadolint" = "2.14.0"
+
+[hooks]
+# Install the git hooks after `mise install`. CI never runs hooks (and may not
+# have lefthook installed), so the install is skipped there.
+postinstall = '[ -n "${CI:-}" ] || mise x lefthook -- lefthook install'
+
+[tasks.lint]
+description = "Run all linters on the whole repo"
+depends = ["lint:files", "lint:go", "lint:fmt", "lint:mod", "lint:docker", "lint:actions", "lint:config"]
+
+[tasks."lint:files"]
+description = "File hygiene (EOF, whitespace, large files, YAML) on given or all tracked files"
+run = 'sh scripts/lint/files.sh'
+
+[tasks."lint:go"]
+description = "golangci-lint on new code vs HEAD, vs --base REF, or --full"
+usage = '''
+flag "--base <ref>" help="Lint changes since merge-base with REF"
+flag "--full" help="Lint the whole module"
+'''
+run = 'sh scripts/lint/golangci.sh'
+
+[tasks."lint:fmt"]
+description = "gofumpt check on given files, staged files, or changes vs --base REF"
+run = 'sh scripts/lint/gofumpt.sh'
+
+[tasks."lint:mod"]
+description = "Check go.mod/go.sum are tidy"
+run = 'go mod tidy && git diff --exit-code go.mod go.sum'
+
+[tasks."lint:docker"]
+description = "hadolint on all tracked Dockerfiles"
+run = 'hadolint --failure-threshold error $(git ls-files "*Dockerfile*")'
+
+[tasks."lint:actions"]
+description = "actionlint on GitHub workflows"
+run = 'actionlint $(git ls-files ".github/workflows/*.yml" ".github/workflows/*.yaml" | grep -v trigger-coolify.yml)'
+
+[tasks."lint:config"]
+description = "Validate .golangci.yml"
+run = 'golangci-lint config verify'
+
+[tasks.test]
+description = "go test -race on all packages"
+run = 'go test -race ./...'
+
+[tasks."test:api"]
+description = "Bruno API journey (required; API must be running)"
+run = 'bash scripts/bru-run.sh --required --skip-cleanup'
+
+[tasks.vuln]
+description = "govulncheck via go.mod tool"
+run = 'go tool govulncheck ./...'
+
+[tasks."hooks:install"]
+description = "Install lefthook git hooks"
+run = 'lefthook install'
 
 [tasks.setup]
 description = "Create .env if missing and start the stack"
