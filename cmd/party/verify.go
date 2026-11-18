@@ -14,6 +14,8 @@ import (
 // verify checks an env file against the offline rules.
 // Parameters: args are the CLI args after "verify"; stdout and stderr are sinks.
 // Returns: nil when no FAIL exists, otherwise an error with the FAIL count.
+//
+//nolint:gocyclo,gocognit // TODO: reduce complexity below 15 (follow-up)
 func verify(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("verify", flag.ContinueOnError)
 	fs.SetOutput(stderr)

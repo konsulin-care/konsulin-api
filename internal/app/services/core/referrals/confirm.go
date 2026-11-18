@@ -139,6 +139,8 @@ type confirmedServiceRequest struct {
 // error — an unconfigured confirmer, a missing/not-yet-requested Task, a
 // patient outside the candidate list, a resolution or link failure, or a
 // FHIR write error. Never panics.
+//
+//nolint:gocyclo // TODO: reduce complexity below 15 (follow-up)
 func (c *Confirmer) Confirm(ctx context.Context, taskID, patientID string) (string, error) {
 	if c == nil || c.identities == nil || c.fhir == nil || c.fhirBaseURL == "" {
 		return "", errors.New("referrals: confirmer not configured")

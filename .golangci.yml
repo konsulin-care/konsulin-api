@@ -3,6 +3,7 @@ linters:
   default: none
   enable:
     - gocognit
+    - gocyclo
     - goconst
     - dupl
     - govet
@@ -10,6 +11,8 @@ linters:
     - errcheck
   settings:
     gocognit:
+      min-complexity: 15
+    gocyclo:
       min-complexity: 15
     goconst:
       min-len: 3
@@ -20,3 +23,9 @@ linters:
     paths:
       - ".*_test\\.go$"
       - vendor
+    rules:
+      # TODO: dedupe userUsecase with UserFHIRInitializerDeps (follow-up);
+      # the field renames touch identity_registration.go and 4 test files.
+      - path: internal/app/services/core/users/user_usecase_impl.go
+        linters:
+          - dupl

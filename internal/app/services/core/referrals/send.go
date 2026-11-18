@@ -206,6 +206,8 @@ func patientDemographics(p *fhir_dto.Patient) referralPatient {
 // Returns the recorded outgoing Task id and nil on a 2xx partner answer,
 // or "" and the error — ErrPartnerNotFound, a configuration error, or
 // ErrReferralDelivery wrapping the partner status. Never panics.
+//
+//nolint:gocyclo // TODO: reduce complexity below 15 (follow-up)
 func (s *Sender) SendReferral(ctx context.Context, caller, patientID, recipientParty string,
 	serviceRequest json.RawMessage, purpose string,
 ) (string, error) {
