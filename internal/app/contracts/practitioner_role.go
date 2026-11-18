@@ -3,10 +3,11 @@ package contracts
 import (
 	"context"
 	"fmt"
-	"konsulin-service/internal/pkg/dto/requests"
-	"konsulin-service/internal/pkg/fhir_dto"
 	"net/url"
 	"strings"
+
+	"konsulin-service/internal/pkg/dto/requests"
+	"konsulin-service/internal/pkg/fhir_dto"
 )
 
 type PractitionerRoleFhirClient interface {

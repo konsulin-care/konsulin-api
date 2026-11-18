@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"net/http"
+
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
-	"net/http"
 )
 
 // BodyBuffer reads the request body, stores the raw bytes in the context and

@@ -2,8 +2,9 @@ package contracts
 
 import (
 	"context"
-	"konsulin-service/internal/pkg/fhir_dto"
 	"net/url"
+
+	"konsulin-service/internal/pkg/fhir_dto"
 )
 
 type InvoiceFhirClient interface {

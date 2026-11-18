@@ -2,8 +2,9 @@ package logger
 
 import (
 	"fmt"
-	"konsulin-service/internal/app/config"
 	"time"
+
+	"konsulin-service/internal/app/config"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"

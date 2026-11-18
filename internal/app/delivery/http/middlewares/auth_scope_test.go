@@ -1,8 +1,9 @@
 package middlewares
 
 import (
-	"konsulin-service/internal/pkg/constvars"
 	"testing"
+
+	"konsulin-service/internal/pkg/constvars"
 
 	"github.com/stretchr/testify/assert"
 )

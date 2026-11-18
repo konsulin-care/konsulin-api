@@ -2,10 +2,11 @@ package middlewares
 
 import (
 	"context"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/utils"
 	"net/http"
 	"time"
+
+	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/utils"
 
 	"github.com/supertokens/supertokens-golang/recipe/session/claims"
 	"github.com/supertokens/supertokens-golang/recipe/session/sessmodels"

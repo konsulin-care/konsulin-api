@@ -109,24 +109,30 @@ type mockPractitionerFhirClient struct {
 func (m *mockPractitionerFhirClient) FindPractitionerByID(_ context.Context, _ string) (*fhir_dto.Practitioner, error) {
 	return m.practitioner, m.err
 }
+
 func (*mockPractitionerFhirClient) FindPractitionerByIdentifier(_ context.Context, _, _ string) ([]fhir_dto.Practitioner, error) {
 	return nil, nil
 }
+
 func (m *mockPractitionerFhirClient) FindPractitionerByEmail(ctx context.Context, email string) ([]fhir_dto.Practitioner, error) {
 	if m.byEmail != nil {
 		return m.byEmail(ctx, email)
 	}
 	return nil, nil
 }
+
 func (*mockPractitionerFhirClient) FindPractitionerByPhone(_ context.Context, _ string) ([]fhir_dto.Practitioner, error) {
 	return nil, nil
 }
+
 func (*mockPractitionerFhirClient) CreatePractitioner(_ context.Context, _ *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
 	return nil, nil
 }
+
 func (*mockPractitionerFhirClient) UpdatePractitioner(_ context.Context, _ *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
 	return nil, nil
 }
+
 func (*mockPractitionerFhirClient) PatchPractitioner(_ context.Context, _ *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
 	return nil, nil
 }
@@ -186,33 +192,43 @@ type mockPractitionerRoleFhirClient struct {
 func (m *mockPractitionerRoleFhirClient) FindPractitionerRoleByID(_ context.Context, _ string) (*fhir_dto.PractitionerRole, error) {
 	return m.role, m.err
 }
+
 func (*mockPractitionerRoleFhirClient) DeletePractitionerRoleByID(_ context.Context, _ string) error {
 	return nil
 }
+
 func (*mockPractitionerRoleFhirClient) FindPractitionerRoleByOrganizationID(_ context.Context, _ string) ([]fhir_dto.PractitionerRole, error) {
 	return nil, nil
 }
+
 func (*mockPractitionerRoleFhirClient) FindPractitionerRoleByCustomRequest(_ context.Context, _ *requests.FindAllCliniciansByClinicID) ([]fhir_dto.PractitionerRole, error) {
 	return nil, nil
 }
+
 func (*mockPractitionerRoleFhirClient) FindPractitionerRoleByPractitionerID(_ context.Context, _ string) ([]fhir_dto.PractitionerRole, error) {
 	return nil, nil
 }
+
 func (*mockPractitionerRoleFhirClient) FindPractitionerRoleByPractitionerIDAndOrganizationID(_ context.Context, _, _ string) ([]fhir_dto.PractitionerRole, error) {
 	return nil, nil
 }
+
 func (*mockPractitionerRoleFhirClient) CreatePractitionerRoles(_ context.Context, _ interface{}) error {
 	return nil
 }
+
 func (*mockPractitionerRoleFhirClient) CreatePractitionerRole(_ context.Context, _ *fhir_dto.PractitionerRole) (*fhir_dto.PractitionerRole, error) {
 	return nil, nil
 }
+
 func (*mockPractitionerRoleFhirClient) UpdatePractitionerRole(_ context.Context, _ *fhir_dto.PractitionerRole) (*fhir_dto.PractitionerRole, error) {
 	return nil, nil
 }
+
 func (*mockPractitionerRoleFhirClient) FindPractitionerRoleByPractitionerIDAndName(_ context.Context, _ *requests.FindClinicianByClinicianID) ([]fhir_dto.PractitionerRole, error) {
 	return nil, nil
 }
+
 func (*mockPractitionerRoleFhirClient) Search(_ context.Context, _ contracts.PractitionerRoleSearchParams) ([]fhir_dto.PractitionerRole, error) {
 	return nil, nil
 }
@@ -243,12 +259,15 @@ func (m *mockScheduleFhirClient) FindScheduleByPractitionerRoleID(_ context.Cont
 	}
 	return m.schedules, m.err
 }
+
 func (*mockScheduleFhirClient) CreateSchedule(_ context.Context, _ *fhir_dto.Schedule) (*fhir_dto.Schedule, error) {
 	return nil, nil
 }
+
 func (*mockScheduleFhirClient) FindScheduleByPractitionerID(_ context.Context, _ string) ([]fhir_dto.Schedule, error) {
 	return nil, nil
 }
+
 func (*mockScheduleFhirClient) Search(_ context.Context, _ contracts.ScheduleSearchParams) ([]fhir_dto.Schedule, error) {
 	return nil, nil
 }

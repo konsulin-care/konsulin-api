@@ -3,13 +3,14 @@ package persons
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"sync"
+
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/services/fhir_spark/base"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/fhir_http_client"
-	"net/url"
-	"sync"
 
 	"go.uber.org/zap"
 )

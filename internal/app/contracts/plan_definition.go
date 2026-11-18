@@ -2,6 +2,7 @@ package contracts
 
 import (
 	"context"
+
 	"konsulin-service/internal/pkg/fhir_dto"
 )
 

@@ -1,8 +1,9 @@
 package privacy
 
 import (
-	"konsulin-service/internal/pkg/constvars"
 	"strings"
+
+	"konsulin-service/internal/pkg/constvars"
 
 	"github.com/tidwall/gjson"
 )

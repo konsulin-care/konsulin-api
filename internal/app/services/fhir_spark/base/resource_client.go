@@ -1,8 +1,9 @@
 package base
 
 import (
-	"konsulin-service/internal/pkg/fhir_http_client"
 	"sync"
+
+	"konsulin-service/internal/pkg/fhir_http_client"
 
 	"go.uber.org/zap"
 )

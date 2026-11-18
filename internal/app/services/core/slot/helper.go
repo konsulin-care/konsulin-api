@@ -3,11 +3,12 @@ package slot
 import (
 	"errors"
 	"fmt"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/fhir_dto"
 	"strconv"
 	"strings"
 	"time"
+
+	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/fhir_dto"
 )
 
 // ConvertAvailableTimeToWeeklyPlan maps FHIR AvailableTime entries to an internal weeklyPlan.

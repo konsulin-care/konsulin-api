@@ -3,12 +3,13 @@ package contracts
 import (
 	"context"
 	"fmt"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/exceptions"
-	"konsulin-service/internal/pkg/fhir_dto"
 	"net/url"
 	"strings"
 	"time"
+
+	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/exceptions"
+	"konsulin-service/internal/pkg/fhir_dto"
 )
 
 type SlotFhirClient interface {

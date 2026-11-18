@@ -2,6 +2,7 @@ package contracts
 
 import (
 	"context"
+
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/fhir_dto"

@@ -6,12 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/dto/requests"
-	"konsulin-service/internal/pkg/fhir_dto"
 	"net/http"
 	"strings"
 	"time"
+
+	"konsulin-service/internal/pkg/constvars"
+	"konsulin-service/internal/pkg/dto/requests"
+	"konsulin-service/internal/pkg/fhir_dto"
 )
 
 // appointmentResourceClient abstracts the raw FHIR HTTP operations the payment

@@ -5,13 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net/http"
+	"strings"
+	"sync"
+
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
-	"net/http"
-	"strings"
-	"sync"
 
 	"go.uber.org/zap"
 )

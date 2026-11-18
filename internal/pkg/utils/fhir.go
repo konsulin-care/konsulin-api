@@ -3,13 +3,14 @@ package utils
 import (
 	"errors"
 	"fmt"
+	"strings"
+	"time"
+
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/fhir_dto"
-	"strings"
-	"time"
 )
 
 func ParseIDFromReference(subject fhir_dto.Reference) (string, error) {

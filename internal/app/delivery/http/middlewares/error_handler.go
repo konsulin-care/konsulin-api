@@ -2,8 +2,9 @@ package middlewares
 
 import (
 	"errors"
-	"konsulin-service/internal/pkg/utils"
 	"net/http"
+
+	"konsulin-service/internal/pkg/utils"
 )
 
 func (m *Middlewares) ErrorHandler(next http.Handler) http.Handler {

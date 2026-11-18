@@ -1,9 +1,10 @@
 package utils
 
 import (
+	"strings"
+
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/fhir_dto"
-	"strings"
 )
 
 func ConvertOrganizationToClinicDetailResponse(org fhir_dto.Organization) responses.Clinic {

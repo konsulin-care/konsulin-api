@@ -3,10 +3,11 @@ package utils
 import (
 	"crypto/rand"
 	"fmt"
-	"konsulin-service/internal/pkg/constvars"
 	"math/big"
 	"net/url"
 	"time"
+
+	"konsulin-service/internal/pkg/constvars"
 
 	"github.com/golang-jwt/jwt/v4"
 )

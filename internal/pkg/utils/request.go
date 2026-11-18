@@ -3,13 +3,14 @@ package utils
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/fhir_dto"
-	"net/http"
-	"strconv"
-	"strings"
 )
 
 func ParseJSONBody(body []byte) (map[string]interface{}, error) {

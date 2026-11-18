@@ -1,9 +1,10 @@
 package utils
 
 import (
-	"konsulin-service/internal/pkg/constvars"
 	"regexp"
 	"time"
+
+	"konsulin-service/internal/pkg/constvars"
 
 	"github.com/go-playground/validator/v10"
 )

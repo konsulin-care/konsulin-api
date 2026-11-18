@@ -12,9 +12,7 @@ import (
 )
 
 func TestOwnsResourceFunction(t *testing.T) {
-
 	t.Run("Patient Role Public Resources", func(t *testing.T) {
-
 		owns := ownsResource("patient-123", "/fhir/Questionnaire?_elements=title,description&subject-type=Person,Patient&status=active&context=popular", constvars.KonsulinRolePatient, "GET")
 		assert.True(t, owns, "Patient should be able to access public questionnaires")
 
@@ -38,7 +36,6 @@ func TestOwnsResourceFunction(t *testing.T) {
 	})
 
 	t.Run("Patient Role Protected Resources", func(t *testing.T) {
-
 		owns := ownsResource("patient-123", "/fhir/Patient/patient-123", constvars.KonsulinRolePatient, "GET")
 		assert.True(t, owns, "Patient should be able to access their own patient resource")
 
@@ -60,7 +57,6 @@ func TestOwnsResourceFunction(t *testing.T) {
 	})
 
 	t.Run("Patient Role Complex Appointment Queries", func(t *testing.T) {
-
 		owns := ownsResource("patient-123", "/fhir/Appointment?actor=Patient/patient-123&slot.start=ge2025-01-01T00:00:00+00:00&_include=Appointment:actor:PractitionerRole&_include:iterate=PractitionerRole:practitioner&_include=Appointment:slot", constvars.KonsulinRolePatient, "GET")
 		assert.True(t, owns, "Patient should be able to access their own appointments with complex query")
 
@@ -69,7 +65,6 @@ func TestOwnsResourceFunction(t *testing.T) {
 	})
 
 	t.Run("Resource Type Classification", func(t *testing.T) {
-
 		// Ownership classification is now the declarative spec in
 		// internal/pkg/ownership (single source of truth).
 		publicResources := []string{"Questionnaire", "ResearchStudy", "Organization", "Location", "HealthcareService", "PractitionerRole", "Slot", "Schedule"}
@@ -160,7 +155,6 @@ func TestOwnsResourceFunction(t *testing.T) {
 	})
 
 	t.Run("Practitioner Role Public Resources", func(t *testing.T) {
-
 		owns := ownsResource("practitioner-123", "/fhir/Organization?_elements=name,address", constvars.KonsulinRolePractitioner, "GET")
 		assert.True(t, owns, "Practitioner should be able to access public organization info")
 
@@ -172,7 +166,6 @@ func TestOwnsResourceFunction(t *testing.T) {
 	})
 
 	t.Run("Practitioner Role Protected Resources", func(t *testing.T) {
-
 		owns := ownsResource("practitioner-123", "/fhir/Practitioner/practitioner-123", constvars.KonsulinRolePractitioner, "GET")
 		assert.True(t, owns, "Practitioner should be able to access their own practitioner resource")
 
@@ -205,7 +198,6 @@ func TestOwnsResourceFunction(t *testing.T) {
 	})
 
 	t.Run("Other Roles", func(t *testing.T) {
-
 		owns := ownsResource("guest-123", "/fhir/Organization", constvars.KonsulinRoleGuest, "GET")
 		assert.True(t, owns, "Organization is public; ownership does not restrict it")
 
@@ -217,7 +209,6 @@ func TestOwnsResourceFunction(t *testing.T) {
 	})
 
 	t.Run("POST Request Access", func(t *testing.T) {
-
 		owns := ownsResource("patient-123", "/fhir/QuestionnaireResponse", constvars.KonsulinRolePatient, "POST")
 		assert.True(t, owns, "Patient should be able to POST new QuestionnaireResponse")
 

@@ -3,11 +3,12 @@ package redis
 import (
 	"context"
 	"fmt"
+	"sync"
+	"time"
+
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
-	"sync"
-	"time"
 
 	"github.com/goccy/go-json"
 	"github.com/redis/go-redis/v9"

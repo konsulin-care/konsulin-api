@@ -2,8 +2,9 @@ package fhir_dto
 
 import (
 	"errors"
-	"konsulin-service/internal/pkg/constvars"
 	"strings"
+
+	"konsulin-service/internal/pkg/constvars"
 )
 
 // HealthcareService represents a minimal FHIR R4 HealthcareService resource.

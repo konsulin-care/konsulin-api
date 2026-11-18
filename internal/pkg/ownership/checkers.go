@@ -2,8 +2,9 @@ package ownership
 
 import (
 	"encoding/json"
-	"konsulin-service/internal/pkg/constvars"
 	"strings"
+
+	"konsulin-service/internal/pkg/constvars"
 )
 
 // invoiceChecker reproduces the legacy Invoice read rule: an Invoice is public

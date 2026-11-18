@@ -2,6 +2,7 @@ package exceptions
 
 import (
 	"fmt"
+
 	"konsulin-service/internal/pkg/constvars"
 )
 

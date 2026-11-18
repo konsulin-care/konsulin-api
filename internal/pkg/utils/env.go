@@ -1,10 +1,11 @@
 package utils
 
 import (
-	"konsulin-service/internal/pkg/constvars"
 	"log"
 	"os"
 	"strconv"
+
+	"konsulin-service/internal/pkg/constvars"
 )
 
 // lookupEnvWithDefault reads an env var and returns whether the key existed.

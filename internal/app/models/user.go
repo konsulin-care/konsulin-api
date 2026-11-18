@@ -1,8 +1,9 @@
 package models
 
 import (
-	"konsulin-service/internal/pkg/dto/requests"
 	"time"
+
+	"konsulin-service/internal/pkg/dto/requests"
 
 	"go.mongodb.org/mongo-driver/bson"
 )

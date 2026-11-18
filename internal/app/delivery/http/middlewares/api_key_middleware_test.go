@@ -2,11 +2,12 @@ package middlewares
 
 import (
 	"context"
-	"konsulin-service/internal/app/config"
-	"konsulin-service/internal/pkg/constvars"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"konsulin-service/internal/app/config"
+	"konsulin-service/internal/pkg/constvars"
 
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
@@ -28,7 +29,6 @@ func TestRequireSuperadminAPIKey(t *testing.T) {
 	}
 
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
 		apiKeyAuth, ok := r.Context().Value(ContextAPIKeyAuth).(bool)
 		assert.True(t, ok, "ContextAPIKeyAuth should be set")
 		assert.True(t, apiKeyAuth, "ContextAPIKeyAuth should be true")
@@ -114,7 +114,6 @@ func TestRequireSuperadminAPIKey(t *testing.T) {
 }
 
 func TestAPIKeyAuth_Optional(t *testing.T) {
-
 	logger := zap.NewNop()
 
 	testAPIKey := "test-superadmin-api-key-12345"
@@ -181,7 +180,6 @@ func TestAPIKeyAuth_Optional(t *testing.T) {
 }
 
 func TestRequireSuperadminAPIKey_Integration(t *testing.T) {
-
 	logger := zap.NewNop()
 
 	testAPIKey := "test-superadmin-api-key-12345"
@@ -216,7 +214,6 @@ func TestRequireSuperadminAPIKey_Integration(t *testing.T) {
 }
 
 func TestRequireSuperadminAPIKey_ContextValues(t *testing.T) {
-
 	logger := zap.NewNop()
 
 	testAPIKey := "test-superadmin-api-key-12345"

@@ -3,8 +3,9 @@ package requests
 import (
 	"errors"
 	"fmt"
-	"konsulin-service/internal/pkg/constvars"
 	"strings"
+
+	"konsulin-service/internal/pkg/constvars"
 )
 
 type AppointmentPaymentRequest struct {

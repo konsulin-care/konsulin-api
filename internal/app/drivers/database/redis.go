@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+
 	"konsulin-service/internal/app/config"
 
 	"github.com/redis/go-redis/v9"

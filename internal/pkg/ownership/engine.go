@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"konsulin-service/internal/pkg/constvars"
 	"net/url"
 	"strings"
+
+	"konsulin-service/internal/pkg/constvars"
 
 	"github.com/tidwall/gjson"
 )

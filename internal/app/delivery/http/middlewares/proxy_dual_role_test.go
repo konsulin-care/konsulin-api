@@ -19,33 +19,43 @@ type stubPractitionerRoleClient struct{}
 func (*stubPractitionerRoleClient) DeletePractitionerRoleByID(context.Context, string) error {
 	return nil
 }
+
 func (*stubPractitionerRoleClient) FindPractitionerRoleByOrganizationID(context.Context, string) ([]fhir_dto.PractitionerRole, error) {
 	return nil, nil
 }
+
 func (*stubPractitionerRoleClient) FindPractitionerRoleByCustomRequest(context.Context, *requests.FindAllCliniciansByClinicID) ([]fhir_dto.PractitionerRole, error) {
 	return nil, nil
 }
+
 func (*stubPractitionerRoleClient) FindPractitionerRoleByPractitionerID(context.Context, string) ([]fhir_dto.PractitionerRole, error) {
 	return nil, nil
 }
+
 func (*stubPractitionerRoleClient) FindPractitionerRoleByPractitionerIDAndOrganizationID(context.Context, string, string) ([]fhir_dto.PractitionerRole, error) {
 	return nil, nil
 }
+
 func (*stubPractitionerRoleClient) CreatePractitionerRoles(context.Context, interface{}) error {
 	return nil
 }
+
 func (*stubPractitionerRoleClient) CreatePractitionerRole(context.Context, *fhir_dto.PractitionerRole) (*fhir_dto.PractitionerRole, error) {
 	return nil, nil
 }
+
 func (*stubPractitionerRoleClient) UpdatePractitionerRole(context.Context, *fhir_dto.PractitionerRole) (*fhir_dto.PractitionerRole, error) {
 	return nil, nil
 }
+
 func (*stubPractitionerRoleClient) FindPractitionerRoleByPractitionerIDAndName(context.Context, *requests.FindClinicianByClinicianID) ([]fhir_dto.PractitionerRole, error) {
 	return nil, nil
 }
+
 func (*stubPractitionerRoleClient) FindPractitionerRoleByID(context.Context, string) (*fhir_dto.PractitionerRole, error) {
 	return nil, nil
 }
+
 func (*stubPractitionerRoleClient) Search(context.Context, contracts.PractitionerRoleSearchParams) ([]fhir_dto.PractitionerRole, error) {
 	return nil, nil
 }

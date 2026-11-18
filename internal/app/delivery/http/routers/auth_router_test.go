@@ -4,15 +4,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
 	"konsulin-service/internal/app/config"
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/delivery/http/controllers"
 	"konsulin-service/internal/app/delivery/http/middlewares"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/requests"
-	"net/http"
-	"net/http/httptest"
-	"testing"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
@@ -161,7 +162,6 @@ func TestAuthRouter_MagicLinkEndpoint(t *testing.T) {
 	})
 
 	t.Run("MagicLink without API Key", func(t *testing.T) {
-
 		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
 			Email: "test@example.com",
 			Roles: []string{"Practitioner"},
@@ -181,7 +181,6 @@ func TestAuthRouter_MagicLinkEndpoint(t *testing.T) {
 	})
 
 	t.Run("MagicLink with Invalid API Key", func(t *testing.T) {
-
 		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
 			Email: "test@example.com",
 			Roles: []string{"Practitioner"},
@@ -202,7 +201,6 @@ func TestAuthRouter_MagicLinkEndpoint(t *testing.T) {
 	})
 
 	t.Run("MagicLink with Empty API Key", func(t *testing.T) {
-
 		requestBody := requests.SupertokenPasswordlessCreateMagicLink{
 			Email: "test@example.com",
 			Roles: []string{"Practitioner"},
@@ -223,7 +221,6 @@ func TestAuthRouter_MagicLinkEndpoint(t *testing.T) {
 	})
 
 	t.Run("Anonymous Session without API Key - Should Work", func(t *testing.T) {
-
 		mockAuthUsecase.On("CreateAnonymousSession", mock.Anything, mock.Anything, mock.Anything).
 			Return(&contracts.AnonymousSessionResult{Token: "test-session-handle", GuestID: "test-guest-id", IsNew: true}, nil)
 
@@ -274,7 +271,6 @@ func TestAuthRouter_ContextPropagation(t *testing.T) {
 		mockAuthUsecase.On("CheckUserExists", mock.Anything, "test@example.com").Return(nil, nil)
 
 		mockAuthUsecase.On("CreateMagicLink", mock.MatchedBy(func(ctx context.Context) bool {
-
 			apiKeyAuth, ok := ctx.Value(middlewares.ContextAPIKeyAuth).(bool)
 			if !ok || !apiKeyAuth {
 				return false

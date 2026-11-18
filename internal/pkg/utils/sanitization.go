@@ -1,9 +1,10 @@
 package utils
 
 import (
-	"konsulin-service/internal/pkg/dto/requests"
 	"strings"
 	"unicode"
+
+	"konsulin-service/internal/pkg/dto/requests"
 )
 
 func cleanWhiteSpaceFromEachStringOfAnArray(input []string) []string {

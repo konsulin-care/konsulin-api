@@ -3,10 +3,11 @@ package utils
 import (
 	"errors"
 	"fmt"
+	"net/http"
+
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/dto/responses"
 	"konsulin-service/internal/pkg/exceptions"
-	"net/http"
 
 	"github.com/goccy/go-json"
 	"go.uber.org/zap"
@@ -19,7 +20,7 @@ func BuildPaginationResponse(total, page, pageSize int, baseURL string) *respons
 		PageSize: pageSize,
 	}
 
-	if (page)*pageSize <= total {
+	if page*pageSize <= total {
 		pagination.NextURL = fmt.Sprintf(constvars.AppPaginationUrlFormat, baseURL, page+1, pageSize)
 	}
 	if page > 1 {

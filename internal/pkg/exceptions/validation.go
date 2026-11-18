@@ -1,8 +1,9 @@
 package exceptions
 
 import (
-	"konsulin-service/internal/pkg/constvars"
 	"strings"
+
+	"konsulin-service/internal/pkg/constvars"
 
 	"github.com/go-playground/validator/v10"
 )

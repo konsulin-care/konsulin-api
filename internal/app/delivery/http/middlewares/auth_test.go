@@ -24,18 +24,23 @@ func (m *mockPatientClient) FindPatientByIdentifier(_ context.Context, _ string)
 func (*mockPatientClient) FindPatientByID(_ context.Context, _ string) (*fhir_dto.Patient, error) {
 	return nil, nil
 }
+
 func (*mockPatientClient) FindPatientByEmail(_ context.Context, _ string) ([]fhir_dto.Patient, error) {
 	return nil, nil
 }
+
 func (*mockPatientClient) FindPatientByPhone(_ context.Context, _ string) ([]fhir_dto.Patient, error) {
 	return nil, nil
 }
+
 func (*mockPatientClient) CreatePatient(_ context.Context, _ *fhir_dto.Patient) (*fhir_dto.Patient, error) {
 	return nil, nil
 }
+
 func (*mockPatientClient) UpdatePatient(_ context.Context, _ *fhir_dto.Patient) (*fhir_dto.Patient, error) {
 	return nil, nil
 }
+
 func (*mockPatientClient) PatchPatient(_ context.Context, _ *fhir_dto.Patient) (*fhir_dto.Patient, error) {
 	return nil, nil
 }
@@ -53,18 +58,23 @@ func (m *mockPractitionerClient) FindPractitionerByIdentifier(_ context.Context,
 func (*mockPractitionerClient) FindPractitionerByID(_ context.Context, _ string) (*fhir_dto.Practitioner, error) {
 	return nil, nil
 }
+
 func (*mockPractitionerClient) FindPractitionerByEmail(_ context.Context, _ string) ([]fhir_dto.Practitioner, error) {
 	return nil, nil
 }
+
 func (*mockPractitionerClient) FindPractitionerByPhone(_ context.Context, _ string) ([]fhir_dto.Practitioner, error) {
 	return nil, nil
 }
+
 func (*mockPractitionerClient) CreatePractitioner(_ context.Context, _ *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
 	return nil, nil
 }
+
 func (*mockPractitionerClient) UpdatePractitioner(_ context.Context, _ *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
 	return nil, nil
 }
+
 func (*mockPractitionerClient) PatchPractitioner(_ context.Context, _ *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
 	return nil, nil
 }

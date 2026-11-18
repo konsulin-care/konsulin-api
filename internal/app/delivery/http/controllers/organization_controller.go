@@ -1,13 +1,14 @@
 package controllers
 
 import (
+	"net/http"
+	"strings"
+	"sync"
+
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
-	"net/http"
-	"strings"
-	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"

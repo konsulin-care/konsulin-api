@@ -2,12 +2,13 @@ package plan_definitions
 
 import (
 	"context"
+	"sync"
+
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/app/services/fhir_spark/base"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/fhir_dto"
 	"konsulin-service/internal/pkg/fhir_http_client"
-	"sync"
 
 	"go.uber.org/zap"
 )

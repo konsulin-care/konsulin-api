@@ -2,10 +2,11 @@ package middlewares
 
 import (
 	"context"
+	"net/http"
+
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/exceptions"
 	"konsulin-service/internal/pkg/utils"
-	"net/http"
 
 	"go.uber.org/zap"
 )

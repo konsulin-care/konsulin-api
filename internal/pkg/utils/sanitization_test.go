@@ -1,8 +1,9 @@
 package utils
 
 import (
-	"konsulin-service/internal/pkg/dto/requests"
 	"testing"
+
+	"konsulin-service/internal/pkg/dto/requests"
 
 	"github.com/stretchr/testify/assert"
 )

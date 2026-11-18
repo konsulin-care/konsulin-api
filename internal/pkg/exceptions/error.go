@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"konsulin-service/internal/pkg/constvars"
 	"runtime"
 	"strings"
+
+	"konsulin-service/internal/pkg/constvars"
 )
 
 type CustomError struct {

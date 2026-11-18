@@ -44,21 +44,27 @@ type ctrlMockPatientClient struct {
 func (m *ctrlMockPatientClient) FindPatientByIdentifier(_ context.Context, _ string) ([]fhir_dto.Patient, error) {
 	return m.patients, m.err
 }
+
 func (*ctrlMockPatientClient) FindPatientByID(_ context.Context, _ string) (*fhir_dto.Patient, error) {
 	return nil, nil
 }
+
 func (*ctrlMockPatientClient) FindPatientByEmail(_ context.Context, _ string) ([]fhir_dto.Patient, error) {
 	return nil, nil
 }
+
 func (*ctrlMockPatientClient) FindPatientByPhone(_ context.Context, _ string) ([]fhir_dto.Patient, error) {
 	return nil, nil
 }
+
 func (*ctrlMockPatientClient) CreatePatient(_ context.Context, _ *fhir_dto.Patient) (*fhir_dto.Patient, error) {
 	return nil, nil
 }
+
 func (*ctrlMockPatientClient) UpdatePatient(_ context.Context, _ *fhir_dto.Patient) (*fhir_dto.Patient, error) {
 	return nil, nil
 }
+
 func (*ctrlMockPatientClient) PatchPatient(_ context.Context, _ *fhir_dto.Patient) (*fhir_dto.Patient, error) {
 	return nil, nil
 }
@@ -72,21 +78,27 @@ type ctrlMockPractitionerClient struct {
 func (m *ctrlMockPractitionerClient) FindPractitionerByIdentifier(_ context.Context, _, _ string) ([]fhir_dto.Practitioner, error) {
 	return m.practitioners, m.err
 }
+
 func (*ctrlMockPractitionerClient) FindPractitionerByID(_ context.Context, _ string) (*fhir_dto.Practitioner, error) {
 	return nil, nil
 }
+
 func (*ctrlMockPractitionerClient) FindPractitionerByEmail(_ context.Context, _ string) ([]fhir_dto.Practitioner, error) {
 	return nil, nil
 }
+
 func (*ctrlMockPractitionerClient) FindPractitionerByPhone(_ context.Context, _ string) ([]fhir_dto.Practitioner, error) {
 	return nil, nil
 }
+
 func (*ctrlMockPractitionerClient) CreatePractitioner(_ context.Context, _ *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
 	return nil, nil
 }
+
 func (*ctrlMockPractitionerClient) UpdatePractitioner(_ context.Context, _ *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
 	return nil, nil
 }
+
 func (*ctrlMockPractitionerClient) PatchPractitioner(_ context.Context, _ *fhir_dto.Practitioner) (*fhir_dto.Practitioner, error) {
 	return nil, nil
 }
@@ -207,8 +219,10 @@ func TestPurgeData_UsecaseErrorReturns500(t *testing.T) {
 	assert.Equal(t, []string{"pat-1"}, usecase.fhirIDs)
 }
 
-var _ contracts.PatientFhirClient = (*ctrlMockPatientClient)(nil)
-var _ contracts.PractitionerFhirClient = (*ctrlMockPractitionerClient)(nil)
+var (
+	_ contracts.PatientFhirClient      = (*ctrlMockPatientClient)(nil)
+	_ contracts.PractitionerFhirClient = (*ctrlMockPractitionerClient)(nil)
+)
 
 // TestPurgeData_NilEnforcerFailsClosed proves the authorization consult: without
 // an Enforcer the controller must fail closed even for a valid Patient identity.

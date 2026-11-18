@@ -6,10 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"konsulin-service/internal/pkg/fhir_dto"
 	"net/http"
 	"strings"
 	"time"
+
+	"konsulin-service/internal/pkg/fhir_dto"
 
 	"go.uber.org/zap"
 )

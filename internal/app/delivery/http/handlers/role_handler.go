@@ -3,10 +3,11 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+
 	"konsulin-service/internal/app/contracts"
 	"konsulin-service/internal/pkg/constvars"
 	"konsulin-service/internal/pkg/utils"
-	"net/http"
 
 	"go.uber.org/zap"
 )
