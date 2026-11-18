@@ -1,12 +1,10 @@
 package referrals
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -206,8 +204,6 @@ func patientDemographics(p *fhir_dto.Patient) referralPatient {
 // Returns the recorded outgoing Task id and nil on a 2xx partner answer,
 // or "" and the error — ErrPartnerNotFound, a configuration error, or
 // ErrReferralDelivery wrapping the partner status. Never panics.
-//
-//nolint:gocyclo // TODO: reduce complexity below 15 (follow-up)
 func (s *Sender) SendReferral(ctx context.Context, caller, patientID, recipientParty string,
 	serviceRequest json.RawMessage, purpose string,
 ) (string, error) {
@@ -215,104 +211,64 @@ func (s *Sender) SendReferral(ctx context.Context, caller, patientID, recipientP
 		s.fhir == nil || s.fhirBaseURL == "" {
 		return "", errors.New("referrals: sender not configured")
 	}
-	recipientParty = strings.TrimSpace(recipientParty)
-	purpose = strings.TrimSpace(purpose)
-	if recipientParty == "" || strings.TrimSpace(patientID) == "" || purpose == "" {
-		return "", errors.New("referrals: missing patient, recipient or purpose")
-	}
-	if !json.Valid(serviceRequest) {
-		return "", errors.New("referrals: service request is not valid JSON")
+	recipientParty, purpose, err := validateSendInput(patientID, recipientParty, serviceRequest, purpose)
+	if err != nil {
+		return "", err
 	}
 
 	endpoint, err := s.directory.ResolvePartner(ctx, recipientParty)
 	if err != nil {
 		return "", err
 	}
+	ticket, sealed, err := s.buildSealedReferral(ctx, recipientParty, patientID, serviceRequest, purpose)
+	if err != nil {
+		return "", err
+	}
+	return s.deliver(ctx, endpoint, ticket, sealed, caller, patientID, purpose, serviceRequest)
+}
+
+// validateSendInput trims the recipient and purpose and rejects a missing
+// patient, recipient or purpose, or a ServiceRequest that is not valid JSON.
+//
+// Returns the trimmed recipient and purpose, or the validation error.
+func validateSendInput(patientID, recipientParty string, serviceRequest json.RawMessage, purpose string) (string, string, error) {
+	recipientParty = strings.TrimSpace(recipientParty)
+	purpose = strings.TrimSpace(purpose)
+	if recipientParty == "" || strings.TrimSpace(patientID) == "" || purpose == "" {
+		return "", "", errors.New("referrals: missing patient, recipient or purpose")
+	}
+	if !json.Valid(serviceRequest) {
+		return "", "", errors.New("referrals: service request is not valid JSON")
+	}
+	return recipientParty, purpose, nil
+}
+
+// buildSealedReferral reads the patient demographics, marshals the payload,
+// mints the referral ticket and seals the payload to the recipient enc key.
+//
+// Returns the minted ticket and the sealed compact JWE, or the first error.
+func (s *Sender) buildSealedReferral(ctx context.Context, recipientParty, patientID string,
+	serviceRequest json.RawMessage, purpose string,
+) (string, string, error) {
 	patient, err := fhir_http_client.GetResource[fhir_dto.Patient](ctx, s.log, s.fhir,
 		s.fhirBaseURL+"/"+constvars.ResourcePatient, patientID, constvars.ResourcePatient, "patient_id")
 	if err != nil {
-		return "", fmt.Errorf("referrals: read patient: %w", err)
+		return "", "", fmt.Errorf("referrals: read patient: %w", err)
 	}
 	data, err := json.Marshal(referralPayload{
 		Patient:        patientDemographics(patient),
 		ServiceRequest: serviceRequest,
 	})
 	if err != nil {
-		return "", fmt.Errorf("referrals: build payload: %w", err)
+		return "", "", fmt.Errorf("referrals: build payload: %w", err)
 	}
-
 	ticket, err := s.tickets.Mint(ctx, recipientParty, referralScope, purpose, noResearcherHash)
 	if err != nil {
-		return "", fmt.Errorf("referrals: mint ticket: %w", err)
+		return "", "", fmt.Errorf("referrals: mint ticket: %w", err)
 	}
 	sealed, err := s.sealer.SealBound(ctx, recipientParty, referralService, data)
 	if err != nil {
-		return "", fmt.Errorf("referrals: seal payload: %w", err)
+		return "", "", fmt.Errorf("referrals: seal payload: %w", err)
 	}
-
-	status, err := s.post(ctx, endpoint, ticket, sealed)
-	if err != nil {
-		s.record(ctx, taskStatusFailed, caller, patientID, purpose, serviceRequest)
-		return "", fmt.Errorf("%w: %w", ErrReferralDelivery, err)
-	}
-	if status < http.StatusOK || status >= http.StatusMultipleChoices {
-		s.record(ctx, taskStatusFailed, caller, patientID, purpose, serviceRequest)
-		return "", fmt.Errorf("%w: partner answered status %d", ErrReferralDelivery, status)
-	}
-	taskID := s.record(ctx, taskStatusRequested, caller, patientID, purpose, serviceRequest)
-	return taskID, nil
-}
-
-// post sends the sealed payload with the bearer ticket to the partner
-// endpoint. Returns the partner status code, or the transport error.
-func (s *Sender) post(ctx context.Context, endpoint, ticket, sealed string) (int, error) {
-	body, err := json.Marshal(map[string]string{"payload": sealed})
-	if err != nil {
-		return 0, fmt.Errorf("encode referral body: %w", err)
-	}
-	target := strings.TrimRight(endpoint, "/") + referralPath
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
-	if err != nil {
-		return 0, fmt.Errorf("build referral request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+ticket)
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return 0, fmt.Errorf("post referral: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	_, _ = io.Copy(io.Discard, resp.Body)
-	return resp.StatusCode, nil
-}
-
-// record best-effort creates the outgoing FHIR Task and returns its id
-// ("" when the write fails; the failure is logged so a delivered referral
-// is never failed by its audit trail).
-func (s *Sender) record(ctx context.Context, status, caller, patientID, purpose string,
-	serviceRequest json.RawMessage,
-) string {
-	task := &outgoingTask{
-		ResourceType: resourceTask,
-		Status:       status,
-		Intent:       taskIntent,
-		Description:  purpose,
-		For:          fhir_dto.Reference{Reference: constvars.FHIRRefPrefixPatient + patientID},
-	}
-	if caller = strings.TrimSpace(caller); caller != "" {
-		task.Requester = &fhir_dto.Reference{Reference: caller}
-	}
-	var focus struct {
-		ID string `json:"id"`
-	}
-	if err := json.Unmarshal(serviceRequest, &focus); err == nil && focus.ID != "" {
-		task.Focus = &fhir_dto.Reference{Reference: constvars.ResourceServiceRequest + "/" + focus.ID}
-	}
-	created, err := fhir_http_client.CreateResource(ctx, s.log, s.fhir,
-		s.fhirBaseURL+"/"+resourceTask, task, resourceTask, "task_id")
-	if err != nil || created == nil {
-		s.log.Error("referrals: record outgoing task failed", zap.Error(err))
-		return ""
-	}
-	return created.ID
+	return ticket, sealed, nil
 }

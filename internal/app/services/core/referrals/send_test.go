@@ -141,6 +141,49 @@ func newSendFixture(t *testing.T, partnerStatus int) *sendFixture {
 	return fx
 }
 
+// TestSendReferral_RejectsInvalidInput covers expected output 1: blank
+// patient, recipient or purpose, or a ServiceRequest that is not valid JSON,
+// fails before the partner is resolved or any request is posted.
+func TestSendReferral_RejectsInvalidInput(t *testing.T) {
+	tests := []struct {
+		name       string
+		patientID  string
+		recipient  string
+		purpose    string
+		serviceReq string
+		wantErr    string
+	}{
+		{name: "blank patient", patientID: "  ", recipient: "party-123", purpose: purposeFixture, serviceReq: serviceReqFacts, wantErr: "missing patient, recipient or purpose"},
+		{name: "blank recipient", patientID: "pat-1", recipient: "  ", purpose: purposeFixture, serviceReq: serviceReqFacts, wantErr: "missing patient, recipient or purpose"},
+		{name: "blank purpose", patientID: "pat-1", recipient: "party-123", purpose: "  ", serviceReq: serviceReqFacts, wantErr: "missing patient, recipient or purpose"},
+		{name: "invalid json", patientID: "pat-1", recipient: "party-123", purpose: purposeFixture, serviceReq: "{not-json", wantErr: "service request is not valid JSON"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fx := newSendFixture(t, http.StatusOK)
+			taskID, err := fx.sender.SendReferral(context.Background(), callerFixture, tc.patientID,
+				tc.recipient, json.RawMessage(tc.serviceReq), tc.purpose)
+
+			require.Error(t, err, "invalid input must fail")
+			assert.Contains(t, err.Error(), tc.wantErr, "the validation error must be preserved")
+			assert.Empty(t, taskID, "no Task id must be returned")
+			assert.Empty(t, fx.partnerPath, "the partner must not be contacted")
+			assert.Empty(t, fx.minter.to, "no ticket must be minted")
+			assert.Empty(t, fx.sealer.to, "no payload must be sealed")
+		})
+	}
+}
+
+// TestSendReferral_UnconfiguredSenderRejects covers the configuration guard:
+// a sender missing its collaborators fails before validating input.
+func TestSendReferral_UnconfiguredSenderRejects(t *testing.T) {
+	taskID, err := (&Sender{}).SendReferral(context.Background(), callerFixture, "pat-1",
+		"party-123", json.RawMessage(serviceReqFacts), purposeFixture)
+	require.Error(t, err, "an unconfigured sender must fail")
+	assert.Contains(t, err.Error(), "sender not configured")
+	assert.Empty(t, taskID)
+}
+
 // TestSendReferral_SealsAndPostsTicketToPartnerEndpoint covers expected
 // output 1: the referral is sealed to the recipient and posted with the
 // ticket to the partner endpoint.
