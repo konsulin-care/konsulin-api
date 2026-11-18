@@ -81,23 +81,23 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Get Short SHA
-        run: echo "SHORT_SHA=${GITHUB_SHA::8}" >> $GITHUB_ENV
+        run: echo "SHORT_SHA=${GITHUB_SHA::8}" >> "$GITHUB_ENV"
 
       - name: Get Timestamp (for Dev Tag)
-        run: echo "TIMESTAMP=$(date +'%Y%m%d-%H%M')" >> $GITHUB_ENV
+        run: echo "TIMESTAMP=$(date +'%Y%m%d-%H%M')" >> "$GITHUB_ENV"
 
       - name: Get Branch Name
-        run: echo "BRANCH=${GITHUB_REF##*/}" >> $GITHUB_ENV
+        run: echo "BRANCH=${GITHUB_REF##*/}" >> "$GITHUB_ENV"
 
       - name: Build Vendor Image
         run: |
           docker build \
-            -t $IMAGE_NAMESPACE/$IMAGE_NAME-vendor:latest \
+            -t "$IMAGE_NAMESPACE/$IMAGE_NAME-vendor:latest" \
             -f Dockerfile-vendor .
 
       - name: Push Vendor Image
         run: |
-          docker push $IMAGE_NAMESPACE/$IMAGE_NAME-vendor:latest
+          docker push "$IMAGE_NAMESPACE/$IMAGE_NAME-vendor:latest"
 
       - name: Replace FROM in Dockerfile with image from ENV
         run: |
@@ -109,8 +109,8 @@ jobs:
             echo "Development build..."
             VERSION="dev-${SHORT_SHA}"
             docker build \
-              -t $IMAGE_NAMESPACE/$IMAGE_NAME:nightly \
-              -t $IMAGE_NAMESPACE/$IMAGE_NAME:${VERSION} \
+              -t "$IMAGE_NAMESPACE/$IMAGE_NAME:nightly" \
+              -t "$IMAGE_NAMESPACE/$IMAGE_NAME:${VERSION}" \
               -f Dockerfile \
               --build-arg TZ_ARG="$TZ_ARG" \
               --build-arg VERSION="$BUILD_VERSION_ARG" \
@@ -120,15 +120,15 @@ jobs:
               --build-arg RUN_NUMBER="$RUN_NUMBER" \
               --build-arg BUILD_TIME="$BUILD_TIME" .
 
-            docker push $IMAGE_NAMESPACE/$IMAGE_NAME:nightly
-            docker push $IMAGE_NAMESPACE/$IMAGE_NAME:${VERSION}
+            docker push "$IMAGE_NAMESPACE/$IMAGE_NAME:nightly"
+            docker push "$IMAGE_NAMESPACE/$IMAGE_NAME:${VERSION}"
 
           elif [ "$IS_PROD" == "true" ]; then
             echo "Production build..."
             VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "latest")
             docker build \
-              -t $IMAGE_NAMESPACE/$IMAGE_NAME:latest \
-              -t $IMAGE_NAMESPACE/$IMAGE_NAME:${VERSION} \
+              -t "$IMAGE_NAMESPACE/$IMAGE_NAME:latest" \
+              -t "$IMAGE_NAMESPACE/$IMAGE_NAME:${VERSION}" \
               -f Dockerfile \
               --build-arg TZ_ARG="$TZ_ARG" \
               --build-arg VERSION="$BUILD_VERSION_ARG" \
@@ -138,8 +138,8 @@ jobs:
               --build-arg RUN_NUMBER="$RUN_NUMBER" \
               --build-arg BUILD_TIME="$BUILD_TIME" .
 
-            docker push $IMAGE_NAMESPACE/$IMAGE_NAME:latest
-            docker push $IMAGE_NAMESPACE/$IMAGE_NAME:${VERSION}
+            docker push "$IMAGE_NAMESPACE/$IMAGE_NAME:latest"
+            docker push "$IMAGE_NAMESPACE/$IMAGE_NAME:${VERSION}"
           else
             echo "No valid environment specified. in productions need 2 conditions: branch is main and tag starts with v"
             exit 1
