@@ -10,7 +10,6 @@
   "dependencyDashboard": true,
   "minimumReleaseAge": "3 days",
   "minimumReleaseAgeBehaviour": "timestamp-optional",
-  "pre-commit": { "enabled": true },
   "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
   "packageRules": [
     {
@@ -63,19 +62,13 @@
       "groupName": "docker images (non-major)"
     },
     {
-      "description": "Group non-major pre-commit hook updates",
-      "matchManagers": ["pre-commit"],
-      "matchUpdateTypes": ["minor", "patch"],
-      "groupName": "pre-commit hooks (non-major)"
-    },
-    {
       "description": "Go toolchain: go.mod go directive + golang docker images",
       "matchDepNames": ["go", "golang"],
       "matchManagers": ["gomod", "dockerfile"],
       "groupName": "go toolchain"
     },
     {
-      "description": "hadolint: mise + pre-commit",
+      "description": "hadolint: mise",
       "matchPackageNames": ["/hadolint/"],
       "groupName": "hadolint"
     },

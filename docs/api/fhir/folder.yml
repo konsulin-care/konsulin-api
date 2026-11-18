@@ -80,7 +80,8 @@ docs: |
   All other resources need direct Blaze cleanup (see cleanup/folder.yml).
 
   The chained cleanup only runs when the whole journey completes. Because the
-  pre-commit wrapper runs `bru run --bail`, a mid-run failure would otherwise
+  lefthook pre-push hook runs `mise run test:api` (`bru run --bail`), a mid-run
+  failure would otherwise
   leave the fixed-id seed resources behind. `scripts/bru-run.sh` therefore runs
   `scripts/bru-cleanup.sh` after every suite run — success or failure — a
   Blaze-direct sweep keyed on the seed ids and the seeds' distinctive content.

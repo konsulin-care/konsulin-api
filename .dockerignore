@@ -33,5 +33,4 @@ docker-compose*.yml
 # Misc config files
 .air.toml
 .DS_Store
-.pre-commit-config.yaml.bak
 .trivyignore

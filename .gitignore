@@ -33,8 +33,6 @@ deployments/.vault
 
 dbconfig.yml
 
-.pre-commit-config.yaml.bak
-
 __pycache__/
 *.pyc
 .pytest_cache/
