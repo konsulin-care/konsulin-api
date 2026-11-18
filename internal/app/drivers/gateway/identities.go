@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"konsulin-service/internal/app/contracts"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
 
 	"github.com/konsulin-care/gateway-sdk-go/identities"
 	"github.com/konsulin-care/gateway-sdk-go/identity"

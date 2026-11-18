@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"konsulin-service/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
 
 	"github.com/supertokens/supertokens-golang/recipe/session"
 	"github.com/supertokens/supertokens-golang/recipe/session/sessmodels"

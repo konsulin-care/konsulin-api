@@ -3,7 +3,7 @@ package contracts
 import (
 	"context"
 
-	"konsulin-service/internal/pkg/fhir_dto"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/fhir_dto"
 )
 
 type QuestionnaireResponseFhirClient interface {

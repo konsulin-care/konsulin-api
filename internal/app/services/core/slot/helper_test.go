@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"konsulin-service/internal/pkg/fhir_dto"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/fhir_dto"
 )
 
 // TestBuildSlotAdjustmentForAppointment pins the post-free-generation contract:

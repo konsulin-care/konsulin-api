@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/dto/requests"
-	"konsulin-service/internal/pkg/dto/responses"
-	"konsulin-service/internal/pkg/fhir_dto"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/dto/requests"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/dto/responses"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/fhir_dto"
 )
 
 func ParseJSONBody(body []byte) (map[string]interface{}, error) {

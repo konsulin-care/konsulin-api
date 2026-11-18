@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"konsulin-service/internal/app/contracts"
-	bundlepkg "konsulin-service/internal/app/services/fhir_spark/bundle"
-	"konsulin-service/internal/pkg/fhir_dto"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
+	bundlepkg "github.com/konsulin-care/konsulin-api/internal/app/services/fhir_spark/bundle"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/fhir_dto"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

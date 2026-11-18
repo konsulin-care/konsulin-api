@@ -4,7 +4,7 @@ import (
 	"strings"
 	"unicode"
 
-	"konsulin-service/internal/pkg/dto/requests"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/dto/requests"
 )
 
 func cleanWhiteSpaceFromEachStringOfAnArray(input []string) []string {

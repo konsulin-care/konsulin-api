@@ -1,6 +1,6 @@
 package research
 
-import "konsulin-service/internal/pkg/constvars"
+import "github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
 
 // Publication tag codes recognized on a ResearchStudy's meta.tag.
 const (

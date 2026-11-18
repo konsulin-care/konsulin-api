@@ -1,6 +1,6 @@
 package models
 
-import "konsulin-service/internal/pkg/dto/responses"
+import "github.com/konsulin-care/konsulin-api/internal/pkg/dto/responses"
 
 type Gender struct {
 	ID            string `bson:"_id"`

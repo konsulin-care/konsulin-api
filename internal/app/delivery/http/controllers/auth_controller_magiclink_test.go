@@ -7,9 +7,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/dto/requests"
-	"konsulin-service/internal/pkg/exceptions"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/dto/requests"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/exceptions"
 
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"

@@ -10,12 +10,12 @@ import (
 	"net/url"
 	"strings"
 
-	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/exceptions"
-	"konsulin-service/internal/pkg/fhir_dto"
-	"konsulin-service/internal/pkg/ownership"
-	"konsulin-service/internal/pkg/utils"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/exceptions"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/fhir_dto"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/ownership"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/utils"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/tidwall/gjson"

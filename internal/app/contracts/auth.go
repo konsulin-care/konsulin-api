@@ -3,7 +3,7 @@ package contracts
 import (
 	"context"
 
-	"konsulin-service/internal/pkg/dto/requests"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/dto/requests"
 
 	"github.com/supertokens/supertokens-golang/recipe/passwordless/plessmodels"
 )

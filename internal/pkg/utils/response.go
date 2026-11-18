@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/dto/responses"
-	"konsulin-service/internal/pkg/exceptions"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/dto/responses"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/exceptions"
 
 	"github.com/goccy/go-json"
 	"go.uber.org/zap"

@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/utils"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/utils"
 
 	"github.com/supertokens/supertokens-golang/recipe/session/claims"
 	"github.com/supertokens/supertokens-golang/recipe/session/sessmodels"

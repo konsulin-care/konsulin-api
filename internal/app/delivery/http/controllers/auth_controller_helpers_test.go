@@ -3,7 +3,7 @@ package controllers
 import (
 	"testing"
 
-	"konsulin-service/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
 
 	"github.com/supertokens/supertokens-golang/recipe/session/sessmodels"
 )

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 
-	"konsulin-service/internal/pkg/utils"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/utils"
 )
 
 func (m *Middlewares) ErrorHandler(next http.Handler) http.Handler {

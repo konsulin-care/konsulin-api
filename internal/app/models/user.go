@@ -3,7 +3,7 @@ package models
 import (
 	"time"
 
-	"konsulin-service/internal/pkg/dto/requests"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/dto/requests"
 
 	"go.mongodb.org/mongo-driver/bson"
 )

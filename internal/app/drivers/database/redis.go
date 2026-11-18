@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"konsulin-service/internal/app/config"
+	"github.com/konsulin-care/konsulin-api/internal/app/config"
 
 	"github.com/redis/go-redis/v9"
 )

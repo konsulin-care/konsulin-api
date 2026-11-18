@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"konsulin-service/internal/app/drivers/sqlite"
+	"github.com/konsulin-care/konsulin-api/internal/app/drivers/sqlite"
 
 	"github.com/konsulin-care/gateway-sdk-go/envelope"
 )

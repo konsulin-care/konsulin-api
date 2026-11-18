@@ -3,7 +3,7 @@ package contracts
 import (
 	"context"
 
-	"konsulin-service/internal/app/models"
+	"github.com/konsulin-care/konsulin-api/internal/app/models"
 )
 
 type RoleUsecase interface {

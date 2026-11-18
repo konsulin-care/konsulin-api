@@ -6,8 +6,8 @@ import (
 	"io"
 	"testing"
 
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/fhir_dto"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/fhir_dto"
 )
 
 // recordingFetchClient records the URL passed to Do and returns a minimal

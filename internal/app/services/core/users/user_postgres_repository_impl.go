@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"sync"
 
-	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/app/models"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/exceptions"
-	"konsulin-service/internal/pkg/queries"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
+	"github.com/konsulin-care/konsulin-api/internal/app/models"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/exceptions"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/queries"
 
 	"github.com/lib/pq"
 	"go.uber.org/zap"

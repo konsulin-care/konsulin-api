@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"konsulin-service/internal/pkg/exceptions"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/exceptions"
 
 	"github.com/konsulin-care/gateway-sdk-go/auth"
 	"github.com/konsulin-care/gateway-sdk-go/envelope"

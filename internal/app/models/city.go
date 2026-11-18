@@ -1,7 +1,7 @@
 package models
 
 import (
-	"konsulin-service/internal/pkg/dto/responses"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/dto/responses"
 )
 
 type City struct {

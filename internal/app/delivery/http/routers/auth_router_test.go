@@ -8,12 +8,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"konsulin-service/internal/app/config"
-	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/app/delivery/http/controllers"
-	"konsulin-service/internal/app/delivery/http/middlewares"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/dto/requests"
+	"github.com/konsulin-care/konsulin-api/internal/app/config"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
+	"github.com/konsulin-care/konsulin-api/internal/app/delivery/http/controllers"
+	"github.com/konsulin-care/konsulin-api/internal/app/delivery/http/middlewares"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/dto/requests"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"

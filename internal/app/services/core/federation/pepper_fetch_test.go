@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"konsulin-service/internal/app/contracts"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

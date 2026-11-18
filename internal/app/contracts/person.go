@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/url"
 
-	"konsulin-service/internal/pkg/fhir_dto"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/fhir_dto"
 )
 
 type PersonFhirClient interface {

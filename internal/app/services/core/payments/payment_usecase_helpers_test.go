@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"konsulin-service/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
 )
 
 // TestWhitelistAccessByRoles pins role whitelisting: any role from the context

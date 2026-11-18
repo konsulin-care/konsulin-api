@@ -8,7 +8,7 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"konsulin-service/internal/app/config"
+	"github.com/konsulin-care/konsulin-api/internal/app/config"
 )
 
 // verify checks an env file against the offline rules.

@@ -3,8 +3,8 @@ package users
 import (
 	"context"
 
-	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/app/services/core/federation"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
+	"github.com/konsulin-care/konsulin-api/internal/app/services/core/federation"
 
 	"github.com/konsulin-care/gateway-sdk-go/identity"
 	"go.uber.org/zap"

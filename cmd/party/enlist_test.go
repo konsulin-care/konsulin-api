@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"konsulin-service/internal/pkg/exceptions"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/exceptions"
 
 	"github.com/konsulin-care/gateway-sdk-go/gatewaytest"
 	"github.com/stretchr/testify/assert"

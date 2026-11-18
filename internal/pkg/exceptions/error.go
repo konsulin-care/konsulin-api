@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"strings"
 
-	"konsulin-service/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
 )
 
 type CustomError struct {

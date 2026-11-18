@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"konsulin-service/internal/app/config"
-	"konsulin-service/internal/app/contracts"
+	"github.com/konsulin-care/konsulin-api/internal/app/config"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

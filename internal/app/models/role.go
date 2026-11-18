@@ -1,6 +1,6 @@
 package models
 
-import "konsulin-service/internal/pkg/constvars"
+import "github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
 
 type Role struct {
 	ID          string       `bson:"_id"`

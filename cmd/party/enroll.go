@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"konsulin-service/internal/app/config"
-	"konsulin-service/internal/app/drivers/gateway"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/utils"
+	"github.com/konsulin-care/konsulin-api/internal/app/config"
+	"github.com/konsulin-care/konsulin-api/internal/app/drivers/gateway"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/utils"
 )
 
 // enrollTimeout bounds one enroll call against the gateway.

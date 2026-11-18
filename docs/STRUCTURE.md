@@ -1,7 +1,7 @@
 # Repository Structure
 
 ```
-konsulin-service/
+konsulin-api/
 ├── AGENTS.md                  # Agent entry point — start here
 ├── README.md                  # Project README (installation, features)
 │

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"konsulin-service/internal/pkg/fhir_dto"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/fhir_dto"
 )
 
 // FuzzParseFHIRBundle exercises the FHIR bundle response decoding entry point

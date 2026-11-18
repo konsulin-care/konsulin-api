@@ -4,12 +4,12 @@ import (
 	"context"
 	"time"
 
-	"konsulin-service/internal/app/config"
-	"konsulin-service/internal/app/delivery/http/controllers"
-	"konsulin-service/internal/app/delivery/http/routers"
-	"konsulin-service/internal/app/drivers/sqlite"
-	"konsulin-service/internal/app/services/core/research"
-	"konsulin-service/internal/app/services/fhir_spark/resources"
+	"github.com/konsulin-care/konsulin-api/internal/app/config"
+	"github.com/konsulin-care/konsulin-api/internal/app/delivery/http/controllers"
+	"github.com/konsulin-care/konsulin-api/internal/app/delivery/http/routers"
+	"github.com/konsulin-care/konsulin-api/internal/app/drivers/sqlite"
+	"github.com/konsulin-care/konsulin-api/internal/app/services/core/research"
+	"github.com/konsulin-care/konsulin-api/internal/app/services/fhir_spark/resources"
 
 	"go.uber.org/zap"
 )

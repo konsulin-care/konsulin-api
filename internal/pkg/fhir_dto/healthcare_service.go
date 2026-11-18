@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"konsulin-service/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
 )
 
 // HealthcareService represents a minimal FHIR R4 HealthcareService resource.

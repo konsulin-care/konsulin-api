@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"konsulin-service/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
 )
 
 // appointmentIDCount is the number of identifiers an appointment opaque carries:

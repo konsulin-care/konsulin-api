@@ -5,7 +5,7 @@ import (
 	"os"
 	"strconv"
 
-	"konsulin-service/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
 )
 
 // lookupEnvWithDefault reads an env var and returns whether the key existed.

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"konsulin-service/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
 )
 
 // devLikeEnvs lists the environments where a plain http:// gateway URL is

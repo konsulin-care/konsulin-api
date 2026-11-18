@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"konsulin-service/internal/app/config"
+	"github.com/konsulin-care/konsulin-api/internal/app/config"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/stretchr/testify/assert"

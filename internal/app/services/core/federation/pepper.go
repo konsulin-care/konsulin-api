@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"konsulin-service/internal/pkg/utils"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/utils"
 
 	"github.com/konsulin-care/gateway-sdk-go/envelope"
 )

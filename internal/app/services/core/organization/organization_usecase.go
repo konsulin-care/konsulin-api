@@ -11,12 +11,12 @@ import (
 	"strings"
 	"time"
 
-	"konsulin-service/internal/app/config"
-	"konsulin-service/internal/app/contracts"
-	bundleSvc "konsulin-service/internal/app/services/fhir_spark/bundle"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/exceptions"
-	"konsulin-service/internal/pkg/fhir_dto"
+	"github.com/konsulin-care/konsulin-api/internal/app/config"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
+	bundleSvc "github.com/konsulin-care/konsulin-api/internal/app/services/fhir_spark/bundle"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/exceptions"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/fhir_dto"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"

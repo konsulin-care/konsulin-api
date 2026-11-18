@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"konsulin-service/internal/app/config"
-	"konsulin-service/internal/app/delivery/http/routers"
-	"konsulin-service/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/app/config"
+	"github.com/konsulin-care/konsulin-api/internal/app/delivery/http/routers"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
 
 	"github.com/konsulin-care/gateway-sdk-go/gatewaytest"
 	"github.com/stretchr/testify/require"

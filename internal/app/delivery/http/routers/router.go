@@ -7,11 +7,11 @@ import (
 	"net/url"
 	"strings"
 
-	"konsulin-service/internal/app/config"
-	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/app/delivery/http/controllers"
-	"konsulin-service/internal/app/delivery/http/middlewares"
-	"konsulin-service/internal/pkg/buildinfo"
+	"github.com/konsulin-care/konsulin-api/internal/app/config"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
+	"github.com/konsulin-care/konsulin-api/internal/app/delivery/http/controllers"
+	"github.com/konsulin-care/konsulin-api/internal/app/delivery/http/middlewares"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/buildinfo"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"

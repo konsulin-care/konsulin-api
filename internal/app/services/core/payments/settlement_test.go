@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"konsulin-service/internal/app/config"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/fhir_dto"
+	"github.com/konsulin-care/konsulin-api/internal/app/config"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/fhir_dto"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

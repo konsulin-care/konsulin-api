@@ -6,9 +6,9 @@ import (
 	"regexp"
 	"strings"
 
-	"konsulin-service/internal/app/models"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/utils"
+	"github.com/konsulin-care/konsulin-api/internal/app/models"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/utils"
 )
 
 type InitializeNewUserFHIRResourcesInput struct {

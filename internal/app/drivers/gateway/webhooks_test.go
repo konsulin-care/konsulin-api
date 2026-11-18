@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"konsulin-service/internal/app/config"
+	"github.com/konsulin-care/konsulin-api/internal/app/config"
 
 	"github.com/konsulin-care/gateway-sdk-go/envelope"
 	"github.com/konsulin-care/gateway-sdk-go/gatewaytest"

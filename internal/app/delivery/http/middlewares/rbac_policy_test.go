@@ -6,8 +6,8 @@ import (
 	"runtime"
 	"testing"
 
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/utils"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/utils"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/stretchr/testify/assert"

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"konsulin-service/internal/app/config"
-	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/pkg/utils"
+	"github.com/konsulin-care/konsulin-api/internal/app/config"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/utils"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/fsnotify/fsnotify"

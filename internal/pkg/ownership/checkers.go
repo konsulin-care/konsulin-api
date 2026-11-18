@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"konsulin-service/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
 )
 
 // invoiceChecker reproduces the legacy Invoice read rule: an Invoice is public

@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"strings"
 
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/exceptions"
-	"konsulin-service/internal/pkg/utils"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/exceptions"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/utils"
 
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"

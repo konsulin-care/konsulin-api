@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"testing"
 
-	"konsulin-service/internal/app/contracts"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
 
 	"github.com/konsulin-care/gateway-sdk-go/wire"
 	"github.com/stretchr/testify/assert"

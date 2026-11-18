@@ -3,7 +3,7 @@ package contracts
 import (
 	"context"
 
-	"konsulin-service/internal/pkg/fhir_dto"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/fhir_dto"
 )
 
 // PlanDefinitionFinder reads PlanDefinition resources from the FHIR server.

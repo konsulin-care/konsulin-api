@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/app/services/fhir_spark/base"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/fhir_dto"
-	"konsulin-service/internal/pkg/fhir_http_client"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
+	"github.com/konsulin-care/konsulin-api/internal/app/services/fhir_spark/base"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/fhir_dto"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/fhir_http_client"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

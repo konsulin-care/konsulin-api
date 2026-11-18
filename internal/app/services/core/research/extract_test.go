@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"konsulin-service/internal/app/drivers/sqlite"
+	"github.com/konsulin-care/konsulin-api/internal/app/drivers/sqlite"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

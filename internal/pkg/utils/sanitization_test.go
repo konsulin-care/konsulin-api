@@ -3,7 +3,7 @@ package utils
 import (
 	"testing"
 
-	"konsulin-service/internal/pkg/dto/requests"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/dto/requests"
 
 	"github.com/stretchr/testify/assert"
 )

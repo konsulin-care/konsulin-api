@@ -1,6 +1,6 @@
 package ownership
 
-import "konsulin-service/internal/pkg/constvars"
+import "github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
 
 // Scope classifies how a FHIR resource type is gated by the ownership engine.
 type Scope int

@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"time"
 
-	"konsulin-service/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
 
 	"github.com/go-playground/validator/v10"
 )

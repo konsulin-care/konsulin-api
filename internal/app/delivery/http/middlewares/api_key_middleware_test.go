@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"konsulin-service/internal/app/config"
-	"konsulin-service/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/app/config"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
 
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"

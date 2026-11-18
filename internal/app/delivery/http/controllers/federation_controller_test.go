@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"konsulin-service/internal/app/drivers/gateway"
+	"github.com/konsulin-care/konsulin-api/internal/app/drivers/gateway"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/go-chi/chi/v5"

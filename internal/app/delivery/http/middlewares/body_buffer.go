@@ -6,9 +6,9 @@ import (
 	"io"
 	"net/http"
 
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/exceptions"
-	"konsulin-service/internal/pkg/utils"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/exceptions"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/utils"
 )
 
 // BodyBuffer reads the request body, stores the raw bytes in the context and

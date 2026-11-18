@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"time"
 
-	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/pkg/fhir_dto"
-	"konsulin-service/internal/pkg/fhir_http_client"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/fhir_dto"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/fhir_http_client"
 )
 
 // The three shared test doubles below were relocated from

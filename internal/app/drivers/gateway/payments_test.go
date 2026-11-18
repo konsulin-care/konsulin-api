@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"testing"
 
-	"konsulin-service/internal/app/config"
-	"konsulin-service/internal/app/contracts"
+	"github.com/konsulin-care/konsulin-api/internal/app/config"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
 
 	"github.com/konsulin-care/gateway-sdk-go/gatewaytest"
 	"github.com/stretchr/testify/assert"

@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"time"
 
-	"konsulin-service/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
 
 	"github.com/golang-jwt/jwt/v4"
 )

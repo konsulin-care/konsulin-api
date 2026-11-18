@@ -3,8 +3,8 @@ package roles
 import (
 	"testing"
 
-	"konsulin-service/internal/pkg/ownership"
-	"konsulin-service/internal/pkg/utils"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/ownership"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/utils"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/stretchr/testify/assert"

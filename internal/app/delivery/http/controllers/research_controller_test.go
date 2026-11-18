@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"konsulin-service/internal/app/delivery/http/middlewares"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/exceptions"
+	"github.com/konsulin-care/konsulin-api/internal/app/delivery/http/middlewares"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/exceptions"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"

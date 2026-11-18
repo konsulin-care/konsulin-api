@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"konsulin-service/internal/app/contracts"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
 
 	"go.uber.org/zap"
 )

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"konsulin-service/internal/app/drivers/sqlite"
-	"konsulin-service/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/app/drivers/sqlite"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
 )
 
 // ResourceSearcher searches raw FHIR resources on the source server: the

@@ -1,6 +1,6 @@
 package ownership
 
-import "konsulin-service/internal/pkg/constvars"
+import "github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
 
 // Rules is the declarative ownership specification: one entry per FHIR
 // resource type. It is the single source of truth for read ownership, write

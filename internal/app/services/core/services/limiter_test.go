@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
 
 	"github.com/stretchr/testify/assert"
 )

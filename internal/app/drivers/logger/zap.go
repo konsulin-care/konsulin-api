@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"konsulin-service/internal/app/config"
+	"github.com/konsulin-care/konsulin-api/internal/app/config"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"

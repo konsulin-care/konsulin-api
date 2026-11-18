@@ -12,8 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"konsulin-service/internal/app/config"
-	"konsulin-service/internal/app/drivers/gateway"
+	"github.com/konsulin-care/konsulin-api/internal/app/config"
+	"github.com/konsulin-care/konsulin-api/internal/app/drivers/gateway"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

@@ -3,9 +3,9 @@ package middlewares
 import (
 	"net/http"
 
-	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/app/drivers/gateway"
-	"konsulin-service/internal/pkg/utils"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
+	"github.com/konsulin-care/konsulin-api/internal/app/drivers/gateway"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/utils"
 
 	"go.uber.org/zap"
 )

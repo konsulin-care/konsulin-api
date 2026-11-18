@@ -11,8 +11,8 @@ import (
 	"net/url"
 	"strings"
 
-	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/pkg/utils"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/utils"
 
 	"github.com/konsulin-care/gateway-sdk-go/auth"
 	"github.com/konsulin-care/gateway-sdk-go/client"

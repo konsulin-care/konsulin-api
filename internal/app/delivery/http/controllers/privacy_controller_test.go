@@ -9,11 +9,11 @@ import (
 	"runtime"
 	"testing"
 
-	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/app/delivery/http/middlewares"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/fhir_dto"
-	"konsulin-service/internal/pkg/utils"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
+	"github.com/konsulin-care/konsulin-api/internal/app/delivery/http/middlewares"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/fhir_dto"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/utils"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/stretchr/testify/assert"

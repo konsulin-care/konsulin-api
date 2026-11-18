@@ -3,7 +3,7 @@ package ownership
 import (
 	"testing"
 
-	"konsulin-service/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
 
 	"github.com/stretchr/testify/assert"
 )

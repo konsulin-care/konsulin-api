@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"konsulin-service/internal/app/services/core/federation"
+	"github.com/konsulin-care/konsulin-api/internal/app/services/core/federation"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

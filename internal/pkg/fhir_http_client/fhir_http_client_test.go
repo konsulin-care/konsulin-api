@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"konsulin-service/internal/pkg/fhir_dto"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/fhir_dto"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

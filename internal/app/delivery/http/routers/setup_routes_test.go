@@ -5,8 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"konsulin-service/internal/app/config"
-	"konsulin-service/internal/app/delivery/http/middlewares"
+	"github.com/konsulin-care/konsulin-api/internal/app/config"
+	"github.com/konsulin-care/konsulin-api/internal/app/delivery/http/middlewares"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"

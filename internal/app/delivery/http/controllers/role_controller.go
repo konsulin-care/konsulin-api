@@ -1,6 +1,6 @@
 package controllers
 
-import "konsulin-service/internal/app/contracts"
+import "github.com/konsulin-care/konsulin-api/internal/app/contracts"
 
 type RoleController struct {
 	RoleUsecase contracts.RoleUsecase

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"konsulin-service/internal/pkg/fhir_dto"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/fhir_dto"
 
 	"go.uber.org/zap"
 )

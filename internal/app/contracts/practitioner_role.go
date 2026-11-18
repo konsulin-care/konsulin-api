@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"strings"
 
-	"konsulin-service/internal/pkg/dto/requests"
-	"konsulin-service/internal/pkg/fhir_dto"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/dto/requests"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/fhir_dto"
 )
 
 type PractitionerRoleFhirClient interface {

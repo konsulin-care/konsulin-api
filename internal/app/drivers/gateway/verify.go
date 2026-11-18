@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"konsulin-service/internal/pkg/utils"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/utils"
 
 	"github.com/konsulin-care/gateway-sdk-go/verify"
 	"github.com/konsulin-care/gateway-sdk-go/wire"

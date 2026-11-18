@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/pkg/exceptions"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/exceptions"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

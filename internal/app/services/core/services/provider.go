@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"konsulin-service/internal/app/config"
+	"github.com/konsulin-care/konsulin-api/internal/app/config"
 )
 
 // ErrProviderNotFound reports that an alias cannot be resolved to a party id:

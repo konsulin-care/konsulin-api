@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"konsulin-service/internal/app/contracts"
-	svc "konsulin-service/internal/app/services/core/services"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/dto/requests"
-	"konsulin-service/internal/pkg/exceptions"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
+	svc "github.com/konsulin-care/konsulin-api/internal/app/services/core/services"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/dto/requests"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/exceptions"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

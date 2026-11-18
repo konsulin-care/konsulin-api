@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/utils"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/utils"
 
 	"go.uber.org/zap"
 )

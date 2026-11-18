@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"konsulin-service/internal/app/services/core/federation"
+	"github.com/konsulin-care/konsulin-api/internal/app/services/core/federation"
 
 	"github.com/konsulin-care/gateway-sdk-go/envelope"
 )

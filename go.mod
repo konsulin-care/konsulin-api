@@ -1,4 +1,4 @@
-module konsulin-service
+module github.com/konsulin-care/konsulin-api
 
 go 1.27.4
 

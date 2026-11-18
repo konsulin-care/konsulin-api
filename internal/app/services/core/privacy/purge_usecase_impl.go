@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/app/services/fhir_spark/bundle"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
+	"github.com/konsulin-care/konsulin-api/internal/app/services/fhir_spark/bundle"
 
 	"go.uber.org/zap"
 )

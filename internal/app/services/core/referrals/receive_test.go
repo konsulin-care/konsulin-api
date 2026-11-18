@@ -13,9 +13,9 @@ import (
 	"sync"
 	"testing"
 
-	"konsulin-service/internal/pkg/constvars"
-	"konsulin-service/internal/pkg/fhir_dto"
-	"konsulin-service/internal/pkg/fhir_http_client"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/fhir_dto"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/fhir_http_client"
 
 	"github.com/konsulin-care/gateway-sdk-go/envelope"
 	"github.com/stretchr/testify/assert"

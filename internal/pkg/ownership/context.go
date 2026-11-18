@@ -1,6 +1,6 @@
 package ownership
 
-import "konsulin-service/internal/pkg/constvars"
+import "github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
 
 // OwnershipContext describes the FHIR identities (Patient, Practitioner,
 // PractitionerRole, Person) a caller owns for the current request, plus the

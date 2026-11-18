@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"konsulin-service/internal/pkg/fhir_dto"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/fhir_dto"
 )
 
 // invoiceSearchResponse mirrors the anonymous response struct decoded in

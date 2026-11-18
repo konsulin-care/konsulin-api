@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
 )
 
 // LimiterOutput reports one rate-limit decision for a service invocation.

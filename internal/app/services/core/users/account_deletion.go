@@ -3,8 +3,8 @@ package users
 import (
 	"context"
 
-	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/pkg/constvars"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
 
 	"github.com/supertokens/supertokens-golang/supertokens"
 	"go.uber.org/zap"

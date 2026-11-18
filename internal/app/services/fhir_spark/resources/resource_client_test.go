@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	"konsulin-service/internal/pkg/exceptions"
+	"github.com/konsulin-care/konsulin-api/internal/pkg/exceptions"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

@@ -1,9 +1,9 @@
 package routers
 
 import (
-	"konsulin-service/internal/app/contracts"
-	"konsulin-service/internal/app/delivery/http/controllers"
-	"konsulin-service/internal/app/delivery/http/middlewares"
+	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
+	"github.com/konsulin-care/konsulin-api/internal/app/delivery/http/controllers"
+	"github.com/konsulin-care/konsulin-api/internal/app/delivery/http/middlewares"
 
 	"github.com/go-chi/chi/v5"
 )
