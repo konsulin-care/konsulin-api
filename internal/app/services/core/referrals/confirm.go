@@ -5,16 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"strings"
 
 	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
-	"github.com/konsulin-care/konsulin-api/internal/app/services/core/federation"
 	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
 	"github.com/konsulin-care/konsulin-api/internal/pkg/fhir_dto"
 	"github.com/konsulin-care/konsulin-api/internal/pkg/fhir_http_client"
 
-	"github.com/konsulin-care/gateway-sdk-go/identity"
 	"go.uber.org/zap"
 )
 
@@ -139,8 +136,6 @@ type confirmedServiceRequest struct {
 // error — an unconfigured confirmer, a missing/not-yet-requested Task, a
 // patient outside the candidate list, a resolution or link failure, or a
 // FHIR write error. Never panics.
-//
-//nolint:gocyclo // TODO: reduce complexity below 15 (follow-up)
 func (c *Confirmer) Confirm(ctx context.Context, taskID, patientID string) (string, error) {
 	if c == nil || c.identities == nil || c.fhir == nil || c.fhirBaseURL == "" {
 		return "", errors.New("referrals: confirmer not configured")
@@ -150,31 +145,13 @@ func (c *Confirmer) Confirm(ctx context.Context, taskID, patientID string) (stri
 	if taskID == "" || patientID == "" {
 		return "", errors.New("referrals: missing task or patient")
 	}
-	raw, err := c.readTask(ctx, taskID)
+	raw, task, err := c.loadConfirmableTask(ctx, taskID, patientID)
 	if err != nil {
 		return "", err
 	}
-	var task confirmTask
-	if err := json.Unmarshal(raw, &task); err != nil {
-		return "", fmt.Errorf("referrals: decode task: %w", err)
-	}
-	if task.Status != taskStatusRequested {
-		return "", errors.New("referrals: task is not awaiting confirmation")
-	}
-	if !isListedCandidate(task.Input, patientID) {
-		return "", errors.New("referrals: patient is not a listed candidate")
-	}
-	globalKey, err := c.resolveGlobalKey(ctx, patientID)
+	patientRef, err := c.linkPatient(ctx, patientID)
 	if err != nil {
 		return "", err
-	}
-	patientRef := constvars.FHIRRefPrefixPatient + patientID
-	linked, err := c.identities.Link(ctx, globalKey, patientRef)
-	if err != nil {
-		return "", fmt.Errorf("referrals: link identity: %w", err)
-	}
-	if !linked {
-		return "", errors.New("referrals: gateway declined the identity link")
 	}
 	srID, err := c.createServiceRequest(ctx, &task, patientRef)
 	if err != nil {
@@ -191,6 +168,61 @@ func (c *Confirmer) Confirm(ctx context.Context, taskID, patientID string) (stri
 		return "", err
 	}
 	return srID, nil
+}
+
+// loadConfirmableTask reads one incoming Task, decodes it and enforces
+// the human-confirmation preconditions: the Task must still be
+// "requested" and the confirmed patient must appear among its candidates.
+//
+// Parameters:
+//   - ctx bounds the FHIR read.
+//   - taskID is the incoming Task to read.
+//   - patientID is the confirmed candidate Patient id.
+//
+// Returns the raw Task JSON, the decoded Task and nil, or nil, an empty
+// Task and the error. Never panics.
+func (c *Confirmer) loadConfirmableTask(ctx context.Context, taskID, patientID string) ([]byte, confirmTask, error) {
+	raw, err := c.readTask(ctx, taskID)
+	if err != nil {
+		return nil, confirmTask{}, err
+	}
+	var task confirmTask
+	if err := json.Unmarshal(raw, &task); err != nil {
+		return nil, confirmTask{}, fmt.Errorf("referrals: decode task: %w", err)
+	}
+	if task.Status != taskStatusRequested {
+		return nil, confirmTask{}, errors.New("referrals: task is not awaiting confirmation")
+	}
+	if !isListedCandidate(task.Input, patientID) {
+		return nil, confirmTask{}, errors.New("referrals: patient is not a listed candidate")
+	}
+	return raw, task, nil
+}
+
+// linkPatient resolves the confirmed patient's global key and links that
+// identity to the local patient at the gateway, failing closed when the
+// gateway declines the link.
+//
+// Parameters:
+//   - ctx bounds the Patient read, resolve and link.
+//   - patientID is the confirmed candidate Patient id.
+//
+// Returns the local patient reference and nil, or "" and the error.
+// Never panics.
+func (c *Confirmer) linkPatient(ctx context.Context, patientID string) (string, error) {
+	globalKey, err := c.resolveGlobalKey(ctx, patientID)
+	if err != nil {
+		return "", err
+	}
+	patientRef := constvars.FHIRRefPrefixPatient + patientID
+	linked, err := c.identities.Link(ctx, globalKey, patientRef)
+	if err != nil {
+		return "", fmt.Errorf("referrals: link identity: %w", err)
+	}
+	if !linked {
+		return "", errors.New("referrals: gateway declined the identity link")
+	}
+	return patientRef, nil
 }
 
 // Reject marks one incoming referral Task as rejected: the Task is read,
@@ -218,192 +250,4 @@ func (c *Confirmer) Reject(ctx context.Context, taskID string) error {
 	return c.writeTask(ctx, taskID, raw, func(doc map[string]any) {
 		doc["status"] = taskStatusRejected
 	})
-}
-
-// readTask fetches the raw local Task JSON. Returns the bytes and nil, or
-// the error naming the read. Never panics.
-func (c *Confirmer) readTask(ctx context.Context, taskID string) ([]byte, error) {
-	target := c.fhirBaseURL + "/" + resourceTask + "/" + taskID
-	raw, err := c.fhir.Do(ctx, http.MethodGet, target, nil)
-	if err != nil {
-		return nil, fmt.Errorf("referrals: read task: %w", err)
-	}
-	return raw, nil
-}
-
-// writeTask round-trips the raw Task through a generic document so every
-// intake field survives the update, applies mutate and PUTs the result
-// back (FHIR PUT replaces the resource).
-//
-// Parameters:
-//   - ctx bounds the write, taskID the Task id, raw the previously read
-//     Task JSON, mutate applies the status/identity changes in place.
-//
-// Returns nil once the FHIR server accepts the write, or the error.
-// Never panics.
-func (c *Confirmer) writeTask(ctx context.Context, taskID string, raw []byte,
-	mutate func(map[string]any),
-) error {
-	var doc map[string]any
-	if err := json.Unmarshal(raw, &doc); err != nil {
-		return fmt.Errorf("referrals: decode task for update: %w", err)
-	}
-	mutate(doc)
-	_, err := fhir_http_client.WriteResource(fhir_http_client.WriteResourceInput[map[string]any]{
-		Ctx:          ctx,
-		Log:          c.log,
-		Client:       c.fhir,
-		Method:       http.MethodPut,
-		BaseUrl:      c.fhirBaseURL + "/" + resourceTask,
-		ID:           taskID,
-		Resource:     &doc,
-		ResourceName: resourceTask,
-		IDLogKey:     "task_id",
-	})
-	if err != nil {
-		return fmt.Errorf("referrals: write task: %w", err)
-	}
-	return nil
-}
-
-// isListedCandidate reports whether the confirmed patient appears among
-// the Task's soft-match candidate entries. Never panics.
-func isListedCandidate(inputs []incomingTaskInput, patientID string) bool {
-	want := constvars.FHIRRefPrefixPatient + patientID
-	for _, in := range inputs {
-		if in.ValueReference.Reference == want {
-			return true
-		}
-	}
-	return false
-}
-
-// resolveGlobalKey reads the confirmed local Patient, hashes its contact
-// values with the federation pepper (the gateway "N/A" marker for an
-// absent field) and resolves them to the confirmed candidate's global
-// key: a candidate row other than the local patient's own is preferred,
-// any candidate carrying a global key is accepted, and no candidate
-// fails closed before any link.
-//
-// Parameters:
-//   - ctx bounds the Patient read and the gateway resolve.
-//   - patientID is the confirmed candidate Patient id.
-//
-// Returns the global key and nil, or "" and the error. Never panics.
-func (c *Confirmer) resolveGlobalKey(ctx context.Context, patientID string) (string, error) {
-	patient, err := fhir_http_client.GetResource[fhir_dto.Patient](ctx, c.log, c.fhir,
-		c.fhirBaseURL+"/"+constvars.ResourcePatient, patientID,
-		constvars.ResourcePatient, "patient_id")
-	if err != nil {
-		return "", fmt.Errorf("referrals: read patient: %w", err)
-	}
-	pepper, err := federation.LoadPepper()
-	if err != nil {
-		return "", fmt.Errorf("referrals: load pepper: %w", err)
-	}
-	email, phone := referralContact(patient.Telecom)
-	if email == "" && phone == "" {
-		return "", errors.New("referrals: confirmed patient carries no contact to resolve")
-	}
-	emailHash, phoneHash, err := hashContact(email, phone, pepper)
-	if err != nil {
-		return "", err
-	}
-	candidates, err := c.identities.Resolve(ctx, emailHash, phoneHash)
-	if err != nil {
-		return "", fmt.Errorf("referrals: resolve identity: %w", err)
-	}
-	return pickGlobalKey(candidates, constvars.FHIRRefPrefixPatient+patientID)
-}
-
-// hashContact hashes the confirmed patient's contact values with the
-// federation pepper, using the gateway "N/A" marker for an absent
-// field.
-//
-// Parameters:
-//   - email is the patient's email address, empty when absent.
-//   - phone is the patient's phone number, empty when absent.
-//   - pepper is the federation pepper to hash with.
-//
-// Returns the email hash, the phone hash and nil, or "", "" and the
-// error. Never panics.
-func hashContact(email, phone string, pepper []byte) (emailHash, phoneHash string, err error) {
-	emailHash, phoneHash = identity.NAMarker, identity.NAMarker
-	if email != "" {
-		emailHash, err = identity.HashEmail(email, pepper)
-		if err != nil {
-			return "", "", fmt.Errorf("referrals: hash email: %w", err)
-		}
-	}
-	if phone != "" {
-		phoneHash, err = identity.HashPhone(phone, pepper)
-		if err != nil {
-			return "", "", fmt.Errorf("referrals: hash phone: %w", err)
-		}
-	}
-	return emailHash, phoneHash, nil
-}
-
-// pickGlobalKey chooses the confirmed candidate's global key from the
-// resolved identity rows: a row other than the local patient's own is
-// preferred, any row carrying a global key is accepted, and no
-// candidate fails closed before any link.
-//
-// Parameters:
-//   - candidates are the identity rows resolved at the gateway.
-//   - ownRef is the local patient reference to prefer skipping.
-//
-// Returns the global key and nil, or "" and the error. Never panics.
-func pickGlobalKey(candidates []contracts.IdentityCandidate, ownRef string) (string, error) {
-	for _, cand := range candidates {
-		if cand.LocalResourceID != ownRef && strings.TrimSpace(cand.GlobalKey) != "" {
-			return cand.GlobalKey, nil
-		}
-	}
-	for _, cand := range candidates {
-		if strings.TrimSpace(cand.GlobalKey) != "" {
-			return cand.GlobalKey, nil
-		}
-	}
-	return "", errors.New("referrals: gateway reports no identity candidate")
-}
-
-// createServiceRequest materializes the local referral order for the
-// confirmed patient: active order, subject = the confirmed patient, the
-// incoming requester kept and the referral purpose as the note.
-//
-// Parameters:
-//   - ctx bounds the FHIR create, task the read incoming Task,
-//     patientRef the confirmed patient reference.
-//
-// Returns the created ServiceRequest id and nil, or "" and the write
-// error. Never panics.
-func (c *Confirmer) createServiceRequest(ctx context.Context, task *confirmTask,
-	patientRef string,
-) (string, error) {
-	sr := &confirmedServiceRequest{
-		ResourceType: constvars.ResourceServiceRequest,
-		Status:       "active",
-		Intent:       taskIntent,
-		Subject:      fhir_dto.Reference{Reference: patientRef},
-	}
-	if task.Requester != nil {
-		sr.Requester = task.Requester
-	}
-	if purpose := strings.TrimSpace(task.Description); purpose != "" {
-		sr.Note = []fhir_dto.Annotation{{Text: purpose}}
-	}
-	created, err := fhir_http_client.CreateResource(ctx, c.log, c.fhir,
-		c.fhirBaseURL+"/"+constvars.ResourceServiceRequest, sr,
-		constvars.ResourceServiceRequest, "service_request_id")
-	if err != nil || created == nil {
-		if err == nil {
-			err = errors.New("empty ServiceRequest response")
-		}
-		return "", fmt.Errorf("referrals: create service request: %w", err)
-	}
-	if created.ID == "" {
-		return "", errors.New("referrals: created ServiceRequest carries no id")
-	}
-	return created.ID, nil
 }

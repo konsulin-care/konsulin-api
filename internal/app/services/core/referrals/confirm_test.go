@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
@@ -46,6 +47,8 @@ type fakeLinker struct {
 	resolveCalls int
 	// links records every Link invocation in order.
 	links []linkCall
+	// allowLink is the answer recorded for every Link call.
+	allowLink bool
 }
 
 // linkCall is one recorded Link invocation.
@@ -68,7 +71,7 @@ func (f *fakeLinker) Link(_ context.Context, globalKey, localResourceID string) 
 		GlobalKey:       globalKey,
 		LocalResourceID: localResourceID,
 	})
-	return true, nil
+	return f.allowLink, nil
 }
 
 // confirmFixture wires a Confirmer over the fake identity plane and an
@@ -79,6 +82,8 @@ type confirmFixture struct {
 	confirmer *Confirmer
 	// identities is the fake identity plane.
 	identities *fakeLinker
+	// taskRaw is the intake Task served at GET /Task/task-in-1.
+	taskRaw string
 	// srBody is the raw body received at POST /ServiceRequest.
 	srBody []byte
 	// taskBody is the raw body received at PUT /Task/task-in-1.
@@ -93,7 +98,8 @@ type confirmFixture struct {
 func newConfirmFixture(t *testing.T) *confirmFixture {
 	t.Helper()
 	fx := &confirmFixture{
-		identities: &fakeLinker{resolveCands: []contracts.IdentityCandidate{{
+		taskRaw: confirmTaskRaw,
+		identities: &fakeLinker{allowLink: true, resolveCands: []contracts.IdentityCandidate{{
 			GlobalKey:       confirmGlobalKey,
 			PartyID:         "party-sender",
 			LocalResourceID: "Patient/ext-9",
@@ -112,7 +118,7 @@ func newConfirmFixture(t *testing.T) *confirmFixture {
 		w.Header().Set("Content-Type", "application/fhir+json")
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/"+resourceTask+"/"+confirmTaskID:
-			_, _ = w.Write([]byte(confirmTaskRaw))
+			_, _ = w.Write([]byte(fx.taskRaw))
 		case r.Method == http.MethodGet && r.URL.Path == "/"+constvars.ResourcePatient+"/"+confirmPatientID:
 			_, _ = w.Write([]byte(confirmPatientRaw))
 		case r.Method == http.MethodPost && r.URL.Path == "/"+constvars.ResourceServiceRequest:
@@ -204,6 +210,65 @@ func TestConfirm_LinksIdentityCreatesServiceRequestAndAcceptsTask(t *testing.T) 
 // rejecting marks the Task rejected without any link call.
 // Parameters: t is the test harness.
 // Returns nothing; fails on any deviation.
+// TestConfirm_RejectsTaskNotAwaitingConfirmation covers expected output
+// 1: a Task whose status is not requested is refused before any identity
+// or local write.
+// Parameters: t is the test harness.
+// Returns nothing; fails on any deviation.
+func TestConfirm_RejectsTaskNotAwaitingConfirmation(t *testing.T) {
+	fx := newConfirmFixture(t)
+	fx.taskRaw = strings.Replace(confirmTaskRaw,
+		`"status":"requested"`, `"status":"accepted"`, 1)
+
+	srID, err := fx.confirmer.Confirm(context.Background(), confirmTaskID, confirmPatientID)
+
+	require.Error(t, err, "a Task not awaiting confirmation must be refused")
+	assert.Empty(t, srID, "no ServiceRequest id may be returned")
+	assert.Zero(t, fx.identities.resolveCalls, "the identity plane must not be touched")
+	assert.Empty(t, fx.identities.links, "no identity link may be attempted")
+	assert.Empty(t, fx.srBody, "no ServiceRequest may be created")
+	assert.Empty(t, fx.taskBody, "the Task must not be written")
+}
+
+// TestConfirm_RejectsPatientOutsideCandidates covers expected output 1:
+// a confirmed patient missing from the Task candidates is refused before
+// any identity or local write.
+// Parameters: t is the test harness.
+// Returns nothing; fails on any deviation.
+func TestConfirm_RejectsPatientOutsideCandidates(t *testing.T) {
+	fx := newConfirmFixture(t)
+	fx.taskRaw = strings.Replace(confirmTaskRaw,
+		`"valueReference":{"reference":"Patient/pat-email"}`,
+		`"valueReference":{"reference":"Patient/pat-other"}`, 1)
+
+	srID, err := fx.confirmer.Confirm(context.Background(), confirmTaskID, confirmPatientID)
+
+	require.Error(t, err, "a patient outside the candidate list must be refused")
+	assert.Empty(t, srID, "no ServiceRequest id may be returned")
+	assert.Zero(t, fx.identities.resolveCalls, "the identity plane must not be touched")
+	assert.Empty(t, fx.identities.links, "no identity link may be attempted")
+	assert.Empty(t, fx.srBody, "no ServiceRequest may be created")
+	assert.Empty(t, fx.taskBody, "the Task must not be written")
+}
+
+// TestConfirm_DeclinedIdentityLinkCreatesNoServiceRequest covers expected
+// output 2: when the gateway declines the identity link the confirmation
+// fails closed before any local write.
+// Parameters: t is the test harness.
+// Returns nothing; fails on any deviation.
+func TestConfirm_DeclinedIdentityLinkCreatesNoServiceRequest(t *testing.T) {
+	fx := newConfirmFixture(t)
+	fx.identities.allowLink = false
+
+	srID, err := fx.confirmer.Confirm(context.Background(), confirmTaskID, confirmPatientID)
+
+	require.Error(t, err, "a declined identity link must fail the confirmation")
+	assert.Empty(t, srID, "no ServiceRequest id may be returned")
+	require.Len(t, fx.identities.links, 1, "the link must be attempted exactly once")
+	assert.Empty(t, fx.srBody, "no ServiceRequest may be created")
+	assert.Empty(t, fx.taskBody, "the Task must not be written")
+}
+
 func TestReject_MarksTaskRejectedWithoutLink(t *testing.T) {
 	fx := newConfirmFixture(t)
 
