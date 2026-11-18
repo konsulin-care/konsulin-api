@@ -27,6 +27,28 @@ Thanks for helping improve this project! This document explains how we work, how
 
 > **Note:** Always start work from the latest `develop`. Rebase/merge `develop` into your branch when asked.
 
+### Git hooks (required)
+
+Hooks are managed by [lefthook](https://lefthook.dev) and installed from `mise.toml`.
+Install them once per clone, then leave them on:
+
+```bash
+mise install              # installs lefthook and runs `lefthook install`
+mise run hooks:install    # or install the hooks explicitly
+lefthook run pre-commit   # sanity check: runs the commit gates on your changes
+```
+
+`pre-commit` runs fast checks (file hygiene, golangci-lint, gofumpt, `go mod tidy`,
+and hadolint/actionlint when relevant); `pre-push` runs the branch-wide lint,
+`go test -race`, the Bruno API journey, and govulncheck. Both are thin wrappers
+over mise tasks (`mise run lint`, `mise run test`, `mise run test:api`,
+`mise run vuln`), so you can run the same checks by hand.
+
+If your git client is a GUI, make sure mise is on its `PATH` (activate mise in
+your shell profile, or use `mise activate --shims`); otherwise the hooks fail
+because `lefthook` cannot be found. Do not bypass the hooks with `--no-verify` —
+CI enforces the same gates.
+
 ## 2. Commit message style (recommended)
 
 - Use an imperative, concise subject line (<= 50 characters).

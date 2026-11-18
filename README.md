@@ -38,7 +38,7 @@ The backend aims for a **Clean Architecture** pattern with **API Gateway** desig
 - **Language**: Go (version pinned in `go.mod`, installed by mise via the go.mod idiomatic version file)
 - **HTTP Router**: Chi v5
 - **Architecture**: Clean Architecture with API Gateway pattern
-- **Toolchain**: [mise](https://mise.jdx.dev) for reproducible, version-pinned tooling (Go, golangci-lint, pre-commit)
+- **Toolchain**: [mise](https://mise.jdx.dev) for reproducible, version-pinned tooling (Go, golangci-lint, lefthook)
 
 ### Data Storage
 - **Primary Data**: Blaze FHIR Server (FHIR R4 compliant)
@@ -66,23 +66,49 @@ cd be-konsulin
 ```
 
 ### 2. Install Mise-Managed Tools
-All tool versions are pinned in `.mise.toml` for reproducible environments. Run:
+All tool versions are pinned in `mise.toml` for reproducible environments. Run:
 ```bash
 mise install
 ```
-This installs Go, golangci-lint, and pre-commit at their pinned versions.
+This installs Go, golangci-lint, lefthook, hadolint, actionlint and yq at their pinned versions.
 
-### 3. Install Pre-Commit Hooks
-Quality gates run automatically before every commit:
+### 3. Git Hooks (lefthook)
+Quality gates run automatically before every commit and push. `mise install` also
+installs the hooks through mise's `postinstall` hook, so normally nothing else is
+needed. To (re)install them by hand:
 ```bash
-pre-commit install
+mise run hooks:install   # equivalent to `lefthook install`
 ```
-Hooks enforce:
-- **golangci-lint**: gocognit (complexity <15), goconst (duplicate literals), dupl (code duplication), govet, staticcheck, errcheck
+`mise run setup` installs the hooks too.
+
+**pre-commit** (fast, ~10s, no tests):
+- **file hygiene**: trailing whitespace, end-of-file newline, large files, YAML parsing — fixes are re-staged automatically
+- **golangci-lint**: gocognit and gocyclo (complexity <= 15), goconst (duplicate literals), dupl (code duplication), govet, staticcheck, errcheck — new code vs `HEAD` only
 - **gofumpt**: strict Go formatting
 - **go mod tidy**: prevents dependency drift
-- **go test**: runs unit tests on changed modules
-- **pre-commit-hooks**: file size, YAML, EOF, whitespace checks
+- **hadolint**: Dockerfile lint (only when a Dockerfile is staged)
+- **actionlint**: workflow lint (only when a workflow is staged)
+
+**pre-push** (comprehensive, in order):
+- golangci-lint and gofumpt over the whole branch diff vs `origin/develop`
+- `go test -race ./...`
+- Bruno API journey (requires the stack to be running)
+- govulncheck
+
+Every gate is a mise task, so you can run them without committing:
+```bash
+mise run lint          # all linters over the whole repo
+mise run lint:go --base origin/develop
+mise run test
+mise run test:api
+mise run vuln
+```
+
+> **GUI git clients:** hooks shell out to `mise`, so the client needs mise on
+> its `PATH` (mise activated in the shell profile, or `mise activate --shims`).
+> Without it the hooks fail with "lefthook: command not found". Bypassing the
+> hooks with `git commit --no-verify` / `git push --no-verify` is not a way out —
+> CI enforces the same gates.
 
 ### 4. Install Go Dependencies
 ```bash

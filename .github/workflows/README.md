@@ -125,7 +125,7 @@ Security-relevant tool versions are pinned, not floating:
 | `mise-action` | commit SHA `c37c932…` `# v2` | Renovate (github-actions) |
 | `ssh-action` | commit SHA `0ff4204d…` `# v1.2.5` | Renovate (github-actions) |
 | Trivy binary version | `v0.74.0` (action input) | Renovate (regex manager via the `# renovate:` annotation above each `version:` input) |
-| `actionlint` (pre-commit) | `v1.7.12` | Renovate (pre-commit manager) |
+| `actionlint` (mise, lefthook hook) | `v1.7.12` | Renovate (mise manager) |
 | ZAP image | `ghcr.io/zaproxy/zaproxy:v2.17.0` | Renovate (regex manager) |
 
 **SHA + tag comment pattern.** `trivy-action` is pinned to a full commit SHA
@@ -141,8 +141,8 @@ follows it (`idiomatic_version_file_enable_tools` in `mise.toml`); every other
 tool version lives in `mise.toml`. Workflows install tools from both via
 `.github/actions/setup-tools`, so no Go version is duplicated in any workflow.
 Renovate bumps the `go` directive together with the Docker `golang` images
-(one `go toolchain` group); Docker base images and the pre-commit `hadolint`
-rev are grouped with their `mise.toml` counterparts the same way. Indirect
+(one `go toolchain` group); Docker base images are grouped with their
+`mise.toml` counterparts the same way. Indirect
 `go.mod` deps are not updated (they move with direct deps via `go mod tidy`),
 and `:latest` compose images are out of scope. `gateway-sdk-go` upgrades are
 deliberate, separate PRs — never grouped, never automerge — checked against
@@ -152,7 +152,8 @@ bumped manually.
 
 ## Validation strategy
 
-- `actionlint` (pre-commit hook) validates every workflow on each commit.
+- `actionlint` runs in the lefthook `pre-commit` hook (`mise run lint:actions`)
+  and validates every workflow on each commit.
 - `act` is a manual smoke test for workflow edits — **not** wired into hooks,
   because it cannot fully emulate GitHub and would gate pushes on false
   negatives.
