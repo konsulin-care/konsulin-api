@@ -1,0 +1,23 @@
+{
+  "implement": {
+    "tests": {
+      "scoped": [
+        {
+          "argv": [
+            "go",
+            "test",
+            "{pkgs}"
+          ],
+          "scope": "packages"
+        }
+      ],
+      "full": [
+        [
+          "go",
+          "test",
+          "./..."
+        ]
+      ]
+    }
+  }
+}
