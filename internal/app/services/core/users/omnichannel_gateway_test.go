@@ -61,9 +61,11 @@ func TestCallWebhookSvcKonsulinOmnichannel_GatewaySync(t *testing.T) {
 		reply:   []byte(`[{"chatwoot_id":42,"email":"person@example.com","phoneNumber":"+6281234567890"}]`),
 	}
 	uc := &userUsecase{
-		Log:                      zap.NewNop(),
-		gatewayWebhooks:          fake,
-		gatewayAutomationPartyID: "pty-automation",
+		UserFHIRInitializerDeps: UserFHIRInitializerDeps{
+			Logger:                   zap.NewNop(),
+			GatewayWebhooks:          fake,
+			GatewayAutomationPartyID: "pty-automation",
+		},
 	}
 
 	out, err := uc.callWebhookSvcKonsulinOmnichannel(context.Background(), callWebhookSvcKonsulinOmnichannelInput{
@@ -113,9 +115,11 @@ func TestCallWebhookSvcKonsulinOmnichannel_SkippedWhenGatewayUnavailable(t *test
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			uc := &userUsecase{
-				Log:                      zap.NewNop(),
-				gatewayWebhooks:          tt.client,
-				gatewayAutomationPartyID: tt.party,
+				UserFHIRInitializerDeps: UserFHIRInitializerDeps{
+					Logger:                   zap.NewNop(),
+					GatewayWebhooks:          tt.client,
+					GatewayAutomationPartyID: tt.party,
+				},
 			}
 
 			out, err := uc.callWebhookSvcKonsulinOmnichannel(context.Background(), callWebhookSvcKonsulinOmnichannelInput{

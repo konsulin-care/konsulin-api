@@ -92,9 +92,11 @@ func newIdentitySignupUsecase(t *testing.T, identityClient IdentityClient) (*use
 		ID: "pat-1", ResourceType: "Patient", Active: true,
 	}, nil)
 	uc := &userUsecase{
-		PatientFhirClient: mockPat,
-		Log:               zap.New(obsCore),
-		identityClient:    identityClient,
+		UserFHIRInitializerDeps: UserFHIRInitializerDeps{
+			PatientFhirClient: mockPat,
+			Logger:            zap.New(obsCore),
+			IdentityClient:    identityClient,
+		},
 	}
 	return uc, mockPat, obs
 }
@@ -161,9 +163,11 @@ func TestInitializeNewUserFHIRResources_RegistersHashedIdentities(t *testing.T) 
 			ID: "prac-1", ResourceType: "Practitioner", Active: true,
 		}, nil)
 		uc := &userUsecase{
-			PractitionerFhirClient: mockPrac,
-			Log:                    zap.New(obsCore),
-			identityClient:         fake,
+			UserFHIRInitializerDeps: UserFHIRInitializerDeps{
+				PractitionerFhirClient: mockPrac,
+				Logger:                 zap.New(obsCore),
+				IdentityClient:         fake,
+			},
 		}
 
 		input := &contracts.InitializeNewUserFHIRResourcesInput{

@@ -34,27 +34,27 @@ type IdentityClient interface {
 // phone, output carries the created resource IDs.
 // Returns nothing; never panics, never surfaces an error.
 func (uc *userUsecase) registerNewUserIdentities(ctx context.Context, input *contracts.InitializeNewUserFHIRResourcesInput, output *contracts.InitializeNewUserFHIRResourcesOutput) {
-	if uc.identityClient == nil {
-		uc.Log.Info(logPrefix + "identity registration skipped: no gateway identity client")
+	if uc.IdentityClient == nil {
+		uc.Logger.Info(logPrefix + "identity registration skipped: no gateway identity client")
 		return
 	}
-	if !uc.identityClient.Enabled() {
-		uc.Log.Info(logPrefix + "identity registration skipped: gateway disabled")
+	if !uc.IdentityClient.Enabled() {
+		uc.Logger.Info(logPrefix + "identity registration skipped: gateway disabled")
 		return
 	}
 	pepper, err := federation.LoadPepper()
 	if err != nil {
-		uc.Log.Error(logPrefix+"identity registration failed: pepper load", zap.Error(err))
+		uc.Logger.Error(logPrefix+"identity registration failed: pepper load", zap.Error(err))
 		return
 	}
 	emailHash, err := identity.HashEmail(input.Email, pepper)
 	if err != nil {
-		uc.Log.Error(logPrefix+"identity registration failed: email hash", zap.Error(err))
+		uc.Logger.Error(logPrefix+"identity registration failed: email hash", zap.Error(err))
 		return
 	}
 	phoneHash, err := identity.HashPhone(input.Phone, pepper)
 	if err != nil {
-		uc.Log.Error(logPrefix+"identity registration failed: phone hash", zap.Error(err))
+		uc.Logger.Error(logPrefix+"identity registration failed: phone hash", zap.Error(err))
 		return
 	}
 	if output.PatientID != "" {
@@ -73,16 +73,16 @@ func (uc *userUsecase) registerNewUserIdentities(ctx context.Context, input *con
 // emailHash and phoneHash the peppered hashfmt values.
 // Returns nothing; never panics.
 func (uc *userUsecase) registerIdentity(ctx context.Context, resourceType, localResourceID, emailHash, phoneHash string) {
-	globalKey, err := uc.identityClient.Register(ctx, resourceType, localResourceID, emailHash, phoneHash)
+	globalKey, err := uc.IdentityClient.Register(ctx, resourceType, localResourceID, emailHash, phoneHash)
 	if err != nil {
-		uc.Log.Error(logPrefix+"identity registration failed",
+		uc.Logger.Error(logPrefix+"identity registration failed",
 			zap.String("resource_type", resourceType),
 			zap.String("local_resource_id", localResourceID),
 			zap.Error(err),
 		)
 		return
 	}
-	uc.Log.Info(logPrefix+"identity registered",
+	uc.Logger.Info(logPrefix+"identity registered",
 		zap.String("resource_type", resourceType),
 		zap.String("local_resource_id", localResourceID),
 		zap.String("global_key", globalKey),

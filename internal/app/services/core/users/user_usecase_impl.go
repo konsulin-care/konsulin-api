@@ -38,28 +38,11 @@ type GatewayWebhookClient interface {
 }
 
 type userUsecase struct {
-	PatientFhirClient          contracts.PatientFhirClient
-	PractitionerFhirClient     contracts.PractitionerFhirClient
-	PractitionerRoleFhirClient contracts.PractitionerRoleFhirClient
-	OrganizationFhirClient     contracts.OrganizationFhirClient
-	RedisRepository            contracts.RedisRepository
-	InternalConfig             *config.InternalConfig
-	Log                        *zap.Logger
-	LockerService              contracts.LockerService
+	UserFHIRInitializerDeps
 
-	// gatewayWebhooks routes the profile sync through the gateway (T42A).
-	// nil means no gateway deps: the sync is skipped with a log and no
-	// error (the legacy forwarder/HTTP paths were removed in T42B).
-	gatewayWebhooks GatewayWebhookClient
-	// gatewayAutomationPartyID is APP_AUTOMATION_PARTY_ID: the party serving
-	// the modify-profile listing.
-	gatewayAutomationPartyID string
-
-	// identityClient registers the new user's peppered email/phone hashes
-	// with the gateway identity plane after FHIR initialization (T44). nil
-	// means no gateway deps: the registration is skipped with a log and no
-	// error (standalone mode behaves the same through the disabled adapter).
-	identityClient IdentityClient
+	// Log is retained for backwards compatibility with callers that read the
+	// logger field directly; internal code uses the embedded Logger.
+	Log *zap.Logger
 }
 
 var (
@@ -93,17 +76,8 @@ type UserFHIRInitializerDeps struct {
 func NewUserFHIRInitializer(deps UserFHIRInitializerDeps) contracts.UserFHIRInitializer {
 	onceUserFHIRInitializer.Do(func() {
 		instance := &userUsecase{
-			PatientFhirClient:          deps.PatientFhirClient,
-			PractitionerFhirClient:     deps.PractitionerFhirClient,
-			PractitionerRoleFhirClient: deps.PractitionerRoleFhirClient,
-			OrganizationFhirClient:     deps.OrganizationFhirClient,
-			RedisRepository:            deps.RedisRepository,
-			InternalConfig:             deps.InternalConfig,
-			Log:                        deps.Logger,
-			LockerService:              deps.LockerService,
-			gatewayWebhooks:            deps.GatewayWebhooks,
-			gatewayAutomationPartyID:   deps.GatewayAutomationPartyID,
-			identityClient:             deps.IdentityClient,
+			UserFHIRInitializerDeps: deps,
+			Log:                     deps.Logger,
 		}
 		userUsecaseInstance = instance
 	})
@@ -300,7 +274,7 @@ func (uc *userUsecase) callChatwootWithFallback(ctx context.Context, email, phon
 		Phone:    phone,
 	})
 	if err != nil {
-		uc.Log.Error(logPrefix+"callChatwootWithFallback error calling webhook svc konsulin omnichannel",
+		uc.Logger.Error(logPrefix+"callChatwootWithFallback error calling webhook svc konsulin omnichannel",
 			zap.Error(err),
 		)
 		return callWebhookSvcKonsulinOmnichannelOutput{}, err
@@ -574,8 +548,8 @@ func (uc *userUsecase) callWebhookSvcKonsulinOmnichannel(ctx context.Context, in
 	// removed; the profile sync runs only through the gateway. Without
 	// gateway deps the sync is skipped with a log and no error, matching
 	// the disabled-gateway behavior.
-	if uc.gatewayWebhooks == nil {
-		uc.Log.Info(logPrefix + "callWebhookSvcKonsulinOmnichannel skipped: no gateway client")
+	if uc.GatewayWebhooks == nil {
+		uc.Logger.Info(logPrefix + "callWebhookSvcKonsulinOmnichannel skipped: no gateway client")
 		return callWebhookSvcKonsulinOmnichannelOutput{}, nil
 	}
 	return uc.callGatewayOmnichannel(ctx, input)
@@ -619,13 +593,13 @@ func marshalOmnichannelBody(input callWebhookSvcKonsulinOmnichannelInput) ([]byt
 // Returns the parsed chatwoot output, or the zero output with nil when the
 // sync is skipped. Never panics.
 func (uc *userUsecase) callGatewayOmnichannel(ctx context.Context, input callWebhookSvcKonsulinOmnichannelInput) (callWebhookSvcKonsulinOmnichannelOutput, error) {
-	if !uc.gatewayWebhooks.Enabled() {
-		uc.Log.Info(logPrefix + "callWebhookSvcKonsulinOmnichannel skipped: gateway disabled")
+	if !uc.GatewayWebhooks.Enabled() {
+		uc.Logger.Info(logPrefix + "callWebhookSvcKonsulinOmnichannel skipped: gateway disabled")
 		return callWebhookSvcKonsulinOmnichannelOutput{}, nil
 	}
-	automation := strings.TrimSpace(uc.gatewayAutomationPartyID)
+	automation := strings.TrimSpace(uc.GatewayAutomationPartyID)
 	if automation == "" {
-		uc.Log.Info(logPrefix + "callWebhookSvcKonsulinOmnichannel skipped: APP_AUTOMATION_PARTY_ID is empty")
+		uc.Logger.Info(logPrefix + "callWebhookSvcKonsulinOmnichannel skipped: APP_AUTOMATION_PARTY_ID is empty")
 		return callWebhookSvcKonsulinOmnichannelOutput{}, nil
 	}
 
@@ -638,7 +612,7 @@ func (uc *userUsecase) callGatewayOmnichannel(ctx context.Context, input callWeb
 		return callWebhookSvcKonsulinOmnichannelOutput{}, err
 	}
 
-	reply, err := uc.gatewayWebhooks.Sync(ctx, automation, gatewayOmnichannelListing, userRef, bodyBytes)
+	reply, err := uc.GatewayWebhooks.Sync(ctx, automation, gatewayOmnichannelListing, userRef, bodyBytes)
 	if err != nil {
 		return callWebhookSvcKonsulinOmnichannelOutput{}, err
 	}

@@ -159,10 +159,12 @@ func (m *MockPractitionerRoleFhirClient) Search(ctx context.Context, params cont
 
 func newTestUsecase(pracClient contracts.PractitionerFhirClient, patClient contracts.PatientFhirClient, prClient contracts.PractitionerRoleFhirClient) *userUsecase {
 	return &userUsecase{
-		PractitionerFhirClient:     pracClient,
-		PatientFhirClient:          patClient,
-		PractitionerRoleFhirClient: prClient,
-		Log:                        zap.NewNop(),
+		UserFHIRInitializerDeps: UserFHIRInitializerDeps{
+			PractitionerFhirClient:     pracClient,
+			PatientFhirClient:          patClient,
+			PractitionerRoleFhirClient: prClient,
+			Logger:                     zap.NewNop(),
+		},
 	}
 }
 
