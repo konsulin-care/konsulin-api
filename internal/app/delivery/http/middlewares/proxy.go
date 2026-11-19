@@ -18,7 +18,6 @@ import (
 	"github.com/konsulin-care/konsulin-api/internal/pkg/ownership"
 	"github.com/konsulin-care/konsulin-api/internal/pkg/utils"
 
-	"github.com/casbin/casbin/v2"
 	"go.uber.org/zap"
 
 	"github.com/andybalholm/brotli"
@@ -562,7 +561,7 @@ func (m *Middlewares) filterResponseResourceAgainstRBAC(body []byte, roles []str
 }
 
 // filterBundleEntriesByRBAC filters Bundle entries by RBAC permission for each resourceType.
-func filterBundleEntriesByRBAC(entries []BundleEntry, roles []string, enf *casbin.Enforcer) ([]BundleEntry, int) {
+func filterBundleEntriesByRBAC(entries []BundleEntry, roles []string, enf policyEnforcer) ([]BundleEntry, int) {
 	removed := 0
 	filtered := make([]BundleEntry, 0, len(entries))
 	for _, e := range entries {
@@ -581,7 +580,7 @@ func filterBundleEntriesByRBAC(entries []BundleEntry, roles []string, enf *casbi
 }
 
 // rbacAllowedAnyRole checks if any role can access a given FHIR resource type.
-func rbacAllowedAnyRole(enf *casbin.Enforcer, roles []string, resourceType string) bool {
+func rbacAllowedAnyRole(enf policyEnforcer, roles []string, resourceType string) bool {
 	for _, role := range roles {
 		if allowed(enf, role, http.MethodGet, "/fhir/"+resourceType) {
 			return true

@@ -17,10 +17,15 @@ import (
 	"github.com/konsulin-care/konsulin-api/internal/pkg/ownership"
 	"github.com/konsulin-care/konsulin-api/internal/pkg/utils"
 
-	"github.com/casbin/casbin/v2"
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
+
+// policyEnforcer is the transitional subset of the Casbin enforcer the RBAC
+// helpers need; removed once every holder is *casbin.SyncedEnforcer.
+type policyEnforcer interface {
+	Enforce(rvals ...interface{}) (bool, error)
+}
 
 // handleAuthPostBody reads and validates the POST request body, restoring it for downstream use.
 func handleAuthPostBody(ctxIface context.Context, r *http.Request, fhirRole, fhirID string) error {
@@ -452,7 +457,7 @@ func (m *Middlewares) rbacClients() rbacClients {
 	}
 }
 
-func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []string, uid string, fhirIDsByRole map[string]string, clients rbacClients) error {
+func scanBundle(ctx context.Context, e policyEnforcer, raw []byte, roles []string, uid string, fhirIDsByRole map[string]string, clients rbacClients) error {
 	if gjson.GetBytes(raw, "resourceType").String() != constvars.ResourceBundle {
 		return fmt.Errorf("invalid bundle")
 	}
@@ -476,7 +481,7 @@ func scanBundle(ctx context.Context, e *casbin.Enforcer, raw []byte, roles []str
 	return nil
 }
 
-func checkSingle(ctx context.Context, e *casbin.Enforcer, req rbacRequest, roles []string, clients rbacClients) error {
+func checkSingle(ctx context.Context, e policyEnforcer, req rbacRequest, roles []string, clients rbacClients) error {
 	resourceType := utils.ExtractResourceTypeFromPath(req.normalizedPath)
 
 	// C3: entry-level QuestionnaireResponse / Communication GET reads must carry
@@ -554,7 +559,7 @@ func isReferralCommunicationPut(method, resourceType, normalizedPath string) boo
 // ownership check on the target resource. Researcher and Clinic Admin resolve
 // as Practitioner identities; code-conditioned ownership rules gate their
 // reads/writes. Returns an error when no role authorizes the request.
-func enforceRBAC(ctx context.Context, e *casbin.Enforcer, req rbacRequest, roles []string, clients rbacClients) error {
+func enforceRBAC(ctx context.Context, e policyEnforcer, req rbacRequest, roles []string, clients rbacClients) error {
 	for _, role := range roles {
 		if allowed(e, role, req.method, req.normalizedPath) {
 			if isFHIRIdentityRole(role) {
@@ -581,7 +586,7 @@ func isFHIRIdentityRole(role string) bool {
 	return false
 }
 
-func allowed(e *casbin.Enforcer, role, method, path string) bool {
+func allowed(e policyEnforcer, role, method, path string) bool {
 	ok, err := e.Enforce(role, method, path)
 	if err != nil {
 		return false

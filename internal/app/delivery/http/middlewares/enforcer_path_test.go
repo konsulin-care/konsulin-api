@@ -8,7 +8,6 @@ import (
 
 	"github.com/konsulin-care/konsulin-api/internal/app/config"
 
-	"github.com/casbin/casbin/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -63,7 +62,7 @@ func appendPolicyFile(t *testing.T, path, row string) {
 
 // waitForEnforce polls the enforcer until Enforce(role, method, path) equals
 // want or the deadline passes, then fails the test with the last observed value.
-func waitForEnforce(t *testing.T, enf *casbin.Enforcer, role, method, path string, want bool) {
+func waitForEnforce(t *testing.T, enf policyEnforcer, role, method, path string, want bool) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	last := false
