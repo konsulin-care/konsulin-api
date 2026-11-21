@@ -45,10 +45,26 @@ func (m *Middlewares) handleAuthBundle(ctxIface context.Context, r *http.Request
 	if !isBundle(r) {
 		return false, nil
 	}
+	// Fail closed on a nil enforcer before dispatching RBAC work: a nil
+	// concrete pointer boxed into the policyEnforcer interface is non-nil, and
+	// SyncedEnforcer.Enforce dereferences its embedded RWMutex on entry, which
+	// would panic instead of denying.
+	if m.Enforcer == nil {
+		return true, fmt.Errorf("forbidden")
+	}
 	body, _ := io.ReadAll(r.Body)
 	_ = r.Body.Close()
 
 	fhirID, _ := ctxIface.Value(keyFHIRID).(string)
+	// Fail closed on a nil enforcer before dispatching RBAC work: a nil
+	// concrete pointer boxed into the policyEnforcer interface is non-nil, and
+	// SyncedEnforcer.Enforce dereferences its embedded RWMutex on entry, which
+	// would panic instead of denying. Function-level so the secondary retry is
+	// short-circuited too.
+	if m.Enforcer == nil {
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		return true, fmt.Errorf("forbidden")
+	}
 	err := scanBundle(ctxIface, m.Enforcer, body, roles, fhirID, nil, m.rbacClients())
 	if err != nil {
 		// Lazy dual-identity retry: only sessions holding both Patient and
@@ -96,6 +112,15 @@ func (m *Middlewares) handleAuthSingleResource(ctxIface context.Context, r *http
 		fhirID:         fhirID,
 		url:            fullURL,
 		resource:       resourceBody,
+	}
+	// Fail closed on a nil enforcer before dispatching RBAC work: a nil
+	// concrete pointer boxed into the policyEnforcer interface is non-nil, and
+	// SyncedEnforcer.Enforce dereferences its embedded RWMutex on entry, which
+	// would panic instead of denying. Function-level so the secondary retry is
+	// short-circuited too. Referral Communication PUTs are fully validated above
+	// and short-circuit inside checkSingle before any enforcer call.
+	if m.Enforcer == nil && !isReferralCommunicationPut(r.Method, utils.ExtractResourceTypeFromPath(normalizePath(fullURL)), normalizePath(fullURL)) {
+		return fmt.Errorf("forbidden")
 	}
 	err := checkSingle(ctxIface, m.Enforcer, req, roles, m.rbacClients())
 	if err != nil {
