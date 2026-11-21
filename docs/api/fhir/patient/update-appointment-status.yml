@@ -2,7 +2,7 @@ info:
   name: "Patient: Verify Appointment Booking"
   type: http
   seq: 15
-  tags: [PR, appointment]
+  tags: [gateway, appointment]
 
 http:
   method: GET
@@ -63,4 +63,7 @@ docs: |
   `TestHandleAppointmentPaymentPaid_TransitionsAppointmentToBooked`, since
   driving it end-to-end requires a real paid Xendit invoice. Asserts the
   appointment is `pending` and still references the reserved slot, then hands
-  off to the slot verification. Pre-request switches to Patient.
+  off to the slot verification. Requires an enrolled federation gateway: this
+  request is not part of the Bruno journey and only runs inside the manual
+  gateway sub-chain started after "Patient: Book Appointment". Pre-request
+  switches to Patient.

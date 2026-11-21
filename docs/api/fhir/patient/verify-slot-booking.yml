@@ -2,7 +2,7 @@ info:
   name: "Patient: Verify Slot Booking"
   type: http
   seq: 16
-  tags: [PR, appointment]
+  tags: [gateway, appointment]
 
 http:
   method: GET
@@ -35,7 +35,7 @@ runtime:
           }
         });
     - type: after-response
-      code: 'bru.runner.setNextRequest("Patient: Write Referral");'
+      code: 'bru.runner.setNextRequest(null);'
   assertions:
     - expression: res.status
       operator: eq
@@ -58,5 +58,7 @@ docs: |
   lifecycle. The fully-booked pair (appointment `booked`, slot
   `busy-unavailable`) is asserted by
   `TestHandleAppointmentPaymentPaid_TransitionsAppointmentToBooked`.
-  Hands off to "Patient: Write Referral", preserving the patient-journey
-  continuation. Pre-request switches to Patient.
+  Requires an enrolled federation gateway: this request is not part of the
+  Bruno journey and only runs when chained manually after "Patient: Book
+  Appointment". It ends the gateway sub-chain (`setNextRequest(null)`).
+  Pre-request switches to Patient.
