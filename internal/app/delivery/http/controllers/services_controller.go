@@ -62,7 +62,7 @@ type ServicesController struct {
 	Limiter    *services.ServiceLimiter
 	Invoker    *services.Invoker
 	Results    *services.ResultUsecase
-	Enforcer   *casbin.Enforcer
+	Enforcer   *casbin.SyncedEnforcer
 	GatewayEnv config.AppGateway
 	AppConfig  *config.InternalConfig
 }

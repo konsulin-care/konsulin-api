@@ -27,10 +27,11 @@ func resolveRBACPolicyPath(policyPath string) string {
 	return policyPath
 }
 
-// newEnforcer creates a Casbin enforcer with RBAC model and custom pathMatch
-// function, loading policies from the configured RBAC policy path.
-func newEnforcer(logger *zap.Logger, policyPath string) *casbin.Enforcer {
-	enforcer, err := casbin.NewEnforcer("resources/rbac_model.conf", resolveRBACPolicyPath(policyPath))
+// newEnforcer creates a Casbin synced enforcer with RBAC model and custom
+// pathMatch function, loading policies from the configured RBAC policy path.
+// The synced enforcer guards concurrent Enforce and LoadPolicy calls.
+func newEnforcer(logger *zap.Logger, policyPath string) *casbin.SyncedEnforcer {
+	enforcer, err := casbin.NewSyncedEnforcer("resources/rbac_model.conf", resolveRBACPolicyPath(policyPath))
 	if err != nil {
 		logger.Fatal("failed to load RBAC policies", zap.Error(err))
 	}
@@ -61,7 +62,7 @@ func matchPathArgs(args ...interface{}) (requestPath, policyPath string, ok bool
 }
 
 // handlePolicyEvent processes a single fsnotify event.
-func handlePolicyEvent(event fsnotify.Event, enforcer *casbin.Enforcer, logger *zap.Logger) {
+func handlePolicyEvent(event fsnotify.Event, enforcer *casbin.SyncedEnforcer, logger *zap.Logger) {
 	if event.Op&fsnotify.Write != fsnotify.Write {
 		return
 	}
@@ -73,7 +74,7 @@ func handlePolicyEvent(event fsnotify.Event, enforcer *casbin.Enforcer, logger *
 }
 
 // watchPolicyEvents processes fsnotify events in a loop until the watcher is closed.
-func watchPolicyEvents(watcher *fsnotify.Watcher, enforcer *casbin.Enforcer, logger *zap.Logger) {
+func watchPolicyEvents(watcher *fsnotify.Watcher, enforcer *casbin.SyncedEnforcer, logger *zap.Logger) {
 	for {
 		select {
 		case event, ok := <-watcher.Events:
@@ -92,7 +93,7 @@ func watchPolicyEvents(watcher *fsnotify.Watcher, enforcer *casbin.Enforcer, log
 
 // startPolicyWatcher monitors the configured RBAC policy CSV file for changes
 // and reloads automatically.
-func startPolicyWatcher(enforcer *casbin.Enforcer, logger *zap.Logger, policyPath string) {
+func startPolicyWatcher(enforcer *casbin.SyncedEnforcer, logger *zap.Logger, policyPath string) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		logger.Fatal("failed to create policy watcher", zap.Error(err))
@@ -154,7 +155,7 @@ type (
 		ScheduleFhirClient              contracts.ScheduleFhirClient
 		QuestionnaireResponseFhirClient contracts.QuestionnaireResponseFhirClient
 		PlanDefinitionFinder            contracts.PlanDefinitionFinder
-		Enforcer                        *casbin.Enforcer
+		Enforcer                        *casbin.SyncedEnforcer
 
 		// HTTPClient is a client for sending HTTP requests and can be reused for all requests.
 		HTTPClient *http.Client

@@ -184,7 +184,7 @@ func (u *referralUsecase) ListIncoming(ctx context.Context) ([]IncomingReferral,
 type ReferralController struct {
 	Log      *zap.Logger
 	Usecase  ReferralUsecase
-	Enforcer *casbin.Enforcer
+	Enforcer *casbin.SyncedEnforcer
 }
 
 // NewReferralController builds the referral controller over the usecase

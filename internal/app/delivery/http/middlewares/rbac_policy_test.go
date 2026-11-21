@@ -16,14 +16,14 @@ import (
 // testEnforcer builds a Casbin enforcer from the repo-root resources, mirroring
 // newEnforcer (custom pathMatch included). Test working dirs differ from the
 // binary's, so paths are resolved from this source file's location.
-func testEnforcer(t *testing.T) *casbin.Enforcer {
+func testEnforcer(t *testing.T) *casbin.SyncedEnforcer {
 	t.Helper()
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("cannot resolve test source path")
 	}
 	root := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..", "..")
-	enf, err := casbin.NewEnforcer(
+	enf, err := casbin.NewSyncedEnforcer(
 		filepath.Join(root, "resources", "rbac_model.conf"),
 		filepath.Join(root, "resources", "rbac_policy.csv"),
 	)

@@ -107,14 +107,14 @@ func (*ctrlMockPractitionerClient) PatchPractitioner(_ context.Context, _ *fhir_
 // mirroring middlewares.testEnforcer (unexported from another package). Test
 // working dirs differ from the binary's, so paths are resolved relative to this
 // source file.
-func controllerTestEnforcer(t testing.TB) *casbin.Enforcer {
+func controllerTestEnforcer(t testing.TB) *casbin.SyncedEnforcer {
 	t.Helper()
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("cannot resolve test source path")
 	}
 	root := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..", "..")
-	enf, err := casbin.NewEnforcer(
+	enf, err := casbin.NewSyncedEnforcer(
 		filepath.Join(root, "resources", "rbac_model.conf"),
 		filepath.Join(root, "resources", "rbac_policy.csv"),
 	)
