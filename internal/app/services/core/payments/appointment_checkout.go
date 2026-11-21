@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
+	"github.com/konsulin-care/konsulin-api/internal/app/drivers/gateway"
 	"github.com/konsulin-care/konsulin-api/internal/pkg/constvars"
 	"github.com/konsulin-care/konsulin-api/internal/pkg/exceptions"
 	"github.com/konsulin-care/konsulin-api/internal/pkg/fhir_dto"
@@ -55,8 +56,11 @@ type InvoicePersistenceFunc func(ctx context.Context, invoice *fhir_dto.Invoice)
 //   - persist stores the invoice carrying the new payment identifier.
 //   - input supplies the six appointment ids, the invoice and the return domain.
 //
-// Returns the gateway payment_url, or an error (400-style for a rejected
-// invoice or malformed ids; the gateway or persistence error otherwise).
+// Returns the gateway payment_url, or an error: a 400-style CustomError for a
+// rejected invoice or malformed ids, the gateway error rendered through
+// gateway.MapError (503 when the gateway is not configured or the party is not
+// enrolled, the gateway's own status for a gateway-returned error, 502 for a
+// transport failure), or the persistence error otherwise.
 func CreateAppointmentCheckout(
 	ctx context.Context,
 	client contracts.PaymentClient,
@@ -111,7 +115,7 @@ func CreateAppointmentCheckout(
 		input.FrontendDomain,
 	)
 	if gatewayErr != nil {
-		return "", gatewayErr
+		return "", gateway.MapError(gatewayErr)
 	}
 
 	input.Invoice.Identifier = append(

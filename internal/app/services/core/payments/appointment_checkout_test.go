@@ -3,6 +3,7 @@ package payments
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/konsulin-care/konsulin-api/internal/app/contracts"
@@ -151,6 +152,51 @@ func TestCreateAppointmentCheckoutRejectsNonIDRCurrencyBeforeGatewayCall(t *test
 	assert.Equal(t, 400, customErr.StatusCode)
 	assert.Empty(t, fake.calls, "no gateway call may happen for a non-IDR invoice")
 	assert.False(t, persistCalled, "nothing may be persisted for a rejected invoice")
+}
+
+// TestCreateAppointmentCheckoutMapsGatewayNotConfiguredTo503 covers assertion
+// 4: a disabled gateway adapter (wrapped contracts.ErrGatewayNotConfigured,
+// exactly as the SDK adapter reports it in standalone mode) is rendered as a
+// 503 CustomError instead of a generic 500, and nothing is persisted.
+func TestCreateAppointmentCheckoutMapsGatewayNotConfiguredTo503(t *testing.T) {
+	fake := &fakeCheckoutPaymentClient{
+		err: fmt.Errorf("gateway: create seller payment: %w", contracts.ErrGatewayNotConfigured),
+	}
+	persistCalled := false
+	persist := func(context.Context, *fhir_dto.Invoice) error {
+		persistCalled = true
+		return nil
+	}
+
+	_, err := CreateAppointmentCheckout(context.Background(), fake, persist, newCheckoutInput(newCheckoutInvoice(150000)))
+
+	require.Error(t, err)
+	var customErr *exceptions.CustomError
+	require.ErrorAs(t, err, &customErr)
+	assert.Equal(t, constvars.StatusServiceUnavailable, customErr.StatusCode)
+	assert.False(t, persistCalled, "nothing may be persisted when the gateway is not configured")
+}
+
+// TestCreateAppointmentCheckoutMapsGatewayTransportErrorTo502 covers assertion
+// 5: a transport failure from the gateway client is rendered as a 502
+// CustomError, and nothing is persisted.
+func TestCreateAppointmentCheckoutMapsGatewayTransportErrorTo502(t *testing.T) {
+	fake := &fakeCheckoutPaymentClient{
+		err: errors.New("dial tcp: connection refused"),
+	}
+	persistCalled := false
+	persist := func(context.Context, *fhir_dto.Invoice) error {
+		persistCalled = true
+		return nil
+	}
+
+	_, err := CreateAppointmentCheckout(context.Background(), fake, persist, newCheckoutInput(newCheckoutInvoice(150000)))
+
+	require.Error(t, err)
+	var customErr *exceptions.CustomError
+	require.ErrorAs(t, err, &customErr)
+	assert.Equal(t, constvars.StatusBadGateway, customErr.StatusCode)
+	assert.False(t, persistCalled, "nothing may be persisted when the gateway call fails")
 }
 
 // TestCreateAppointmentCheckoutPersistsPaymentIDAsInvoiceIdentifier covers
