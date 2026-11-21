@@ -2,6 +2,7 @@ info:
   name: Create Service Payment
   type: http
   seq: 1
+  tags: [gateway, payment]
 
 http:
   method: POST
@@ -76,9 +77,11 @@ examples:
         data: '{"success":false,"message":"Unauthenticated","status_code":401}'
 
 docs: |
-  Creates a payment transaction via the Xendit payment gateway. Requires an authenticated session.
+  Creates a payment transaction through the federation gateway. Requires an authenticated session.
 
-  On success, the backend creates a Xendit invoice and returns `payment_checkout_url` (the Xendit invoice checkout page), `trx_id` (the Xendit invoice ID), and `partner_trx_id` (the internal ServiceRequest identifier). Payment status changes are delivered asynchronously to the Xendit invoice callback endpoint.
+  On success, the backend creates a gateway checkout and returns `payment_checkout_url` (the checkout page), `trx_id` (the gateway payment ID), and `partner_trx_id` (the internal ServiceRequest identifier). Payment status changes arrive asynchronously through the gateway delivery channel.
+
+  Requires an enrolled federation gateway (`APP_GATEWAY_URL` set and this party enrolled): it is NOT part of the Bruno journey, which never links to it, so runs without gateway access stay green. Without a gateway it answers `503` with `GATEWAY_NOT_CONFIGURED`.
 
   ### Request Fields
   - `total_item`: (required) item count, min 1.

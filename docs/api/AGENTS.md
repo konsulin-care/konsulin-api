@@ -107,6 +107,37 @@ but the folder-level header keeps direct writes byte-identical to
 gateway-proxied ones and feeds the fhir folder's "responses are well-formed"
 test — keep it when editing seed requests.
 
+## Gateway-Dependent Requests
+
+The federation gateway (`github.com/konsulin-care/gateway-sdk-go`, the
+Konsulin-hosted service the backend enrolls with) is **closed source**. A
+collaborator without gateway access, or any local run with `APP_GATEWAY_URL`
+unset, must still be able to push — so the journey never links to a request
+that needs the gateway. The journey advances only through
+`bru.runner.setNextRequest`, so an unlinked request simply never runs.
+
+These requests carry the `gateway` tag instead of `PR` and are **not** part of
+the journey:
+
+| Request | File | Needs |
+|---|---|---|
+| `Handle Appointment Payment` | `organizations/payments/appointment-payment.yml` | Gateway seller-mode payment create |
+| `Patient: Verify Appointment Booking` | `fhir/patient/update-appointment-status.yml` | State produced by the payment above |
+| `Patient: Verify Slot Booking` | `fhir/patient/verify-slot-booking.yml` | State produced by the payment above |
+| `Create Service Payment` | `organizations/payments/create-service.yml` | Gateway listing/payment create |
+
+Without a gateway these endpoints answer `503` with `dev_message`
+`GATEWAY_NOT_CONFIGURED` (and `GATEWAY_NOT_ENROLLED` before the party is
+enrolled), never a generic 500 — see `gateway.MapError`.
+
+Running the appointment sub-chain by hand: with `APP_GATEWAY_URL` set and this
+party enrolled, run `Patient: Book Appointment` first (it captures `slotId` and
+`appointmentId`), then select `Handle Appointment Payment`. The sub-chain links
+payment → verify appointment → verify slot and ends with
+`setNextRequest(null)`, so it cannot fall back into the journey. The slot
+reservation (`busy-tentative`) and appointment `pending` transitions are also
+covered by Go unit tests, which run without a gateway.
+
 ## Related Files
 
 - `docs/api/fhir/folder.yml` — fhir folder auth modes and chain overview
