@@ -17,15 +17,10 @@ import (
 	"github.com/konsulin-care/konsulin-api/internal/pkg/ownership"
 	"github.com/konsulin-care/konsulin-api/internal/pkg/utils"
 
+	"github.com/casbin/casbin/v2"
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
-
-// policyEnforcer is the transitional subset of the Casbin enforcer the RBAC
-// helpers need; removed once every holder is *casbin.SyncedEnforcer.
-type policyEnforcer interface {
-	Enforce(rvals ...interface{}) (bool, error)
-}
 
 // handleAuthPostBody reads and validates the POST request body, restoring it for downstream use.
 func handleAuthPostBody(ctxIface context.Context, r *http.Request, fhirRole, fhirID string) error {
@@ -45,8 +40,7 @@ func (m *Middlewares) handleAuthBundle(ctxIface context.Context, r *http.Request
 	if !isBundle(r) {
 		return false, nil
 	}
-	// Fail closed on a nil enforcer before dispatching RBAC work: a nil
-	// concrete pointer boxed into the policyEnforcer interface is non-nil, and
+	// Fail closed on a nil enforcer before dispatching RBAC work:
 	// SyncedEnforcer.Enforce dereferences its embedded RWMutex on entry, which
 	// would panic instead of denying.
 	if m.Enforcer == nil {
@@ -56,8 +50,7 @@ func (m *Middlewares) handleAuthBundle(ctxIface context.Context, r *http.Request
 	_ = r.Body.Close()
 
 	fhirID, _ := ctxIface.Value(keyFHIRID).(string)
-	// Fail closed on a nil enforcer before dispatching RBAC work: a nil
-	// concrete pointer boxed into the policyEnforcer interface is non-nil, and
+	// Fail closed on a nil enforcer before dispatching RBAC work:
 	// SyncedEnforcer.Enforce dereferences its embedded RWMutex on entry, which
 	// would panic instead of denying. Function-level so the secondary retry is
 	// short-circuited too.
@@ -113,8 +106,7 @@ func (m *Middlewares) handleAuthSingleResource(ctxIface context.Context, r *http
 		url:            fullURL,
 		resource:       resourceBody,
 	}
-	// Fail closed on a nil enforcer before dispatching RBAC work: a nil
-	// concrete pointer boxed into the policyEnforcer interface is non-nil, and
+	// Fail closed on a nil enforcer before dispatching RBAC work:
 	// SyncedEnforcer.Enforce dereferences its embedded RWMutex on entry, which
 	// would panic instead of denying. Function-level so the secondary retry is
 	// short-circuited too. Referral Communication PUTs are fully validated above
@@ -482,7 +474,7 @@ func (m *Middlewares) rbacClients() rbacClients {
 	}
 }
 
-func scanBundle(ctx context.Context, e policyEnforcer, raw []byte, roles []string, uid string, fhirIDsByRole map[string]string, clients rbacClients) error {
+func scanBundle(ctx context.Context, e *casbin.SyncedEnforcer, raw []byte, roles []string, uid string, fhirIDsByRole map[string]string, clients rbacClients) error {
 	if gjson.GetBytes(raw, "resourceType").String() != constvars.ResourceBundle {
 		return fmt.Errorf("invalid bundle")
 	}
@@ -506,7 +498,7 @@ func scanBundle(ctx context.Context, e policyEnforcer, raw []byte, roles []strin
 	return nil
 }
 
-func checkSingle(ctx context.Context, e policyEnforcer, req rbacRequest, roles []string, clients rbacClients) error {
+func checkSingle(ctx context.Context, e *casbin.SyncedEnforcer, req rbacRequest, roles []string, clients rbacClients) error {
 	resourceType := utils.ExtractResourceTypeFromPath(req.normalizedPath)
 
 	// C3: entry-level QuestionnaireResponse / Communication GET reads must carry
@@ -584,7 +576,7 @@ func isReferralCommunicationPut(method, resourceType, normalizedPath string) boo
 // ownership check on the target resource. Researcher and Clinic Admin resolve
 // as Practitioner identities; code-conditioned ownership rules gate their
 // reads/writes. Returns an error when no role authorizes the request.
-func enforceRBAC(ctx context.Context, e policyEnforcer, req rbacRequest, roles []string, clients rbacClients) error {
+func enforceRBAC(ctx context.Context, e *casbin.SyncedEnforcer, req rbacRequest, roles []string, clients rbacClients) error {
 	for _, role := range roles {
 		if allowed(e, role, req.method, req.normalizedPath) {
 			if isFHIRIdentityRole(role) {
@@ -611,7 +603,7 @@ func isFHIRIdentityRole(role string) bool {
 	return false
 }
 
-func allowed(e policyEnforcer, role, method, path string) bool {
+func allowed(e *casbin.SyncedEnforcer, role, method, path string) bool {
 	ok, err := e.Enforce(role, method, path)
 	if err != nil {
 		return false
